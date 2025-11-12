@@ -1,7 +1,7 @@
 {
   "name": "erp-monorepo",
   "private": true,
-  "packageManager": "pnpm@9",
+  "packageManager": "pnpm@10.21.0",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo dev",
