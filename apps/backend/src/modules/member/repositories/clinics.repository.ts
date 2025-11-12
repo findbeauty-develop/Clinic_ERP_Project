@@ -8,5 +8,12 @@ export class ClinicsRepository {
   create(data: any) {
     return this.prisma.clinic.create({ data });
   }
+
+  findByTenant(tenantId: string) {
+    return this.prisma.clinic.findMany({
+      where: { tenant_id: tenantId },
+      orderBy: { created_at: "desc" },
+    });
+  }
 }
 

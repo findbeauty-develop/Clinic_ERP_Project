@@ -36,5 +36,9 @@ export class ClinicsService {
       created_by: userId ?? null,
     });
   }
+
+  getClinics(tenantId: string) {
+    return this.repository.findByTenant(tenantId);
+  }
 }
 

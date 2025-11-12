@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ClinicsService } from "../services/clinics.service";
@@ -20,6 +22,19 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 // @UseGuards(JwtTenantGuard, RolesGuard) TODO: Create guard for clinic register
 export class ClinicsController {
   constructor(private readonly service: ClinicsService) {}
+
+  @Get()
+  @ApiOperation({ summary: "Retrieve clinics for the tenant" })
+  getClinics(
+    @Tenant() tenantId: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    if (!resolvedTenantId) {
+      throw new BadRequestException("tenant_id is required");
+    }
+    return this.service.getClinics(resolvedTenantId);
+  }
 
   @Post()
   @ApiOperation({ summary: "Register a clinic for the tenant" })

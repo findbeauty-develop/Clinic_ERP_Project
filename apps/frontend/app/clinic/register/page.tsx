@@ -121,8 +121,10 @@ export default function ClinicRegisterPage() {
         );
       }
 
-      window.alert("Clinic registered successfully!");
       setForm(initialForm);
+      if (typeof window !== "undefined") {
+        window.location.href = "/clinic/register/complete";
+      }
     } catch (error) {
       window.alert(
         error instanceof Error
