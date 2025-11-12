@@ -7,6 +7,7 @@ import { ClinicsRepository } from "./repositories/clinics.repository";
 import { MembersRepository } from "./repositories/members.repository";
 import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
+import { MemberLoginDto } from "./dto/member-login.dto";
 
 @Module({
   controllers: [ClinicsController, MembersController],
@@ -17,6 +18,8 @@ import { SupabaseService } from "../../common/supabase.service";
     MembersRepository,
     PrismaService,
     SupabaseService,
+    MemberLoginDto
+    
   ],
 })
 export class MemberModule {}

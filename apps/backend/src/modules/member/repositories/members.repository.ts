@@ -10,5 +10,11 @@ export class MembersRepository {
   createMany(data: MemberCreateArgs[]) {
     return this.prisma.$transaction(data.map((entry) => this.prisma.member.create(entry)));
   }
+
+  findByMemberId(memberId: string) {
+    return this.prisma.member.findUnique({
+      where: { member_id: memberId },
+    });
+  }
 }
 

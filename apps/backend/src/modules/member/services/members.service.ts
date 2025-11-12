@@ -1,5 +1,5 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { hash } from "bcryptjs";
+import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { compare, hash } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { MembersRepository } from "../repositories/members.repository";
 import { CreateMembersDto } from "../dto/create-members.dto";
@@ -66,6 +66,21 @@ export class MembersService {
 
   private generateRandomPassword(): string {
     return randomBytes(8).toString("base64url");
+  }
+
+  async login(memberId: string, password: string) {
+    const member = await this.repository.findByMemberId(memberId);
+  
+    if (!member) {
+      throw new UnauthorizedException("Invalid member ID or password");
+    }
+  
+    const isValid = await compare(password, member.password_hash);
+    if (!isValid) {
+      throw new UnauthorizedException("Invalid member ID or password");
+    }
+  
+    return { message: "You successfully logged in" };
   }
 }
 

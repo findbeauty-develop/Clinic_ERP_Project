@@ -7,6 +7,7 @@ import { RolesGuard } from "../../../common/guards/roles.guard";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReqUser } from "../../../common/decorators/req-user.decorator";
+import { MemberLoginDto } from "../dto/member-login.dto";
 
 @ApiTags("membership")
 @ApiBearerAuth()
@@ -21,5 +22,11 @@ export class MembersController {
   createMembers(@Body() dto: CreateMembersDto, @Tenant() tenantId: string, @ReqUser("id") userId: string) {
     return this.service.createMembers(dto, tenantId, userId);
   }
+
+  @Post("login")
+@ApiOperation({ summary: "Login member by member_id and password" })
+async login(@Body() dto: MemberLoginDto) {
+  return this.service.login(dto.memberId, dto.password);
+}
 }
 
