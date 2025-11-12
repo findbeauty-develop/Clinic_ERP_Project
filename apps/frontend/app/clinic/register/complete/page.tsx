@@ -67,6 +67,34 @@ export default function ClinicRegisterCompletePage() {
           </p>
         </header>
 
+        <nav className="mx-auto flex w-full max-w-2xl items-center justify-between text-sm text-slate-400">
+          {[
+            { step: 1, label: "클리닉 인증" },
+            { step: 2, label: "법인 인증" },
+            { step: 3, label: "계정 만들기" },
+            { step: 4, label: "가입성공" },
+          ].map(({ step, label }) => (
+            <div key={step} className="flex flex-col items-center gap-2">
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold ${
+                  step === 2
+                    ? "border-indigo-500 bg-indigo-500 text-white"
+                    : "border-slate-200 bg-white text-slate-400"
+                }`}
+              >
+                {step}
+              </div>
+              <span
+                className={`text-xs md:text-sm ${
+                  step === 2 ? "text-indigo-500 font-medium" : ""
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </nav>
+
         <section className="mx-auto w-full max-w-3xl rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
           {loading ? (
             <div className="py-12 text-center text-slate-500">
@@ -111,26 +139,26 @@ export default function ClinicRegisterCompletePage() {
 
                   <dl className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
                     <div>
-                      <dt className="font-medium text-slate-500">소재지</dt>
-                      <dd>{clinic.location}</dd>
+                      <dt className="font-medium text-slate-500">소재지: {clinic.location}</dt>
+                      
                     </div>
                     <div>
-                      <dt className="font-medium text-slate-500">진료과목</dt>
-                      <dd>{clinic.medical_subjects}</dd>
+                      <dt className="font-medium text-slate-500">진료과목: {clinic.medical_subjects}</dt>
+                
                     </div>
                     {clinic.description && (
                       <div className="md:col-span-2">
-                        <dt className="font-medium text-slate-500">설명 (법인명)</dt>
-                        <dd>{clinic.description}</dd>
+                        <dt className="font-medium text-slate-500">설명 (법인명): {clinic.description}</dt>
+                        
                       </div>
                     )}
                     <div>
-                      <dt className="font-medium text-slate-500">면허번호</dt>
-                      <dd>{clinic.license_number}</dd>
+                      <dt className="font-medium text-slate-500">면허번호: {clinic.license_number}</dt>
+                    
                     </div>
                     <div>
-                      <dt className="font-medium text-slate-500">문서발급번호</dt>
-                      <dd>{clinic.document_issue_number}</dd>
+                      <dt className="font-medium text-slate-500">문서발급번호: {clinic.document_issue_number}</dt>
+                   
                     </div>
                   </dl>
 
