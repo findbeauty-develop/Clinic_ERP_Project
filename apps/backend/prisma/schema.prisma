@@ -21,3 +21,24 @@ model Product {
   updated_by String?
 }
 
+model Clinic {
+  id                    String    @id @default(uuid())
+  tenant_id             String
+  name                  String
+  english_name          String
+  category              String
+  location              String
+  medical_subjects      String
+  description           String?
+  license_type          String
+  license_number        String
+  document_issue_number String
+  document_image_urls   String[]  @default([])
+  created_at            DateTime  @default(now())
+  created_by            String?
+  updated_at            DateTime?
+  updated_by            String?
+
+  @@index([tenant_id])
+}
+
