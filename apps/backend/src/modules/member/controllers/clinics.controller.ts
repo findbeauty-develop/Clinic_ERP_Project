@@ -1,4 +1,10 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { ClinicsService } from "../services/clinics.service";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
@@ -11,7 +17,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 @ApiTags("membership")
 @ApiBearerAuth()
 @Controller("iam/members/clinics")
-@UseGuards(JwtTenantGuard, RolesGuard)
+// @UseGuards(JwtTenantGuard, RolesGuard) TODO: Create guard for clinic register
 export class ClinicsController {
   constructor(private readonly service: ClinicsService) {}
 
@@ -23,7 +29,12 @@ export class ClinicsController {
     @Tenant() tenantId: string,
     @ReqUser("id") userId: string
   ) {
-    return this.service.clinicRegister(dto, tenantId, userId);
+    const resolvedTenantId = tenantId ?? dto.tenantId ?? "self-service-tenant";
+    if (!resolvedTenantId) {
+      throw new BadRequestException("tenant_id is required");
+    }
+    const resolvedUserId = userId ?? dto.createdBy ?? "self-service";
+    return this.service.clinicRegister(dto, resolvedTenantId, resolvedUserId);
   }
 }
 

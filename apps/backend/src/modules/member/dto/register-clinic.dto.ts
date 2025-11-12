@@ -1,11 +1,20 @@
 import { IsArray, IsOptional, IsString } from "class-validator";
 
 export class RegisterClinicDto {
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
+
+  @IsOptional()
+  @IsString()
+  createdBy?: string;
+
   @IsString()
   name!: string; // 명칭
 
+  @IsOptional()
   @IsString()
-  englishName!: string; // 영어이름
+  englishName?: string; // 영어이름
 
   @IsString()
   category!: string; // 종류
