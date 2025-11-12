@@ -16,7 +16,7 @@ export class MembersService {
 
   constructor(private readonly repository: MembersRepository) {}
 
-  async createMembers(dto: CreateMembersDto, tenantId: string, userId: string): Promise<CreatedMemberResult[]> {
+ public async createMembers(dto: CreateMembersDto, tenantId: string, userId: string): Promise<CreatedMemberResult[]> {
     const clinicSlug = this.normalizeClinicName(dto.clinicName);
 
     const definitions: Array<{ role: string; label: string; password: string; isOwner: boolean }> = [
@@ -68,7 +68,7 @@ export class MembersService {
     return randomBytes(8).toString("base64url");
   }
 
-  async login(memberId: string, password: string) {
+  public async login(memberId: string, password: string) {
     const member = await this.repository.findByMemberId(memberId);
   
     if (!member) {
@@ -80,7 +80,7 @@ export class MembersService {
       throw new UnauthorizedException("Invalid member ID or password");
     }
   
-    return { message: "You successfully logged in" };
+    return { message: "You successfully login" };
   }
 }
 

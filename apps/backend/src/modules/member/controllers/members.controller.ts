@@ -12,7 +12,7 @@ import { MemberLoginDto } from "../dto/member-login.dto";
 @ApiTags("membership")
 @ApiBearerAuth()
 @Controller("iam/members")
-@UseGuards(JwtTenantGuard, RolesGuard)
+// @UseGuards(JwtTenantGuard, RolesGuard) TODO: Create guard for member login
 export class MembersController {
   constructor(private readonly service: MembersService) {}
 
