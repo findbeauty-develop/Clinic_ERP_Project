@@ -42,3 +42,18 @@ model Clinic {
   @@index([tenant_id])
 }
 
+model Member {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  member_id     String   @unique
+  role          String
+  password_hash String
+  clinic_name   String
+  created_at    DateTime @default(now())
+  created_by    String?
+  updated_at    DateTime?
+  updated_by    String?
+
+  @@index([tenant_id])
+}
+

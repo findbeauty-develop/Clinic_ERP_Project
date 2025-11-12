@@ -1,0 +1,25 @@
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { MembersService } from "../services/members.service";
+import { CreateMembersDto } from "../dto/create-members.dto";
+import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
+import { Roles } from "../../../common/decorators/roles.decorator";
+import { Tenant } from "../../../common/decorators/tenant.decorator";
+import { ReqUser } from "../../../common/decorators/req-user.decorator";
+
+@ApiTags("membership")
+@ApiBearerAuth()
+@Controller("iam/members")
+@UseGuards(JwtTenantGuard, RolesGuard)
+export class MembersController {
+  constructor(private readonly service: MembersService) {}
+
+  @Post()
+  @ApiOperation({ summary: "Create default members for a clinic (owner, manager, member)" })
+  @Roles("admin")
+  createMembers(@Body() dto: CreateMembersDto, @Tenant() tenantId: string, @ReqUser("id") userId: string) {
+    return this.service.createMembers(dto, tenantId, userId);
+  }
+}
+
