@@ -20,6 +20,9 @@ model Product {
   min_stock     Int      @default(0)
   created_at    DateTime @default(now())
   updated_at    DateTime?
+
+  returnPolicy  ReturnPolicy?
+  batches       Batch[]
 }
 
 model Clinic {
@@ -62,3 +65,38 @@ model Member {
   @@index([tenant_id])
 }
 
+model ReturnPolicy {
+  id             String   @id @default(uuid())
+  tenant_id      String?
+  product_id     String   @unique
+  is_returnable  Boolean  @default(false)
+  refund_amount  Float    @default(0)
+  return_storage String?
+  note           String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime?
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+}
+
+model Batch {
+  id              String    @id @default(uuid())
+  tenant_id       String?
+  product_id      String
+  batch_no        String
+  storage         String?
+  purchase_price  Int?
+  sale_price      Int?
+  manufacture_date DateTime?
+  expiry_date     DateTime?
+  expiry_months   Int?
+  qty             Int
+  alert_days      String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime?
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([product_id])
+}
