@@ -64,6 +64,27 @@ export class CreateBatchDto {
   alert_days?: string;
 }
 
+export class LinkSupplierDto {
+  @IsString()
+  supplier_id!: string;
+
+  @IsOptional()
+  @IsInt()
+  purchase_price?: number;
+
+  @IsOptional()
+  @IsInt()
+  moq?: number;
+
+  @IsOptional()
+  @IsInt()
+  lead_time_days?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
 export class CreateProductDto {
   @IsString()
   name!: string;
@@ -110,5 +131,11 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => CreateBatchDto)
   initial_batches?: CreateBatchDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LinkSupplierDto)
+  suppliers?: LinkSupplierDto[];
 }
 

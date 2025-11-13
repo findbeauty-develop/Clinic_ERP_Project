@@ -21,8 +21,9 @@ model Product {
   created_at    DateTime @default(now())
   updated_at    DateTime?
 
-  returnPolicy  ReturnPolicy?
-  batches       Batch[]
+  returnPolicy    ReturnPolicy?
+  batches         Batch[]
+  supplierProducts SupplierProduct[]
 }
 
 model Clinic {
@@ -99,4 +100,23 @@ model Batch {
 
   @@index([tenant_id])
   @@index([product_id])
+}
+
+model SupplierProduct {
+  id              String   @id @default(uuid())
+  tenant_id       String?
+  product_id      String
+  supplier_id     String
+  purchase_price  Int?
+  moq             Int?
+  lead_time_days  Int?
+  note            String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime?
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([product_id])
+  @@index([supplier_id])
 }

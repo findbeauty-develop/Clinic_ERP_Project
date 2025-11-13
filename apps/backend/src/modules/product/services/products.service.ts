@@ -42,9 +42,10 @@ export class ProductsService {
               }
             : undefined,
         },
-        include: { returnPolicy: true, batches: true },
+        include: { returnPolicy: true, batches: true, supplierProducts: true },
       });
 
+      // Create batches
       if (dto.initial_batches?.length) {
         for (const batch of dto.initial_batches) {
           await tx.batch.create({
@@ -67,7 +68,32 @@ export class ProductsService {
         }
       }
 
-      return product;
+      // Create supplier products
+      if (dto.suppliers?.length) {
+        for (const s of dto.suppliers) {
+          await tx.supplierProduct.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: product.id,
+              supplier_id: s.supplier_id,
+              purchase_price: s.purchase_price ?? null,
+              moq: s.moq ?? null,
+              lead_time_days: s.lead_time_days ?? null,
+              note: s.note ?? null,
+            },
+          });
+        }
+      }
+
+      // Return product with all related data
+      return tx.product.findUnique({
+        where: { id: product.id },
+        include: {
+          returnPolicy: true,
+          batches: true,
+          supplierProducts: true,
+        },
+      });
     });
   }
 }
