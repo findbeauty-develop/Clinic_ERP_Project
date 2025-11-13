@@ -15,5 +15,18 @@ export class ClinicsRepository {
       orderBy: { created_at: "desc" },
     });
   }
+
+  findById(id: string) {
+    return this.prisma.clinic.findUnique({
+      where: { id },
+    });
+  }
+
+  update(id: string, data: any) {
+    return this.prisma.clinic.update({
+      where: { id },
+      data,
+    });
+  }
 }
 

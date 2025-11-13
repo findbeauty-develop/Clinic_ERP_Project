@@ -2,6 +2,22 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
+type Clinic = {
+  id: string;
+  name: string;
+  english_name?: string | null;
+  category: string;
+  location: string;
+  medical_subjects: string;
+  description?: string | null;
+  license_type: string;
+  license_number: string;
+  document_issue_number: string;
+  document_image_urls?: string[];
+  tenant_id?: string | null;
+  created_at?: string;
+};
+
 type ClinicForm = {
   name: string;
   englishName: string;
@@ -35,6 +51,8 @@ export default function ClinicRegisterPage() {
   const [form, setForm] = useState<ClinicForm>(initialForm);
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState("");
+  const [isLoadingClinic, setIsLoadingClinic] = useState(true);
+  const [clinicId, setClinicId] = useState<string | null>(null);
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
 
   useEffect(() => {
@@ -46,6 +64,95 @@ export default function ClinicRegisterPage() {
       setToken(storedToken);
     }
   }, []);
+
+  // Load clinic data from API when page loads
+  useEffect(() => {
+    const loadClinicData = async () => {
+      if (!apiUrl) {
+        setIsLoadingClinic(false);
+        return;
+      }
+
+      try {
+        // Check if we're in edit mode (clinic ID from success page)
+        const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
+        console.log("Editing clinic ID from sessionStorage:", editingClinicId);
+        
+        // Get clinic name from sessionStorage (from success page)
+        const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
+        if (!clinicSummaryRaw && !editingClinicId) {
+          console.log("No clinic data found in sessionStorage");
+          setIsLoadingClinic(false);
+          return;
+        }
+
+        // Fetch clinics from API
+        const response = await fetch(`${apiUrl}/iam/members/clinics`);
+        if (!response.ok) {
+          setIsLoadingClinic(false);
+          return;
+        }
+
+        const clinics = (await response.json()) as Clinic[];
+        
+        // Find clinic by ID (if editing) or by name
+        let matchedClinic: Clinic | undefined;
+        if (editingClinicId) {
+          matchedClinic = clinics.find((c) => c.id === editingClinicId);
+        } else if (clinicSummaryRaw) {
+          const clinicSummary = JSON.parse(clinicSummaryRaw) as {
+            name?: string;
+            englishName?: string;
+          };
+          matchedClinic = clinics.find((c) => c.name === clinicSummary.name);
+        }
+
+        if (matchedClinic) {
+          // Store clinic ID for update mode
+          console.log("Found clinic for editing:", matchedClinic.id, matchedClinic.name);
+          setClinicId(matchedClinic.id);
+
+          // Convert image URLs to absolute URLs if they are relative
+          const imageUrls = (matchedClinic.document_image_urls || []).map(
+            (url) => {
+              // If URL is already absolute (starts with http:// or https:// or data:), use as is
+              if (
+                url.startsWith("http://") ||
+                url.startsWith("https://") ||
+                url.startsWith("data:")
+              ) {
+                return url;
+              }
+              // If relative URL, prepend API URL
+              return url.startsWith("/") ? `${apiUrl}${url}` : `${apiUrl}/${url}`;
+            }
+          );
+
+          // Auto-fill form with clinic data
+          setForm({
+            name: matchedClinic.name || "",
+            englishName: matchedClinic.english_name || "",
+            category: matchedClinic.category || "",
+            location: matchedClinic.location || "",
+            medicalSubjects: matchedClinic.medical_subjects || "",
+            description: matchedClinic.description || "",
+            licenseType: matchedClinic.license_type || "",
+            licenseNumber: matchedClinic.license_number || "",
+            documentIssueNumber: matchedClinic.document_issue_number || "",
+            documentImageUrls: imageUrls,
+          });
+        } else {
+          console.log("Clinic not found for editing");
+        }
+      } catch (error) {
+        console.error("Failed to load clinic data", error);
+      } finally {
+        setIsLoadingClinic(false);
+      }
+    };
+
+    loadClinicData();
+  }, [apiUrl]);
 
   const updateField = (key: keyof ClinicForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -106,23 +213,55 @@ export default function ClinicRegisterPage() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${apiUrl}/iam/members/clinics`, {
-        method: "POST",
+      // If clinicId exists, update existing clinic; otherwise create new one
+      const isUpdateMode = clinicId !== null;
+      console.log("Submit mode:", isUpdateMode ? "UPDATE" : "CREATE", "Clinic ID:", clinicId);
+      const url = isUpdateMode
+        ? `${apiUrl}/iam/members/clinics/${clinicId}`
+        : `${apiUrl}/iam/members/clinics`;
+      const method = isUpdateMode ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers,
         body: JSON.stringify(payload),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
         throw new Error(
-          typeof errorBody?.message === "string"
-            ? errorBody.message
+          typeof result?.message === "string"
+            ? result.message
+            : isUpdateMode
+            ? "클리닉 수정 중 오류가 발생했습니다."
             : "클리닉 등록 중 오류가 발생했습니다."
         );
       }
 
       setForm(initialForm);
+      setClinicId(null);
       if (typeof window !== "undefined") {
+        // Clear editing clinic ID
+        sessionStorage.removeItem("erp_editing_clinic_id");
+        
+        // Update sessionStorage with new clinic data
+        if (isUpdateMode && result) {
+          sessionStorage.setItem(
+            "erp_clinic_summary",
+            JSON.stringify({
+              name: result.name,
+              englishName: result.english_name,
+              category: result.category,
+              location: result.location,
+              medicalSubjects: result.medical_subjects,
+              description: result.description,
+              licenseType: result.license_type,
+              licenseNumber: result.license_number,
+              documentIssueNumber: result.document_issue_number,
+            })
+          );
+        }
         window.location.href = "/clinic/register/complete";
       }
     } catch (error) {

@@ -3,7 +3,9 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from "@nestjs/common";
@@ -50,6 +52,22 @@ export class ClinicsController {
     }
     const resolvedUserId = userId ?? dto.createdBy ?? "self-service";
     return this.service.clinicRegister(dto, resolvedTenantId, resolvedUserId);
+  }
+
+  @Put(":id")
+  @ApiOperation({ summary: "Update a clinic" })
+  updateClinic(
+    @Param("id") id: string,
+    @Body() dto: RegisterClinicDto,
+    @Tenant() tenantId: string,
+    @ReqUser("id") userId: string
+  ) {
+    const resolvedTenantId = tenantId ?? dto.tenantId ?? "self-service-tenant";
+    if (!resolvedTenantId) {
+      throw new BadRequestException("tenant_id is required");
+    }
+    const resolvedUserId = userId ?? dto.createdBy ?? "self-service";
+    return this.service.updateClinic(id, dto, resolvedTenantId, resolvedUserId);
   }
 }
 

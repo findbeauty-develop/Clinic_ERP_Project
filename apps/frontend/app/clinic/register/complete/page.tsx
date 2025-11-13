@@ -187,7 +187,7 @@ export default function ClinicRegisterCompletePage() {
             type="button"
             className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             onClick={() => {
-              window.location.href = "/";
+              window.location.href = "/clinic/register/success";
             }}
           >
             다음

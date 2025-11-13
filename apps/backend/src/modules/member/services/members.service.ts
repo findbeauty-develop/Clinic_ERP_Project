@@ -50,15 +50,25 @@ export class MembersService {
         const memberId = `${definition.label}@${clinicSlug}`;
         const passwordHash = await hash(definition.password, 12);
 
+        const memberData = {
+          member_id: memberId,
+          role: definition.role,
+          password_hash: passwordHash,
+          tenant_id: tenantId,
+          clinic_name: clinicSlug,
+          created_by: userId,
+          full_name: definition.isOwner ? dto.ownerName : undefined,
+          phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
+          id_card_number: definition.isOwner ? dto.ownerIdCardNumber : undefined,
+          address: definition.isOwner ? dto.ownerAddress : undefined,
+        };
+
         return {
-          createArgs: {
-            data: {
-              member_id: memberId,
-              role: definition.role,
+          upsertArgs: {
+            where: { member_id: memberId },
+            create: memberData,
+            update: {
               password_hash: passwordHash,
-              tenant_id: tenantId,
-              clinic_name: clinicSlug,
-              created_by: userId,
               full_name: definition.isOwner ? dto.ownerName : undefined,
               phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
               id_card_number: definition.isOwner ? dto.ownerIdCardNumber : undefined,
@@ -75,9 +85,9 @@ export class MembersService {
     );
 
     try {
-      await this.repository.createMany(payload.map((item) => item.createArgs));
+      await this.repository.upsertMany(payload.map((item) => item.upsertArgs));
     } catch (error) {
-      this.logger.error("Failed to create members", error instanceof Error ? error.stack : String(error));
+      this.logger.error("Failed to create/update members", error instanceof Error ? error.stack : String(error));
       throw error;
     }
 
