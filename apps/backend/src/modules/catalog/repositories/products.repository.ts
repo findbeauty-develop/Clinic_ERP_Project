@@ -11,7 +11,7 @@ export class ProductsRepository {
 
   findMany(tenantId: string) {
     return this.prisma.product.findMany({
-      where: { tenant_id: tenantId, is_deleted: false },
+      where: { tenant_id: tenantId, is_active: true },
     });
   }
 
@@ -22,7 +22,7 @@ export class ProductsRepository {
   softDelete(id: string) {
     return this.prisma.product.update({
       where: { id },
-      data: { is_deleted: true },
+      data: { is_active: false },
     });
   }
 }
