@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsOptional, IsString } from "class-validator";
 
 export class CreateMembersDto {
   @IsString()
@@ -26,5 +26,17 @@ export class CreateMembersDto {
 
   @IsString()
   ownerAddress!: string;
+
+  @IsOptional()
+  @IsString()
+  clinicEnglishName?: string;
+
+  @IsOptional()
+  @IsString()
+  clinicId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isEditMode?: boolean;
 }
 

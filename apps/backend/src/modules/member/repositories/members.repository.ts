@@ -26,5 +26,15 @@ export class MembersRepository {
       where: { member_id: memberId },
     });
   }
+
+  findManyByMemberIds(memberIds: string[]) {
+    return this.prisma.member.findMany({
+      where: {
+        member_id: {
+          in: memberIds,
+        },
+      },
+    });
+  }
 }
 

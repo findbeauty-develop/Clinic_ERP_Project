@@ -18,6 +18,12 @@ export class MembersService {
 
  public async createMembers(dto: CreateMembersDto, tenantId: string, userId: string): Promise<CreatedMemberResult[]> {
     const clinicSlug = this.normalizeClinicName(dto.clinicName);
+    
+    // Use clinic ID if provided, otherwise use clinic slug
+    // This ensures unique member IDs even for clinics with the same name
+    const clinicIdentifier = dto.clinicId 
+      ? `clinic-${dto.clinicId}` 
+      : clinicSlug;
 
     const definitions: Array<{
       role: string;
@@ -45,9 +51,13 @@ export class MembersService {
       },
     ];
 
+    const memberIds = definitions.map(
+      (definition) => `${definition.label}@${clinicIdentifier}`
+    );
+
     const payload = await Promise.all(
       definitions.map(async (definition) => {
-        const memberId = `${definition.label}@${clinicSlug}`;
+        const memberId = `${definition.label}@${clinicIdentifier}`;
         const passwordHash = await hash(definition.password, 12);
 
         const memberData = {
@@ -64,17 +74,8 @@ export class MembersService {
         };
 
         return {
-          upsertArgs: {
-            where: { member_id: memberId },
-            create: memberData,
-            update: {
-              password_hash: passwordHash,
-              full_name: definition.isOwner ? dto.ownerName : undefined,
-              phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
-              id_card_number: definition.isOwner ? dto.ownerIdCardNumber : undefined,
-              address: definition.isOwner ? dto.ownerAddress : undefined,
-            },
-          },
+          memberId,
+          memberData,
           result: {
             memberId,
             role: definition.role,
@@ -85,9 +86,57 @@ export class MembersService {
     );
 
     try {
-      await this.repository.upsertMany(payload.map((item) => item.upsertArgs));
+      // If edit mode, update existing members; otherwise create new members
+      if (dto.isEditMode === true) {
+        // Edit mode: update existing members
+        const existingMembers = await this.repository.findManyByMemberIds(memberIds);
+        const existingMemberIds = new Set(
+          existingMembers.map((m: { member_id: string }) => m.member_id)
+        );
+
+        const membersToUpdate = payload.filter((item) =>
+          existingMemberIds.has(item.memberId)
+        );
+
+        if (membersToUpdate.length > 0) {
+          await this.repository.upsertMany(
+            membersToUpdate.map((item) => ({
+              where: { member_id: item.memberId },
+              create: item.memberData,
+              update: {
+                password_hash: item.memberData.password_hash,
+                full_name: item.memberData.full_name,
+                phone_number: item.memberData.phone_number,
+                id_card_number: item.memberData.id_card_number,
+                address: item.memberData.address,
+              },
+            }))
+          );
+        }
+      } else {
+        // Create mode: check if members already exist, if so throw error
+        const existingMembers = await this.repository.findManyByMemberIds(memberIds);
+        if (existingMembers.length > 0) {
+          const existingMemberIds = existingMembers.map((m: { member_id: string }) => m.member_id);
+          throw new Error(
+            `Members with IDs [${existingMemberIds.join(", ")}] already exist. Cannot create duplicate members.`
+          );
+        }
+        
+        // Create new members only if they don't exist
+        await this.repository.createMany(
+          payload.map((item) => ({
+            data: item.memberData,
+          }))
+        );
+      }
     } catch (error) {
-      this.logger.error("Failed to create/update members", error instanceof Error ? error.stack : String(error));
+      this.logger.error(
+        dto.isEditMode
+          ? "Failed to update members"
+          : "Failed to create members",
+        error instanceof Error ? error.stack : String(error)
+      );
       throw error;
     }
 

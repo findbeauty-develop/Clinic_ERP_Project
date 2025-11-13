@@ -156,23 +156,31 @@ export default function ClinicRegisterSuccessPage() {
   }, [clinicFromApi, clinic]);
 
   const displayMembers = useMemo(() => {
+    // Use member IDs directly from backend (they already include clinic identifier)
+    // If clinicSlug is available and member ID doesn't match expected format, reconstruct it
     if (!clinicSlug || members.length === 0) return members;
     return members.map((member) => {
-      // Map role to label (owner -> owner1, manager -> manager1, member -> member1)
-      const roleToLabel: Record<string, string> = {
-        owner: "owner1",
-        manager: "manager1",
-        member: "member1",
-        소유자: "owner1",
-        관리자: "manager1",
-        직원: "member1",
-      };
-      const roleLabel = roleToLabel[member.role.toLowerCase()] || member.role.toLowerCase();
-      const newMemberId = `${roleLabel}@${clinicSlug}`;
-      return {
-        ...member,
-        memberId: newMemberId,
-      };
+      // Check if memberId already contains clinic identifier (clinic-{id} format)
+      // If it does, extract and use clinic name for display
+      if (member.memberId.includes("@clinic-")) {
+        // Extract role and reconstruct with clinic name
+        const roleToLabel: Record<string, string> = {
+          owner: "owner1",
+          manager: "manager1",
+          member: "member1",
+          소유자: "owner1",
+          관리자: "manager1",
+          직원: "member1",
+        };
+        const roleLabel = roleToLabel[member.role.toLowerCase()] || member.role.toLowerCase();
+        const newMemberId = `${roleLabel}@${clinicSlug}`;
+        return {
+          ...member,
+          memberId: newMemberId,
+        };
+      }
+      // If memberId already uses clinic name format, use as is
+      return member;
     });
   }, [members, clinicSlug]);
 

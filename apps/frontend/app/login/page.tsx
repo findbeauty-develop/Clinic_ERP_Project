@@ -49,6 +49,22 @@ export default function LoginPage() {
 
   const handleClinicSignup = () => {
     if (typeof window !== "undefined") {
+      // Clear all registration-related data from sessionStorage and localStorage
+      // to ensure a fresh start for new clinic registration
+      const keysToRemove = [
+        "erp_clinic_summary",
+        "erp_owner_profile",
+        "erp_created_members",
+        "erp_editing_clinic_id",
+        "erp_selected_clinic",
+        "erp_owner_info",
+      ];
+
+      keysToRemove.forEach((key) => {
+        sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
+      });
+
       window.location.href = "/clinic/register";
     }
   };

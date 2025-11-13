@@ -139,6 +139,10 @@ export default function ClinicMemberSetupPage() {
       return;
     }
 
+    // Check if we're in edit mode
+    const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
+    const isEditMode = editingClinicId !== null;
+
     const payload = {
       clinicName: selectedClinic.name,
       ownerPassword,
@@ -147,7 +151,9 @@ export default function ClinicMemberSetupPage() {
       ownerIdCardNumber,
       ownerAddress,
       clinicEnglishName: selectedClinic.english_name ?? undefined,
+      clinicId: selectedClinic.id,
       tenantId: selectedClinic.tenant_id,
+      isEditMode,
     };
 
     setLoading(true);

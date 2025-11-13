@@ -43,7 +43,12 @@ export default function ClinicRegisterCompletePage() {
           );
         }
         const data = (await response.json()) as Clinic[];
-        setClinics(data);
+        // Sort by created_at descending and show only the most recent clinic
+        const sortedClinics = data.sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setClinics(sortedClinics.slice(0, 1)); // Show only the most recent clinic
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "클리닉 정보를 불러오지 못했습니다."
