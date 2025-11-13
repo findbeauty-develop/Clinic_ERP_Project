@@ -19,8 +19,14 @@ export class MembersController {
   @Post()
   @ApiOperation({ summary: "Create default members for a clinic (owner, manager, member)" })
   @Roles("admin")
-  createMembers(@Body() dto: CreateMembersDto, @Tenant() tenantId: string, @ReqUser("id") userId: string) {
-    return this.service.createMembers(dto, tenantId, userId);
+  createMembers(
+    @Body() dto: CreateMembersDto,
+    @Tenant() tenantId: string,
+    @ReqUser("id") userId: string
+  ) {
+    const resolvedTenantId = tenantId ?? dto.tenantId ?? "self-service-tenant";
+    const resolvedUserId = userId ?? dto.createdBy ?? "self-service";
+    return this.service.createMembers(dto, resolvedTenantId, resolvedUserId);
   }
 
   @Post("login")

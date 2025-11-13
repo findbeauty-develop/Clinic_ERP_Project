@@ -48,9 +48,10 @@ export default function LoginPage() {
   };
 
   const handleClinicSignup = () => {
-    window.alert("클리닉 가입은 오너에게 문의해주세요.");
+    if (typeof window !== "undefined") {
+      window.location.href = "/clinic/register";
+    }
   };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-white to-blue-100 flex items-center justify-center px-6 py-16">
       <div className="w-full max-w-xl">

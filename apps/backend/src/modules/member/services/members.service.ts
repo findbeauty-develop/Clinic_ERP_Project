@@ -19,10 +19,30 @@ export class MembersService {
  public async createMembers(dto: CreateMembersDto, tenantId: string, userId: string): Promise<CreatedMemberResult[]> {
     const clinicSlug = this.normalizeClinicName(dto.clinicName);
 
-    const definitions: Array<{ role: string; label: string; password: string; isOwner: boolean }> = [
-      { role: "owner", label: "owner1", password: dto.ownerPassword, isOwner: true },
-      { role: "manager", label: "manager1", password: this.generateRandomPassword(), isOwner: false },
-      { role: "member", label: "member1", password: this.generateRandomPassword(), isOwner: false },
+    const definitions: Array<{
+      role: string;
+      label: string;
+      password: string;
+      isOwner: boolean;
+    }> = [
+      {
+        role: "owner",
+        label: "owner1",
+        password: dto.ownerPassword,
+        isOwner: true,
+      },
+      {
+        role: "manager",
+        label: "manager1",
+        password: this.generateRandomPassword(),
+        isOwner: false,
+      },
+      {
+        role: "member",
+        label: "member1",
+        password: this.generateRandomPassword(),
+        isOwner: false,
+      },
     ];
 
     const payload = await Promise.all(
@@ -39,6 +59,10 @@ export class MembersService {
               tenant_id: tenantId,
               clinic_name: clinicSlug,
               created_by: userId,
+              full_name: definition.isOwner ? dto.ownerName : undefined,
+              phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
+              id_card_number: definition.isOwner ? dto.ownerIdCardNumber : undefined,
+              address: definition.isOwner ? dto.ownerAddress : undefined,
             },
           },
           result: {

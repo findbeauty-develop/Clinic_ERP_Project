@@ -1,4 +1,4 @@
-import { IsString } from "class-validator";
+import { IsOptional, IsString } from "class-validator";
 
 export class CreateMembersDto {
   @IsString()
@@ -6,5 +6,25 @@ export class CreateMembersDto {
 
   @IsString()
   ownerPassword!: string;
+
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
+
+  @IsOptional()
+  @IsString()
+  createdBy?: string;
+
+  @IsString()
+  ownerName!: string;
+
+  @IsString()
+  ownerPhoneNumber!: string;
+
+  @IsString()
+  ownerIdCardNumber!: string;
+
+  @IsString()
+  ownerAddress!: string;
 }
 
