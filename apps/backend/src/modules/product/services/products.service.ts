@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { CreateProductDto } from "../dto/create-product.dto";
+import { UpdateProductDto } from "../dto/update-product.dto";
 
 @Injectable()
 export class ProductsService {
@@ -138,6 +139,7 @@ export class ProductsService {
     const supplier = product.supplierProducts?.[0];
 
     return {
+      id: product.id,
       productName: product.name,
       brand: product.brand,
       productImage: product.image_url,
@@ -153,6 +155,7 @@ export class ProductsService {
       expiryDate: latestBatch?.expiry_date ?? null,
       storageLocation: latestBatch?.storage ?? null,
       memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+      isReturnable: product.returnPolicy?.is_returnable ?? false,
     };
   }
 
@@ -199,6 +202,157 @@ export class ProductsService {
         batches: product.batches,
       };
     });
+  }
+
+  async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const existing = await this.prisma.product.findFirst({
+      where: { id, tenant_id: tenantId },
+      include: { returnPolicy: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Product not found");
+    }
+
+    let imageUrl = existing.image_url;
+
+    if (dto.image) {
+      const [savedImage] = await saveBase64Images("product", [dto.image], tenantId);
+      imageUrl = savedImage;
+    }
+
+    const resolvedStatus = dto.status ?? existing.status;
+    const resolvedIsActive =
+      dto.isActive ?? (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.product.update({
+        where: { id },
+        data: {
+          name: dto.name ?? existing.name,
+          brand: dto.brand ?? existing.brand,
+          barcode: dto.barcode ?? existing.barcode,
+          image_url: imageUrl,
+          category: dto.category ?? existing.category,
+          status: resolvedStatus,
+          is_active: resolvedIsActive,
+          unit: dto.unit ?? existing.unit,
+          purchase_price: dto.purchasePrice ?? existing.purchase_price,
+          sale_price: dto.salePrice ?? existing.sale_price,
+          current_stock: dto.currentStock ?? existing.current_stock,
+          min_stock: dto.minStock ?? existing.min_stock,
+        },
+      });
+
+      if (dto.returnPolicy) {
+        await tx.returnPolicy.upsert({
+          where: { product_id: id },
+          update: {
+            is_returnable: dto.returnPolicy.is_returnable,
+            refund_amount:
+              dto.returnPolicy.refund_amount ??
+              existing.returnPolicy?.refund_amount ??
+              0,
+            return_storage: dto.returnPolicy.return_storage ?? null,
+            note: dto.returnPolicy.note ?? null,
+          },
+          create: {
+            tenant_id: tenantId,
+            product_id: id,
+            is_returnable: dto.returnPolicy.is_returnable,
+            refund_amount: dto.returnPolicy.refund_amount ?? 0,
+            return_storage: dto.returnPolicy.return_storage ?? null,
+            note: dto.returnPolicy.note ?? null,
+          },
+        });
+      }
+
+      if (dto.suppliers) {
+        await tx.supplierProduct.deleteMany({
+          where: { product_id: id, tenant_id: tenantId },
+        });
+
+        for (const supplier of dto.suppliers) {
+          if (!supplier?.supplier_id) {
+            // Skip entries without supplier_id to avoid invalid inserts
+            continue;
+          }
+
+          await tx.supplierProduct.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: id,
+              supplier_id: supplier.supplier_id,
+              purchase_price: supplier.purchase_price ?? null,
+              moq: supplier.moq ?? null,
+              lead_time_days: supplier.lead_time_days ?? null,
+              note: supplier.note ?? null,
+              contact_name: supplier.contact_name ?? null,
+              contact_phone: supplier.contact_phone ?? null,
+              contact_email: supplier.contact_email ?? null,
+            },
+          });
+        }
+      }
+
+      if (dto.initial_batches) {
+        await tx.batch.deleteMany({
+          where: { product_id: id, tenant_id: tenantId },
+        });
+
+        for (const batch of dto.initial_batches) {
+          await tx.batch.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: id,
+              batch_no: batch.batch_no,
+              storage: batch.storage ?? null,
+              purchase_price: batch.purchase_price ?? null,
+              sale_price: batch.sale_price ?? null,
+              manufacture_date: batch.manufacture_date
+                ? new Date(batch.manufacture_date)
+                : null,
+              expiry_date: batch.expiry_date ? new Date(batch.expiry_date) : null,
+              expiry_months: batch.expiry_months ?? null,
+              expiry_unit: batch.expiry_unit ?? null,
+              qty: batch.qty,
+              alert_days: batch.alert_days ?? null,
+            },
+          });
+        }
+      }
+    });
+
+    return this.getProduct(id, tenantId);
+  }
+
+  async deleteProduct(id: string, tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const existing = await this.prisma.product.findFirst({
+      where: { id, tenant_id: tenantId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Product not found");
+    }
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.batch.deleteMany({ where: { product_id: id, tenant_id: tenantId } });
+      await tx.supplierProduct.deleteMany({
+        where: { product_id: id, tenant_id: tenantId },
+      });
+      await tx.returnPolicy.deleteMany({ where: { product_id: id, tenant_id: tenantId } });
+      await tx.product.delete({ where: { id } });
+    });
+
+    return { success: true };
   }
 }
 
