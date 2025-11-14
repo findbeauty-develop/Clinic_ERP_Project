@@ -124,6 +124,18 @@ export class CreateProductDto {
   status?: string;
 
   @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsInt()
+  purchasePrice?: number;
+
+  @IsOptional()
+  @IsInt()
+  salePrice?: number;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 

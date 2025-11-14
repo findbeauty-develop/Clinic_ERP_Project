@@ -17,6 +17,9 @@ model Product {
   category      String
   status        String   @default("활성")
   is_active     Boolean  @default(true)
+  unit          String?
+  purchase_price Int?
+  sale_price    Int?
   current_stock Int      @default(0)
   min_stock     Int      @default(0)
   created_at    DateTime @default(now())

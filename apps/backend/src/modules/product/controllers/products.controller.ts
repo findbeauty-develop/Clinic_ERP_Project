@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards, BadRequestException } from "@nestjs/common";
+import { Body, Controller, Post, UseGuards, BadRequestException, Get, Param } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { CreateProductDto } from "../dto/create-product.dto";
 import { ProductsService } from "../services/products.service";
@@ -19,6 +19,17 @@ export class ProductsController {
       throw new BadRequestException("Tenant ID is required");
     }
     return this.productsService.createProduct(dto, tenantId);
+  }
+
+  @Get(":id")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get product details" })
+  getProduct(@Param("id") id: string, @Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.getProduct(id, tenantId);
   }
 }
 

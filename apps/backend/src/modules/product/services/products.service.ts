@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
@@ -36,6 +36,9 @@ export class ProductsService {
           category: dto.category,
           status: resolvedStatus,
           is_active: resolvedIsActive,
+          unit: dto.unit ?? null,
+          purchase_price: dto.purchasePrice ?? null,
+          sale_price: dto.salePrice ?? null,
           current_stock: dto.currentStock ?? 0,
           min_stock: dto.minStock ?? 0,
           returnPolicy: dto.returnPolicy
@@ -107,6 +110,50 @@ export class ProductsService {
         },
       });
     });
+  }
+
+  async getProduct(productId: string, tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, tenant_id: tenantId },
+      include: {
+        returnPolicy: true,
+        batches: {
+          orderBy: { created_at: "desc" },
+        },
+        supplierProducts: {
+          orderBy: { created_at: "desc" },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const latestBatch = product.batches?.[0];
+    const supplier = product.supplierProducts?.[0];
+
+    return {
+      productName: product.name,
+      brand: product.brand,
+      productImage: product.image_url,
+      category: product.category,
+      status: product.status,
+      currentStock: product.current_stock,
+      minStock: product.min_stock,
+      purchasePrice: product.purchase_price,
+      salePrice: product.sale_price,
+      unit: product.unit,
+      supplierName: supplier?.supplier_id ?? null,
+      managerName: supplier?.contact_name ?? null,
+      expiryDate: latestBatch?.expiry_date ?? null,
+      storageLocation: latestBatch?.storage ?? null,
+      memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+    };
   }
 }
 
