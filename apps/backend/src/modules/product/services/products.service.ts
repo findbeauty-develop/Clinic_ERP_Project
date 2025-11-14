@@ -155,5 +155,49 @@ export class ProductsService {
       memo: supplier?.note ?? product.returnPolicy?.note ?? null,
     };
   }
+
+  async getAllProducts(tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { tenant_id: tenantId },
+      include: {
+        returnPolicy: true,
+        batches: {
+          orderBy: { created_at: "desc" },
+        },
+        supplierProducts: {
+          orderBy: { created_at: "desc" },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    return products.map((product: (typeof products)[number]) => {
+      const latestBatch = product.batches?.[0];
+      const supplier = product.supplierProducts?.[0];
+
+      return {
+        id: product.id,
+        productName: product.name,
+        brand: product.brand,
+        productImage: product.image_url,
+        category: product.category,
+        status: product.status,
+        currentStock: product.current_stock,
+        minStock: product.min_stock,
+        purchasePrice: product.purchase_price,
+        salePrice: product.sale_price,
+        unit: product.unit,
+        supplierName: supplier?.supplier_id ?? null,
+        managerName: supplier?.contact_name ?? null,
+        expiryDate: latestBatch?.expiry_date ?? null,
+        storageLocation: latestBatch?.storage ?? null,
+        memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+      };
+    });
+  }
 }
 

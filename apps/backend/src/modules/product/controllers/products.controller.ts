@@ -31,5 +31,16 @@ export class ProductsController {
     }
     return this.productsService.getProduct(id, tenantId);
   }
+
+  @Get()
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List all products for current tenant" })
+  getAllProducts(@Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.getAllProducts(tenantId);
+  }
 }
 
