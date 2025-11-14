@@ -15,6 +15,7 @@ model Product {
   barcode       String?
   image_url     String?
   category      String
+  status        String   @default("활성")
   is_active     Boolean  @default(true)
   current_stock Int      @default(0)
   min_stock     Int      @default(0)
@@ -95,6 +96,7 @@ model Batch {
   manufacture_date DateTime?
   expiry_date     DateTime?
   expiry_months   Int?
+  expiry_unit     String?
   qty             Int
   alert_days      String?
   created_at      DateTime  @default(now())
@@ -116,6 +118,9 @@ model SupplierProduct {
   moq             Int?
   lead_time_days  Int?
   note            String?
+  contact_name    String?
+  contact_phone   String?
+  contact_email   String?
   created_at      DateTime @default(now())
   updated_at      DateTime?
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { compare, hash } from "bcryptjs";
 import { randomBytes } from "crypto";
+import { sign, SignOptions } from "jsonwebtoken";
 import { MembersRepository } from "../repositories/members.repository";
 import { CreateMembersDto } from "../dto/create-members.dto";
 
@@ -167,9 +168,38 @@ export class MembersService {
       throw new UnauthorizedException("Invalid member ID or password");
     }
   
-    // Return member data including tenant_id for frontend to use
+    const secret =
+      process.env.MEMBER_JWT_SECRET ??
+      process.env.SUPABASE_JWT_SECRET ??
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!secret) {
+      this.logger.error("Missing MEMBER_JWT_SECRET or Supabase secret for issuing member tokens");
+      throw new UnauthorizedException("Authentication not configured");
+    }
+
+    const expiresInEnv = process.env.MEMBER_JWT_EXPIRES_IN;
+    const signOptions: SignOptions = {
+      expiresIn: expiresInEnv
+        ? (isNaN(Number(expiresInEnv)) ? expiresInEnv : Number(expiresInEnv))
+        : "12h",
+    } as SignOptions;
+
+    const token = sign(
+      {
+        sub: member.id,
+        member_id: member.member_id,
+        tenant_id: member.tenant_id,
+        roles: [member.role],
+        clinic_name: member.clinic_name,
+      },
+      secret,
+      signOptions
+    );
+
     return {
       message: "You successfully login",
+      token,
       member: {
         id: member.id,
         member_id: member.member_id,

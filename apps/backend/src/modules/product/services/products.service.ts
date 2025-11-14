@@ -21,6 +21,11 @@ export class ProductsService {
     }
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const resolvedStatus = dto.status ?? (dto.isActive === false ? "단종" : "활성");
+      const resolvedIsActive =
+        dto.isActive ??
+        (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
+
       const product = await tx.product.create({
         data: {
           tenant_id: tenantId,
@@ -29,7 +34,8 @@ export class ProductsService {
           barcode: dto.barcode,
           image_url: imageUrl,
           category: dto.category,
-          is_active: dto.isActive ?? true,
+          status: resolvedStatus,
+          is_active: resolvedIsActive,
           current_stock: dto.currentStock ?? 0,
           min_stock: dto.minStock ?? 0,
           returnPolicy: dto.returnPolicy
@@ -43,7 +49,7 @@ export class ProductsService {
                 },
               }
             : undefined,
-        },
+        } as any,
         include: { returnPolicy: true, batches: true, supplierProducts: true },
       });
 
@@ -63,9 +69,10 @@ export class ProductsService {
                 : null,
               expiry_date: batch.expiry_date ? new Date(batch.expiry_date) : null,
               expiry_months: batch.expiry_months ?? null,
+              expiry_unit: batch.expiry_unit ?? null,
               qty: batch.qty,
               alert_days: batch.alert_days ?? null,
-            },
+            } as any,
           });
         }
       }
@@ -82,7 +89,10 @@ export class ProductsService {
               moq: s.moq ?? null,
               lead_time_days: s.lead_time_days ?? null,
               note: s.note ?? null,
-            },
+              contact_name: s.contact_name ?? null,
+              contact_phone: s.contact_phone ?? null,
+              contact_email: s.contact_email ?? null,
+            } as any,
           });
         }
       }

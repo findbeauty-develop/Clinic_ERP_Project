@@ -56,6 +56,10 @@ export class CreateBatchDto {
   @IsInt()
   expiry_months?: number;
 
+  @IsOptional()
+  @IsString()
+  expiry_unit?: string;
+
   @IsInt()
   qty!: number;
 
@@ -83,6 +87,18 @@ export class LinkSupplierDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  contact_name?: string;
+
+  @IsOptional()
+  @IsString()
+  contact_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  contact_email?: string;
 }
 
 export class CreateProductDto {
@@ -102,6 +118,10 @@ export class CreateProductDto {
 
   @IsString()
   category!: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @IsOptional()
   @IsBoolean()
