@@ -196,6 +196,7 @@ export class ProductsService {
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,
         memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+        batches: product.batches,
       };
     });
   }

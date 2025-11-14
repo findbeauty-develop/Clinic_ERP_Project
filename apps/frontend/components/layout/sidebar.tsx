@@ -170,31 +170,23 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-slate-900 text-white min-h-screen p-6">
-      <div className="mb-8">
+    <aside className="sticky top-0 z-40 flex h-screen w-64 flex-col bg-slate-900 px-6 py-8 text-white">
+      <div>
         <h2 className="text-2xl font-bold text-white">뷰티재고</h2>
-        <p className="text-sm text-slate-400 mt-1">ERP System</p>
+        <p className="mt-1 text-sm text-slate-400">ERP System</p>
       </div>
-      <nav className="space-y-1">
+      <nav className="mt-10 flex-1 space-y-1 overflow-y-auto pr-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                isActive
-                  ? "bg-indigo-600 text-white shadow-lg"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-all ${
+                isActive ? "bg-indigo-600 text-white shadow-lg" : "text-slate-300 hover:bg-slate-800 hover:text-white"
               }`}
             >
-              <span
-                className={`flex-shrink-0 ${
-                  isActive ? "text-white" : "text-slate-400"
-                }`}
-              >
-                {item.icon}
-              </span>
+              <span className={`flex-shrink-0 ${isActive ? "text-white" : "text-slate-400"}`}>{item.icon}</span>
               <span className="font-medium">{item.label}</span>
             </Link>
           );

@@ -1,8 +1,10 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [memberId, setMemberId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +39,20 @@ export default function LoginPage() {
         throw new Error(message);
       }
 
-      window.alert("You Logined Successfuly");
+      const result = await response.json();
+
+      if (typeof window !== "undefined") {
+        if (result.token) {
+          localStorage.setItem("erp_access_token", result.token);
+        }
+        if (result.member) {
+          localStorage.setItem("erp_member_data", JSON.stringify(result.member));
+          localStorage.setItem("erp_tenant_id", result.member.tenant_id);
+        }
+      }
+
+      // Redirect to dashboard after successful login
+      router.push("/");
     } catch (error) {
       window.alert(
         error instanceof Error ? error.message : "ID or Password is incorrect"
