@@ -9,7 +9,7 @@ generator client {
 
 model Product {
   id            String   @id @default(uuid())
-  tenant_id     String?
+  tenant_id     String
   name          String
   brand         String
   barcode       String?
@@ -24,6 +24,8 @@ model Product {
   returnPolicy    ReturnPolicy?
   batches         Batch[]
   supplierProducts SupplierProduct[]
+
+  @@index([tenant_id])
 }
 
 model Clinic {
@@ -68,7 +70,7 @@ model Member {
 
 model ReturnPolicy {
   id             String   @id @default(uuid())
-  tenant_id      String?
+  tenant_id      String
   product_id     String   @unique
   is_returnable  Boolean  @default(false)
   refund_amount  Float    @default(0)
@@ -78,11 +80,13 @@ model ReturnPolicy {
   updated_at     DateTime?
 
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
 }
 
 model Batch {
   id              String    @id @default(uuid())
-  tenant_id       String?
+  tenant_id       String
   product_id      String
   batch_no        String
   storage         String?
@@ -100,11 +104,12 @@ model Batch {
 
   @@index([tenant_id])
   @@index([product_id])
+  @@index([tenant_id, product_id])
 }
 
 model SupplierProduct {
   id              String   @id @default(uuid())
-  tenant_id       String?
+  tenant_id       String
   product_id      String
   supplier_id     String
   purchase_price  Int?
@@ -119,4 +124,5 @@ model SupplierProduct {
   @@index([tenant_id])
   @@index([product_id])
   @@index([supplier_id])
+  @@index([tenant_id, product_id])
 }

@@ -16,15 +16,15 @@ export class ClinicsRepository {
     });
   }
 
-  findById(id: string) {
-    return this.prisma.clinic.findUnique({
-      where: { id },
+  findById(id: string, tenantId: string) {
+    return this.prisma.clinic.findFirst({
+      where: { id, tenant_id: tenantId },
     });
   }
 
-  update(id: string, data: any) {
+  update(id: string, data: any, tenantId: string) {
     return this.prisma.clinic.update({
-      where: { id },
+      where: { id, tenant_id: tenantId },
       data,
     });
   }

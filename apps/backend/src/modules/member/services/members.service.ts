@@ -89,7 +89,7 @@ export class MembersService {
       // If edit mode, update existing members; otherwise create new members
       if (dto.isEditMode === true) {
         // Edit mode: update existing members
-        const existingMembers = await this.repository.findManyByMemberIds(memberIds);
+        const existingMembers = await this.repository.findManyByMemberIds(memberIds, tenantId);
         const existingMemberIds = new Set(
           existingMembers.map((m: { member_id: string }) => m.member_id)
         );
@@ -101,7 +101,7 @@ export class MembersService {
         if (membersToUpdate.length > 0) {
           await this.repository.upsertMany(
             membersToUpdate.map((item) => ({
-              where: { member_id: item.memberId },
+              where: { member_id: item.memberId, tenant_id: tenantId },
               create: item.memberData,
               update: {
                 password_hash: item.memberData.password_hash,
@@ -110,12 +110,13 @@ export class MembersService {
                 id_card_number: item.memberData.id_card_number,
                 address: item.memberData.address,
               },
-            }))
+            })),
+            tenantId
           );
         }
       } else {
         // Create mode: check if members already exist, if so throw error
-        const existingMembers = await this.repository.findManyByMemberIds(memberIds);
+        const existingMembers = await this.repository.findManyByMemberIds(memberIds, tenantId);
         if (existingMembers.length > 0) {
           const existingMemberIds = existingMembers.map((m: { member_id: string }) => m.member_id);
           throw new Error(
@@ -127,7 +128,8 @@ export class MembersService {
         await this.repository.createMany(
           payload.map((item) => ({
             data: item.memberData,
-          }))
+          })),
+          tenantId
         );
       }
     } catch (error) {
@@ -151,8 +153,10 @@ export class MembersService {
     return randomBytes(8).toString("base64url");
   }
 
-  public async login(memberId: string, password: string) {
-    const member = await this.repository.findByMemberId(memberId);
+  public async login(memberId: string, password: string, tenantId?: string) {
+    // Find member by member_id (which is unique globally)
+    // If tenantId is provided, also filter by tenant_id for extra security
+    const member = await this.repository.findByMemberId(memberId, tenantId);
   
     if (!member) {
       throw new UnauthorizedException("Invalid member ID or password");
@@ -163,7 +167,18 @@ export class MembersService {
       throw new UnauthorizedException("Invalid member ID or password");
     }
   
-    return { message: "You successfully login" };
+    // Return member data including tenant_id for frontend to use
+    return {
+      message: "You successfully login",
+      member: {
+        id: member.id,
+        member_id: member.member_id,
+        role: member.role,
+        tenant_id: member.tenant_id,
+        clinic_name: member.clinic_name,
+        full_name: member.full_name,
+      },
+    };
   }
 }
 

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
@@ -8,15 +8,17 @@ import { CreateProductDto } from "../dto/create-product.dto";
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createProduct(dto: CreateProductDto) {
+  async createProduct(dto: CreateProductDto, tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
     let imageUrl: string | undefined;
 
     if (dto.image) {
-      const [savedImage] = await saveBase64Images("product", [dto.image]);
+      const [savedImage] = await saveBase64Images("product", [dto.image], tenantId);
       imageUrl = savedImage;
     }
-
-    const tenantId = dto.tenantId ?? undefined;
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const product = await tx.product.create({

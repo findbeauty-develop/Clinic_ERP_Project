@@ -19,7 +19,7 @@ export class ClinicsService {
     } = dto;
 
     const documentUrls = recognized.documentImageUrls ?? [];
-    const storedUrls = await saveBase64Images("clinic", documentUrls);
+    const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
 
     return this.repository.create({
       tenant_id: tenantId,
@@ -53,8 +53,8 @@ export class ClinicsService {
       ...recognized
     } = dto;
 
-    // Check if clinic exists
-    const existingClinic = await this.repository.findById(id);
+    // Check if clinic exists and belongs to tenant
+    const existingClinic = await this.repository.findById(id, tenantId);
     if (!existingClinic) {
       throw new NotFoundException("Clinic not found");
     }
@@ -67,21 +67,26 @@ export class ClinicsService {
     const existingUrls = documentUrls.filter(
       (url) => !url.startsWith("data:")
     );
-    const storedNewUrls = await saveBase64Images("clinic", newBase64Images);
+    const storedNewUrls = await saveBase64Images("clinic", newBase64Images, tenantId);
     const allUrls = [...existingUrls, ...storedNewUrls];
 
-    return this.repository.update(id, {
-      name: recognized.name,
-      english_name: recognized.englishName,
-      category: recognized.category,
-      location: recognized.location,
-      medical_subjects: recognized.medicalSubjects,
-      description: recognized.description,
-      license_type: recognized.licenseType,
-      license_number: recognized.licenseNumber,
-      document_issue_number: recognized.documentIssueNumber,
-      document_image_urls: allUrls,
-    });
+    return this.repository.update(
+      id,
+      {
+        name: recognized.name,
+        english_name: recognized.englishName,
+        category: recognized.category,
+        location: recognized.location,
+        medical_subjects: recognized.medicalSubjects,
+        description: recognized.description,
+        license_type: recognized.licenseType,
+        license_number: recognized.licenseNumber,
+        document_issue_number: recognized.documentIssueNumber,
+        document_image_urls: allUrls,
+        updated_by: userId ?? null,
+      },
+      tenantId
+    );
   }
 }
 

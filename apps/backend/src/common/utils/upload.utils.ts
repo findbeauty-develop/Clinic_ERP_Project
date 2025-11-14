@@ -29,12 +29,16 @@ const getExtensionFromMime = (mime: string) => {
 
 export const saveBase64Images = async (
   category: string,
-  images: string[]
+  images: string[],
+  tenantId?: string
 ): Promise<string[]> => {
   if (!images?.length) return [];
 
   const normalizedCategory = getUploadCategory(category);
-  const categoryDir = join(UPLOAD_ROOT, normalizedCategory);
+  // Create tenant-specific directory structure: uploads/{category}/{tenantId}/
+  const categoryDir = tenantId
+    ? join(UPLOAD_ROOT, normalizedCategory, tenantId)
+    : join(UPLOAD_ROOT, normalizedCategory);
   await fs.mkdir(categoryDir, { recursive: true });
 
   const results: string[] = [];
@@ -59,7 +63,11 @@ export const saveBase64Images = async (
       uuidv4() + getExtensionFromMime(mime ?? "image/png");
     const filePath = join(categoryDir, filename);
     await fs.writeFile(filePath, buffer);
-    results.push(`/uploads/${normalizedCategory}/${filename}`);
+    // Return path with tenant ID if provided
+    const relativePath = tenantId
+      ? `/uploads/${normalizedCategory}/${tenantId}/${filename}`
+      : `/uploads/${normalizedCategory}/${filename}`;
+    results.push(relativePath);
   }
 
   return results;
