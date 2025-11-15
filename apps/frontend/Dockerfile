@@ -14,11 +14,17 @@ COPY packages ./packages
 RUN pnpm install --no-frozen-lockfile
 
 FROM deps AS builder
+# Build-time environment variables for Next.js
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY . .
 RUN pnpm --filter @erp/frontend build
 
 FROM node:20-bullseye AS runner
 ENV NODE_ENV=production
+# Runtime environment variable (can be overridden)
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 WORKDIR /app/apps/frontend
 
 COPY --from=builder /workspace/node_modules /app/node_modules
