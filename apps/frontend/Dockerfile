@@ -11,7 +11,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/frontend/package.json apps/frontend/package.json
 COPY packages ./packages
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 FROM deps AS builder
 COPY . .
@@ -30,5 +30,5 @@ COPY --from=builder /workspace/apps/frontend/tailwind.config.ts ./tailwind.confi
 COPY --from=builder /workspace/apps/frontend/postcss.config.js ./postcss.config.js
 
 EXPOSE 3001
-CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "3001"]
+CMD node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port 3001
 
