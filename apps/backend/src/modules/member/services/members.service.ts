@@ -17,13 +17,17 @@ export class MembersService {
 
   constructor(private readonly repository: MembersRepository) {}
 
- public async createMembers(dto: CreateMembersDto, tenantId: string, userId: string): Promise<CreatedMemberResult[]> {
+  public async createMembers(
+    dto: CreateMembersDto,
+    tenantId: string,
+    userId: string
+  ): Promise<CreatedMemberResult[]> {
     const clinicSlug = this.normalizeClinicName(dto.clinicName);
-    
+
     // Use clinic ID if provided, otherwise use clinic slug
     // This ensures unique member IDs even for clinics with the same name
-    const clinicIdentifier = dto.clinicId 
-      ? `clinic-${dto.clinicId}` 
+    const clinicIdentifier = dto.clinicId
+      ? `clinic-${dto.clinicId}`
       : clinicSlug;
 
     const definitions: Array<{
@@ -70,7 +74,9 @@ export class MembersService {
           created_by: userId,
           full_name: definition.isOwner ? dto.ownerName : undefined,
           phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
-          id_card_number: definition.isOwner ? dto.ownerIdCardNumber : undefined,
+          id_card_number: definition.isOwner
+            ? dto.ownerIdCardNumber
+            : undefined,
           address: definition.isOwner ? dto.ownerAddress : undefined,
         };
 
@@ -90,7 +96,10 @@ export class MembersService {
       // If edit mode, update existing members; otherwise create new members
       if (dto.isEditMode === true) {
         // Edit mode: update existing members
-        const existingMembers = await this.repository.findManyByMemberIds(memberIds, tenantId);
+        const existingMembers = await this.repository.findManyByMemberIds(
+          memberIds,
+          tenantId
+        );
         const existingMemberIds = new Set(
           existingMembers.map((m: { member_id: string }) => m.member_id)
         );
@@ -117,19 +126,24 @@ export class MembersService {
         }
       } else {
         // Create mode: check if members already exist, if so throw error
-        const existingMembers = await this.repository.findManyByMemberIds(memberIds, tenantId);
+        const existingMembers = await this.repository.findManyByMemberIds(
+          memberIds,
+          tenantId
+        );
         if (existingMembers.length > 0) {
-          const existingMemberIds = existingMembers.map((m: { member_id: string }) => m.member_id);
+          const existingMemberIds = existingMembers.map(
+            (m: { member_id: string }) => m.member_id
+          );
           throw new Error(
-            `Members with IDs [${existingMemberIds.join(", ")}] already exist. Cannot create duplicate members.`
+            `Members with IDs [${existingMemberIds.join(
+              ", "
+            )}] already exist. Cannot create duplicate members.`
           );
         }
-        
+
         // Create new members only if they don't exist
         await this.repository.createMany(
-          payload.map((item) => ({
-            data: item.memberData,
-          })),
+          payload.map((item) => item.memberData),
           tenantId
         );
       }
@@ -147,7 +161,10 @@ export class MembersService {
   }
 
   private normalizeClinicName(name: string): string {
-    return name.replace(/[^a-zA-Z0-9]+/g, " ").trim().replace(/\s+/g, "");
+    return name
+      .replace(/[^a-zA-Z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, "");
   }
 
   private generateRandomPassword(): string {
@@ -158,30 +175,34 @@ export class MembersService {
     // Find member by member_id (which is unique globally)
     // If tenantId is provided, also filter by tenant_id for extra security
     const member = await this.repository.findByMemberId(memberId, tenantId);
-  
+
     if (!member) {
       throw new UnauthorizedException("Invalid member ID or password");
     }
-  
+
     const isValid = await compare(password, member.password_hash);
     if (!isValid) {
       throw new UnauthorizedException("Invalid member ID or password");
     }
-  
+
     const secret =
       process.env.MEMBER_JWT_SECRET ??
       process.env.SUPABASE_JWT_SECRET ??
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!secret) {
-      this.logger.error("Missing MEMBER_JWT_SECRET or Supabase secret for issuing member tokens");
+      this.logger.error(
+        "Missing MEMBER_JWT_SECRET or Supabase secret for issuing member tokens"
+      );
       throw new UnauthorizedException("Authentication not configured");
     }
 
     const expiresInEnv = process.env.MEMBER_JWT_EXPIRES_IN;
     const signOptions: SignOptions = {
       expiresIn: expiresInEnv
-        ? (isNaN(Number(expiresInEnv)) ? expiresInEnv : Number(expiresInEnv))
+        ? isNaN(Number(expiresInEnv))
+          ? expiresInEnv
+          : Number(expiresInEnv)
         : "12h",
     } as SignOptions;
 
@@ -211,4 +232,3 @@ export class MembersService {
     };
   }
 }
-

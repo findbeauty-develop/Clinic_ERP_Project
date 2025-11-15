@@ -1,18 +1,34 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
+type NullableString = string | null | undefined;
 
-type MemberCreateArgs = Parameters<PrismaService["member"]["create"]>[0];
+interface MemberCreateInput {
+  id?: string;
+  member_id: string;
+  tenant_id?: string;
+  role: string;
+  password_hash: string;
+  clinic_name: string;
+  full_name?: NullableString;
+  phone_number?: NullableString;
+  id_card_number?: NullableString;
+  address?: NullableString;
+  created_at?: Date | string;
+  created_by?: NullableString;
+  updated_at?: Date | string | null;
+  updated_by?: NullableString;
+}
 
 @Injectable()
 export class MembersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  createMany(data: MemberCreateArgs[], tenantId: string) {
+  createMany(data: MemberCreateInput[], tenantId: string) {
     return this.prisma.$transaction(
       data.map((entry) =>
         this.prisma.member.create({
           data: {
-            ...entry.data,
+            ...entry,
             tenant_id: tenantId,
           },
         })
@@ -21,7 +37,11 @@ export class MembersRepository {
   }
 
   upsertMany(
-    data: Array<{ where: { member_id: string; tenant_id: string }; create: MemberCreateArgs["data"]; update: Partial<MemberCreateArgs["data"]> }>,
+    data: Array<{
+      where: { member_id: string; tenant_id: string };
+      create: MemberCreateInput;
+      update: Partial<MemberCreateInput>;
+    }>,
     tenantId: string
   ) {
     return this.prisma.$transaction(
@@ -62,4 +82,3 @@ export class MembersRepository {
     });
   }
 }
-

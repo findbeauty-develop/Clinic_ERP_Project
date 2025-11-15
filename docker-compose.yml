@@ -1,0 +1,69 @@
+services:
+  install-deps:
+    image: node:20-bullseye
+    container_name: clinic-erp-install
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - CI=true
+      - PNPM_HOME=/tmp/.pnpm
+      - PNPM_STORE_DIR=/tmp/.pnpm-store
+    command: >
+      sh -c "
+        apt-get update &&
+        apt-get install -y libssl1.1 openssl &&
+        corepack enable pnpm &&
+        pnpm install --store-dir /tmp/.pnpm-store &&
+        pnpm --filter @erp/backend exec prisma generate
+      "
+
+  backend:
+    image: node:20-bullseye
+    container_name: clinic-erp-backend
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      - CI=true
+      - PNPM_HOME=/tmp/.pnpm
+      - PNPM_STORE_DIR=/tmp/.pnpm-store
+    ports:
+      - "3000:3000"
+    command: >
+      sh -c "
+        apt-get update &&
+        apt-get install -y libssl1.1 openssl &&
+        corepack enable pnpm &&
+        pnpm --filter @erp/backend dev
+      "
+    depends_on:
+      install-deps:
+        condition: service_completed_successfully
+
+  frontend:
+    image: node:20-bullseye
+    container_name: clinic-erp-frontend
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    env_file:
+      - ./apps/frontend/.env.local
+    environment:
+      - CI=true
+      - PNPM_HOME=/tmp/.pnpm
+      - PNPM_STORE_DIR=/tmp/.pnpm-store
+    ports:
+      - "3001:3001"
+    command: >
+      sh -c "
+        corepack enable pnpm &&
+        pnpm --filter @erp/frontend exec next dev --hostname 0.0.0.0 --port 3001
+      "
+    depends_on:
+      install-deps:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
