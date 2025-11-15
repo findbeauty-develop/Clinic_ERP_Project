@@ -2,18 +2,18 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
 import { Prisma } from "@prisma/client";
 
-type MemberCreateArgs = Prisma.MemberCreateArgs;
+type MemberCreateInput = Prisma.MemberUncheckedCreateInput;
 
 @Injectable()
 export class MembersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  createMany(data: MemberCreateArgs[], tenantId: string) {
+  createMany(data: MemberCreateInput[], tenantId: string) {
     return this.prisma.$transaction(
       data.map((entry) =>
         this.prisma.member.create({
           data: {
-            ...entry.data,
+            ...entry,
             tenant_id: tenantId,
           },
         })
@@ -22,7 +22,7 @@ export class MembersRepository {
   }
 
   upsertMany(
-    data: Array<{ where: { member_id: string; tenant_id: string }; create: MemberCreateArgs["data"]; update: Partial<MemberCreateArgs["data"]> }>,
+    data: Array<{ where: { member_id: string; tenant_id: string }; create: MemberCreateInput; update: Prisma.MemberUpdateInput }>,
     tenantId: string
   ) {
     return this.prisma.$transaction(

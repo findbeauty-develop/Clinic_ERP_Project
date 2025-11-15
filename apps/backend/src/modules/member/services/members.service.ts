@@ -126,12 +126,7 @@ export class MembersService {
         }
         
         // Create new members only if they don't exist
-        await this.repository.createMany(
-          payload.map((item) => ({
-            data: item.memberData,
-          })),
-          tenantId
-        );
+        await this.repository.createMany(payload.map((item) => item.memberData), tenantId);
       }
     } catch (error) {
       this.logger.error(
