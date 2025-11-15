@@ -1,7 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
+import { Prisma } from "@prisma/client";
 
-type MemberCreateArgs = Parameters<PrismaService["member"]["create"]>[0];
+type MemberCreateArgs = Prisma.MemberCreateArgs;
 
 @Injectable()
 export class MembersRepository {
