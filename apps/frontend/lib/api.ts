@@ -3,7 +3,8 @@
  */
 
 const getApiUrl = () => {
-  if (typeof window === "undefined") return "";
+  // Next.js'da NEXT_PUBLIC_* environment variable'lar build vaqtida o'qiladi
+  // va hem client-side'da ham server-side'da mavjud bo'ladi
   return process.env.NEXT_PUBLIC_API_URL ?? "";
 };
 
