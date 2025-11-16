@@ -237,14 +237,27 @@ export class ProductsService {
 
     let imageUrl = existing.image_url;
 
-    if (dto.image) {
-      const [savedImage] = await saveBase64Images(
-        "product",
-        [dto.image],
-        tenantId
-      );
-      imageUrl = savedImage;
+    // Image handling: agar null yuborilgan bo'lsa, image'ni o'chirish
+    // Agar yangi image yuborilgan bo'lsa, yangi image'ni saqlash
+    if (dto.image !== undefined) {
+      if (dto.image === null || dto.image === "") {
+        // Image o'chirilmoqda
+        imageUrl = null;
+      } else if (
+        dto.image &&
+        typeof dto.image === "string" &&
+        dto.image.length > 0
+      ) {
+        // Yangi image yuklanmoqda (base64 format'da)
+        const [savedImage] = await saveBase64Images(
+          "product",
+          [dto.image],
+          tenantId
+        );
+        imageUrl = savedImage;
+      }
     }
+    // Agar dto.image undefined bo'lsa, eski image saqlanadi (image o'zgarmagan)
 
     const resolvedStatus = dto.status ?? existing.status;
     const resolvedIsActive =
@@ -392,7 +405,7 @@ export class ProductsService {
    * Product'ning barcha batch'larini olish
    * @param productId - Product ID
    * @param tenantId - Tenant ID
-   * @returns Batch'lar ro'yxati: batch_no, 유효기간, 보관 위치, created_at
+   * @returns Batch'lar ro'yxati: batch_no, 유효기간, 보관 위치, created_at, 입고 수량
    */
   async getProductBatches(productId: string, tenantId: string) {
     if (!tenantId) {
@@ -419,6 +432,7 @@ export class ProductsService {
         expiry_unit: true,
         storage: true,
         created_at: true,
+        qty: true,
       },
     });
 
@@ -431,6 +445,7 @@ export class ProductsService {
         expiry_unit: string | null;
         storage: string | null;
         created_at: Date;
+        qty: number;
       }) => ({
         batch_no: batch.batch_no,
         유효기간: batch.expiry_date
@@ -439,6 +454,7 @@ export class ProductsService {
           ? `${batch.expiry_months} ${batch.expiry_unit}`
           : null,
         보관위치: batch.storage ?? null,
+        "입고 수량": batch.qty,
         created_at: batch.created_at,
       })
     );
