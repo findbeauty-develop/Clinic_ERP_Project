@@ -199,6 +199,28 @@ export class ProductsService {
       const latestBatch = product.batches?.[0];
       const supplier = product.supplierProducts?.[0];
 
+      // 재고 부족 tag
+      const isLowStock = product.current_stock < product.min_stock;
+
+      // Batch'larni FEFO bo'yicha sortlash (유효기간 → 배치번호)
+      const sortedBatches = this.sortBatchesByFEFO(product.batches || []);
+
+      // Batch'larga expiry status qo'shish
+      const batchesWithStatus = sortedBatches.map((batch) => {
+        const isExpiringSoon = batch.expiry_date
+          ? this.calculateExpiringSoon(batch.expiry_date, batch.alert_days)
+          : false;
+        const daysUntilExpiry = batch.expiry_date
+          ? this.calculateDaysUntilExpiry(batch.expiry_date)
+          : null;
+
+        return {
+          ...batch,
+          isExpiringSoon,
+          daysUntilExpiry,
+        };
+      });
+
       return {
         id: product.id,
         productName: product.name,
@@ -216,7 +238,8 @@ export class ProductsService {
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,
         memo: supplier?.note ?? product.returnPolicy?.note ?? null,
-        batches: product.batches,
+        isLowStock, // ← Qo'shildi (재고 부족 tag)
+        batches: batchesWithStatus, // ← FEFO sorted va status bilan
       };
     });
   }
@@ -426,6 +449,7 @@ export class ProductsService {
       where: { product_id: productId, tenant_id: tenantId },
       orderBy: { created_at: "desc" },
       select: {
+        id: true, // ← Qo'shildi (출고 uchun batch_id kerak)
         batch_no: true,
         expiry_date: true,
         expiry_months: true,
@@ -439,6 +463,7 @@ export class ProductsService {
     // Formatlash: 유효기간 ni yaratish (expiry_date yoki expiry_months + expiry_unit)
     return batches.map(
       (batch: {
+        id: string;
         batch_no: string;
         expiry_date: Date | null;
         expiry_months: number | null;
@@ -447,6 +472,7 @@ export class ProductsService {
         created_at: Date;
         qty: number;
       }) => ({
+        id: batch.id, // ← Qo'shildi
         batch_no: batch.batch_no,
         유효기간: batch.expiry_date
           ? batch.expiry_date.toISOString().split("T")[0] // YYYY-MM-DD formatida
@@ -563,5 +589,71 @@ export class ProductsService {
 
     // Formatlash: {random9digit}-{3digitSequence}
     return `${random9Digits}-${sequenceNumber}`;
+  }
+
+  /**
+   * Batch'larni FEFO bo'yicha sortlash
+   * 정렬 우선순위: ① 유효기간 → ② 배치번호
+   */
+  private sortBatchesByFEFO(batches: any[]): any[] {
+    return [...batches].sort((a, b) => {
+      // 1. 유효기간 (expiry_date) bo'yicha sortlash
+      if (a.expiry_date && b.expiry_date) {
+        const dateDiff = a.expiry_date.getTime() - b.expiry_date.getTime();
+        if (dateDiff !== 0) return dateDiff;
+      } else if (a.expiry_date && !b.expiry_date) {
+        return -1; // a.expiry_date bor, b.expiry_date yo'q → a birinchi
+      } else if (!a.expiry_date && b.expiry_date) {
+        return 1; // b.expiry_date bor, a.expiry_date yo'q → b birinchi
+      }
+
+      // 2. 배치번호 bo'yicha sortlash
+      return a.batch_no.localeCompare(b.batch_no);
+    });
+  }
+
+  /**
+   * 유효기간 임박 hisoblash
+   * @param expiryDate - 유효기간 sanasi
+   * @param alertDays - Ogohlantirish kuni (optional, default: 30)
+   * @returns true agar 유효기간 임박 bo'lsa
+   */
+  private calculateExpiringSoon(
+    expiryDate: Date,
+    alertDays?: string | null
+  ): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Kun boshiga
+
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+
+    const diffTime = expiry.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // alert_days ni parse qilish (default: 30 kun)
+    const alertDaysNum = alertDays ? parseInt(alertDays, 10) : 30;
+
+    // Agar NaN bo'lsa, 30 kun ishlatish
+    const finalAlertDays = isNaN(alertDaysNum) ? 30 : alertDaysNum;
+
+    // Agar 유효기간 kelajakda va alert_days ichida bo'lsa → 임박
+    return diffDays > 0 && diffDays <= finalAlertDays;
+  }
+
+  /**
+   * 유효기간 gacha qolgan kunlarni hisoblash
+   * @param expiryDate - 유효기간 sanasi
+   * @returns Qolgan kunlar soni (agar o'tgan bo'lsa, manfiy raqam)
+   */
+  private calculateDaysUntilExpiry(expiryDate: Date): number {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+
+    const diffTime = expiry.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 }

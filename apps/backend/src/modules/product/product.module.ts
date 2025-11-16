@@ -15,6 +15,7 @@ import { ProductsService } from "./services/products.service";
     SupabaseService,
     JwtTenantGuard,
   ],
+  exports: [ProductsService], // ← Qo'shildi (OutboundModule uchun)
 })
 export class ProductModule {}
 

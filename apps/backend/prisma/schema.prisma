@@ -28,6 +28,7 @@ model Product {
   returnPolicy    ReturnPolicy?
   batches         Batch[]
   supplierProducts SupplierProduct[]
+  outbounds       Outbound[]
 
   @@index([tenant_id])
 }
@@ -107,6 +108,7 @@ model Batch {
   updated_at      DateTime?
 
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  outbounds Outbound[]
 
   @@index([tenant_id])
   @@index([product_id])
@@ -134,4 +136,41 @@ model SupplierProduct {
   @@index([product_id])
   @@index([supplier_id])
   @@index([tenant_id, product_id])
+}
+
+model Outbound {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  product_id    String
+  batch_id      String   // Qaysi batch'dan chiqarilgani
+  batch_no      String   // Batch raqami (reference uchun)
+  
+  // 출고 정보
+  outbound_qty  Int      // 출고 수량 (Outbound quantity)
+  outbound_date DateTime @default(now()) // 출고 날짜
+  
+  // 담당자 정보
+  manager_name  String   // 담당자 (Responsible person)
+  
+  // 환자 정보 (선택)
+  patient_name  String?  // 환자 이름 (Patient name - optional)
+  chart_number  String?  // 차트번호 (Chart number - optional)
+  
+  // 기타
+  memo          String?  // 메모 (Memo - optional)
+  
+  // Timestamps
+  created_at    DateTime @default(now())
+  updated_at    DateTime?
+  created_by    String?  // 출고한 사용자
+  
+  // Relations
+  product       Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  batch         Batch    @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id])
+  @@index([product_id])
+  @@index([batch_id])
+  @@index([outbound_date])
+  @@index([tenant_id, outbound_date])
 }
