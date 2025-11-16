@@ -29,29 +29,16 @@ export class ReturnPolicyDto {
 }
 
 export class CreateBatchDto {
-  @IsString()
-  batch_no!: string;
-
   @IsOptional()
   @IsString()
-  storage?: string;
+  batch_no?: string;
 
-  @IsOptional()
+  // 입고 수량 (Inbound quantity) - required
   @IsInt()
-  purchase_price?: number;
+  @Min(1)
+  qty!: number;
 
-  @IsOptional()
-  @IsInt()
-  sale_price?: number;
-
-  @IsOptional()
-  @IsString()
-  manufacture_date?: string;
-
-  @IsOptional()
-  @IsString()
-  expiry_date?: string;
-
+  // 유형 기간 (Expiry period)
   @IsOptional()
   @IsInt()
   expiry_months?: number;
@@ -60,8 +47,34 @@ export class CreateBatchDto {
   @IsString()
   expiry_unit?: string;
 
+  // 제조일 (Manufacture date) - optional
+  @IsOptional()
+  @IsString()
+  manufacture_date?: string;
+
+  // 보관 위치 (Storage location) - optional
+  @IsOptional()
+  @IsString()
+  storage?: string;
+
+  // 구매원가(원) (Purchase price in KRW) - optional
+  @IsOptional()
   @IsInt()
-  qty!: number;
+  purchase_price?: number;
+
+  // 입고 담당자 (Inbound manager/responsible person) - optional
+  @IsOptional()
+  @IsString()
+  inbound_manager?: string;
+
+  // Additional optional fields
+  @IsOptional()
+  @IsInt()
+  sale_price?: number;
+
+  @IsOptional()
+  @IsString()
+  expiry_date?: string;
 
   @IsOptional()
   @IsString()
@@ -170,4 +183,3 @@ export class CreateProductDto {
   @Type(() => LinkSupplierDto)
   suppliers?: LinkSupplierDto[];
 }
-

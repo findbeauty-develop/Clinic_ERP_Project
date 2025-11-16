@@ -102,6 +102,7 @@ model Batch {
   expiry_unit     String?
   qty             Int
   alert_days      String?
+  inbound_manager String?  // 입고 담당자 (Inbound manager/responsible person)
   created_at      DateTime  @default(now())
   updated_at      DateTime?
 

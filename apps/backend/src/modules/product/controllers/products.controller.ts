@@ -10,7 +10,7 @@ import {
   Delete,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
-import { CreateProductDto } from "../dto/create-product.dto";
+import { CreateProductDto, CreateBatchDto } from "../dto/create-product.dto";
 import { ProductsService } from "../services/products.service";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -50,7 +50,7 @@ export class ProductsController {
   updateProduct(
     @Param("id") id: string,
     @Body() dto: UpdateProductDto,
-    @Tenant() tenantId: string,
+    @Tenant() tenantId: string
   ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -79,5 +79,33 @@ export class ProductsController {
     }
     return this.productsService.getAllProducts(tenantId);
   }
-}
 
+  @Get(":id/batches")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get all batches for a product" })
+  getProductBatches(
+    @Param("id") productId: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.getProductBatches(productId, tenantId);
+  }
+
+  @Post(":id/batches")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a new batch for existing product" })
+  createBatch(
+    @Param("id") productId: string,
+    @Body() dto: CreateBatchDto,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.createBatchForProduct(productId, dto, tenantId);
+  }
+}
