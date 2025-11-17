@@ -126,7 +126,7 @@ const navItems = [
   },
   {
     href: "/sales",
-    label: "매출 분석",
+    label: "재고 분석",
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"

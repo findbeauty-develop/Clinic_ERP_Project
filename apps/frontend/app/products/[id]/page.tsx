@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
+import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type ProductDetail = {
@@ -36,10 +36,12 @@ type ProductDetail = {
 
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -49,8 +51,51 @@ export default function ProductDetailPage() {
       setError(null);
       try {
         const { apiGet } = await import("../../../lib/api");
-        const data = await apiGet<ProductDetail>(`${apiUrl}/products/${params.id}`);
-        setProduct(data);
+        const data = await apiGet<any>(`${apiUrl}/products/${params.id}`);
+        
+        // Helper function to format image URL (relative path -> full URL)
+        const formatImageUrl = (imageUrl: string | null | undefined): string | null => {
+          if (!imageUrl) return null;
+          // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
+          if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+            return imageUrl;
+          }
+          // Agar base64 bo'lsa, o'zgartirmaslik
+          if (imageUrl.startsWith("data:image")) {
+            return imageUrl;
+          }
+          // Relative path bo'lsa, apiUrl qo'shish
+          if (imageUrl.startsWith("/")) {
+            return `${apiUrl}${imageUrl}`;
+          }
+          return imageUrl;
+        };
+
+        // Transform backend response to frontend ProductDetail format
+        const rawImageUrl = data.productImage || data.image_url;
+        const formattedImageUrl = formatImageUrl(rawImageUrl);
+
+        const formattedProduct: ProductDetail = {
+          id: data.id,
+          productName: data.productName || data.name,
+          brand: data.brand,
+          productImage: formattedImageUrl,
+          category: data.category,
+          status: data.status,
+          currentStock: data.currentStock || data.current_stock,
+          minStock: data.minStock || data.min_stock,
+          unit: data.unit,
+          purchasePrice: data.purchasePrice || data.purchase_price,
+          salePrice: data.salePrice || data.sale_price,
+          supplierName: data.supplierName,
+          managerName: data.managerName,
+          expiryDate: data.expiryDate || data.expiry_date,
+          storageLocation: data.storageLocation || data.storage_location,
+          memo: data.memo,
+          batches: data.batches,
+        };
+        
+        setProduct(formattedProduct);
       } catch (err) {
         console.error("Failed to load product", err);
         setError("제품 정보를 불러오지 못했습니다.");
@@ -84,14 +129,39 @@ export default function ProductDetailPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200">
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+              >
                 <PencilIcon className="h-4 w-4" />
-                수정
+                {isEditing ? "취소" : "수정"}
               </button>
-              <button className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300 dark:border-rose-500/60 dark:text-rose-200">
-                <TrashIcon className="h-4 w-4" />
-                삭제
-              </button>
+              {!isEditing && (
+                <button
+                  onClick={async () => {
+                    if (!confirm("정말 이 제품을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+                    try {
+                      const { apiRequest } = await import("../../../lib/api");
+                      const response = await apiRequest(`${apiUrl}/products/${params.id}`, {
+                        method: "DELETE",
+                      });
+                      if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error?.message || "제품 삭제에 실패했습니다.");
+                      }
+                      alert("제품이 성공적으로 삭제되었습니다.");
+                      router.push("/inbound");
+                    } catch (err) {
+                      console.error("Failed to delete product", err);
+                      alert(err instanceof Error ? err.message : "제품 삭제에 실패했습니다.");
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300 dark:border-rose-500/60 dark:text-rose-200"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  삭제
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -106,15 +176,29 @@ export default function ProductDetailPage() {
           </div>
         ) : product ? (
           <section className="space-y-6">
-            <ProductInfoCard product={product} />
-            <div className="grid gap-6 lg:grid-cols-2">
-              {/* <BatchListCard batches={product.batches ?? []} unit={product.unit ?? "EA"} /> */}
-              {/* <NewBatchCard /> */}
-            </div>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ReturnPolicyCard />
-              <StorageInfoCard product={product} />
-            </div>
+            {isEditing ? (
+              <ProductEditForm
+                product={product}
+                apiUrl={apiUrl}
+                onCancel={() => setIsEditing(false)}
+                onSuccess={(updatedProduct) => {
+                  setProduct(updatedProduct);
+                  setIsEditing(false);
+                }}
+              />
+            ) : (
+              <>
+                <ProductInfoCard product={product} />
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {/* <BatchListCard batches={product.batches ?? []} unit={product.unit ?? "EA"} /> */}
+                  {/* <NewBatchCard /> */}
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <ReturnPolicyCard />
+                  <StorageInfoCard product={product} />
+                </div>
+              </>
+            )}
           </section>
         ) : null}
       </div>
@@ -122,8 +206,354 @@ export default function ProductDetailPage() {
   );
 }
 
+interface ProductEditFormProps {
+  product: ProductDetail;
+  apiUrl: string;
+  onCancel: () => void;
+  onSuccess: (updatedProduct: ProductDetail) => void;
+}
+
+function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFormProps) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: product.productName || "",
+    brand: product.brand || "",
+    category: product.category || "",
+    status: product.status || "활성",
+    unit: product.unit || "",
+    purchasePrice: product.purchasePrice?.toString() || "",
+    salePrice: product.salePrice?.toString() || "",
+    currentStock: product.currentStock?.toString() || "0",
+    minStock: product.minStock?.toString() || "0",
+    image: product.productImage || "",
+    imageFile: null as File | null,
+  });
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        handleInputChange("image", base64String);
+      };
+      reader.readAsDataURL(file);
+      handleInputChange("imageFile", file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { apiPut } = await import("../../../lib/api");
+      const payload: any = {
+        name: formData.name,
+        brand: formData.brand,
+        category: formData.category,
+        status: formData.status,
+        unit: formData.unit || undefined,
+        purchasePrice: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
+        salePrice: formData.salePrice ? Number(formData.salePrice) : undefined,
+        currentStock: Number(formData.currentStock) || 0,
+        minStock: Number(formData.minStock) || 0,
+      };
+
+      // Image handling: to'g'ri logika
+      // 1. Agar yangi image yuklangan bo'lsa (imageFile mavjud)
+      // 2. Agar image o'chirilgan bo'lsa (image bo'sh yoki null)
+      // 3. Agar image o'zgarmagan bo'lsa (payload'ga qo'shmaslik - undefined)
+      if (formData.imageFile) {
+        // Yangi image yuklangan - base64 format'da yuborish
+        payload.image = formData.image;
+      } else if (formData.image === "" || formData.image === null) {
+        // Image o'chirilgan - null yuborish (backend image'ni o'chiradi)
+        payload.image = null;
+      }
+      // Agar image o'zgarmagan bo'lsa (formData.image === product.productImage va formData.imageFile yo'q),
+      // payload'ga qo'shmaslik (undefined qoladi, backend eski image'ni saqlaydi)
+
+      const updatedProductResponse = await apiPut<any>(`${apiUrl}/products/${product.id}`, payload);
+      
+      // Agar yangi image yuklangan bo'lsa, product'ni qayta fetch qilish
+      // (chunki backend'dan qaytgan response'da yangi image URL bo'lishi kerak)
+      let finalProductResponse = updatedProductResponse;
+      if (formData.imageFile) {
+        try {
+          const { apiGet } = await import("../../../lib/api");
+          finalProductResponse = await apiGet<any>(`${apiUrl}/products/${product.id}`);
+        } catch (refreshErr) {
+          console.error("Failed to refresh product after image upload", refreshErr);
+          // Fallback: original response ishlatish
+        }
+      }
+      
+      // Helper function to format image URL (relative path -> full URL)
+      const formatImageUrl = (imageUrl: string | null | undefined): string | null => {
+        if (!imageUrl) return null;
+        // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
+        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+          return imageUrl;
+        }
+        // Agar base64 bo'lsa, o'zgartirmaslik
+        if (imageUrl.startsWith("data:image")) {
+          return imageUrl;
+        }
+        // Relative path bo'lsa, apiUrl qo'shish
+        if (imageUrl.startsWith("/")) {
+          return `${apiUrl}${imageUrl}`;
+        }
+        return imageUrl;
+      };
+
+      // Transform backend response to frontend ProductDetail format
+      const rawImageUrl = finalProductResponse.productImage || 
+                          finalProductResponse.image_url || 
+                          product.productImage;
+      const formattedImageUrl = formatImageUrl(rawImageUrl);
+
+      const updatedProduct: ProductDetail = {
+        id: finalProductResponse.id || product.id,
+        productName: finalProductResponse.productName || finalProductResponse.name || product.productName,
+        brand: finalProductResponse.brand || product.brand,
+        productImage: formattedImageUrl,
+        category: finalProductResponse.category || product.category,
+        status: finalProductResponse.status || product.status,
+        currentStock: finalProductResponse.currentStock || finalProductResponse.current_stock || product.currentStock,
+        minStock: finalProductResponse.minStock || finalProductResponse.min_stock || product.minStock,
+        unit: finalProductResponse.unit || product.unit,
+        purchasePrice: finalProductResponse.purchasePrice || finalProductResponse.purchase_price || product.purchasePrice,
+        salePrice: finalProductResponse.salePrice || finalProductResponse.sale_price || product.salePrice,
+        supplierName: finalProductResponse.supplierName || product.supplierName,
+        managerName: finalProductResponse.managerName || product.managerName,
+        expiryDate: finalProductResponse.expiryDate || finalProductResponse.expiry_date || product.expiryDate,
+        storageLocation: finalProductResponse.storageLocation || finalProductResponse.storage_location || product.storageLocation,
+        memo: finalProductResponse.memo || product.memo,
+        batches: finalProductResponse.batches || product.batches,
+      };
+      
+      alert("제품이 성공적으로 업데이트되었습니다.");
+      onSuccess(updatedProduct);
+    } catch (err) {
+      console.error("Failed to update product", err);
+      alert(err instanceof Error ? err.message : "제품 업데이트에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusOptions = ["활성", "재고 부족", "만료", "단종"];
+  const unitOptions = ["개", "ml", "g", "세트", "박스", "병", "EA"];
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+          <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+            <PackageIcon className="h-5 w-5 text-sky-500" />
+            제품 정보 수정
+          </div>
+        </div>
+        <div className="space-y-6 p-6">
+          {/* Image Upload */}
+          <div className="grid gap-6 lg:grid-cols-[240px,1fr]">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                제품 이미지
+              </label>
+              <div className="relative rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                {formData.image ? (
+                  <div className="relative">
+                    <img src={formData.image} alt="Preview" className="h-40 w-full rounded-xl object-cover" />
+                    <label className="absolute inset-0 cursor-pointer">
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange("image", "")}
+                      className="absolute right-2 top-2 rounded-lg bg-rose-500 px-2 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 transition hover:border-sky-400 dark:border-slate-600">
+                    <UploadIcon className="h-8 w-8 text-slate-400" />
+                    <span className="text-xs text-slate-500 dark:text-slate-400">이미지 선택</span>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  </label>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  카테고리 *
+                </label>
+                <input
+                  type="text"
+                  value={formData.category}
+                  onChange={(e) => handleInputChange("category", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  상태 *
+                </label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => handleInputChange("status", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Basic Info */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                제품명 *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                브랜드 *
+              </label>
+              <input
+                type="text"
+                value={formData.brand}
+                onChange={(e) => handleInputChange("brand", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Stock Info */}
+          <div className="grid gap-6 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                현재 재고
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.currentStock}
+                onChange={(e) => handleInputChange("currentStock", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                최소 재고
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.minStock}
+                onChange={(e) => handleInputChange("minStock", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                단위
+              </label>
+              <select
+                value={formData.unit}
+                onChange={(e) => handleInputChange("unit", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <option value="">선택 안함</option>
+                {unitOptions.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Price Info */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                구매가 (원)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.purchasePrice}
+                onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                판매가 (원)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.salePrice}
+                onChange={(e) => handleInputChange("salePrice", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200"
+              disabled={loading}
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 function ProductInfoCard({ product }: { product: ProductDetail }) {
-  const isLowStock = product.currentStock <= product.minStock;
+  // Null/undefined check
+  if (!product) {
+    return null;
+  }
+
+  const isLowStock = (product.currentStock ?? 0) <= (product.minStock ?? 0);
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
@@ -135,24 +565,24 @@ function ProductInfoCard({ product }: { product: ProductDetail }) {
       </div>
       <div className="space-y-6 p-6">
         <div className="grid gap-6 md:grid-cols-2">
-          <InfoField label="제품명" value={product.productName} />
-          <InfoField label="브랜드" value={product.brand} />
+          <InfoField label="제품명" value={product.productName ?? ""} />
+          <InfoField label="브랜드" value={product.brand ?? ""} />
         </div>
         <div className="grid gap-6 lg:grid-cols-[240px,1fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-700 dark:bg-slate-900/50">
             {product.productImage ? (
-              <img src={product.productImage} alt={product.productName} className="mx-auto rounded-xl object-cover" />
+              <img src={product.productImage} alt={product.productName ?? "Product image"} className="mx-auto rounded-xl object-cover" />
             ) : (
               <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">이미지 없음</div>
             )}
           </div>
           <div className="grid gap-6 md:grid-cols-2">
-            <InfoField label="카테고리" value={product.category} />
+            <InfoField label="카테고리" value={product.category ?? ""} />
             <InfoField
               label="상태"
               value={
                 <span className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${isLowStock ? "bg-rose-100 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
-                  {product.status}
+                  {product.status ?? ""}
                 </span>
               }
             />
@@ -164,8 +594,8 @@ function ProductInfoCard({ product }: { product: ProductDetail }) {
           <Alert color="sky" text="재고 상태는 실시간으로 업데이트되며 최소 재고 이하일 경우 알림이 발송됩니다." />
         )}
         <div className="grid gap-6 md:grid-cols-2">
-          <InfoField label="현재 재고" value={`${product.currentStock.toLocaleString()} ${product.unit ?? "EA"}`} />
-          <InfoField label="최소 재고" value={`${product.minStock.toLocaleString()} ${product.unit ?? "EA"}`} />
+          <InfoField label="현재 재고" value={`${(product.currentStock ?? 0).toLocaleString()} ${product.unit ?? "EA"}`} />
+          <InfoField label="최소 재고" value={`${(product.minStock ?? 0).toLocaleString()} ${product.unit ?? "EA"}`} />
         </div>
         <div className="grid gap-6 md:grid-cols-3">
           <InfoField label="구매가" value={`₩${(product.purchasePrice ?? 0).toLocaleString()}`} />
@@ -261,6 +691,11 @@ function ReturnPolicyCard() {
 }
 
 function StorageInfoCard({ product }: { product: ProductDetail }) {
+  // Null/undefined check
+  if (!product) {
+    return null;
+  }
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
       <h3 className="text-lg font-semibold text-slate-900 dark:text-white">보관 정보</h3>
@@ -364,6 +799,14 @@ function TrashIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 7.5h12M9 7.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 6v1.5m-7.5 0V18a2.25 2.25 0 002.25 2.25h4.5A2.25 2.25 0 0017.25 18V7.5" />
+    </svg>
+  );
+}
+
+function UploadIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
     </svg>
   );
 }
