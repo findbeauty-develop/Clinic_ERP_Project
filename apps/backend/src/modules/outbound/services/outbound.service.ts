@@ -18,14 +18,55 @@ export class OutboundService {
   /**
    * Barcha product'larni batch'lari bilan olish (출고 uchun)
    * FEFO sort va tag'lar bilan
+   * @param tenantId - Tenant ID
+   * @param search - Search query (product name, brand, batch number)
    */
-  async getProductsForOutbound(tenantId: string) {
+  async getProductsForOutbound(tenantId: string, search?: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
 
     // ProductsService'dan getAllProducts ishlatish (FEFO sort va tag'lar bilan)
-    return this.productsService.getAllProducts(tenantId);
+    const products = await this.productsService.getAllProducts(tenantId);
+
+    // Agar search query bo'lsa, filter qilish
+    if (search && search.trim()) {
+      const searchLower = search.toLowerCase().trim();
+      return products
+        .map((product: any) => {
+          // Product name bo'yicha qidirish
+          const nameMatch = product.productName?.toLowerCase().includes(searchLower);
+          
+          // Brand bo'yicha qidirish
+          const brandMatch = product.brand?.toLowerCase().includes(searchLower);
+          
+          // Barcode bo'yicha qidirish
+          const barcodeMatch = product.barcode?.toLowerCase().includes(searchLower);
+          
+          // Batch number bo'yicha qidirish
+          const matchingBatches = product.batches?.filter((batch: any) =>
+            batch.batch_no?.toLowerCase().includes(searchLower)
+          ) || [];
+          const batchMatch = matchingBatches.length > 0;
+
+          // Agar product match qilsa yoki batch match qilsa
+          if (nameMatch || brandMatch || barcodeMatch || batchMatch) {
+            // Agar batch number bo'yicha qidirilgan bo'lsa, faqat matching batchlarni ko'rsatish
+            if (batchMatch) {
+              return {
+                ...product,
+                batches: matchingBatches, // Faqat matching batchlar
+              };
+            }
+            // Agar faqat product name/brand/barcode bo'yicha qidirilgan bo'lsa, barcha batchlarni ko'rsatish
+            return product;
+          }
+          return null;
+        })
+        .filter((product: any) => product !== null); // Null qiymatlarni olib tashlash
+    }
+
+    return products;
   }
 
   /**
@@ -52,9 +93,9 @@ export class OutboundService {
     // Validation
     this.validateOutbound(batch, dto.outboundQty);
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return this.prisma.$transaction(async (tx) => {
       // Outbound record yaratish
-      const outbound = await tx.outbound.create({
+      const outbound = await (tx as any).outbound.create({
         data: {
           tenant_id: tenantId,
           product_id: dto.productId,
@@ -64,19 +105,21 @@ export class OutboundService {
           manager_name: dto.managerName,
           patient_name: dto.patientName ?? null,
           chart_number: dto.chartNumber ?? null,
+          is_damaged: dto.isDamaged ?? false,
+          is_defective: dto.isDefective ?? false,
           memo: dto.memo ?? null,
           created_by: null, // TODO: User ID qo'shish
         },
       });
 
-      // Stock deduction
-      await this.deductStock(
-        dto.batchId,
-        dto.outboundQty,
-        dto.productId,
-        tenantId,
-        tx
-      );
+        // Stock deduction
+        await this.deductStock(
+          dto.batchId,
+          dto.outboundQty,
+          dto.productId,
+          tenantId,
+          tx as any
+        );
 
       return outbound;
     });
@@ -120,7 +163,7 @@ export class OutboundService {
       this.validateOutbound(batch, item.outboundQty);
     }
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return this.prisma.$transaction(async (tx) => {
       const createdOutbounds = [];
 
       for (const item of dto.items) {
@@ -129,7 +172,7 @@ export class OutboundService {
         );
 
         // Outbound record yaratish
-        const outbound = await tx.outbound.create({
+        const outbound = await (tx as any).outbound.create({
           data: {
             tenant_id: tenantId,
             product_id: item.productId,
@@ -139,6 +182,8 @@ export class OutboundService {
             manager_name: item.managerName,
             patient_name: item.patientName ?? null,
             chart_number: item.chartNumber ?? null,
+            is_damaged: item.isDamaged ?? false,
+            is_defective: item.isDefective ?? false,
             memo: item.memo ?? null,
             created_by: null, // TODO: User ID qo'shish
           },
@@ -150,7 +195,7 @@ export class OutboundService {
           item.outboundQty,
           item.productId,
           tenantId,
-          tx
+          tx as any
         );
 
         createdOutbounds.push(outbound);
@@ -204,7 +249,7 @@ export class OutboundService {
     }
 
     const [outbounds, total] = await Promise.all([
-      this.prisma.outbound.findMany({
+      (this.prisma as any).outbound.findMany({
         where,
         include: {
           product: {
@@ -227,7 +272,7 @@ export class OutboundService {
         skip,
         take: limit,
       }),
-      this.prisma.outbound.count({ where }),
+      (this.prisma as any).outbound.count({ where }),
     ]);
 
     return {
@@ -247,7 +292,7 @@ export class OutboundService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const outbound = await this.prisma.outbound.findFirst({
+    const outbound = await (this.prisma as any).outbound.findFirst({
       where: { id, tenant_id: tenantId },
       include: {
         product: {
@@ -304,7 +349,7 @@ export class OutboundService {
     outboundQty: number,
     productId: string,
     tenantId: string,
-    tx: Prisma.TransactionClient
+    tx: any
   ): Promise<void> {
     // 1. Batch qty ni kamaytirish
     await tx.batch.update({

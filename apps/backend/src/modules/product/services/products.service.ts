@@ -90,7 +90,7 @@ export class ProductsService {
                 : null, // 제조일 (Manufacture date)
               storage: batch.storage ?? null, // 보관 위치 (Storage location)
               purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
-              inbound_manager: batch.inbound_manager ?? null, // 입고 담당자 (Inbound manager)
+              inbound_manager: (batch as any).inbound_manager ?? null, // 입고 담당자 (Inbound manager)
               sale_price: batch.sale_price ?? null,
               expiry_date: batch.expiry_date
                 ? new Date(batch.expiry_date)
@@ -170,9 +170,9 @@ export class ProductsService {
       purchasePrice: product.purchase_price,
       salePrice: product.sale_price,
       unit: product.unit,
-      capacityPerProduct: product.capacity_per_product,
-      capacityUnit: product.capacity_unit,
-      usageCapacity: product.usage_capacity,
+      capacityPerProduct: (product as any).capacity_per_product,
+      capacityUnit: (product as any).capacity_unit,
+      usageCapacity: (product as any).usage_capacity,
       supplierName: supplier?.supplier_id ?? null,
       managerName: supplier?.contact_name ?? null,
       contactPhone: supplier?.contact_phone ?? null,
@@ -234,6 +234,7 @@ export class ProductsService {
         id: product.id,
         productName: product.name,
         brand: product.brand,
+        barcode: product.barcode,
         productImage: product.image_url,
         category: product.category,
         status: product.status,
@@ -312,9 +313,9 @@ export class ProductsService {
           sale_price: dto.salePrice ?? existing.sale_price,
           current_stock: dto.currentStock ?? existing.current_stock,
           min_stock: dto.minStock ?? existing.min_stock,
-          capacity_per_product: dto.capacityPerProduct ?? existing.capacity_per_product,
-          capacity_unit: dto.capacityUnit ?? existing.capacity_unit,
-          usage_capacity: dto.usageCapacity ?? existing.usage_capacity,
+          capacity_per_product: dto.capacityPerProduct ?? (existing as any).capacity_per_product,
+          capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
+          usage_capacity: dto.usageCapacity ?? (existing as any).usage_capacity,
         },
       });
 

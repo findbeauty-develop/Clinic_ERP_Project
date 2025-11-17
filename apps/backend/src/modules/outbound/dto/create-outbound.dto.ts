@@ -5,6 +5,7 @@ import {
   Min,
   IsArray,
   ValidateNested,
+  IsBoolean,
 } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -29,6 +30,14 @@ export class CreateOutboundDto {
   @IsOptional()
   @IsString()
   chartNumber?: string; // 차트번호 (optional)
+
+  @IsOptional()
+  @IsBoolean()
+  isDamaged?: boolean; // 파손 (Damaged - optional)
+
+  @IsOptional()
+  @IsBoolean()
+  isDefective?: boolean; // 불량 (Defective - optional)
 
   @IsOptional()
   @IsString()

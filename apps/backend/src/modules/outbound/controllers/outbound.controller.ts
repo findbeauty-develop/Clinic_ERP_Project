@@ -23,11 +23,15 @@ export class OutboundController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get all products with batches for outbound processing (FEFO sorted)" })
-  getProductsForOutbound(@Tenant() tenantId: string) {
+  @ApiQuery({ name: "search", required: false, type: String, description: "Search by product name, brand, or batch number" })
+  getProductsForOutbound(
+    @Tenant() tenantId: string,
+    @Query("search") search?: string
+  ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-    return this.outboundService.getProductsForOutbound(tenantId);
+    return this.outboundService.getProductsForOutbound(tenantId, search);
   }
 
   @Post()

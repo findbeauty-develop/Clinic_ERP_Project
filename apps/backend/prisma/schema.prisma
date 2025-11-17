@@ -8,30 +8,30 @@ generator client {
 }
 
 model Product {
-  id            String   @id @default(uuid())
-  tenant_id     String
-  name          String
-  brand         String
-  barcode       String?
-  image_url     String?
-  category      String
-  status        String   @default("활성")
-  is_active     Boolean  @default(true)
-  unit          String?
-  purchase_price Int?
-  sale_price    Int?
-  current_stock Int      @default(0)
-  min_stock     Int      @default(0)
-  capacity_per_product Int?  // 제품당 용량
-  capacity_unit String?      // 용량 단위
-  usage_capacity Int?        // 사용 용량
-  created_at    DateTime @default(now())
-  updated_at    DateTime?
+  id                   String    @id @default(uuid())
+  tenant_id            String
+  name                 String
+  brand                String
+  barcode              String?
+  image_url            String?
+  category             String
+  status               String    @default("활성")
+  is_active            Boolean   @default(true)
+  unit                 String?
+  purchase_price       Int?
+  sale_price           Int?
+  current_stock        Int       @default(0)
+  min_stock            Int       @default(0)
+  capacity_per_product Int? // 제품당 용량
+  capacity_unit        String? // 용량 단위
+  usage_capacity       Int? // 사용 용량
+  created_at           DateTime  @default(now())
+  updated_at           DateTime?
 
-  returnPolicy    ReturnPolicy?
-  batches         Batch[]
+  returnPolicy     ReturnPolicy?
+  batches          Batch[]
   supplierProducts SupplierProduct[]
-  outbounds       Outbound[]
+  outbounds        Outbound[]
 
   @@index([tenant_id])
 }
@@ -58,33 +58,33 @@ model Clinic {
 }
 
 model Member {
-  id            String   @id @default(uuid())
-  tenant_id     String
-  member_id     String   @unique
-  role          String
-  password_hash String
-  clinic_name   String
-  full_name     String?
-  phone_number  String?
+  id             String    @id @default(uuid())
+  tenant_id      String
+  member_id      String    @unique
+  role           String
+  password_hash  String
+  clinic_name    String
+  full_name      String?
+  phone_number   String?
   id_card_number String?
-  address       String?
-  created_at    DateTime @default(now())
-  created_by    String?
-  updated_at    DateTime?
-  updated_by    String?
+  address        String?
+  created_at     DateTime  @default(now())
+  created_by     String?
+  updated_at     DateTime?
+  updated_by     String?
 
   @@index([tenant_id])
 }
 
 model ReturnPolicy {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   tenant_id      String
-  product_id     String   @unique
-  is_returnable  Boolean  @default(false)
-  refund_amount  Float    @default(0)
+  product_id     String    @unique
+  is_returnable  Boolean   @default(false)
+  refund_amount  Float     @default(0)
   return_storage String?
   note           String?
-  created_at     DateTime @default(now())
+  created_at     DateTime  @default(now())
   updated_at     DateTime?
 
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
@@ -93,24 +93,24 @@ model ReturnPolicy {
 }
 
 model Batch {
-  id              String    @id @default(uuid())
-  tenant_id       String
-  product_id      String
-  batch_no        String
-  storage         String?
-  purchase_price  Int?
-  sale_price      Int?
+  id               String    @id @default(uuid())
+  tenant_id        String
+  product_id       String
+  batch_no         String
+  storage          String?
+  purchase_price   Int?
+  sale_price       Int?
   manufacture_date DateTime?
-  expiry_date     DateTime?
-  expiry_months   Int?
-  expiry_unit     String?
-  qty             Int
-  alert_days      String?
-  inbound_manager String?  // 입고 담당자 (Inbound manager/responsible person)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime?
+  expiry_date      DateTime?
+  expiry_months    Int?
+  expiry_unit      String?
+  qty              Int
+  alert_days       String?
+  inbound_manager  String? // 입고 담당자 (Inbound manager/responsible person)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime?
 
-  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  product   Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
   outbounds Outbound[]
 
   @@index([tenant_id])
@@ -119,19 +119,19 @@ model Batch {
 }
 
 model SupplierProduct {
-  id              String   @id @default(uuid())
-  tenant_id       String
-  product_id      String
-  supplier_id     String
-  purchase_price  Int?
-  moq             Int?
-  lead_time_days  Int?
-  note            String?
-  contact_name    String?
-  contact_phone   String?
-  contact_email   String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime?
+  id             String    @id @default(uuid())
+  tenant_id      String
+  product_id     String
+  supplier_id    String
+  purchase_price Int?
+  moq            Int?
+  lead_time_days Int?
+  note           String?
+  contact_name   String?
+  contact_phone  String?
+  contact_email  String?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime?
 
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
@@ -142,35 +142,39 @@ model SupplierProduct {
 }
 
 model Outbound {
-  id            String   @id @default(uuid())
-  tenant_id     String
-  product_id    String
-  batch_id      String   // Qaysi batch'dan chiqarilgani
-  batch_no      String   // Batch raqami (reference uchun)
-  
+  id         String @id @default(uuid())
+  tenant_id  String
+  product_id String
+  batch_id   String // Qaysi batch'dan chiqarilgani
+  batch_no   String // Batch raqami (reference uchun)
+
   // 출고 정보
-  outbound_qty  Int      // 출고 수량 (Outbound quantity)
+  outbound_qty  Int // 출고 수량 (Outbound quantity)
   outbound_date DateTime @default(now()) // 출고 날짜
-  
+
   // 담당자 정보
-  manager_name  String   // 담당자 (Responsible person)
-  
+  manager_name String // 담당자 (Responsible person)
+
   // 환자 정보 (선택)
-  patient_name  String?  // 환자 이름 (Patient name - optional)
-  chart_number  String?  // 차트번호 (Chart number - optional)
-  
+  patient_name String? // 환자 이름 (Patient name - optional)
+  chart_number String? // 차트번호 (Chart number - optional)
+
+  // 상태 정보
+  is_damaged   Boolean @default(false) // 파손 (Damaged)
+  is_defective Boolean @default(false) // 불량 (Defective)
+
   // 기타
-  memo          String?  // 메모 (Memo - optional)
-  
+  memo String? // 메모 (Memo - optional)
+
   // Timestamps
-  created_at    DateTime @default(now())
-  updated_at    DateTime?
-  created_by    String?  // 출고한 사용자
-  
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+  created_by String? // 출고한 사용자
+
   // Relations
-  product       Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  batch         Batch    @relation(fields: [batch_id], references: [id], onDelete: Cascade)
-  
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  batch   Batch   @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+
   @@index([tenant_id])
   @@index([product_id])
   @@index([batch_id])
