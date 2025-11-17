@@ -22,6 +22,9 @@ model Product {
   sale_price    Int?
   current_stock Int      @default(0)
   min_stock     Int      @default(0)
+  capacity_per_product Int?  // 제품당 용량
+  capacity_unit String?      // 용량 단위
+  usage_capacity Int?        // 사용 용량
   created_at    DateTime @default(now())
   updated_at    DateTime?
 

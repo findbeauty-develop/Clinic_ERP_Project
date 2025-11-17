@@ -18,9 +18,13 @@ type ProductDetail = {
   salePrice?: number | null;
   supplierName?: string | null;
   managerName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
   expiryDate?: string | null;
   storageLocation?: string | null;
   memo?: string | null;
+  isReturnable?: boolean;
+  refundAmount?: number | null;
   batches?: {
     id: string;
     batch_no: string;
@@ -39,6 +43,7 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
   const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [batches, setBatches] = useState<ProductDetail["batches"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -89,9 +94,13 @@ export default function ProductDetailPage() {
           salePrice: data.salePrice || data.sale_price,
           supplierName: data.supplierName,
           managerName: data.managerName,
+          contactPhone: data.contactPhone || data.contact_phone,
+          contactEmail: data.contactEmail || data.contact_email,
           expiryDate: data.expiryDate || data.expiry_date,
           storageLocation: data.storageLocation || data.storage_location,
           memo: data.memo,
+          isReturnable: data.isReturnable ?? false,
+          refundAmount: data.refundAmount || data.refund_amount || null,
           batches: data.batches,
         };
         
@@ -106,6 +115,38 @@ export default function ProductDetailPage() {
 
     fetchProduct();
   }, [apiUrl, params?.id]);
+
+  // Fetch batches separately
+  useEffect(() => {
+    const fetchBatches = async () => {
+      if (!params?.id || !product) return;
+
+      try {
+        const { apiGet } = await import("../../../lib/api");
+        const batchesData = await apiGet<any[]>(`${apiUrl}/products/${params.id}/batches`);
+        
+        // Map API response (Korean field names) to expected format
+        const formattedBatches: ProductDetail["batches"] = batchesData.map((batch: any) => ({
+          id: batch.id,
+          batch_no: batch.batch_no,
+          storage: batch.보관위치 || null,
+          qty: batch["입고 수량"] || 0,
+          expiry_date: batch.유효기간 || null,
+          purchase_price: null,
+          sale_price: null,
+          manufacture_date: null,
+          created_at: batch.created_at || new Date().toISOString(),
+        }));
+
+        setBatches(formattedBatches);
+      } catch (err) {
+        console.error("Failed to load batches", err);
+        setBatches([]);
+      }
+    };
+
+    fetchBatches();
+  }, [apiUrl, params?.id, product?.id]);
 
   if (!loading && !product) {
     notFound();
@@ -188,13 +229,13 @@ export default function ProductDetailPage() {
               />
             ) : (
               <>
-                <ProductInfoCard product={product} />
+                <ProductInfoCard product={product} batches={batches} />
                 <div className="grid gap-6 lg:grid-cols-2">
                   {/* <BatchListCard batches={product.batches ?? []} unit={product.unit ?? "EA"} /> */}
                   {/* <NewBatchCard /> */}
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
-                  <ReturnPolicyCard />
+                  <ReturnPolicyCard product={product} />
                   <StorageInfoCard product={product} />
                 </div>
               </>
@@ -227,6 +268,10 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
     minStock: product.minStock?.toString() || "0",
     image: product.productImage || "",
     imageFile: null as File | null,
+    supplierName: product.supplierName || "",
+    managerName: product.managerName || "",
+    contactPhone: product.contactPhone || "",
+    contactEmail: product.contactEmail || "",
   });
 
   const handleInputChange = (field: string, value: any) => {
@@ -277,6 +322,18 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
       }
       // Agar image o'zgarmagan bo'lsa (formData.image === product.productImage va formData.imageFile yo'q),
       // payload'ga qo'shmaslik (undefined qoladi, backend eski image'ni saqlaydi)
+
+      // Supplier information
+      if (formData.supplierName || formData.managerName || formData.contactPhone || formData.contactEmail) {
+        payload.suppliers = [
+          {
+            supplier_id: formData.supplierName || product.supplierName || undefined,
+            contact_name: formData.managerName || undefined,
+            contact_phone: formData.contactPhone || undefined,
+            contact_email: formData.contactEmail || undefined,
+          },
+        ];
+      }
 
       const updatedProductResponse = await apiPut<any>(`${apiUrl}/products/${product.id}`, payload);
       
@@ -331,9 +388,13 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
         salePrice: finalProductResponse.salePrice || finalProductResponse.sale_price || product.salePrice,
         supplierName: finalProductResponse.supplierName || product.supplierName,
         managerName: finalProductResponse.managerName || product.managerName,
+        contactPhone: finalProductResponse.contactPhone || finalProductResponse.contact_phone || product.contactPhone,
+        contactEmail: finalProductResponse.contactEmail || finalProductResponse.contact_email || product.contactEmail,
         expiryDate: finalProductResponse.expiryDate || finalProductResponse.expiry_date || product.expiryDate,
         storageLocation: finalProductResponse.storageLocation || finalProductResponse.storage_location || product.storageLocation,
         memo: finalProductResponse.memo || product.memo,
+        isReturnable: finalProductResponse.isReturnable ?? product.isReturnable ?? false,
+        refundAmount: finalProductResponse.refundAmount || finalProductResponse.refund_amount || product.refundAmount || null,
         batches: finalProductResponse.batches || product.batches,
       };
       
@@ -523,6 +584,59 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
             </div>
           </div>
 
+          {/* Supplier Info */}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+            <h4 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-100">공급업체 정보</h4>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  공급업체명
+                </label>
+                <input
+                  type="text"
+                  value={formData.supplierName}
+                  onChange={(e) => handleInputChange("supplierName", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  담당자
+                </label>
+                <input
+                  type="text"
+                  value={formData.managerName}
+                  onChange={(e) => handleInputChange("managerName", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  담당자 연락처
+                </label>
+                <input
+                  type="tel"
+                  value={formData.contactPhone}
+                  onChange={(e) => handleInputChange("contactPhone", e.target.value)}
+                  placeholder="010-1234-5678"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  이메일
+                </label>
+                <input
+                  type="email"
+                  value={formData.contactEmail}
+                  onChange={(e) => handleInputChange("contactEmail", e.target.value)}
+                  placeholder="example@supplier.com"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4">
             <button
@@ -547,7 +661,7 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
   );
 }
 
-function ProductInfoCard({ product }: { product: ProductDetail }) {
+function ProductInfoCard({ product, batches }: { product: ProductDetail; batches: ProductDetail["batches"] }) {
   // Null/undefined check
   if (!product) {
     return null;
@@ -599,7 +713,7 @@ function ProductInfoCard({ product }: { product: ProductDetail }) {
         </div>
         <div className="grid gap-6 md:grid-cols-3">
           <InfoField label="구매가" value={`₩${(product.purchasePrice ?? 0).toLocaleString()}`} />
-          <InfoField label="판매가" value={`₩${(product.salePrice ?? 0).toLocaleString()}`} />
+          
           <InfoField label="단위" value={product.unit ?? "EA"} />
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
@@ -607,48 +721,76 @@ function ProductInfoCard({ product }: { product: ProductDetail }) {
           <div className="grid gap-4 text-sm text-slate-600 dark:text-slate-300 md:grid-cols-2">
             <InfoField label="공급업체명" value={product.supplierName ?? "미지정"} compact />
             <InfoField label="담당자" value={product.managerName ?? "미지정"} compact />
+            <InfoField label="담당자 연락처" value={product.contactPhone ?? "미지정"} compact />
+            <InfoField label="이메일" value={product.contactEmail ?? "미지정"} compact />
             <InfoField label="유효기간" value={product.expiryDate ? new Date(product.expiryDate).toLocaleDateString() : "미지정"} compact />
             <InfoField label="보관 위치" value={product.storageLocation ?? "미지정"} compact />
           </div>
         </div>
+        <BatchListCard batches={batches} unit={product.unit || "EA"} />
       </div>
     </div>
   );
 }
 
-// function BatchListCard({ batches, unit }: { batches: ProductDetail["batches"]; unit: string }) {
-//   return (
-//     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-//       <div className="flex items-center justify-between">
-//         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">기존 배치 목록</h3>
-//         <button className="text-sm font-semibold text-sky-600 transition hover:text-sky-700 dark:text-sky-300">+ 배치 추가</button>
-//       </div>
-//       <div className="mt-4 space-y-3">
-//         {batches && batches.length ? (
-//           batches.map((batch) => (
-//             <div key={batch.id} className="flex flex-col rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
-//               <div className="flex flex-wrap items-center justify-between gap-3">
-//                 <div>
-//                   <p className="text-sm font-semibold text-slate-900 dark:text-white">{batch.batch_no}</p>
-//                   <p className="text-xs text-slate-500 dark:text-slate-400">
-//                     유효기간: {batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString() : "—"}
-//                   </p>
-//                 </div>
-//                 <div className="text-sm font-semibold text-slate-700 dark:text-white">
-//                   {batch.qty.toLocaleString()} {unit}
-//                 </div>
-//               </div>
-//             </div>
-//           ))
-//         ) : (
-//           <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-//             등록된 배치가 없습니다.
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
+function BatchListCard({ batches, unit }: { batches: ProductDetail["batches"]; unit: string }) {
+  if (!batches) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/50">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
+        <BoxIcon className="h-4 w-4" />
+        기존 배치 목록
+      </div>
+      <div className="space-y-3">
+        {batches.length > 0 ? (
+          batches.map((batch) => (
+            <div
+              key={batch.id}
+              className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70"
+            >
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800 dark:text-white">Batch:</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-white">{batch.batch_no}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                  {batch.storage && (
+                    <span className="inline-flex items-center gap-1">
+                      <WarehouseIcon className="h-3.5 w-3.5" />
+                      보관위치: {batch.storage}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    입고 날짜: {new Date(batch.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                {batch.expiry_date && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    유효기간: {typeof batch.expiry_date === 'string' ? batch.expiry_date : new Date(batch.expiry_date).toISOString().split('T')[0]}
+                  </p>
+                )}
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <div className="text-base font-bold text-slate-900 dark:text-white">
+                  {batch.qty.toLocaleString()}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{unit}</div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+            등록된 배치가 없습니다.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // function NewBatchCard() {
 //   return (
@@ -678,12 +820,28 @@ function ProductInfoCard({ product }: { product: ProductDetail }) {
 //   );
 // }
 
-function ReturnPolicyCard() {
+function ReturnPolicyCard({ product }: { product: ProductDetail }) {
+  if (!product) {
+    return null;
+  }
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
       <h3 className="text-lg font-semibold text-slate-900 dark:text-white">반납 정책</h3>
       <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
-        <Alert color="amber" text="이 제품은 반납 가능한 제품입니다." />
+        {product.isReturnable && (
+          <Alert color="amber" text="이 제품은 반납 가능한 제품입니다." />
+        )}
+        {product.refundAmount && product.refundAmount > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">반납시개당 가격</span>
+              <span className="text-base font-bold text-slate-900 dark:text-white">
+                ₩{product.refundAmount.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
         <p>반납 가능 여부와 조건은 공급업체와의 계약에 따라 달라질 수 있습니다. 자세한 사항은 담당자에게 문의하세요.</p>
       </div>
     </div>
@@ -807,6 +965,30 @@ function UploadIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+  );
+}
+
+function BoxIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+    </svg>
+  );
+}
+
+function WarehouseIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h4.5V10.75M8.25 21H3.375c-.621 0-1.125-.504-1.125-1.125V3.545c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v16.33c0 .621-.504 1.125-1.125 1.125z" />
+    </svg>
+  );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
     </svg>
   );
 }

@@ -163,6 +163,20 @@ export class CreateProductDto {
   minStock?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  capacityPerProduct?: number;
+
+  @IsOptional()
+  @IsString()
+  capacityUnit?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  usageCapacity?: number;
+
+  @IsOptional()
   @IsString()
   tenantId?: string;
 

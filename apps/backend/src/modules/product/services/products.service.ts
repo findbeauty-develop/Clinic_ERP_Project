@@ -51,6 +51,9 @@ export class ProductsService {
           sale_price: dto.salePrice ?? null,
           current_stock: dto.currentStock ?? 0,
           min_stock: dto.minStock ?? 0,
+          capacity_per_product: dto.capacityPerProduct ?? null,
+          capacity_unit: dto.capacityUnit ?? null,
+          usage_capacity: dto.usageCapacity ?? null,
           returnPolicy: dto.returnPolicy
             ? {
                 create: {
@@ -167,12 +170,18 @@ export class ProductsService {
       purchasePrice: product.purchase_price,
       salePrice: product.sale_price,
       unit: product.unit,
+      capacityPerProduct: product.capacity_per_product,
+      capacityUnit: product.capacity_unit,
+      usageCapacity: product.usage_capacity,
       supplierName: supplier?.supplier_id ?? null,
       managerName: supplier?.contact_name ?? null,
+      contactPhone: supplier?.contact_phone ?? null,
+      contactEmail: supplier?.contact_email ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
       storageLocation: latestBatch?.storage ?? null,
       memo: supplier?.note ?? product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
+      refundAmount: product.returnPolicy?.refund_amount ?? null,
     };
   }
 
@@ -303,6 +312,9 @@ export class ProductsService {
           sale_price: dto.salePrice ?? existing.sale_price,
           current_stock: dto.currentStock ?? existing.current_stock,
           min_stock: dto.minStock ?? existing.min_stock,
+          capacity_per_product: dto.capacityPerProduct ?? existing.capacity_per_product,
+          capacity_unit: dto.capacityUnit ?? existing.capacity_unit,
+          usage_capacity: dto.usageCapacity ?? existing.usage_capacity,
         },
       });
 

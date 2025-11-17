@@ -31,6 +31,10 @@ export default function InboundNewPage() {
   const [isReturnable, setIsReturnable] = useState<boolean>(true);
   const [selectedManager, setSelectedManager] = useState<string>(inboundManagers[0]);
   const [loading, setLoading] = useState(false);
+  const [inboundDate, setInboundDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0]; // YYYY-MM-DD format
+  });
   
   // Form state
   const [formData, setFormData] = useState({
@@ -43,9 +47,13 @@ export default function InboundNewPage() {
     category: "",
     status: statusOptions[0],
     isActive: true,
+    isUrgent: false, 
     currentStock: 0,
     minStock: 0,
     unit: unitOptions[0],
+    capacityPerProduct: 0,
+    capacityUnit: unitOptions[0],
+    usageCapacity: 0,
     purchasePrice: "",
     salePrice: "",
     // Return policy
@@ -75,14 +83,6 @@ export default function InboundNewPage() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleStatusChange = (status: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      status,
-      isActive: status === "활성" || status === "재고 부족",
-    }));
-  };
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -101,17 +101,30 @@ export default function InboundNewPage() {
 
     try {
       // Prepare API payload
+      // Map isUrgent checkbox to status: if checked (단종), set to "단종", otherwise "활성"
+      const resolvedStatus = formData.isUrgent ? "단종" : "활성";
+      const resolvedIsActive = formData.isUrgent ? false : true;
+      
       const payload: any = {
         name: formData.name,
         brand: formData.brand,
         category: formData.category,
-        status: formData.status,
-        isActive: formData.isActive,
+        status: resolvedStatus,
+        isActive: resolvedIsActive,
         currentStock: Number(formData.currentStock) || 0,
         minStock: Number(formData.minStock) || 0,
       };
       if (formData.unit && formData.unit !== unitOptions[0]) {
         payload.unit = formData.unit;
+      }
+      if (formData.capacityPerProduct && formData.capacityPerProduct > 0) {
+        payload.capacityPerProduct = Number(formData.capacityPerProduct);
+      }
+      if (formData.capacityUnit && formData.capacityUnit !== unitOptions[0]) {
+        payload.capacityUnit = formData.capacityUnit;
+      }
+      if (formData.usageCapacity && formData.usageCapacity > 0) {
+        payload.usageCapacity = Number(formData.usageCapacity);
       }
       if (formData.purchasePrice) {
         payload.purchasePrice = Number(formData.purchasePrice);
@@ -192,22 +205,32 @@ export default function InboundNewPage() {
             <div className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
               신규 입고 등록
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">제품 정보 입력</h1>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/inbound"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
+              >
+                <ArrowLeftIcon className="h-5 w-5" />
+              </Link>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">제품 정보 입력</h1>
+            </div>
             <p className="max-w-3xl text-base text-slate-500 dark:text-slate-300">
-              제품 정보와 공급업체, 반납 정책, 배치 정보를 입력하여 입고를 등록하세요. 입력된 정보는 저장 후 재고 관리에
-              자동으로 반영됩니다.
+            
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/inbound"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
-            >
-              취소
-            </Link>
-            <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
-              임시 저장
-            </button>
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex items-center gap-2 text-base font-medium text-slate-700 dark:text-slate-200">
+              <span>입고날짜</span>
+              <span className="font-mono text-slate-900 dark:text-white">
+                {inboundDate
+                  .split('-')
+                  .map((part, i) => (i === 0 ? part.slice(2) : part))
+                  .join('-')}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+             
+           
             <button
               type="button"
               onClick={handleSubmit}
@@ -215,8 +238,9 @@ export default function InboundNewPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <SaveIcon className="h-5 w-5" />
-              {loading ? "저장 중..." : "저장하기"}
+              {loading ? "저장 중..." : "제품 저장"}
             </button>
+            </div>
           </div>
         </header>
 
@@ -310,12 +334,40 @@ export default function InboundNewPage() {
                 </div>
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <SelectField
-                      label="상태"
-                      value={formData.status}
-                      options={statusOptions}
-                      onChange={(value) => handleStatusChange(value)}
-                    />
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        상태
+                      </label>
+                      <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-100 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            id="isUrgent"
+                            checked={formData.isUrgent}
+                            onChange={(e) => handleInputChange("isUrgent", e.target.checked)}
+                            className="h-5 w-5 appearance-none rounded border border-slate-300 bg-white checked:bg-sky-500 checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 dark:border-slate-600 dark:bg-white dark:checked:bg-sky-500"
+                          />
+                          {formData.isUrgent && (
+                            <svg
+                              className="pointer-events-none absolute left-0 top-0 h-5 w-5 text-white"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={3}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M4.5 12.75l6 6 9-13.5"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <label htmlFor="isUrgent" className="text-sm font-medium text-slate-900 cursor-pointer dark:text-slate-100">
+                          단종
+                        </label>
+                      </div>
+                    </div>
                     <InputField
                       label="카테고리 *"
                       placeholder="카테고리를 입력하세요 (예: 코스메슈티컬)"
@@ -323,7 +375,9 @@ export default function InboundNewPage() {
                       onChange={(e) => handleInputChange("category", e.target.value)}
                     />
                   </div>
+                  {/* Stock and Capacity Grid - 2x2 Layout */}
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Top Row - Stock Fields */}
                     <NumberField
                       label="현재 재고"
                       value={formData.currentStock}
@@ -334,6 +388,75 @@ export default function InboundNewPage() {
                       value={formData.minStock}
                       onChange={(value) => handleInputChange("minStock", value)}
                     />
+                    
+                    {/* Bottom Row - Capacity Fields */}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        제품당 용량
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.capacityPerProduct || ""}
+                          onChange={(e) => handleInputChange("capacityPerProduct", e.target.value ? Number(e.target.value) : 0)}
+                          placeholder="0"
+                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                        <div className="relative w-28">
+                          <select
+                            value={formData.capacityUnit}
+                            onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
+                            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {unitOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        사용 용량
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.usageCapacity || ""}
+                          onChange={(e) => handleInputChange("usageCapacity", e.target.value ? Number(e.target.value) : 0)}
+                          placeholder="0"
+                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                        <div className="relative w-28">
+                          <select
+                            value={formData.capacityUnit}
+                            onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
+                            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {unitOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -570,15 +693,36 @@ export default function InboundNewPage() {
 
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">배치 번호</label>
-                  <input
-                    type="text"
-                    placeholder="배치 번호를 입력하세요"
-                    value={formData.batchNo}
-                    onChange={(e) => handleInputChange("batchNo", e.target.value)}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한 임박 알림 기준</label>
+                  <div className="relative">
+                    <select
+                      value={formData.alertDays || ""}
+                      onChange={(e) => handleInputChange("alertDays", e.target.value)}
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <option value="">선택(30일전/60일전/90일전)</option>
+                      <option value="30">30일전</option>
+                      <option value="60">60일전</option>
+                      <option value="90">90일전</option>
+                    </select>
+                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
+
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">보관 위치</label>
                   <input
@@ -595,6 +739,21 @@ export default function InboundNewPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <ClipboardIcon className="h-5 w-5 text-indigo-500" />
+            입고 담당자
+          </h2>
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+            <ManagerSelectField
+              label="성함 선택"
+              options={inboundManagers}
+              value={selectedManager}
+              onChange={setSelectedManager}
+            />
           </div>
         </section>
 
@@ -919,6 +1078,110 @@ function Avatar({ color }: { color: string }) {
     <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-sm font-semibold text-white ${color}`}>
       Y
     </span>
+  );
+}
+
+function ManagerSelectField({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-left text-sm text-slate-700 transition hover:border-slate-300 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          <span className={value === options[0] ? "text-slate-400" : ""}>
+            {value}
+          </span>
+          <ChevronDownIcon
+            className={`h-4 w-4 text-slate-400 transition-transform ${
+              isOpen ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      </label>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            {options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
+                  value === option
+                    ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+                    : "text-slate-700 dark:text-slate-200"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+      />
+    </svg>
+  );
+}
+
+function ArrowLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+      />
+    </svg>
   );
 }
 
