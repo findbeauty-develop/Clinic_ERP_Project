@@ -83,7 +83,57 @@ pwd
 
 ## 🏗️ QADAM 2: Backend Image'ni Build Qilish
 
-### 2.1. Backend Image'ni Build Qilish
+### 2.1. Buildx'ni Tayyorlash (Multi-Platform Build uchun)
+
+**Muhim:** Agar macOS (Apple Silicon) yoki boshqa ARM64 mashinada build qilayotgan bo'lsangiz, VPS esa linux/amd64 bo'lsa, multi-platform build qilish kerak.
+
+```bash
+# Buildx'ni tekshirish
+docker buildx version
+
+# Buildx builder yaratish (agar yo'q bo'lsa)
+docker buildx create --name multiplatform --use
+docker buildx inspect --bootstrap
+
+# Mavjud builder'larni ko'rish
+docker buildx ls
+```
+
+### 2.2. Backend Image'ni Build Qilish
+
+**Variant A: Multi-Platform Build (Tavsiya etiladi - barcha platform'lar uchun)**
+
+```bash
+# Project root papkasida
+cd ~/Desktop/"Clinic ERP project"
+
+# Backend image'ni multi-platform build qilish va push qilish
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t findbeauty/clinic-backend:latest \
+  -t findbeauty/clinic-backend:$(date +%Y%m%d-%H%M%S) \
+  -f apps/backend/Dockerfile \
+  --push \
+  .
+```
+
+**Variant B: Faqat linux/amd64 uchun (VPS uchun - Tezroq)**
+
+```bash
+# Project root papkasida
+cd ~/Desktop/"Clinic ERP project"
+
+# Backend image'ni faqat linux/amd64 uchun build qilish va push qilish
+docker buildx build \
+  --platform linux/amd64 \
+  -t findbeauty/clinic-backend:latest \
+  -t findbeauty/clinic-backend:$(date +%Y%m%d-%H%M%S) \
+  -f apps/backend/Dockerfile \
+  --push \
+  .
+```
+
+**Variant C: Oddiy Build (Agar local mashina va VPS bir xil architecture bo'lsa)**
 
 ```bash
 # Project root papkasida
@@ -97,9 +147,20 @@ docker build \
   .
 ```
 
-**Build jarayoni 5-10 daqiqa davom etishi mumkin.**
+**Build jarayoni 5-15 daqiqa davom etishi mumkin (platform'ga qarab).**
 
-### 2.2. Build Muvaffaqiyatli Bo'lganini Tekshirish
+**Eslatma:** Agar `--push` ishlatsangiz, build tugagach avtomatik Docker Hub'ga push qilinadi. Agar `--push` ishlatmasangiz, keyin alohida `docker push` qilishingiz kerak.
+
+### 2.3. Build Muvaffaqiyatli Bo'lganini Tekshirish
+
+**Agar `--push` ishlatgan bo'lsangiz:**
+
+```bash
+# Docker Hub'da tekshirish
+# https://hub.docker.com/r/findbeauty/clinic-backend ga kirib, image'ni ko'ring
+```
+
+**Agar oddiy build qilgan bo'lsangiz:**
 
 ```bash
 # Image'lar ro'yxatini ko'rish
@@ -113,6 +174,8 @@ docker images | grep clinic-backend
 ---
 
 ## 📤 QADAM 3: Backend Image'ni Docker Hub'ga Push Qilish
+
+**Eslatma:** Agar QADAM 2 da `--push` ishlatgan bo'lsangiz, bu qadamni o'tkazib yuborishingiz mumkin.
 
 ### 3.1. Image'ni Push Qilish
 
@@ -128,7 +191,7 @@ docker push findbeauty/clinic-backend:$(date +%Y%m%d-%H%M%S)
 
 ### 3.2. Docker Hub'da Tekshirish
 
-Docker Hub'ga kirib (`https://hub.docker.com/r/findbeauty/clinic-backend`), image push qilinganini tekshiring.
+Docker Hub'ga kirib (`https://hub.docker.com/r/findbeauty/clinic-backend`), image push qilinganini tekshiring. Image'ning qaysi platform'lar uchun mavjudligini ko'ring (linux/amd64, linux/arm64, va hokazo).
 
 ---
 
@@ -144,6 +207,50 @@ Frontend build qilishdan oldin, backend URL'ni aniqlang:
 **Muhim:** Frontend build qilishda `NEXT_PUBLIC_API_URL` environment variable kerak.
 
 ### 4.2. Frontend Image'ni Build Qilish
+
+**Variant A: Multi-Platform Build (Tavsiya etiladi)**
+
+```bash
+# Project root papkasida
+cd ~/Desktop/"Clinic ERP project"
+
+# VPS IP'ni o'zgartiring
+export VPS_IP="YOUR_VPS_IP"  # Masalan: 123.45.67.89
+export BACKEND_URL="http://${VPS_IP}:3000"
+
+# Frontend image'ni multi-platform build qilish va push qilish
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg NEXT_PUBLIC_API_URL=${BACKEND_URL} \
+  -t findbeauty/clinic-frontend:latest \
+  -t findbeauty/clinic-frontend:$(date +%Y%m%d-%H%M%S) \
+  -f apps/frontend/Dockerfile \
+  --push \
+  .
+```
+
+**Variant B: Faqat linux/amd64 uchun (VPS uchun - Tezroq)**
+
+```bash
+# Project root papkasida
+cd ~/Desktop/"Clinic ERP project"
+
+# VPS IP'ni o'zgartiring
+export VPS_IP="YOUR_VPS_IP"  # Masalan: 123.45.67.89
+export BACKEND_URL="http://${VPS_IP}:3000"
+
+# Frontend image'ni faqat linux/amd64 uchun build qilish va push qilish
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL=${BACKEND_URL} \
+  -t findbeauty/clinic-frontend:latest \
+  -t findbeauty/clinic-frontend:$(date +%Y%m%d-%H%M%S) \
+  -f apps/frontend/Dockerfile \
+  --push \
+  .
+```
+
+**Variant C: Oddiy Build (Agar local mashina va VPS bir xil architecture bo'lsa)**
 
 ```bash
 # Project root papkasida
@@ -165,11 +272,13 @@ docker build \
 **Yoki agar domain ishlatsangiz:**
 
 ```bash
-docker build \
+docker buildx build \
+  --platform linux/amd64 \
   --build-arg NEXT_PUBLIC_API_URL=https://api.yourdomain.com \
   -t findbeauty/clinic-frontend:latest \
   -t findbeauty/clinic-frontend:$(date +%Y%m%d-%H%M%S) \
   -f apps/frontend/Dockerfile \
+  --push \
   .
 ```
 
@@ -314,16 +423,63 @@ NODE_ENV=production
 
 ## 📥 QADAM 9: Docker Hub'dan Image'larni Pull Qilish
 
-```bash
-# Backend image'ni pull qilish
-docker pull findbeauty/clinic-backend:latest
+### 9.1. Image'larni Pull Qilish
 
-# Frontend image'ni pull qilish
-docker pull findbeauty/clinic-frontend:latest
+```bash
+# Backend image'ni pull qilish (linux/amd64 uchun)
+docker pull --platform linux/amd64 findbeauty/clinic-backend:latest
+
+# Frontend image'ni pull qilish (linux/amd64 uchun)
+docker pull --platform linux/amd64 findbeauty/clinic-frontend:latest
 
 # Image'lar pull qilinganini tekshirish
 docker images | grep clinic
 ```
+
+**Agar "no matching manifest" xatosi chiqsa:**
+
+Bu xato image'ning platform architecture bilan mos kelmasligidan kelib chiqadi. Quyidagilarni tekshiring:
+
+1. **Docker Hub'da image'ning qaysi platform'lar uchun mavjudligini tekshiring:**
+   - `https://hub.docker.com/r/findbeauty/clinic-backend/tags` ga kirib, image'ning platform'larini ko'ring
+
+2. **Agar linux/amd64 yo'q bo'lsa, QADAM 2 va 4 ga qaytib, `--platform linux/amd64` bilan qayta build qiling**
+
+3. **Yoki VPS'da to'g'ridan-to'g'ri build qiling (QADAM 9.2 ga qarang)**
+
+### 9.2. VPS'da To'g'ridan-to'g'ri Build Qilish (Alternativ Yechim)
+
+Agar Docker Hub'dan pull qilishda muammo bo'lsa, VPS'da to'g'ridan-to'g'ri build qilishingiz mumkin:
+
+```bash
+# VPS'da project'ni clone qilish yoki ko'chirish
+cd ~/clinic-erp
+
+# Git'dan clone qilish (agar repository mavjud bo'lsa)
+# git clone <repository-url> .
+
+# Yoki scp orqali local mashinadan ko'chirish:
+# Local mashinada:
+# scp -r ~/Desktop/"Clinic ERP project" root@YOUR_VPS_IP:~/clinic-erp-source
+# VPS'da:
+# mv ~/clinic-erp-source/* ~/clinic-erp/
+
+# Backend image'ni build qilish
+cd ~/clinic-erp
+docker build -t findbeauty/clinic-backend:latest -f apps/backend/Dockerfile .
+
+# Frontend image'ni build qilish
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=http://localhost:3000 \
+  -t findbeauty/clinic-frontend:latest \
+  -f apps/frontend/Dockerfile \
+  .
+
+# Image'lar build qilinganini tekshirish
+docker images | grep clinic
+```
+
+**Eslatma:** VPS'da build qilishda Docker Hub'ga push qilish shart emas, chunki image'lar to'g'ridan-to'g'ri VPS'da ishlatiladi. Lekin agar keyinchalik boshqa joyda ishlatmoqchi bo'lsangiz, push qilishingiz mumkin.
 
 ---
 
@@ -526,6 +682,42 @@ docker compose -f docker-compose.prod.yml ps
 ---
 
 ## 🔧 QADAM 14: Muammolarni Hal Qilish
+
+### 14.0. Platform Architecture Xatosi
+
+**Xato:** `no matching manifest for linux/amd64 in the manifest list entries`
+
+**Sabab:** Image macOS (ARM64) yoki boshqa platform'da build qilingan, VPS esa linux/amd64 talab qiladi.
+
+**Yechim:**
+
+1. **Local mashinada qayta build qiling (Tavsiya etiladi):**
+   ```bash
+   # Backend
+   docker buildx build \
+     --platform linux/amd64 \
+     -t findbeauty/clinic-backend:latest \
+     -f apps/backend/Dockerfile \
+     --push \
+     .
+   
+   # Frontend
+   docker buildx build \
+     --platform linux/amd64 \
+     --build-arg NEXT_PUBLIC_API_URL=http://YOUR_VPS_IP:3000 \
+     -t findbeauty/clinic-frontend:latest \
+     -f apps/frontend/Dockerfile \
+     --push \
+     .
+   ```
+
+2. **VPS'da pull qilishda platform belgilang:**
+   ```bash
+   docker pull --platform linux/amd64 findbeauty/clinic-backend:latest
+   docker pull --platform linux/amd64 findbeauty/clinic-frontend:latest
+   ```
+
+3. **Yoki VPS'da to'g'ridan-to'g'ri build qiling (QADAM 9.2 ga qarang)**
 
 ### 14.1. Konteyner Ishlayotganini Tekshirish
 

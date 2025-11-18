@@ -58,6 +58,7 @@ export default function OutboundPage() {
   const [memo, setMemo] = useState("");
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
 
   // History tab state
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -133,8 +134,15 @@ export default function OutboundPage() {
     batchNo: string,
     productName: string,
     unit: string,
-    newQuantity: number
+    newQuantity: number,
+    maxQuantity?: number
   ) => {
+    // 재고 부족 체크: 최대 재고량을 초과할 수 없음
+    if (maxQuantity !== undefined && newQuantity > maxQuantity) {
+      alert(`재고가 부족합니다. 최대 ${maxQuantity}${unit}까지 출고 가능합니다.`);
+      return;
+    }
+
     if (newQuantity <= 0) {
       // Remove from scheduled items
       setScheduledItems((prev) =>
@@ -190,6 +198,20 @@ export default function OutboundPage() {
       return;
     }
 
+    // 재고 부족 체크: 각 항목의 출고 수량이 재고를 초과하지 않는지 확인
+    const stockCheck = scheduledItems.every((item) => {
+      const product = products.find((p) => p.id === item.productId);
+      if (!product) return false;
+      const batch = product.batches?.find((b) => b.id === item.batchId);
+      if (!batch) return false;
+      return item.quantity <= batch.qty;
+    });
+
+    if (!stockCheck) {
+      alert("재고가 부족한 제품이 있습니다. 수량을 확인해주세요.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -204,22 +226,63 @@ export default function OutboundPage() {
         })),
       };
 
-      await apiPost(`${apiUrl}/outbound/bulk`, payload);
+      const response = await apiPost(`${apiUrl}/outbound/bulk`, payload);
       
-      alert("출고가 완료되었습니다.");
+      // 출고 후 목록 초기화 및 로그 기록
+      console.log("출고 완료:", {
+        timestamp: new Date().toISOString(),
+        manager: managerName.trim(),
+        items: scheduledItems.length,
+        itemsDetail: scheduledItems,
+      });
       
-      // Reset form
-      setScheduledItems([]);
-      setAdditionalMemo("");
-      setMemo("");
-      setIsDamaged(false);
-      setIsDefective(false);
+      // 성공한 항목과 실패한 항목 분리
+      if (response && response.failedItems && response.failedItems.length > 0) {
+        // 일부 항목만 실패한 경우
+        const failed = scheduledItems.filter((item) =>
+          response.failedItems.some(
+            (failed: any) =>
+              failed.productId === item.productId && failed.batchId === item.batchId
+          )
+        );
+        setFailedItems(failed);
+        const successCount = scheduledItems.length - failed.length;
+        alert(`${successCount}개 항목 출고 완료, ${failed.length}개 항목 실패했습니다. 실패한 항목만 재시도할 수 있습니다.`);
+      } else {
+        // 모든 항목 성공
+        alert("출고가 완료되었습니다.");
+        setFailedItems([]);
+      }
+      
+      // 성공한 항목만 제거, 실패한 항목은 유지
+      if (response && response.failedItems && response.failedItems.length > 0) {
+        const failedIds = new Set(
+          response.failedItems.map((f: any) => `${f.productId}-${f.batchId}`)
+        );
+        setScheduledItems((prev) =>
+          prev.filter(
+            (item) => !failedIds.has(`${item.productId}-${item.batchId}`)
+          )
+        );
+      } else {
+        // 모든 항목 성공 시 초기화
+        setScheduledItems([]);
+        setAdditionalMemo("");
+        setMemo("");
+        setIsDamaged(false);
+        setIsDefective(false);
+      }
       
       // Refresh products
       fetchProducts();
     } catch (err: any) {
       console.error("Failed to process outbound", err);
-      alert(err.message || "출고 처리 중 오류가 발생했습니다.");
+      // 출고 실패 시 오류 메시지
+      const errorMessage = err.response?.data?.message || err.message || "출고 처리 중 오류가 발생했습니다.";
+      
+      // 전체 실패 시 모든 항목을 실패 목록에 추가
+      setFailedItems([...scheduledItems]);
+      alert(`출고 실패: ${errorMessage}\n실패한 항목만 재시도할 수 있습니다.`);
     } finally {
       setSubmitting(false);
     }
@@ -636,45 +699,145 @@ export default function OutboundPage() {
                     <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
                       출고 예정 목록
                     </h3>
-                    {scheduledItems.length === 0 ? (
+                    {scheduledItems.length === 0 && failedItems.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
                         출고할 제품을 선택해주세요.
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {scheduledItems.map((item, index) => (
-                          <div
-                            key={`${item.productId}-${item.batchId}`}
-                            className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/60"
-                          >
-                            <span className="text-sm text-slate-700 dark:text-slate-200">
-                              {item.productName} {item.batchNo} {item.quantity}
-                              {item.unit || "개"}
-                            </span>
+                        {/* 실패한 항목 표시 */}
+                        {failedItems.length > 0 && (
+                          <div className="mb-3 rounded-lg border-2 border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="text-sm font-semibold text-red-700 dark:text-red-300">
+                                출고 실패 항목 ({failedItems.length}개)
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {failedItems.map((item) => (
+                                <div
+                                  key={`failed-${item.productId}-${item.batchId}`}
+                                  className="flex items-center justify-between rounded border border-red-200 bg-white px-2 py-1 text-sm dark:border-red-800 dark:bg-slate-900/60"
+                                >
+                                  <span className="text-red-700 dark:text-red-300">
+                                    {item.productName} {item.batchNo} {item.quantity}
+                                    {item.unit || "개"}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      // 실패한 항목을 다시 scheduledItems에 추가
+                                      setScheduledItems((prev) => {
+                                        const exists = prev.some(
+                                          (i) =>
+                                            i.productId === item.productId &&
+                                            i.batchId === item.batchId
+                                        );
+                                        if (exists) return prev;
+                                        return [...prev, item];
+                                      });
+                                      // 실패 목록에서 제거
+                                      setFailedItems((prev) =>
+                                        prev.filter(
+                                          (f) =>
+                                            !(
+                                              f.productId === item.productId &&
+                                              f.batchId === item.batchId
+                                            )
+                                        )
+                                      );
+                                    }}
+                                    className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white transition hover:bg-red-600"
+                                  >
+                                    재시도
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                             <button
-                              onClick={() =>
-                                removeScheduledItem(item.productId, item.batchId)
-                              }
-                              className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              onClick={() => {
+                                // 모든 실패 항목을 다시 scheduledItems에 추가
+                                setScheduledItems((prev) => {
+                                  const existingIds = new Set(
+                                    prev.map(
+                                      (i) => `${i.productId}-${i.batchId}`
+                                    )
+                                  );
+                                  const newItems = failedItems.filter(
+                                    (f) =>
+                                      !existingIds.has(`${f.productId}-${f.batchId}`)
+                                  );
+                                  return [...prev, ...newItems];
+                                });
+                                setFailedItems([]);
+                              }}
+                              className="mt-2 w-full rounded bg-red-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-600"
                             >
-                              <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
+                              전체 재시도
                             </button>
                           </div>
-                        ))}
+                        )}
+
+                        {/* 정상 출고 예정 목록 */}
+                        {scheduledItems.map((item, index) => {
+                          const isFailed = failedItems.some(
+                            (f) =>
+                              f.productId === item.productId &&
+                              f.batchId === item.batchId
+                          );
+                          return (
+                            <div
+                              key={`${item.productId}-${item.batchId}`}
+                              className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                                isFailed
+                                  ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                                  : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
+                              }`}
+                            >
+                              <span
+                                className={`text-sm ${
+                                  isFailed
+                                    ? "text-red-700 dark:text-red-300"
+                                    : "text-slate-700 dark:text-slate-200"
+                                }`}
+                              >
+                                {item.productName} {item.batchNo} {item.quantity}
+                                {item.unit || "개"}
+                                {isFailed && (
+                                  <span className="ml-2 text-xs text-red-600 dark:text-red-400">
+                                    (실패)
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  removeScheduledItem(item.productId, item.batchId)
+                                }
+                                className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          );
+                        })}
                         <div className="pt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                           총 {scheduledItems.length}항목
+                          {failedItems.length > 0 && (
+                            <span className="ml-2 text-red-600 dark:text-red-400">
+                              (실패: {failedItems.length}개)
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -687,7 +850,17 @@ export default function OutboundPage() {
                   <div className="flex gap-3 pt-4">
                     <button
                       onClick={handleSubmit}
-                      disabled={submitting || scheduledItems.length === 0}
+                      disabled={
+                        submitting ||
+                        scheduledItems.length === 0 ||
+                        scheduledItems.some((item) => {
+                          const product = products.find((p) => p.id === item.productId);
+                          if (!product) return true;
+                          const batch = product.batches?.find((b) => b.id === item.batchId);
+                          if (!batch) return true;
+                          return item.quantity > batch.qty || item.quantity <= 0;
+                        })
+                      }
                       className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? "처리 중..." : "출고 하기"}
@@ -908,14 +1081,27 @@ function ProductCard({
     batchNo: string,
     productName: string,
     unit: string,
-    quantity: number
+    quantity: number,
+    maxQuantity?: number
   ) => void;
 }) {
   return (
     <div className="space-y-3">
       {product.batches && product.batches.length > 0 && (
         <>
-          {product.batches.map((batch) => {
+          {[...product.batches]
+            // 정렬 우선순위: ① 유효기간 → ② 배치번호
+            .sort((a, b) => {
+              // 1. 유효기간으로 정렬 (오래된 것 먼저 - FEFO)
+              const dateA = a.expiry_date ? new Date(a.expiry_date).getTime() : 0;
+              const dateB = b.expiry_date ? new Date(b.expiry_date).getTime() : 0;
+              if (dateA !== dateB) {
+                return dateA - dateB;
+              }
+              // 2. 배치번호로 정렬 (같은 유효기간일 경우)
+              return (a.batch_no || "").localeCompare(b.batch_no || "");
+            })
+            .map((batch) => {
             const scheduledItem = scheduledItems.find(
               (item) =>
                 item.productId === product.id && item.batchId === batch.id
@@ -950,7 +1136,7 @@ function ProductCard({
                       배치:{batch.batch_no}
                     </span>
                     {batch.isExpiringSoon && (
-                      <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
+                      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
                         유효기간 임박
                       </span>
                     )}
@@ -984,7 +1170,8 @@ function ProductCard({
                         batch.batch_no,
                         product.productName,
                         product.unit || "개",
-                        Math.max(0, quantity - 1)
+                        Math.max(0, quantity - 1),
+                        batch.qty
                       )
                     }
                     className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -1004,7 +1191,8 @@ function ProductCard({
                         batch.batch_no,
                         product.productName,
                         product.unit || "개",
-                        Math.min(newQty, batch.qty)
+                        Math.min(newQty, batch.qty),
+                        batch.qty
                       );
                     }}
                     className="h-10 w-16 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1017,7 +1205,8 @@ function ProductCard({
                         batch.batch_no,
                         product.productName,
                         product.unit || "개",
-                        Math.min(quantity + 1, batch.qty)
+                        Math.min(quantity + 1, batch.qty),
+                        batch.qty
                       )
                     }
                     className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"

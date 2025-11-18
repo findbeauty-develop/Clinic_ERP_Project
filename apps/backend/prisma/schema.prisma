@@ -34,6 +34,7 @@ model Product {
   outbounds        Outbound[]
 
   @@index([tenant_id])
+  packageItems PackageItem[]
 }
 
 model Clinic {
@@ -151,6 +152,7 @@ model Outbound {
   // 출고 정보
   outbound_qty  Int // 출고 수량 (Outbound quantity)
   outbound_date DateTime @default(now()) // 출고 날짜
+  outbound_type String @default("제품") // 출고 타입: 제품, 패키지, 바코드
 
   // 담당자 정보
   manager_name String // 담당자 (Responsible person)
@@ -165,6 +167,7 @@ model Outbound {
 
   // 기타
   memo String? // 메모 (Memo - optional)
+  package_id String? // 패키지 ID (패키지 출고인 경우)
 
   // Timestamps
   created_at DateTime  @default(now())
@@ -179,5 +182,41 @@ model Outbound {
   @@index([product_id])
   @@index([batch_id])
   @@index([outbound_date])
+  @@index([outbound_type])
   @@index([tenant_id, outbound_date])
+}
+
+model Package {
+  id String @id @default(uuid())
+  tenant_id String
+  name String 
+  description String?
+  is_active Boolean @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime?
+  created_by String?
+  updated_by String?
+
+  items PackageItem[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, is_active])
+}
+
+// Paket
+model PackageItem {
+  id String @id @default(uuid())
+  tenant_id String
+  package_id String
+  product_id String
+  quantity Int @default(1)
+  order Int @default(0)
+
+  package Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([package_id])
+  @@index([product_id])
+  @@unique([package_id, product_id])
 }

@@ -4,6 +4,7 @@ import { IamModule } from "./modules/iam/iam.module";
 import { MemberModule } from "./modules/member/member.module";
 import { ProductModule } from "./modules/product/product.module";
 import { OutboundModule } from "./modules/outbound/outbound.module";
+import { PackageModule } from "./modules/package/package.module";
 import { UploadsModule } from "./uploads/uploads.module";
 
 @Module({
@@ -25,6 +26,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     ProductModule,
     MemberModule,
     OutboundModule,
+    PackageModule,
     UploadsModule,
   ],
 })
