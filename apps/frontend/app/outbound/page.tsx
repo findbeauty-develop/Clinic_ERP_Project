@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiGet, apiPost } from "../../lib/api";
 
 type Batch = {
@@ -34,6 +35,42 @@ type ScheduledItem = {
   batchNo: string;
   quantity: number;
   unit: string;
+  packageId?: string; // 패키지 출고인 경우
+  packageName?: string; // 패키지명
+  isPackageItem?: boolean; // 패키지 구성품인지 여부
+};
+
+type PackageForOutbound = {
+  id: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  items?: {
+    productId: string;
+    productName: string;
+    brand: string;
+    unit: string;
+    quantity: number;
+  }[];
+};
+
+type PackageItemForOutbound = {
+  productId: string;
+  productName: string;
+  brand: string;
+  unit: string;
+  packageQuantity: number; // 패키지당 수량
+  currentStock: number;
+  minStock: number;
+  batches: {
+    id: string;
+    batchNo: string;
+    qty: number;
+    expiryDate?: string | null;
+    storage?: string | null;
+    isExpiringSoon?: boolean;
+    daysUntilExpiry?: number | null;
+  }[];
 };
 
 export default function OutboundPage() {
@@ -43,7 +80,10 @@ export default function OutboundPage() {
   );
   
   const [activeTab, setActiveTab] = useState<"processing" | "history">("processing");
+  const [outboundType, setOutboundType] = useState<"product" | "package">("product"); // 제품 출고 or 패키지 출고
   const [products, setProducts] = useState<ProductForOutbound[]>([]);
+  const [packages, setPackages] = useState<PackageForOutbound[]>([]);
+  const [selectedPackageItems, setSelectedPackageItems] = useState<PackageItemForOutbound[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -76,12 +116,16 @@ export default function OutboundPage() {
 
   useEffect(() => {
     if (activeTab === "processing") {
-      fetchProducts();
+      if (outboundType === "product") {
+        fetchProducts();
+      } else {
+        fetchPackages();
+      }
       setCurrentPage(1); // Reset to first page when search changes
     } else if (activeTab === "history") {
       fetchHistory();
     }
-  }, [apiUrl, searchQuery, activeTab]);
+  }, [apiUrl, searchQuery, activeTab, outboundType]);
 
   useEffect(() => {
     if (activeTab === "history" && historySearchQuery) {
@@ -111,6 +155,47 @@ export default function OutboundPage() {
       setError("제품 정보를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPackages = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
+      
+      // Filter by search query if provided
+      let filteredPackages = data;
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        filteredPackages = data.filter(
+          (pkg) =>
+            pkg.name.toLowerCase().includes(query) ||
+            pkg.description?.toLowerCase().includes(query) ||
+            pkg.items?.some(
+              (item) =>
+                item.productName.toLowerCase().includes(query) ||
+                item.brand.toLowerCase().includes(query)
+            )
+        );
+      }
+      
+      setPackages(filteredPackages);
+    } catch (err) {
+      console.error("Failed to load packages", err);
+      setError("패키지 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPackageItems = async (packageId: string) => {
+    try {
+      const data = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${packageId}/items`);
+      setSelectedPackageItems(data);
+    } catch (err) {
+      console.error("Failed to load package items", err);
+      alert("패키지 구성품 정보를 불러오지 못했습니다.");
     }
   };
 
@@ -273,8 +358,12 @@ export default function OutboundPage() {
         setIsDefective(false);
       }
       
-      // Refresh products
-      fetchProducts();
+      // Refresh data
+      if (outboundType === "product") {
+        fetchProducts();
+      } else {
+        fetchPackages();
+      }
     } catch (err: any) {
       console.error("Failed to process outbound", err);
       // 출고 실패 시 오류 메시지
@@ -412,11 +501,43 @@ export default function OutboundPage() {
 
         {activeTab === "processing" ? (
           <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
-            {/* Left Panel - Product List */}
+            {/* Left Panel - Product/Package List */}
             <div className="space-y-4">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                {/* Sub-tabs: 제품 출고 / 패키지 출고 */}
+                <div className="mb-4 flex gap-2 border-b border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => {
+                      setOutboundType("product");
+                      setScheduledItems([]);
+                      setSelectedPackageItems([]);
+                    }}
+                    className={`px-4 py-2 text-sm font-semibold transition ${
+                      outboundType === "product"
+                        ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    제품 출고
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOutboundType("package");
+                      setScheduledItems([]);
+                      setSelectedPackageItems([]);
+                    }}
+                    className={`px-4 py-2 text-sm font-semibold transition ${
+                      outboundType === "package"
+                        ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    패키지 출고
+                  </button>
+                </div>
+
                 <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
-                  전체 제품
+                  {outboundType === "product" ? "전체 제품" : "전체 패키지"}
                 </h2>
 
                 {/* Search Bar */}
@@ -424,7 +545,7 @@ export default function OutboundPage() {
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="제품명, 브랜드, 배치번호로 검색..."
+                      placeholder={outboundType === "product" ? "제품명, 브랜드, 배치번호로 검색..." : "제품명, 패키지 명..."}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -457,27 +578,28 @@ export default function OutboundPage() {
                   </div>
                 </div>
 
-                {/* Product List */}
+                {/* Product/Package List */}
                 {loading ? (
                   <div className="py-8 text-center text-slate-500">로딩 중...</div>
                 ) : error ? (
                   <div className="py-8 text-center text-red-500">{error}</div>
-                ) : products.length === 0 ? (
-                  <div className="py-8 text-center text-slate-500">
-                    제품이 없습니다.
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-4">
-                      {currentProducts.map((product) => (
-                        <ProductCard
-                          key={product.id}
-                          product={product}
-                          scheduledItems={scheduledItems}
-                          onQuantityChange={handleQuantityChange}
-                        />
-                      ))}
+                ) : outboundType === "product" ? (
+                  products.length === 0 ? (
+                    <div className="py-8 text-center text-slate-500">
+                      제품이 없습니다.
                     </div>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        {currentProducts.map((product) => (
+                          <ProductCard
+                            key={product.id}
+                            product={product}
+                            scheduledItems={scheduledItems}
+                            onQuantityChange={handleQuantityChange}
+                          />
+                        ))}
+                      </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
@@ -567,6 +689,94 @@ export default function OutboundPage() {
                       </div>
                     )}
                   </>
+                  )
+                ) : (
+                  // Package List
+                  packages.length === 0 ? (
+                    <div className="py-8 text-center text-slate-500">
+                      패키지가 없습니다.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        {packages
+                          .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                          .map((pkg) => (
+                            <PackageCard
+                              key={pkg.id}
+                              pkg={pkg}
+                              onSelect={async () => {
+                                await fetchPackageItems(pkg.id);
+                                // Auto-add package items to scheduled list
+                                const items = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`);
+                                const newScheduledItems: ScheduledItem[] = [];
+                                
+                                items.forEach((item) => {
+                                  // Get first batch (FEFO sorted)
+                                  const firstBatch = item.batches[0];
+                                  if (firstBatch && firstBatch.qty > 0) {
+                                    newScheduledItems.push({
+                                      productId: item.productId,
+                                      productName: item.productName,
+                                      batchId: firstBatch.id,
+                                      batchNo: firstBatch.batchNo,
+                                      quantity: item.packageQuantity, // 패키지당 수량
+                                      unit: item.unit,
+                                      packageId: pkg.id,
+                                      packageName: pkg.name,
+                                      isPackageItem: true,
+                                    });
+                                  }
+                                });
+                                
+                                setScheduledItems((prev) => {
+                                  // Remove existing items from this package
+                                  const filtered = prev.filter((item) => item.packageId !== pkg.id);
+                                  return [...filtered, ...newScheduledItems];
+                                });
+                              }}
+                            />
+                          ))}
+                      </div>
+
+                      {/* Pagination for Packages */}
+                      {Math.ceil(packages.length / itemsPerPage) > 1 && (
+                        <div className="mt-6 flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                          {Array.from({ length: Math.ceil(packages.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`h-10 w-10 rounded-lg border font-semibold transition ${
+                                currentPage === page
+                                  ? "border-sky-500 bg-sky-500 text-white"
+                                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(Math.ceil(packages.length / itemsPerPage), p + 1))}
+                            disabled={currentPage >= Math.ceil(packages.length / itemsPerPage)}
+                            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )
                 )}
               </div>
             </div>
@@ -691,6 +901,32 @@ export default function OutboundPage() {
                       onChange={(e) => setAdditionalMemo(e.target.value)}
                       placeholder="추가 메모를 입력하세요"
                       className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                  </div>
+
+                  {/* 새 패키지등록 Button (only for package outbound) */}
+                  {outboundType === "package" && (
+                    <div>
+                      <Link
+                        href="/packages/new"
+                        className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        새 패키지등록
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* Memo Field */}
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      메모
+                    </label>
+                    <textarea
+                      value={memo}
+                      onChange={(e) => setMemo(e.target.value)}
+                      placeholder="메모를 입력하세요"
+                      rows={3}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     />
                   </div>
 
@@ -1222,6 +1458,85 @@ function ProductCard({
           })}
         </>
       )}
+    </div>
+  );
+}
+
+// Package Card Component
+function PackageCard({
+  pkg,
+  onSelect,
+}: {
+  pkg: PackageForOutbound;
+  onSelect: () => void;
+}) {
+  const [quantity, setQuantity] = useState(1);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="mb-2 flex items-center gap-3">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {pkg.name}
+            </h3>
+            {!pkg.isActive && (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                소진
+              </span>
+            )}
+            <button className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+              수정
+            </button>
+          </div>
+          {pkg.description && (
+            <p className="mb-2 text-sm text-slate-600 dark:text-slate-400">
+              {pkg.description}
+            </p>
+          )}
+          {pkg.items && pkg.items.length > 0 && (
+            <div className="text-sm text-slate-600 dark:text-slate-400">
+              {pkg.items.map((item, idx) => (
+                <span key={idx}>
+                  {item.productName}-{item.brand} {item.quantity}
+                  {item.unit}
+                  {idx < pkg.items!.length - 1 ? " " : ""}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="ml-4 flex items-center gap-2">
+          <button
+            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+            className="h-10 w-16 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button
+            onClick={() => setQuantity(quantity + 1)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            +
+          </button>
+          <span className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            단위
+          </span>
+        </div>
+      </div>
+      <button
+        onClick={onSelect}
+        className="mt-3 w-full rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600"
+      >
+        패키지 선택
+      </button>
     </div>
   );
 }

@@ -26,17 +26,36 @@ export class PackageService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const packages = await this.packageRepository.findAll(tenantId);
+    try {
+      const packages = await this.packageRepository.findAll(tenantId);
 
-    return packages.map((pkg: any) => ({
-      id: pkg.id,
-      name: pkg.name,
-      description: pkg.description,
-      isActive: pkg.is_active,
-      createdAt: pkg.created_at,
-      updatedAt: pkg.updated_at,
-      itemsCount: pkg.items?.length || 0,
-    }));
+      return packages.map((pkg: any) => ({
+        id: pkg.id,
+        name: pkg.name,
+        description: pkg.description,
+        isActive: pkg.is_active,
+        createdAt: pkg.created_at,
+        updatedAt: pkg.updated_at,
+        itemsCount: pkg.items?.length || 0,
+      }));
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if it's a connection error
+      if (
+        errorMessage.includes("Can't reach database server") ||
+        errorMessage.includes("P1001") ||
+        errorMessage.includes("connect") ||
+        errorMessage.includes("timeout")
+      ) {
+        throw new BadRequestException(
+          "데이터베이스 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
+        );
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**
@@ -89,22 +108,41 @@ export class PackageService {
       return [];
     }
 
-    const packages = await this.packageRepository.findAll(tenantId);
+    try {
+      const packages = await this.packageRepository.findAll(tenantId);
 
-    const searchLower = query.toLowerCase().trim();
-    const matching = packages
-      .filter((pkg: any) =>
-        pkg.name?.toLowerCase().includes(searchLower)
-      )
-      .slice(0, limit)
-      .map((pkg: any) => ({
-        id: pkg.id,
-        name: pkg.name,
-        description: pkg.description,
-        itemsCount: pkg.items?.length || 0,
-      }));
+      const searchLower = query.toLowerCase().trim();
+      const matching = packages
+        .filter((pkg: any) =>
+          pkg.name?.toLowerCase().includes(searchLower)
+        )
+        .slice(0, limit)
+        .map((pkg: any) => ({
+          id: pkg.id,
+          name: pkg.name,
+          description: pkg.description,
+          itemsCount: pkg.items?.length || 0,
+        }));
 
-    return matching;
+      return matching;
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if it's a connection error
+      if (
+        errorMessage.includes("Can't reach database server") ||
+        errorMessage.includes("P1001") ||
+        errorMessage.includes("connect") ||
+        errorMessage.includes("timeout")
+      ) {
+        throw new BadRequestException(
+          "데이터베이스 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
+        );
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**

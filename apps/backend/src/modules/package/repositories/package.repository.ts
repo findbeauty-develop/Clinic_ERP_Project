@@ -11,7 +11,8 @@ export class PackageRepository {
   }
 
   create(data: any, tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).package.create({
+    const client = this.getClient(tx) as any;
+    return client.package.create({
       data: {
         ...(data as any),
         tenant_id: tenantId,
@@ -34,7 +35,8 @@ export class PackageRepository {
   }
 
   findAll(tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).package.findMany({
+    const client = this.getClient(tx) as any;
+    return client.package.findMany({
       where: { tenant_id: tenantId },
       include: {
         items: {
@@ -57,7 +59,8 @@ export class PackageRepository {
   }
 
   findActive(tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).package.findMany({
+    const client = this.getClient(tx) as any;
+    return client.package.findMany({
       where: { tenant_id: tenantId, is_active: true },
       include: {
         items: {
@@ -80,7 +83,8 @@ export class PackageRepository {
   }
 
   findById(id: string, tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).package.findFirst({
+    const client = this.getClient(tx) as any;
+    return client.package.findFirst({
       where: { id, tenant_id: tenantId },
       include: {
         items: {
@@ -100,9 +104,9 @@ export class PackageRepository {
   }
 
   update(id: string, data: any, tenantId: string, tx?: Prisma.TransactionClient) {
-    // Important: Prisma's `where` in `update` takes unique fields only, so use composite unique condition if needed
-    return (this.getClient(tx) as any).package.update({
-      where: { id }, // Only id should be used here, tenant_id removed
+    const client = this.getClient(tx) as any;
+    return client.package.update({
+      where: { id },
       data: data as any,
       include: {
         items: {
@@ -122,8 +126,8 @@ export class PackageRepository {
   }
 
   delete(id: string, tenantId: string, tx?: Prisma.TransactionClient) {
-    // First verify tenant_id matches, then delete by id (which is unique)
-    return (this.getClient(tx) as any).package.delete({
+    const client = this.getClient(tx) as any;
+    return client.package.delete({
       where: { id },
     });
   }
@@ -131,7 +135,8 @@ export class PackageRepository {
 
   // PackageItem operations
   createItem(data: any, tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).packageItem.create({
+    const client = this.getClient(tx) as any;
+    return client.packageItem.create({
       data: {
         ...(data as any),
         tenant_id: tenantId,
@@ -147,7 +152,8 @@ export class PackageRepository {
   }
 
   deleteItemsByPackageId(packageId: string, tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).packageItem.deleteMany({
+    const client = this.getClient(tx) as any;
+    return client.packageItem.deleteMany({
       where: {
         package_id: packageId,
         tenant_id: tenantId,
