@@ -258,6 +258,8 @@ export class OutboundService {
               name: true,
               brand: true,
               category: true,
+              sale_price: true,
+              unit: true,
             },
           },
           batch: {

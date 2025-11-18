@@ -18,26 +18,33 @@ export class JwtTenantGuard implements CanActivate {
     if (!auth?.startsWith("Bearer ")) throw new UnauthorizedException();
     const token = auth.split(" ")[1];
 
-    const { data, error } = await this.sb.getUser(token);
-    if (!error && data?.user) {
-      const tenantId = (data.user.user_metadata as any)?.tenant_id;
-      if (!tenantId) throw new ForbiddenException("Tenant not assigned");
-      req.user = {
-        id: data.user.id,
-        email: data.user.email,
-        roles: (data.user.user_metadata as any)?.roles ?? [],
-      };
-      req.tenantId = tenantId;
-      return true;
+    // Try Supabase first, but fallback to local JWT if it fails (network issues, etc.)
+    try {
+      const { data, error } = await this.sb.getUser(token);
+      if (!error && data?.user) {
+        const tenantId = (data.user.user_metadata as any)?.tenant_id;
+        if (!tenantId) throw new ForbiddenException("Tenant not assigned");
+        req.user = {
+          id: data.user.id,
+          email: data.user.email,
+          roles: (data.user.user_metadata as any)?.roles ?? [],
+        };
+        req.tenantId = tenantId;
+        return true;
+      }
+    } catch (supabaseError: any) {
+      // If Supabase fails (network timeout, etc.), fall through to local JWT verification
+      console.warn("Supabase verification failed, falling back to local JWT:", supabaseError?.message || String(supabaseError));
     }
 
+    // Fallback to local JWT verification
     const secret =
       process.env.MEMBER_JWT_SECRET ??
       process.env.SUPABASE_JWT_SECRET ??
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!secret) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException("JWT secret not configured");
     }
 
     try {
@@ -61,7 +68,7 @@ export class JwtTenantGuard implements CanActivate {
       req.tenantId = tenantId;
       return true;
     } catch (err) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException("Invalid or expired token");
     }
   }
 }
