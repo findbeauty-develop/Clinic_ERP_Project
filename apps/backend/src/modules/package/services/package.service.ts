@@ -37,6 +37,15 @@ export class PackageService {
         createdAt: pkg.created_at,
         updatedAt: pkg.updated_at,
         itemsCount: pkg.items?.length || 0,
+        items: (pkg.items || []).map((item: any) => ({
+          id: item.id,
+          productId: item.product_id,
+          productName: item.product?.name || "",
+          brand: item.product?.brand || "",
+          unit: item.product?.unit || "",
+          quantity: item.quantity,
+          order: item.order,
+        })),
       }));
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);

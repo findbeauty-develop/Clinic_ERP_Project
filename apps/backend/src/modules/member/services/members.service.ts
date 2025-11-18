@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Logger, UnauthorizedException, ServiceUnavailableException } from "@nestjs/common";
 import { compare, hash } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sign, SignOptions } from "jsonwebtoken";
@@ -172,13 +172,14 @@ export class MembersService {
   }
 
   public async login(memberId: string, password: string, tenantId?: string) {
-    // Find member by member_id (which is unique globally)
-    // If tenantId is provided, also filter by tenant_id for extra security
-    const member = await this.repository.findByMemberId(memberId, tenantId);
+    try {
+      // Find member by member_id (which is unique globally)
+      // If tenantId is provided, also filter by tenant_id for extra security
+      const member = await this.repository.findByMemberId(memberId, tenantId);
 
-    if (!member) {
-      throw new UnauthorizedException("Invalid member ID or password");
-    }
+      if (!member) {
+        throw new UnauthorizedException("Invalid member ID or password");
+      }
 
     const isValid = await compare(password, member.password_hash);
     if (!isValid) {
@@ -218,17 +219,35 @@ export class MembersService {
       signOptions
     );
 
-    return {
-      message: "You successfully login",
-      token,
-      member: {
-        id: member.id,
-        member_id: member.member_id,
-        role: member.role,
-        tenant_id: member.tenant_id,
-        clinic_name: member.clinic_name,
-        full_name: member.full_name,
-      },
-    };
+      return {
+        message: "You successfully login",
+        token,
+        member: {
+          id: member.id,
+          member_id: member.member_id,
+          role: member.role,
+          tenant_id: member.tenant_id,
+          clinic_name: member.clinic_name,
+          full_name: member.full_name,
+        },
+      };
+    } catch (error: any) {
+      // Handle database connection errors
+      const errorMessage = error?.message || String(error);
+      if (
+        errorMessage.includes("Can't reach database server") ||
+        errorMessage.includes("P1001") ||
+        errorMessage.includes("connect") ||
+        errorMessage.includes("timeout") ||
+        error?.code === "P1001"
+      ) {
+        this.logger.error("Database connection error during login", errorMessage);
+        throw new ServiceUnavailableException(
+          "Database server is currently unavailable. Please try again later."
+        );
+      }
+      // Re-throw other errors (UnauthorizedException, etc.)
+      throw error;
+    }
   }
 }

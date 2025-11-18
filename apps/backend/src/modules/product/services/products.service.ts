@@ -190,18 +190,21 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const products = await this.prisma.product.findMany({
-      where: { tenant_id: tenantId },
-      include: {
-        returnPolicy: true,
-        batches: {
-          orderBy: { created_at: "desc" },
+    // Use executeWithRetry to handle connection errors automatically
+    const products = await this.prisma.executeWithRetry(async () => {
+      return await this.prisma.product.findMany({
+        where: { tenant_id: tenantId },
+        include: {
+          returnPolicy: true,
+          batches: {
+            orderBy: { created_at: "desc" },
+          },
+          supplierProducts: {
+            orderBy: { created_at: "desc" },
+          },
         },
-        supplierProducts: {
-          orderBy: { created_at: "desc" },
-        },
-      },
-      orderBy: { created_at: "desc" },
+        orderBy: { created_at: "desc" },
+      });
     });
 
     return products.map((product: (typeof products)[number]) => {

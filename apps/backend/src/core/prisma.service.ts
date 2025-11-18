@@ -57,52 +57,82 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     // Prisma Client automatically manages connections
-    // We just try to connect once during startup, but don't fail if it doesn't work
-    // Prisma will automatically connect when the first query is made
-    this.connectWithRetry()
-      .then(() => {
-        this.logger.log("Database connection established during startup");
-      })
-      .catch((error) => {
-        this.logger.warn(
-          "Database connection failed during startup. Prisma will connect automatically on first query."
-        );
-        this.isConnected = false;
-      });
+    // Don't attempt connection during startup - let Prisma connect on first query
+    // This prevents blocking startup and connection error spam
+    this.logger.log("PrismaService initialized. Database will connect automatically on first query.");
+    this.isConnected = false; // Will be set to true when first query succeeds
   }
 
   /**
    * Ensure database connection is established
-   * Prisma Client automatically connects on first query, so this is mostly for logging
-   * Only call this if you need to verify connection before a critical operation
+   * Prisma Client automatically connects on first query
+   * This method is now a no-op to prevent connection spam
    */
   async ensureConnected(): Promise<void> {
     // Prisma Client automatically manages connections
-    // We only check if we haven't verified connection recently
-    const now = Date.now();
-    if (this.isConnected && (now - this.lastConnectionCheck) < this.connectionCheckInterval) {
-      return;
-    }
-
-    // Silent check - don't log if already connected
-    try {
-      await this.$queryRaw`SELECT 1`;
-      if (!this.isConnected) {
-        this.logger.log("Database connection verified");
-      }
-      this.isConnected = true;
-      this.lastConnectionCheck = now;
-    } catch (error) {
-      // Connection might be down, but Prisma will retry automatically on next query
-      this.isConnected = false;
-      // Don't throw error - let Prisma handle reconnection
-    }
+    // Don't do anything here - let Prisma handle it
+    // This prevents $queryRaw spam and connection loops
+    return;
   }
 
-  private async connectWithRetry(retryCount = 0): Promise<void> {
+  /**
+   * Execute a database operation with automatic retry on connection errors
+   */
+  async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    retries = 1, // Reduced default retries
+    delay = 2000 // Increased initial delay
+  ): Promise<T> {
+    let lastError: Error | unknown;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Don't call ensureConnected here - let Prisma handle it automatically
+        // This prevents unnecessary connection attempts
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+        const errorMessage = error?.message || String(error);
+        
+        // Check if it's a connection error
+        const isConnectionError = 
+          errorMessage.includes("Can't reach database server") ||
+          errorMessage.includes("P1001") ||
+          errorMessage.includes("connect") ||
+          errorMessage.includes("timeout") ||
+          errorMessage.includes("Connection timeout") ||
+          error?.code === "P1001";
+
+        if (isConnectionError && attempt < retries) {
+          this.logger.warn(
+            `Database connection error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay / 1000}s...`
+          );
+          this.isConnected = false; // Mark as disconnected
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay = Math.min(delay * 2, 5000); // Exponential backoff, max 5 seconds
+          continue;
+        }
+        
+        // If not a connection error or max retries reached, throw
+        throw error;
+      }
+    }
+    
+    throw lastError;
+  }
+
+  private async connectWithRetry(retryCount = 0, maxRetries?: number): Promise<void> {
     // Don't attempt if already connected
     if (this.isConnected) {
       return;
+    }
+
+    const maxAttempts = maxRetries ?? this.maxRetries;
+    
+    // Prevent infinite retries
+    if (retryCount >= maxAttempts) {
+      this.logger.error(`Max retry attempts (${maxAttempts}) reached. Stopping connection attempts.`);
+      throw new Error(`Failed to connect to database after ${maxAttempts} attempts`);
     }
 
     this.connectionAttempted = true;
@@ -174,11 +204,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                                 errorMessage.includes("timeout") ||
                                 errorMessage.includes("Connection timeout");
 
-      if (isConnectionError && retryCount < this.maxRetries - 1) {
-        const delay = this.retryDelay * (retryCount + 1); // Exponential backoff
-        this.logger.warn(`Retrying connection in ${delay / 1000} seconds...`);
+      if (isConnectionError && retryCount < maxAttempts - 1) {
+        const delay = Math.min(this.retryDelay * (retryCount + 1), 10000); // Max 10 seconds delay
+        this.logger.warn(`Retrying connection in ${delay / 1000} seconds... (attempt ${retryCount + 1}/${maxAttempts})`);
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.connectWithRetry(retryCount + 1);
+        return this.connectWithRetry(retryCount + 1, maxAttempts);
       }
 
       // Final error message with helpful tips
@@ -200,9 +230,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
       this.isConnected = false;
       
-      // Only throw error if this is called from ensureConnected (not during startup)
-      // During startup, we want to allow the app to start
-      if (retryCount >= this.maxRetries - 1) {
+      // Only throw error if max retries reached
+      if (retryCount >= maxAttempts - 1) {
         throw error;
       }
     }

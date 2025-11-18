@@ -66,8 +66,11 @@ export class MembersRepository {
     if (tenantId) {
       where.tenant_id = tenantId;
     }
-    return this.prisma.member.findFirst({
-      where,
+    // Use executeWithRetry to handle connection errors gracefully
+    return this.prisma.executeWithRetry(async () => {
+      return await this.prisma.member.findFirst({
+        where,
+      });
     });
   }
 
