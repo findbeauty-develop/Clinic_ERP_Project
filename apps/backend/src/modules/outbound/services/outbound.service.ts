@@ -350,6 +350,29 @@ export class OutboundService {
       (this.prisma as any).outbound.count({ where }),
     ]);
 
+    // Package nomlarini alohida olish (package_id mavjud bo'lgan outbound'lar uchun)
+    const packageIds = outbounds
+      .filter((outbound: any) => outbound.package_id)
+      .map((outbound: any) => outbound.package_id);
+    
+    const packagesMap: Record<string, string> = {};
+    if (packageIds.length > 0) {
+      const packages = await (this.prisma as any).package.findMany({
+        where: {
+          id: { in: packageIds },
+          tenant_id: tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+      
+      packages.forEach((pkg: any) => {
+        packagesMap[pkg.id] = pkg.name;
+      });
+    }
+
     // Response format - 패키지 출고와 단품 출고 구분 표시
     return {
       items: outbounds.map((outbound: any) => ({
@@ -364,6 +387,7 @@ export class OutboundService {
         isDamaged: outbound.is_damaged,
         isDefective: outbound.is_defective,
         packageId: outbound.package_id,
+        packageName: outbound.package_id ? packagesMap[outbound.package_id] || null : null, // 패키지 출고인 경우 패키지명
         product: {
           id: outbound.product?.id,
           name: outbound.product?.name,

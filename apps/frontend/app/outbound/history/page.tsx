@@ -15,29 +15,56 @@ export default function OutboundHistoryPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl]);
 
   useEffect(() => {
-    // Search query o'zgarganda API chaqirish
+    // Search query o'zgarganda API chaqirish va page'ni reset qilish
+    setCurrentPage(1);
     fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historySearchQuery]);
+
+  useEffect(() => {
+    // Page o'zgarganda API chaqirish
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
       // Alohida history API endpoint ishlatish
+      const queryParams = new URLSearchParams();
+      if (historySearchQuery) {
+        queryParams.append("search", historySearchQuery);
+      }
+      queryParams.append("page", currentPage.toString());
+      queryParams.append("limit", itemsPerPage.toString());
+      
+      const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
+      console.log("Fetching history from:", url);
+      
       const data = await apiGet<{
         items: any[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
-      }>(`${apiUrl}/outbound/history?${historySearchQuery ? `search=${encodeURIComponent(historySearchQuery)}&` : ''}page=1&limit=100`);
+      }>(url);
+      
+      console.log("History API response:", data);
       setHistoryData(data.items || []);
+      setTotalPages(data.totalPages || 1);
+      setTotalItems(data.total || 0);
     } catch (err) {
       console.error("Failed to load history", err);
       setHistoryError("출고 내역을 불러오지 못했습니다.");
@@ -51,12 +78,13 @@ export default function OutboundHistoryPage() {
     const groups: { [key: string]: any[] } = {};
     
     historyData.forEach((item) => {
-      // Check if outbound_date exists and is valid
-      if (!item.outbound_date) {
+      // Backend response uses camelCase: outboundDate, managerName, etc.
+      const outboundDateValue = item.outboundDate || item.outbound_date;
+      if (!outboundDateValue) {
         return; // Skip items without date
       }
 
-      const outboundDate = new Date(item.outbound_date);
+      const outboundDate = new Date(outboundDateValue);
       
       // Check if date is valid
       if (isNaN(outboundDate.getTime())) {
@@ -68,7 +96,7 @@ export default function OutboundHistoryPage() {
         hour: "2-digit",
         minute: "2-digit",
       });
-      const manager = item.manager_name || "Unknown";
+      const manager = item.managerName || item.manager_name || "Unknown";
       const groupKey = `${date} ${time} ${manager}님 출고`;
       
       if (!groups[groupKey]) {
@@ -83,26 +111,49 @@ export default function OutboundHistoryPage() {
     });
   }, [historyData]);
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
-        {/* Header */}
+        {/* Header with Back Button */}
         <header className="space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
-                출고 내역
-              </h1>
-              <p className="mt-2 text-base text-slate-500 dark:text-slate-300">
-                출고 내역을 조회하고 관리합니다.
-              </p>
+            <div className="flex items-center gap-4">
+              {/* Back Button */}
+              <Link
+                href="/outbound"
+                className="inline-flex items-center justify-center h-10 w-10 rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:border-slate-600"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </Link>
+              
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
+                  출고 내역
+                </h1>
+                <p className="mt-2 text-base text-slate-500 dark:text-slate-300">
+                  출고 내역을 조회하고 관리합니다.
+                </p>
+              </div>
             </div>
-            <Link
-              href="/outbound"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              출고 처리로 이동
-            </Link>
+            
           </div>
         </header>
 
@@ -190,9 +241,27 @@ export default function OutboundHistoryPage() {
                     {/* Group Header */}
                     <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                          {date} {time} {managerText}
-                        </h3>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                            {date} {time} {managerText}
+                          </h3>
+                          {/* 패키지 출고와 단품 출고 구분 표시 */}
+                          {(items[0]?.outboundType || items[0]?.outbound_type) && (
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              (items[0].outboundType || items[0].outbound_type) === "패키지"
+                                ? "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
+                                : (items[0].outboundType || items[0].outbound_type) === "바코드"
+                                ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
+                            }`}>
+                              {(items[0].outboundType || items[0].outbound_type) === "패키지" 
+                                ? `패키지 출고${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}` : ''}`
+                                : (items[0].outboundType || items[0].outbound_type) === "바코드" 
+                                ? "바코드 출고" 
+                                : "단품 출고"}
+                            </span>
+                          )}
+                        </div>
                         {(items[0]?.memo?.includes("교육") || items[0]?.memo?.includes("테스트")) && (
                           <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
                             {items[0]?.memo?.includes("교육") ? "교육용" : "테스트"}
@@ -206,15 +275,19 @@ export default function OutboundHistoryPage() {
                       {items.map((item: any) => {
                         const product = item.product;
                         const batch = item.batch;
-                        const outboundDate = item.outbound_date ? new Date(item.outbound_date) : new Date();
+                        // Backend response uses camelCase
+                        const outboundDateValue = item.outboundDate || item.outbound_date;
+                        const outboundDate = outboundDateValue ? new Date(outboundDateValue) : new Date();
                         // Check if date is valid
                         const isValidDate = !isNaN(outboundDate.getTime());
                         const month = isValidDate ? outboundDate.getMonth() + 1 : new Date().getMonth() + 1;
                         const day = isValidDate ? outboundDate.getDate() : new Date().getDate();
-                        const hasSpecialNote = item.is_damaged || item.is_defective || item.memo;
-                        const specialNote = item.is_damaged
+                        const isDamaged = item.isDamaged || item.is_damaged || false;
+                        const isDefective = item.isDefective || item.is_defective || false;
+                        const hasSpecialNote = isDamaged || isDefective || item.memo;
+                        const specialNote = isDamaged
                           ? "파손"
-                          : item.is_defective
+                          : isDefective
                           ? "불량"
                           : item.memo?.includes("떨어뜨림")
                           ? "떨어뜨림"
@@ -222,10 +295,10 @@ export default function OutboundHistoryPage() {
                           ? "반품"
                           : item.memo || null;
 
-                        // Calculate price (assuming sale_price * quantity)
-                        const price = product?.sale_price
-                          ? product.sale_price * item.outbound_qty
-                          : null;
+                        // Calculate price (assuming salePrice * quantity)
+                        const outboundQty = item.outboundQty || item.outbound_qty || 0;
+                        const salePrice = product?.salePrice || product?.sale_price || 0;
+                        const price = salePrice ? salePrice * outboundQty : null;
 
                         return (
                           <div
@@ -238,9 +311,15 @@ export default function OutboundHistoryPage() {
                                   <h4 className="text-base font-semibold text-slate-900 dark:text-white">
                                     {product?.name || "Unknown Product"}
                                   </h4>
-                                  {batch?.batch_no && (
+                                  {/* 패키지 출고인 경우 패키지명 표시 */}
+                                  {(item.outboundType || item.outbound_type) === "패키지" && (item.packageName || item.package_name) && (
+                                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                      패키지: {item.packageName || item.package_name}
+                                    </span>
+                                  )}
+                                  {(batch?.batchNo || batch?.batch_no) && (
                                     <span className="text-sm text-slate-500 dark:text-slate-400">
-                                      ({batch.batch_no})
+                                      ({(batch.batchNo || batch.batch_no)})
                                     </span>
                                   )}
                                   {hasSpecialNote && (
@@ -255,11 +334,11 @@ export default function OutboundHistoryPage() {
                                     {month}월 {day}일
                                   </div>
                                   <div>
-                                    {item.manager_name}에 의한 출고
-                                    {batch?.batch_no && ` (배치: ${batch.batch_no})`}
-                                    {item.patient_name && ` - 환자: ${item.patient_name}`}
-                                    {item.chart_number && ` (차트번호: ${item.chart_number})`}
-                                    {item.memo && !item.is_damaged && !item.is_defective && ` - ${item.memo}`}
+                                    {item.managerName || item.manager_name}에 의한 출고
+                                    {(batch?.batchNo || batch?.batch_no) && ` (배치: ${batch.batchNo || batch.batch_no})`}
+                                    {(item.patientName || item.patient_name) && ` - 환자: ${item.patientName || item.patient_name}`}
+                                    {(item.chartNumber || item.chart_number) && ` (차트번호: ${item.chartNumber || item.chart_number})`}
+                                    {item.memo && !isDamaged && !isDefective && ` - ${item.memo}`}
                                   </div>
                                   {specialNote && (
                                     <div className="font-semibold text-red-600 dark:text-red-400">
@@ -271,7 +350,7 @@ export default function OutboundHistoryPage() {
 
                               <div className="flex flex-col items-end gap-1">
                                 <div className="text-base font-bold text-slate-900 dark:text-white">
-                                  -{item.outbound_qty}
+                                  -{outboundQty}
                                   {product?.unit || "개"}
                                 </div>
                                 {price && (
@@ -288,6 +367,59 @@ export default function OutboundHistoryPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex items-center justify-between">
+                {/* Page Info */}
+                <div className="text-sm">
+                  <span className="font-bold text-slate-900 dark:text-white">{currentPage}</span>
+                  <span className="text-slate-500 dark:text-slate-400"> / {totalPages} 페이지</span>
+                </div>
+                
+                {/* Navigation Buttons */}
+                <div className="flex items-center gap-2">
+                  {/* Previous Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Page Numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => handlePageChange(page)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                        page === currentPage
+                          ? "bg-blue-500 text-white"
+                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+
+                  {/* Next Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

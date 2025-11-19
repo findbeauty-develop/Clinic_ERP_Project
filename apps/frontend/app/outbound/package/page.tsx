@@ -647,39 +647,55 @@ export default function PackageOutboundPage() {
                   </div>
 
                   {/* Pagination */}
-                  {Math.ceil(filteredPackages.length / itemsPerPage) > 1 && (
-                    <div className="mt-6 flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                      </button>
-                      {Array.from({ length: Math.ceil(filteredPackages.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
-                        <button
-                          key={page}
-                          onClick={() => setCurrentPage(page)}
-                          className={`h-10 w-10 rounded-lg border font-semibold transition ${
-                            currentPage === page
-                              ? "border-sky-500 bg-sky-500 text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPackages.length / itemsPerPage), p + 1))}
-                        disabled={currentPage >= Math.ceil(filteredPackages.length / itemsPerPage)}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
+                  {Math.ceil(filteredPackages.length / itemsPerPage) > 0 && (
+                    <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                      <div className="flex items-center justify-between">
+                        {/* Page Info */}
+                        <div className="text-sm">
+                          <span className="font-bold text-slate-900 dark:text-white">{currentPage}</span>
+                          <span className="text-slate-500 dark:text-slate-400"> / {Math.ceil(filteredPackages.length / itemsPerPage)} 페이지</span>
+                        </div>
+                        
+                        {/* Navigation Buttons */}
+                        <div className="flex items-center gap-2">
+                          {/* Previous Button */}
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+
+                          {/* Page Numbers */}
+                          {Array.from({ length: Math.ceil(filteredPackages.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                                page === currentPage
+                                  ? "bg-blue-500 text-white"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+
+                          {/* Next Button */}
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPackages.length / itemsPerPage), p + 1))}
+                            disabled={currentPage >= Math.ceil(filteredPackages.length / itemsPerPage)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </>
