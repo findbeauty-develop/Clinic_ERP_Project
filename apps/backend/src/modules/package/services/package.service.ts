@@ -239,6 +239,16 @@ export class PackageService {
       throw new BadRequestException("Package must have at least one item");
     }
 
+    // 패키지 이름 중복 체크
+    if (dto.name) {
+      const nameCheck = await this.checkPackageNameExists(dto.name, tenantId);
+      if (nameCheck.exists) {
+        throw new BadRequestException(
+          `동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요.`
+        );
+      }
+    }
+
     // 동일 구성 패키지 존재 체크
     const duplicateCheck = await this.checkDuplicatePackage(
       dto.items,
@@ -417,6 +427,33 @@ export class PackageService {
 
     await this.packageRepository.delete(id, tenantId);
     return { message: "Package deleted successfully" };
+  }
+
+  /**
+   * 패키지 이름 존재 여부 체크
+   */
+  async checkPackageNameExists(
+    name: string,
+    tenantId: string,
+    excludePackageId?: string
+  ): Promise<{ exists: boolean; existingPackage?: any }> {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const existing = await this.packageRepository.findByName(name, tenantId);
+
+    if (existing && (!excludePackageId || existing.id !== excludePackageId)) {
+      return {
+        exists: true,
+        existingPackage: {
+          id: existing.id,
+          name: existing.name,
+        },
+      };
+    }
+
+    return { exists: false };
   }
 
   /**

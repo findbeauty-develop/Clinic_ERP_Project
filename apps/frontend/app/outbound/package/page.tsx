@@ -64,6 +64,8 @@ export default function PackageOutboundPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  // Cache for package expiry info (packageId -> earliest expiry date timestamp)
+  const [packageExpiryCache, setPackageExpiryCache] = useState<Record<string, number | null>>({});
   
   // Outbound processing form state
   const [managerName, setManagerName] = useState("");
@@ -90,23 +92,43 @@ export default function PackageOutboundPage() {
     try {
       const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
       
-      // Filter by search query if provided
-      let filteredPackages = data;
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        filteredPackages = data.filter(
-          (pkg) =>
-            pkg.name.toLowerCase().includes(query) ||
-            pkg.description?.toLowerCase().includes(query) ||
-            pkg.items?.some(
-              (item) =>
-                item.productName.toLowerCase().includes(query) ||
-                item.brand.toLowerCase().includes(query)
-            )
-        );
-      }
+      setPackages(data);
       
-      setPackages(filteredPackages);
+      // Fetch expiry info for each package in parallel (for sorting)
+      const expiryPromises = data.map(async (pkg) => {
+        try {
+          const items = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`);
+          
+          // Find earliest expiry date from all batches
+          let earliestExpiry: number | null = null;
+          
+          items.forEach((item) => {
+            item.batches?.forEach((batch) => {
+              if (batch.expiryDate) {
+                const expiryDate = new Date(batch.expiryDate).getTime();
+                if (earliestExpiry === null || expiryDate < earliestExpiry) {
+                  earliestExpiry = expiryDate;
+                }
+              }
+            });
+          });
+          
+          return { packageId: pkg.id, expiry: earliestExpiry };
+        } catch (err) {
+          console.error(`Failed to load expiry info for package ${pkg.id}`, err);
+          return { packageId: pkg.id, expiry: null };
+        }
+      });
+      
+      // Wait for all expiry info to load
+      const expiryResults = await Promise.all(expiryPromises);
+      
+      // Update cache
+      const newCache: Record<string, number | null> = {};
+      expiryResults.forEach(({ packageId, expiry }) => {
+        newCache[packageId] = expiry;
+      });
+      setPackageExpiryCache(newCache);
     } catch (err) {
       console.error("Failed to load packages", err);
       setError("패키지 정보를 불러오지 못했습니다.");
@@ -396,19 +418,41 @@ export default function PackageOutboundPage() {
   };
 
   const filteredPackages = useMemo(() => {
-    if (!searchQuery.trim()) return packages;
-    const query = searchQuery.toLowerCase();
-    return packages.filter(
-      (pkg) =>
-        pkg.name.toLowerCase().includes(query) ||
-        pkg.description?.toLowerCase().includes(query) ||
-        pkg.items?.some(
-          (item) =>
-            item.productName.toLowerCase().includes(query) ||
-            item.brand.toLowerCase().includes(query)
-        )
-    );
-  }, [packages, searchQuery]);
+    let filtered = packages;
+    
+    // Filter by search query if provided
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = packages.filter(
+        (pkg) =>
+          pkg.name.toLowerCase().includes(query) ||
+          pkg.description?.toLowerCase().includes(query) ||
+          pkg.items?.some(
+            (item) =>
+              item.productName.toLowerCase().includes(query) ||
+              item.brand.toLowerCase().includes(query)
+          )
+      );
+    }
+    
+    // Sort by expiry date: packages with expiring products first (FEFO)
+    return filtered.sort((a, b) => {
+      const aExpiry = packageExpiryCache[a.id];
+      const bExpiry = packageExpiryCache[b.id];
+      
+      // Packages with expiry dates come first
+      if (aExpiry !== null && bExpiry === null) return -1;
+      if (aExpiry === null && bExpiry !== null) return 1;
+      
+      // Both have expiry dates: sort by earliest expiry (FEFO)
+      if (aExpiry !== null && bExpiry !== null) {
+        return aExpiry - bExpiry;
+      }
+      
+      // Neither has expiry date: sort by name
+      return a.name.localeCompare(b.name);
+    });
+  }, [packages, searchQuery, packageExpiryCache]);
 
   const paginatedPackages = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;

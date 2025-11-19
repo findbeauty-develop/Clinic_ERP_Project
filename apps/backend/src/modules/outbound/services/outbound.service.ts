@@ -651,60 +651,84 @@ export class OutboundService {
       };
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const createdOutbounds = [];
-      const logs = [];
+    return this.prisma.$transaction(
+      async (tx) => {
+        const createdOutbounds = [];
+        const logs = [];
 
-      for (const item of validItems) {
+        for (const item of validItems) {
         const batch = batches.find(
           (b: { id: string; product_id: string }) =>
             b.id === item.batchId && b.product_id === item.productId
         );
 
-        // Outbound record yaratish
-        const outbound = await (tx as any).outbound.create({
-          data: {
-            tenant_id: tenantId,
-            product_id: item.productId,
-            batch_id: item.batchId,
-            batch_no: batch!.batch_no,
-            outbound_qty: item.outboundQty,
-            outbound_type: dto.outboundType,
-            manager_name: dto.managerName,
-            patient_name: dto.patientName ?? null,
-            chart_number: dto.chartNumber ?? null,
-            is_damaged: false,
-            is_defective: false,
-            memo: dto.memo ?? null,
-            package_id: item.packageId ?? null,
-            created_by: null, // TODO: User ID qo'shish
-          },
-        });
+        if (!batch) {
+          failedItems.push(item);
+          continue;
+        }
 
-        // Stock deduction
-        await this.deductStock(
-          item.batchId,
-          item.outboundQty,
-          item.productId,
-          tenantId,
-          tx as any
-        );
+        try {
+          // Outbound record yaratish
+          const outbound = await (tx as any).outbound.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: item.productId,
+              batch_id: item.batchId,
+              batch_no: batch.batch_no,
+              outbound_qty: item.outboundQty,
+              outbound_type: dto.outboundType,
+              manager_name: dto.managerName,
+              patient_name: dto.patientName ?? null,
+              chart_number: dto.chartNumber ?? null,
+              is_damaged: false,
+              is_defective: false,
+              memo: dto.memo ?? null,
+              package_id: item.packageId ?? null,
+              created_by: null, // TODO: User ID qo'shish
+            },
+          });
 
-        // 출고 로그 생성
-        const log = {
-          outboundId: outbound.id,
-          outboundType: dto.outboundType,
-          timestamp: new Date().toISOString(),
-          managerName: dto.managerName,
-          productId: item.productId,
-          batchId: item.batchId,
-          batchNo: batch!.batch_no,
-          quantity: item.outboundQty,
-          status: "success",
-        };
-        logs.push(log);
+          // Stock deduction
+          await this.deductStock(
+            item.batchId,
+            item.outboundQty,
+            item.productId,
+            tenantId,
+            tx
+          );
 
-        createdOutbounds.push(outbound);
+          // 출고 로그 생성
+          const log = {
+            outboundId: outbound.id,
+            outboundType: dto.outboundType,
+            timestamp: new Date().toISOString(),
+            managerName: dto.managerName,
+            productId: item.productId,
+            batchId: item.batchId,
+            batchNo: batch.batch_no,
+            quantity: item.outboundQty,
+            status: "success",
+          };
+          logs.push(log);
+
+          createdOutbounds.push(outbound);
+        } catch (error) {
+          // Transaction ichida xato bo'lsa, itemni failed qilish
+          console.error(`Failed to process outbound for item ${item.productId}:`, error);
+          failedItems.push(item);
+          logs.push({
+            outboundId: null,
+            outboundType: dto.outboundType,
+            timestamp: new Date().toISOString(),
+            managerName: dto.managerName,
+            productId: item.productId,
+            batchId: item.batchId,
+            batchNo: batch.batch_no,
+            quantity: item.outboundQty,
+            status: "failed",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
 
       // 실패한 항목lar uchun log
@@ -723,17 +747,22 @@ export class OutboundService {
         });
       }
 
-      return {
-        success: true,
-        outboundIds: createdOutbounds.map((o: any) => o.id),
-        failedItems: failedItems.length > 0 ? failedItems : undefined,
-        logs,
-        message:
-          failedItems.length > 0
-            ? `${validItems.length} items processed successfully, ${failedItems.length} items failed`
-            : "All items processed successfully",
-      };
-    });
+        return {
+          success: true,
+          outboundIds: createdOutbounds.map((o: any) => o.id),
+          failedItems: failedItems.length > 0 ? failedItems : undefined,
+          logs,
+          message:
+            failedItems.length > 0
+              ? `${validItems.length} items processed successfully, ${failedItems.length} items failed`
+              : "All items processed successfully",
+        };
+      },
+      {
+        maxWait: 10000, // 10 seconds max wait for transaction
+        timeout: 30000, // 30 seconds timeout for transaction
+      }
+    );
   }
 
   /**
@@ -744,7 +773,7 @@ export class OutboundService {
     outboundQty: number,
     productId: string,
     tenantId: string,
-    tx: any
+    tx: Prisma.TransactionClient
   ): Promise<void> {
     // 1. Batch qty ni kamaytirish
     await tx.batch.update({

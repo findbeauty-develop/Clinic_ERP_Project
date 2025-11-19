@@ -82,6 +82,16 @@ export class PackageRepository {
     });
   }
 
+  findByName(name: string, tenantId: string, tx?: Prisma.TransactionClient) {
+    const client = this.getClient(tx) as any;
+    return client.package.findFirst({
+      where: {
+        name: name,
+        tenant_id: tenantId,
+      },
+    });
+  }
+
   findById(id: string, tenantId: string, tx?: Prisma.TransactionClient) {
     const client = this.getClient(tx) as any;
     return client.package.findFirst({

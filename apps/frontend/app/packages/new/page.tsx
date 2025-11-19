@@ -134,19 +134,32 @@ export default function PackageNewPage() {
     });
   };
 
-  const removeSelectedItem = (productId: string) => {
-    setSelectedItems((prev) =>
-      prev.filter((item) => item.productId !== productId)
-    );
-    // Also reset quantity in products list
-    const product = products.find((p) => p.id === productId);
-    if (product) {
+  const decreaseSelectedItem = (item: SelectedItem) => {
+    const newQuantity = item.quantity - 1;
+    if (newQuantity <= 0) {
+      // Remove from selected items if quantity reaches 0
+      setSelectedItems((prev) =>
+        prev.filter((selectedItem) => selectedItem.productId !== item.productId)
+      );
+      // Also reset quantity in products list
+      const product = products.find((p) => p.id === item.productId);
+      if (product) {
+        handleQuantityChange(
+          item.productId,
+          item.productName,
+          item.brand,
+          item.unit,
+          0
+        );
+      }
+    } else {
+      // Decrease quantity by 1
       handleQuantityChange(
-        productId,
-        product.productName,
-        product.brand,
-        product.unit || "개",
-        0
+        item.productId,
+        item.productName,
+        item.brand,
+        item.unit,
+        newQuantity
       );
     }
   };
@@ -169,7 +182,21 @@ export default function PackageNewPage() {
 
     setSubmitting(true);
     try {
-      // Check for duplicate package
+      // Check for duplicate package name
+      const nameCheck = await apiPost<{
+        exists: boolean;
+        existingPackage?: { id: string; name: string };
+      }>(`${apiUrl}/packages/check-name`, {
+        name: packageName.trim(),
+      });
+
+      if (nameCheck.exists) {
+        alert("동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요.");
+        setSubmitting(false);
+        return;
+      }
+
+      // Check for duplicate package composition
       const duplicateCheck = await apiPost<{
         isDuplicate: boolean;
         existingPackage?: { id: string; name: string };
@@ -400,8 +427,7 @@ export default function PackageNewPage() {
                   className="h-11 w-full rounded-xl border-2 border-red-500 bg-white px-4 text-sm text-slate-700 transition focus:border-red-600 focus:outline-none dark:border-red-500 dark:bg-slate-900 dark:text-slate-200"
                 />
                 {showSuggestions && packageNameSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                    {packageNameSuggestions.map((suggestion, idx) => (
+                  <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">                    {packageNameSuggestions.map((suggestion, idx) => (
                       <button
                         key={idx}
                         onClick={() => handlePackageNameSelect(suggestion)}
@@ -440,7 +466,7 @@ export default function PackageNewPage() {
                           </span>
                         </div>
                         <button
-                          onClick={() => removeSelectedItem(item.productId)}
+                          onClick={() => decreaseSelectedItem(item)}
                           className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                         >
                           <svg
@@ -453,7 +479,7 @@ export default function PackageNewPage() {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
+                              d="M20 12H4"
                             />
                           </svg>
                         </button>

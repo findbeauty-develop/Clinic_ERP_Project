@@ -91,6 +91,31 @@ export class PackageController {
     );
   }
 
+  @Post("check-name")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "패키지 이름 존재 여부 체크",
+    description: "패키지 이름 중복 체크",
+  })
+  checkPackageName(
+    @Body() body: { name: string },
+    @Query("excludeId") excludeId: string | undefined,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    if (!body.name) {
+      throw new BadRequestException("Package name is required");
+    }
+    return this.packageService.checkPackageNameExists(
+      body.name,
+      tenantId,
+      excludeId
+    );
+  }
+
   @Get(":id")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
