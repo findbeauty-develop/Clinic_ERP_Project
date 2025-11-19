@@ -319,7 +319,7 @@ export class ProductsService {
           capacity_per_product: dto.capacityPerProduct ?? (existing as any).capacity_per_product,
           capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
           usage_capacity: dto.usageCapacity ?? (existing as any).usage_capacity,
-        },
+        } as any,
       });
 
       if (dto.returnPolicy) {
@@ -402,7 +402,7 @@ export class ProductsService {
                 ? new Date(batch.expiry_date)
                 : null,
               alert_days: batch.alert_days ?? null,
-            },
+            } as any,
           });
         }
       }
