@@ -63,7 +63,7 @@ export default function PackageOutboundPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const itemsPerPage = 5;
   
   // Outbound processing form state
   const [managerName, setManagerName] = useState("");
@@ -78,6 +78,11 @@ export default function PackageOutboundPage() {
   useEffect(() => {
     fetchPackages();
   }, []);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -125,38 +130,76 @@ export default function PackageOutboundPage() {
   };
 
   const handleAddToOutbound = async (pkg: PackageForOutbound) => {
-    // Auto-add package items to scheduled list when + button is clicked
-    const items = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`);
-    const newScheduledItems: ScheduledItem[] = [];
+    // Check if package already exists in scheduled items
+    const existingPackageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
     
-    items.forEach((item) => {
-      // Get first batch (FEFO sorted)
-      const firstBatch = item.batches[0];
-      if (firstBatch && firstBatch.qty > 0) {
-        newScheduledItems.push({
-          productId: item.productId,
-          productName: item.productName,
-          batchId: firstBatch.id,
-          batchNo: firstBatch.batchNo,
-          quantity: item.packageQuantity, // 패키지당 수량
-          unit: item.unit,
-          packageId: pkg.id,
-          packageName: pkg.name,
-          isPackageItem: true,
+    if (existingPackageItems.length > 0) {
+      // Package already exists, just increment count (don't add duplicate items)
+      setPackageCounts((prev) => ({
+        ...prev,
+        [pkg.id]: (prev[pkg.id] || 0) + 1,
+      }));
+      // Don't add more items - just update the count
+      return;
+    }
+    
+    // New package - add items immediately (optimistic update)
+    if (pkg.items && pkg.items.length > 0) {
+      const timestamp = Date.now();
+      const optimisticItems: ScheduledItem[] = pkg.items.map((item, idx) => ({
+        productId: item.productId,
+        productName: item.productName,
+        batchId: `temp-${pkg.id}-${item.productId}-${timestamp}-${idx}`, // Unique temporary batch ID
+        batchNo: "로딩중...", // Will be updated when batch info loads
+        quantity: item.quantity,
+        unit: item.unit,
+        packageId: pkg.id,
+        packageName: pkg.name,
+        isPackageItem: true,
+      }));
+
+      // Add items to the beginning of the list (newest first)
+      setScheduledItems((prev) => [...optimisticItems, ...prev]);
+      
+      // Update package count immediately
+      setPackageCounts((prev) => ({
+        ...prev,
+        [pkg.id]: (prev[pkg.id] || 0) + 1,
+      }));
+
+      // Fetch batch information in background and update (non-blocking)
+      apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
+        .then((itemsWithBatches) => {
+          // Update scheduled items with real batch information
+          setScheduledItems((prev) => {
+            return prev.map((scheduledItem) => {
+              // Find matching optimistic item by packageId and productId
+              if (scheduledItem.packageId === pkg.id && scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)) {
+                const itemWithBatch = itemsWithBatches.find(
+                  (item) => item.productId === scheduledItem.productId
+                );
+                
+                if (itemWithBatch) {
+                  const firstBatch = itemWithBatch.batches[0];
+                  if (firstBatch && firstBatch.qty > 0) {
+                    return {
+                      ...scheduledItem,
+                      batchId: firstBatch.id,
+                      batchNo: firstBatch.batchNo,
+                      quantity: itemWithBatch.packageQuantity, // Use package quantity from API
+                    };
+                  }
+                }
+              }
+              return scheduledItem;
+            });
+          });
+        })
+        .catch((err) => {
+          console.error("Failed to load package items with batches", err);
+          // Keep optimistic items, user can still proceed
         });
-      }
-    });
-    
-    setScheduledItems((prev) => {
-      // Add new items (don't remove existing, allow multiple additions)
-      return [...prev, ...newScheduledItems];
-    });
-    
-    // Update package count
-    setPackageCounts((prev) => ({
-      ...prev,
-      [pkg.id]: (prev[pkg.id] || 0) + 1,
-    }));
+    }
   };
 
   const handleQuantityChange = (
@@ -210,15 +253,27 @@ export default function PackageOutboundPage() {
 
     setSubmitting(true);
     try {
+      // Group items by package to multiply quantity by package count
+      const itemsByPackage = scheduledItems.reduce((acc, item) => {
+        const key = `${item.packageId}-${item.productId}-${item.batchId}`;
+        if (!acc[key]) {
+          acc[key] = {
+            ...item,
+            quantity: item.quantity * (packageCounts[item.packageId] || 1), // Multiply by package count
+          };
+        }
+        return acc;
+      }, {} as Record<string, ScheduledItem & { quantity: number }>);
+
       // Use unified outbound API for package outbound
       const payload = {
         outboundType: "패키지",
         managerName: managerName.trim(),
         memo: additionalMemo.trim() || undefined,
-        items: scheduledItems.map((item) => ({
+        items: Object.values(itemsByPackage).map((item) => ({
           productId: item.productId,
           batchId: item.batchId,
-          outboundQty: item.quantity,
+          outboundQty: item.quantity, // Already multiplied by package count
           packageId: item.packageId, // 패키지 ID 포함
         })),
       };
@@ -383,21 +438,13 @@ export default function PackageOutboundPage() {
           {/* Left Panel - Package List */}
           <div className="space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  전체 패키지
-                </h2>
-                <Link
-                  href="/packages/new"
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  새 패키지등록
-                </Link>
-              </div>
+              <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+                전체 패키지
+              </h2>
 
-              {/* Search Bar */}
-              <div className="mb-4">
-                <div className="relative">
+              {/* Search Bar and New Package Registration Button */}
+              <div className="mb-4 flex gap-3">
+                <div className="relative flex-1">
                   <input
                     type="text"
                     placeholder="패키지명, 제품명으로 검색..."
@@ -422,6 +469,12 @@ export default function PackageOutboundPage() {
                     />
                   </svg>
                 </div>
+                <Link
+                  href="/packages/new"
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 flex items-center justify-center whitespace-nowrap"
+                >
+                  새 패키지등록
+                </Link>
               </div>
 
               {loading ? (
@@ -541,9 +594,7 @@ export default function PackageOutboundPage() {
                               >
                                 +
                               </button>
-                              <span className="ml-2 text-sm text-slate-700 dark:text-slate-200">
-                                단위
-                              </span>
+                             
                             </div>
                           </div>
                         </div>
@@ -732,10 +783,31 @@ export default function PackageOutboundPage() {
                           return acc;
                         }, {} as Record<string, { packageId: string; packageName: string; items: ScheduledItem[] }>);
 
-                        return Object.values(groupedByPackage).map((group, groupIdx) => {
-                          // Count packages (if multiple items from same package, it's one package)
+                        // Get packages in order (newest first) based on when they were added
+                        // Since we add new items to the beginning of scheduledItems array,
+                        // the first occurrence of each packageId represents the newest package
+                        const packageOrder: string[] = [];
+                        scheduledItems.forEach((item) => {
+                          if (item.packageId && !packageOrder.includes(item.packageId)) {
+                            packageOrder.push(item.packageId);
+                          }
+                        });
+                        
+                        // packageOrder already has newest first (because scheduledItems has newest items first)
+                        // So we don't need to reverse - just map in the same order
+                        const orderedPackages = packageOrder.map((pkgId) => groupedByPackage[pkgId]).filter(Boolean);
+
+                        return orderedPackages.map((group, groupIdx) => {
+                          // Count packages - use packageCounts to show how many times package was added
                           const packageCount = packageCounts[group.packageId] || 1;
-                          const totalQuantity = group.items.reduce((sum, item) => sum + item.quantity, 0);
+                          // Show only unique items (first occurrence of each product-batch combination)
+                          const uniqueItems = group.items.reduce((acc, item) => {
+                            const key = `${item.productId}-${item.batchId}`;
+                            if (!acc[key]) {
+                              acc[key] = item;
+                            }
+                            return acc;
+                          }, {} as Record<string, ScheduledItem>);
                           const firstItem = group.items[0];
                           const unit = firstItem.unit || '세트';
 
@@ -776,9 +848,9 @@ export default function PackageOutboundPage() {
                               </div>
 
                               {/* Package Items (Components) */}
-                              {group.items.length > 0 && (
+                              {Object.values(uniqueItems).length > 0 && (
                                 <div className="mt-2 ml-2 space-y-1">
-                                  {group.items.map((item, itemIdx) => (
+                                  {Object.values(uniqueItems).map((item, itemIdx) => (
                                     <div
                                       key={`${item.productId}-${item.batchId}-${itemIdx}`}
                                       className="flex items-center justify-between text-sm"
@@ -793,7 +865,7 @@ export default function PackageOutboundPage() {
                                         </span>
                                       </div>
                                       <span className="text-sm text-slate-600 dark:text-slate-400">
-                                        {item.quantity}{item.unit}
+                                        {item.quantity * packageCount}{item.unit}
                                       </span>
                                     </div>
                                   ))}
