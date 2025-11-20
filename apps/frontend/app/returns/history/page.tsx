@@ -99,10 +99,10 @@ export default function ReturnHistoryPage() {
       const key = `${item.supplierName || "unknown"}-${item.managerName || "unknown"}-${item.outboundDate || "unknown"}`;
       if (!groups[key]) {
         groups[key] = {
-          supplierName: item.supplierName,
-          managerName: item.managerName,
-          outboundDate: item.outboundDate,
-          outboundManager: item.outboundManager,
+          supplierName: item.supplierName ?? null,
+          managerName: item.managerName ?? null,
+          outboundDate: item.outboundDate ?? null,
+          outboundManager: item.outboundManager ?? null,
           items: [],
           totalAmount: 0,
         };

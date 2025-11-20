@@ -384,45 +384,43 @@ function ProductCard({
               batches.map((batch, index) => (
                 <div
                   key={`${batch.batch_no}-${index}`}
-                  className="mb-3 flex items-center justify-between gap-4 rounded-xl bg-white px-4 py-3 text-sm text-slate-600 last:mb-0 dark:bg-slate-900/70 dark:text-slate-300"
+                  className="mb-3 flex flex-col gap-2 rounded-xl bg-white px-4 py-3 text-sm text-slate-600 last:mb-0 dark:bg-slate-900/70 dark:text-slate-300"
                 >
-                  {/* Chap taraf - Batch ma'lumotlari */}
-                  <div className="flex flex-col gap-2 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800 dark:text-white">
-                        Batch:
-                      </span>
-                      <span className="font-semibold text-slate-800 dark:text-white">
-                        {batch.batch_no}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                      {batch.보관위치 && (
-                        <span className="inline-flex items-center gap-1">
-                          <WarehouseIcon className="h-3.5 w-3.5" />
-                          보관위치: {batch.보관위치}
-                        </span>
-                      )}
-                      <span className="inline-flex items-center gap-1">
-                        <CalendarIcon className="h-3.5 w-3.5" />
-                        입고 날짜:{" "}
-                        {new Date(batch.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {batch.유효기간 && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        유효기간: {batch.유효기간}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* O'ng taraf - 입고 수량 */}
-                  <div className="flex-shrink-0 flex items-baseline gap-1 text-right">
-                    <span className="text-lg font-bold text-slate-900 dark:text-white">
-                      {batch["입고 수량"]?.toLocaleString() ?? 0}
+                  {/* Batch raqami - alohida row */}
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800 dark:text-white">
+                      Batch:
                     </span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {product.unit ?? "EA"}
+                    <span className="font-semibold text-slate-800 dark:text-white">
+                      {batch.batch_no}
+                    </span>
+                  </div>
+                  
+                  {/* Barcha ma'lumotlar bitta row'da */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                    {batch.보관위치 && (
+                      <span className="inline-flex items-center gap-1">
+                        <WarehouseIcon className="h-3.5 w-3.5" />
+                        보관위치: {batch.보관위치}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      입고 날짜:{" "}
+                      {new Date(batch.created_at).toLocaleDateString()}
+                    </span>
+                    {batch.유효기간 && (
+                      <span className="inline-flex items-center gap-1">
+                        유효기간: {batch.유효기간}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 ml-auto">
+                      <span className="text-base font-bold text-slate-900 dark:text-white">
+                        {batch["입고 수량"]?.toLocaleString() ?? 0}
+                      </span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {product.unit ?? "EA"}
+                      </span>
                     </span>
                   </div>
                 </div>

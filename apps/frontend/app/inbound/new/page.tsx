@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -21,7 +21,18 @@ const barcodeMethods = [
 
 const inboundManagers = ["성함 선택", "김도훈", "이지은", "한지민"];
 const statusOptions = ["활성", "재고 부족", "만료", "단종"];
-const unitOptions = ["단위 선택", "개", "ml", "g","세트","박스","병"];
+const unitOptions = [
+  "단위 선택",
+  "cc / mL",
+  "unit / U",
+  "mg",
+  "vial/bottel",
+  "shot",
+  "ea",
+  "box",
+  "set",
+  "roll"
+];
 
 export default function InboundNewPage() {
   const router = useRouter();
@@ -31,6 +42,7 @@ export default function InboundNewPage() {
   const [isReturnable, setIsReturnable] = useState<boolean>(true);
   const [selectedManager, setSelectedManager] = useState<string>(inboundManagers[0]);
   const [loading, setLoading] = useState(false);
+  const [supplierManagers, setSupplierManagers] = useState<Array<{ id: string; name: string; clinicName?: string; fullName?: string; displayName: string }>>([]);
   const [inboundDate, setInboundDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -49,13 +61,18 @@ export default function InboundNewPage() {
     isActive: true,
     isUrgent: false, 
     currentStock: 0,
+    currentStockUnit: unitOptions[1] || "cc / mL", // Default to first real unit
     minStock: 0,
+    minStockUnit: unitOptions[1] || "cc / mL",
     unit: unitOptions[0],
     capacityPerProduct: 0,
-    capacityUnit: unitOptions[0],
+    capacityUnit: unitOptions[1] || "cc / mL",
     usageCapacity: 0,
     purchasePrice: "",
+    purchasePriceUnit: unitOptions[1] || "cc / mL",
     salePrice: "",
+    salePriceUnit: unitOptions[1] || "cc / mL",
+    usageSalePrice: "", // 사용량에 대한 별도 판매가
     // Return policy
     refundAmount: "",
     returnStorage: "",
@@ -80,7 +97,19 @@ export default function InboundNewPage() {
   });
 
   const handleInputChange = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      
+      // 현재 재고 unit tanlanganda, boshqa unit'larni avtomatik o'zgartirish
+      if (field === "currentStockUnit") {
+        newData.capacityUnit = value;
+        newData.minStockUnit = value;
+        newData.purchasePriceUnit = value;
+        newData.salePriceUnit = value;
+      }
+      
+      return newData;
+    });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +160,9 @@ export default function InboundNewPage() {
       }
       if (formData.salePrice) {
         payload.salePrice = Number(formData.salePrice);
+      }
+      if (formData.usageSalePrice && formData.usageCapacity && formData.usageCapacity > 0) {
+        payload.usageSalePrice = Number(formData.usageSalePrice);
       }
 
       // Add optional fields
@@ -378,16 +410,72 @@ export default function InboundNewPage() {
                   {/* Stock and Capacity Grid - 2x2 Layout */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Top Row - Stock Fields */}
-                    <NumberField
-                      label="현재 재고"
-                      value={formData.currentStock}
-                      onChange={(value) => handleInputChange("currentStock", value)}
-                    />
-                    <NumberField
-                      label="최소 재고 *"
-                      value={formData.minStock}
-                      onChange={(value) => handleInputChange("minStock", value)}
-                    />
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        현재 재고
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.currentStock || ""}
+                          onChange={(e) => handleInputChange("currentStock", e.target.value ? Number(e.target.value) : 0)}
+                          placeholder="0"
+                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                        <div className="relative w-28">
+                          <select
+                            value={formData.currentStockUnit}
+                            onChange={(e) => handleInputChange("currentStockUnit", e.target.value)}
+                            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {unitOptions.slice(1).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        최소 재고 *
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.minStock || ""}
+                          onChange={(e) => handleInputChange("minStock", e.target.value ? Number(e.target.value) : 0)}
+                          placeholder="0"
+                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                        <div className="relative w-28">
+                          <select
+                            value={formData.minStockUnit}
+                            onChange={(e) => handleInputChange("minStockUnit", e.target.value)}
+                            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {unitOptions.slice(1).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                            <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     
                     {/* Bottom Row - Capacity Fields */}
                     <div>
@@ -409,7 +497,7 @@ export default function InboundNewPage() {
                             onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
                             className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           >
-                            {unitOptions.map((option) => (
+                            {unitOptions.slice(1).map((option) => (
                               <option key={option} value={option}>
                                 {option}
                               </option>
@@ -434,7 +522,7 @@ export default function InboundNewPage() {
                           min="0"
                           value={formData.usageCapacity || ""}
                           onChange={(e) => handleInputChange("usageCapacity", e.target.value ? Number(e.target.value) : 0)}
-                          placeholder="0"
+                          placeholder="전제 사용 아닌 경우,실제 사용량을 입력하세요"
                           className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                         />
                         <div className="relative w-28">
@@ -443,7 +531,7 @@ export default function InboundNewPage() {
                             onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
                             className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           >
-                            {unitOptions.map((option) => (
+                            {unitOptions.slice(1).map((option) => (
                               <option key={option} value={option}>
                                 {option}
                               </option>
@@ -471,45 +559,127 @@ export default function InboundNewPage() {
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid gap-6 md:grid-cols-2">
-              <InputField
-                label="구매가 (원)"
-                placeholder="0"
-                value={formData.purchasePrice}
-                onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
-                inputProps={{ type: "number", min: 0 }}
-              />
-              <InputField
-                label="판매가 (원)"
-                placeholder="0"
-                value={formData.salePrice}
-                onChange={(e) => handleInputChange("salePrice", e.target.value)}
-                inputProps={{ type: "number", min: 0 }}
-              />
-            </div>
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                공급업체로부터 구매하는 가격
-              </div>
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                고객에게 판매하는 가격
-              </div>
-            </div>
-            <div className="mt-6 grid gap-6 md:grid-cols-2">
               <div>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">단위</span>
-                <select
-                  value={formData.unit}
-                  onChange={(e) => handleInputChange("unit", e.target.value)}
-                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  {unitOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  구매가
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={formData.purchasePrice}
+                    onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  <div className="relative w-28">
+                    <select
+                      value={formData.purchasePriceUnit}
+                      onChange={(e) => handleInputChange("purchasePriceUnit", e.target.value)}
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      {unitOptions.slice(1).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  공급업체로부터 구매하는 가격
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  판매가
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={formData.salePrice}
+                    onChange={(e) => handleInputChange("salePrice", e.target.value)}
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  <div className="relative w-28">
+                    <select
+                      value={formData.salePriceUnit}
+                      onChange={(e) => handleInputChange("salePriceUnit", e.target.value)}
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      {unitOptions.slice(1).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  고객에게 판매하는 가격
+                </div>
               </div>
             </div>
+            
+            {/* 사용량에 대한 별도 판매가 - 사용량이 입력된 경우에만 표시 */}
+            {  formData.usageCapacity > 0 && (
+              <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-700 dark:bg-sky-900/20">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold text-sky-700 dark:text-sky-300">
+                    용기 용량이 아닌 단위로 사용할 경우
+                  </span>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    사용량 단위 판매가 ({formData.capacityUnit})
+                  </label>
+                  <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={formData.purchasePrice || ""}
+                    onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                    <div className="relative w-28">
+                      <select
+                        value={formData.capacityUnit}
+                        disabled
+                        className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-100 px-3 pr-8 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                      >
+                        <option value={formData.capacityUnit}>{formData.capacityUnit}</option>
+                      </select>
+                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    사용량 단위({formData.capacityUnit})에 대한 별도 판매가를 입력하세요
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -529,9 +699,18 @@ export default function InboundNewPage() {
             <div className="mt-6 space-y-6">
               <SelectField
                 label="기존 담당자를 선택하거나 새로 입력하세요"
-                options={["새 담당자 등록", "김도훈 차장", "이지은 대리"]}
-                value={formData.supplierId}
-                onChange={(value) => handleInputChange("supplierId", value)}
+                options={supplierManagers.map(m => m.displayName)}
+                value={supplierManagers.find(m => m.id === formData.supplierId)?.displayName || ""}
+                onChange={(value) => {
+                  const selectedManager = supplierManagers.find(m => m.displayName === value);
+                  if (selectedManager) {
+                    handleInputChange("supplierId", selectedManager.id);
+                    // If not "새 담당자 등록", auto-fill contact name
+                    if (selectedManager.id !== "new" && selectedManager.fullName) {
+                      handleInputChange("supplierContactName", selectedManager.fullName);
+                    }
+                  }
+                }}
               />
               <InputField
                 label="공급업체명"

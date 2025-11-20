@@ -335,7 +335,7 @@ export default function OutboundHistoryPage() {
                                   </div>
                                   <div>
                                     {item.managerName || item.manager_name}에 의한 출고
-                                    {(batch?.batchNo || batch?.batch_no) && ` (배치: ${batch.batchNo || batch.batch_no})`}
+                                    {(batch?.batchNo || batch?.batch_no) && ` (${batch.batchNo || batch.batch_no})`}
                                     {(item.patientName || item.patient_name) && ` - 환자: ${item.patientName || item.patient_name}`}
                                     {(item.chartNumber || item.chart_number) && ` (차트번호: ${item.chartNumber || item.chart_number})`}
                                     {item.memo && !isDamaged && !isDefective && ` - ${item.memo}`}

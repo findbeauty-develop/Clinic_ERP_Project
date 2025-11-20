@@ -2120,7 +2120,7 @@ function ProductCard({
                       {product.productName}
                     </h3>
                     <span className="text-base font-bold text-slate-900 dark:text-white">
-                      배치:{batch.batch_no}
+                      {batch.batch_no}
                     </span>
                     {batch.isExpiringSoon && (
                       <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
