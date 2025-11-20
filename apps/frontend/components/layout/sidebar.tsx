@@ -106,7 +106,7 @@ const navItems = [
     ),
   },
   {
-    href: "/orders",
+    href: "/order",
     label: "주문 관리",
     icon: (
       <svg
