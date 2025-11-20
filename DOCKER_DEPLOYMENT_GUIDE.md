@@ -30,33 +30,54 @@ docker login
 
 ### Backend Image Build:
 
+**⚠️ MUHIM: Multi-platform build qilish kerak (VPS linux/amd64 architecture'da ishlaydi)**
+
 ```bash
 # Project root directory'da
 cd /Users/Development/Desktop/Clinic\ ERP\ project
 
-# Backend image'ni build qilish
-docker build -f apps/backend/Dockerfile -t findbeauty/clinic-backend:latest .
+# Docker buildx'ni faollashtirish (bir marta)
+docker buildx create --use --name multiarch-builder || docker buildx use multiarch-builder
 
-# Yoki versiya bilan:
-docker build -f apps/backend/Dockerfile -t findbeauty/clinic-backend:v1.0.0 .
+# Backend image'ni multi-platform build qilish (linux/amd64 uchun)
+docker buildx build \
+  --platform linux/amd64 \
+  -f apps/backend/Dockerfile \
+  -t findbeauty/clinic-backend:latest \
+  --push .
+
+# Yoki faqat local build (push qilmasdan):
+docker buildx build \
+  --platform linux/amd64 \
+  -f apps/backend/Dockerfile \
+  -t findbeauty/clinic-backend:latest \
+  --load .
 ```
 
 ### Frontend Image Build:
 
-```bash
-# Frontend image'ni build qilish
-# NEXT_PUBLIC_API_URL ni build vaqtida berish kerak
-docker build \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.yourdomain.com \
-  -f apps/frontend/Dockerfile \
-  -t findbeauty/clinic-frontend:latest .
+**⚠️ MUHIM: Multi-platform build qilish kerak**
 
-# Yoki versiya bilan:
-docker build \
+```bash
+# Frontend image'ni multi-platform build qilish
+# NEXT_PUBLIC_API_URL ni build vaqtida berish kerak
+docker buildx build \
+  --platform linux/amd64 \
   --build-arg NEXT_PUBLIC_API_URL=https://api.yourdomain.com \
   -f apps/frontend/Dockerfile \
-  -t findbeauty/clinic-frontend:v1.0.0 .
+  -t findbeauty/clinic-frontend:latest \
+  --push .
+
+# Yoki faqat local build (push qilmasdan):
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL=https://api.yourdomain.com \
+  -f apps/frontend/Dockerfile \
+  -t findbeauty/clinic-frontend:latest \
+  --load .
 ```
+
+**Eslatma:** `--push` flag'i bilan to'g'ridan-to'g'ri Docker Hub'ga push qiladi. Agar avval local'da test qilmoqchi bo'lsangiz, `--load` ishlating.
 
 **Eslatma:** `NEXT_PUBLIC_API_URL` backend API URL'ini ko'rsatishi kerak (masalan: `https://api.yourdomain.com` yoki `http://your-vps-ip:3000`)
 
@@ -334,7 +355,29 @@ docker stats
 
 ## 🎯 Tez Reference
 
-### Local Build va Push:
+### Local Build va Push (Multi-platform):
+
+```bash
+# Buildx'ni faollashtirish (bir marta)
+docker buildx create --use --name multiarch-builder || docker buildx use multiarch-builder
+
+# Backend
+docker buildx build \
+  --platform linux/amd64 \
+  -f apps/backend/Dockerfile \
+  -t findbeauty/clinic-backend:latest \
+  --push .
+
+# Frontend
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL=https://api.yourdomain.com \
+  -f apps/frontend/Dockerfile \
+  -t findbeauty/clinic-frontend:latest \
+  --push .
+```
+
+### Agar buildx ishlamasa (Eski usul - faqat local platform):
 
 ```bash
 # Backend

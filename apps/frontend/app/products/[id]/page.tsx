@@ -749,36 +749,34 @@ function BatchListCard({ batches, unit }: { batches: ProductDetail["batches"]; u
           batches.map((batch) => (
             <div
               key={batch.id}
-              className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70"
+              className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70"
             >
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800 dark:text-white">Batch:</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-white">{batch.batch_no}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                  {batch.storage && (
-                    <span className="inline-flex items-center gap-1">
-                      <WarehouseIcon className="h-3.5 w-3.5" />
-                      보관위치: {batch.storage}
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1">
-                    <CalendarIcon className="h-3.5 w-3.5" />
-                    입고 날짜: {new Date(batch.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                {batch.expiry_date && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    유효기간: {typeof batch.expiry_date === 'string' ? batch.expiry_date : new Date(batch.expiry_date).toISOString().split('T')[0]}
-                  </p>
-                )}
+              {/* Batch nomi - alohida row */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-800 dark:text-white">Batch:</span>
+                <span className="text-sm font-semibold text-slate-800 dark:text-white">{batch.batch_no}</span>
               </div>
-              <div className="flex-shrink-0 text-right">
-                <div className="text-base font-bold text-slate-900 dark:text-white">
-                  {batch.qty.toLocaleString()}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">{unit}</div>
+              
+              {/* Barcha ma'lumotlar bitta row'da */}
+              <div className="flex items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                {batch.storage && (
+                  <span className="inline-flex items-center gap-1">
+                    <WarehouseIcon className="h-3.5 w-3.5" />
+                    보관위치: {batch.storage}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  입고 날짜: {new Date(batch.created_at).toLocaleDateString()}
+                </span>
+                {batch.expiry_date && (
+                  <span className="inline-flex items-center gap-1">
+                    유효기간: {typeof batch.expiry_date === 'string' ? batch.expiry_date : new Date(batch.expiry_date).toISOString().split('T')[0]}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-white ml-auto">
+                  {batch.qty.toLocaleString()} {unit}
+                </span>
               </div>
             </div>
           ))
