@@ -14,6 +14,7 @@ import {
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
 import { OrderProductsQueryDto } from "../dto/order-products-query.dto";
+import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 
 export interface ProductWithRisk {
   id: string;
@@ -263,6 +264,139 @@ export class OrderService {
   }
 
   /**
+   * Mahsulotlarni qidirish (pagination bilan, risk score bo'lmasa ham)
+   */
+  async searchProducts(
+    tenantId: string,
+    query: SearchProductsQueryDto
+  ): Promise<{
+    products: Array<{
+      id: string;
+      productName: string;
+      brand: string;
+      supplierId: string | null;
+      supplierName: string | null;
+      unitPrice: number | null;
+      totalStock: number;
+      unit: string | null;
+      batches: Array<{
+        batchNo: string;
+        qty: number;
+        expiryDate: string | null;
+        purchasePrice: number | null;
+      }>;
+    }>;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = {
+      tenant_id: tenantId,
+      is_active: true,
+    };
+
+    // Search filter
+    if (query.search) {
+      where.OR = [
+        { name: { contains: query.search, mode: "insensitive" } },
+        { brand: { contains: query.search, mode: "insensitive" } },
+        {
+          supplierProducts: {
+            some: {
+              supplier_id: { contains: query.search, mode: "insensitive" },
+            },
+          },
+        },
+      ];
+    }
+
+    // Supplier filter
+    if (query.supplierId) {
+      where.supplierProducts = {
+        some: {
+          supplier_id: query.supplierId,
+        },
+      };
+    }
+
+    // Total count
+    const total = await this.prisma.product.count({ where });
+
+    // Products olish
+    const products = await this.prisma.executeWithRetry(async () => {
+      return this.prisma.product.findMany({
+        where,
+        include: {
+          batches: {
+            where: {
+              qty: { gt: 0 }, // Faqat zaxirasi bor batch'lar
+            },
+            orderBy: [
+              { expiry_date: "asc" }, // FEFO
+              { created_at: "asc" },
+            ],
+          },
+          supplierProducts: {
+            orderBy: { created_at: "desc" },
+            take: 1, // Eng so'nggi supplier
+          },
+        },
+        orderBy: { created_at: "desc" },
+        skip,
+        take: limit,
+      });
+    });
+
+    const formattedProducts = products.map((product) => {
+      const supplier = product.supplierProducts?.[0];
+      const totalStock = product.batches.reduce(
+        (sum, batch) => sum + batch.qty,
+        0
+      );
+
+      return {
+        id: product.id,
+        productName: product.name,
+        brand: product.brand,
+        supplierId: supplier?.supplier_id ?? null,
+        supplierName: supplier?.supplier_id ?? null,
+        unitPrice: supplier?.purchase_price ?? product.purchase_price ?? null,
+        totalStock: totalStock,
+        unit: product.unit,
+        batches: product.batches.map((batch) => ({
+          batchNo: batch.batch_no,
+          qty: batch.qty,
+          expiryDate: batch.expiry_date
+            ? batch.expiry_date.toISOString().split("T")[0]
+            : null,
+          purchasePrice: batch.purchase_price ?? null,
+        })),
+      };
+    });
+
+    return {
+      products: formattedProducts,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
    * Order draft'ga item qo'shish
    */
   async addDraftItem(
@@ -369,6 +503,8 @@ export class OrderService {
         quantity: items[existingItemIndex].quantity + dto.quantity,
         totalPrice:
           (items[existingItemIndex].quantity + dto.quantity) * unitPrice,
+        // Mavjud item'ni yangilashda highlight flag o'chiriladi
+        isNewlyAdded: false,
       };
     } else {
       // Yangi item qo'shish
@@ -392,7 +528,10 @@ export class OrderService {
       expiresAt
     );
 
-    return this.formatDraftResponse(updatedDraft);
+    // Yangi qo'shilgan item'ni highlight qilish
+    const highlightItemIds = [itemId];
+
+    return this.formatDraftResponse(updatedDraft, highlightItemIds);
   }
 
   /**
@@ -722,15 +861,33 @@ export class OrderService {
   /**
    * Draft response formatlash
    */
-  private formatDraftResponse(draft: any): any {
+  private formatDraftResponse(draft: any, highlightItemIds?: string[]): any {
     const items = Array.isArray(draft.items) ? draft.items : [];
 
-    // Supplier bo'yicha grouping
+    // Supplier bo'yicha grouping (structure bilan)
     const supplierGroups: Record<string, any> = {};
     let totalAmount = 0;
 
+    // Item ID mapping (productId va batchId bo'yicha)
+    const itemIdMap: Record<string, any> = {};
+
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
+      
+      // Item ID mapping
+      const itemId = item.id;
+      itemIdMap[itemId] = {
+        productId: item.productId,
+        batchId: item.batchId || null,
+        supplierId: supplierId,
+        itemId: itemId,
+      };
+
+      // Highlight flag (yangi qo'shilgan yoki highlightItemIds'da bo'lsa)
+      const isHighlighted = 
+        item.isNewlyAdded || 
+        (highlightItemIds && highlightItemIds.includes(itemId));
+
       if (!supplierGroups[supplierId]) {
         supplierGroups[supplierId] = {
           supplierId: supplierId,
@@ -738,7 +895,14 @@ export class OrderService {
           totalAmount: 0,
         };
       }
-      supplierGroups[supplierId].items.push(item);
+
+      // Item'ga highlight flag qo'shish
+      const itemWithHighlight = {
+        ...item,
+        isHighlighted: isHighlighted,
+      };
+
+      supplierGroups[supplierId].items.push(itemWithHighlight);
       supplierGroups[supplierId].totalAmount += item.totalPrice || 0;
       totalAmount += item.totalPrice || 0;
     }
@@ -746,9 +910,25 @@ export class OrderService {
     return {
       id: draft.id,
       sessionId: draft.session_id,
-      items: items,
+      items: items.map((item: any) => ({
+        ...item,
+        isHighlighted: 
+          item.isNewlyAdded || 
+          (highlightItemIds && highlightItemIds.includes(item.id)),
+      })),
       totalAmount: totalAmount,
-      groupedBySupplier: Object.values(supplierGroups),
+      groupedBySupplier: Object.values(supplierGroups).map((group: any) => ({
+        ...group,
+        items: group.items.map((item: any) => ({
+          ...item,
+          // Structure bilan ma'lumotlar
+          productId: item.productId,
+          batchId: item.batchId || null,
+          supplierId: group.supplierId,
+          itemId: item.id,
+        })),
+      })),
+      itemIdMap: itemIdMap, // Mapping for easy lookup
       createdAt: draft.created_at,
       updatedAt: draft.updated_at,
       expiresAt: draft.expires_at,

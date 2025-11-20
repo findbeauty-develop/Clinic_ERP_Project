@@ -19,6 +19,7 @@ import {
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
 import { OrderProductsQueryDto } from "../dto/order-products-query.dto";
+import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReqUser } from "../../../common/decorators/req-user.decorator";
@@ -40,6 +41,18 @@ export class OrderController {
     @Query() query: OrderProductsQueryDto
   ): Promise<ProductWithRisk[]> {
     return this.orderService.getProductsForOrder(tenantId, query);
+  }
+
+  /**
+   * 기타제품 주문용 제품 검색 (Pagination bilan, risk score bo'lmasa ham)
+   */
+  @Get("products/search")
+  @ApiOperation({ summary: "Search products for additional order (with pagination)" })
+  async searchProducts(
+    @Tenant() tenantId: string,
+    @Query() query: SearchProductsQueryDto
+  ) {
+    return this.orderService.searchProducts(tenantId, query);
   }
 
   /**
