@@ -26,6 +26,7 @@ type GroupedReturnHistory = {
   managerName: string | null;
   outboundDate: string | null;
   outboundManager: string | null;
+  returnDate: string | null;
   items: ReturnHistoryItem[];
   totalAmount: number;
 };
@@ -95,14 +96,25 @@ export default function ReturnHistoryPage() {
     const groups: Record<string, GroupedReturnHistory> = {};
 
     historyData.forEach((item) => {
-      // Group by supplier, manager, and outbound date
-      const key = `${item.supplierName || "unknown"}-${item.managerName || "unknown"}-${item.outboundDate || "unknown"}`;
+      // Group by return date (bir vaqtda return qilingan maxsulotlar bitta card'da)
+      // Agar return date bir xil bo'lsa, bitta card'da ko'rsatiladi
+      const returnDateKey = item.returnDate 
+        ? new Date(item.returnDate).toLocaleDateString("ko-KR", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          })
+        : "unknown";
+      
+      const key = `${returnDateKey}-${item.supplierName || "unknown"}-${item.managerName || "unknown"}`;
+      
       if (!groups[key]) {
         groups[key] = {
           supplierName: item.supplierName ?? null,
           managerName: item.managerName ?? null,
           outboundDate: item.outboundDate ?? null,
           outboundManager: item.outboundManager ?? null,
+          returnDate: item.returnDate ?? null,
           items: [],
           totalAmount: 0,
         };
@@ -111,10 +123,10 @@ export default function ReturnHistoryPage() {
       groups[key].totalAmount += item.totalRefund;
     });
 
-    // Sort groups by date (newest first)
+    // Sort groups by return date (newest first)
     return Object.values(groups).sort((a, b) => {
-      const dateA = a.outboundDate ? new Date(a.outboundDate).getTime() : 0;
-      const dateB = b.outboundDate ? new Date(b.outboundDate).getTime() : 0;
+      const dateA = a.returnDate ? new Date(a.returnDate).getTime() : 0;
+      const dateB = b.returnDate ? new Date(b.returnDate).getTime() : 0;
       return dateB - dateA;
     });
   }, [historyData]);
@@ -207,57 +219,63 @@ export default function ReturnHistoryPage() {
                 key={groupIndex}
                 className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800"
               >
-                {/* Group Header */}
-                <div className="mb-4 space-y-2 border-b border-slate-200 pb-4 dark:border-slate-700">
-                  {group.outboundDate && (
-                    <div className="text-sm text-slate-600 dark:text-slate-300">
-                      {new Date(group.outboundDate).toLocaleString("ko-KR", {
+                {/* Sana va 출고 담당자 - yonma-yon */}
+                <div className="mb-4 flex items-center gap-3">
+                  {group.returnDate && (
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {new Date(group.returnDate).toLocaleDateString("ko-KR", {
                         year: "numeric",
                         month: "2-digit",
                         day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      {group.outboundManager || ""}님 출고
+                      })}
                     </div>
                   )}
-                  <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {group.outboundManager && (
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {group.outboundManager}님 출고
+                    </div>
+                  )}
+                </div>
+
+                {/* 공급처 va 총 반납 금액 - qarama-qarshi */}
+                <div className="mb-4 flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
+                  <div>
                     공급처: {group.supplierName || "공급처 없음"} {group.managerName || ""}
                   </div>
-                  <div className="text-base font-bold text-slate-900 dark:text-white">
-                    총 반납 금액 {group.totalAmount.toLocaleString()}원
+                  <div>
+                    총 반납 금액: {group.totalAmount.toLocaleString()}원
                   </div>
                 </div>
 
-                {/* Items List */}
+                {/* Items List - Card ichida */}
                 <div className="space-y-2">
                   {group.items.map((item, itemIndex) => (
                     <div
                       key={itemIndex}
-                      className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-900"
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-600 dark:bg-slate-900/50"
                     >
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                        {/* Product Name */}
-                        <div className="text-base font-bold text-slate-900 dark:text-white">
+                      <div className="flex items-center justify-between gap-x-4">
+                        {/* Maxsulot nomi */}
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           {item.productName}
                         </div>
                         
-                        {/* Brand */}
+                        {/* Brend */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
                           브랜드: {item.brand}
                         </div>
                         
-                        {/* Unit Price */}
+                        {/* Har birining narxi */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
-                          개당 금액 {item.refundAmount.toLocaleString()}
+                          개당 금액: {item.refundAmount.toLocaleString()}
                         </div>
                         
-                        {/* Return Quantity */}
+                        {/* Qaytarilish miqdori */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
                           반납 수량: {item.returnQty}개
                         </div>
                         
-                        {/* Total Return Amount */}
+                        {/* Qaytarilganda hammasining narxi */}
                         <div className="text-sm font-bold text-slate-900 dark:text-white">
                           총 반납 금액: {item.totalRefund.toLocaleString()}
                         </div>
@@ -267,29 +285,29 @@ export default function ReturnHistoryPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="mt-6 flex items-center justify-center gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
-                >
-                  이전
-                </button>
-                <span className="px-4 text-sm text-slate-600 dark:text-slate-300">
-                  {page} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
-                >
-                  다음
-                </button>
-              </div>
-            )}
+        {/* Pagination - Page oxirida */}
+        {!loading && !error && groupedHistory.length > 0 && totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
+            >
+              이전
+            </button>
+            <span className="px-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
+            >
+              다음
+            </button>
           </div>
         )}
       </div>
