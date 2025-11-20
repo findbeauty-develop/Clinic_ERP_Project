@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { apiGet, apiPost } from "../../../lib/api";
 
 type Batch = {
@@ -52,6 +53,9 @@ type ScheduledItem = {
 };
 
 export default function PackageOutboundPage() {
+  const pathname = usePathname();
+  const isPackageOutbound = pathname === "/outbound/package";
+  
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -463,25 +467,41 @@ export default function PackageOutboundPage() {
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">패키지 출고</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              패키지 단위로 제품을 출고합니다
-            </p>
-          </div>
-          <Link
-            href="/outbound"
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            제품 출고로 이동
-          </Link>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">출고 관리</h1>
+          <p className="mt-2 text-base text-slate-500 dark:text-slate-300">
+            필요한 제품을 바로 출고해보세요.
+          </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
           {/* Left Panel - Package List */}
           <div className="space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+              {/* Segmented Control - Product/Package Outbound */}
+              <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                <Link
+                  href="/outbound"
+                  className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
+                    !isPackageOutbound
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  제품 출고
+                </Link>
+                <Link
+                  href="/outbound/package"
+                  className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
+                    isPackageOutbound
+                      ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                  >
+                  패키지 출고
+                </Link>
+              </div>
+
               <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
                 전체 패키지
               </h2>

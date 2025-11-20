@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiGet, apiPost } from "../../lib/api";
+import { useDebounce } from "../../hooks/useDebounce";
 
 type BatchDetail = {
   batchId: string;
@@ -56,23 +58,18 @@ export default function ReturnsPage() {
     []
   );
 
-  const [activeTab, setActiveTab] = useState<"processing" | "history">("processing");
   const [products, setProducts] = useState<AvailableProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   
+  // Debounce search query to avoid excessive API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  
   // Return processing state
   const [managerName, setManagerName] = useState("");
   const [selectedItems, setSelectedItems] = useState<SelectedReturnItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
-
-  // History state
-  const [historyData, setHistoryData] = useState<any[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyTotalPages, setHistoryTotalPages] = useState(1);
-  const historyLimit = 10;
 
   useEffect(() => {
     const memberData = localStorage.getItem("erp_member_data");
@@ -83,24 +80,14 @@ export default function ReturnsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "processing") {
-      fetchAvailableProducts();
-    } else {
-      fetchHistory();
-    }
-  }, [apiUrl, searchQuery, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "history") {
-      fetchHistory();
-    }
-  }, [historyPage, activeTab]);
+    fetchAvailableProducts();
+  }, [apiUrl, debouncedSearchQuery]);
 
   const fetchAvailableProducts = async () => {
     setLoading(true);
     setError(null);
     try {
-      const searchParam = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : "";
+      const searchParam = debouncedSearchQuery ? `?search=${encodeURIComponent(debouncedSearchQuery)}` : "";
       const data = await apiGet<AvailableProduct[]>(`${apiUrl}/returns/available-products${searchParam}`);
       setProducts(data);
     } catch (err) {
@@ -111,24 +98,6 @@ export default function ReturnsPage() {
     }
   };
 
-  const fetchHistory = async () => {
-    setHistoryLoading(true);
-    try {
-      const response = await apiGet<{
-        items: any[];
-        total: number;
-        page: number;
-        limit: number;
-        totalPages: number;
-      }>(`${apiUrl}/returns/history?page=${historyPage}&limit=${historyLimit}`);
-      setHistoryData(response.items);
-      setHistoryTotalPages(response.totalPages);
-    } catch (err) {
-      console.error("Failed to load return history", err);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
 
   const handleQuantityChange = (productId: string, delta: number) => {
     const product = products.find((p) => p.productId === productId);
@@ -328,30 +297,18 @@ export default function ReturnsPage() {
 
         {/* Tabs */}
         <div className="mb-6 flex gap-2 border-b border-slate-200 dark:border-slate-800">
-          <button
-            onClick={() => setActiveTab("processing")}
-            className={`px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "processing"
-                ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
-                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-            }`}
-          >
+          <div className="px-4 py-2 text-sm font-semibold border-b-2 border-sky-500 text-sky-600 dark:text-sky-400">
             반납 처리
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "history"
-                ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
-                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-            }`}
+          </div>
+          <Link
+            href="/returns/history"
+            className="px-4 py-2 text-sm font-semibold transition border-b-2 border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
           >
             반납 내역
-          </button>
+          </Link>
         </div>
 
-        {activeTab === "processing" ? (
-          <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-3">
             {/* Left Panel - Product List */}
             <div className="lg:col-span-2">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
@@ -635,76 +592,8 @@ export default function ReturnsPage() {
               </div>
             </div>
           </div>
-        ) : (
-          /* History Tab */
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-slate-500 dark:text-slate-400">로딩 중...</div>
-              </div>
-            ) : historyData.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-slate-500 dark:text-slate-400">반납 내역이 없습니다.</div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {historyData.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {item.product?.name || "Unknown"}
-                        </div>
-                        <div className="text-sm text-slate-600 dark:text-slate-300">
-                          {item.batch?.batch_no} | {item.return_qty}개 | {item.manager_name}
-                        </div>
-                        <div className="text-sm text-slate-500 dark:text-slate-400">
-                          {new Date(item.return_date).toLocaleString("ko-KR")}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {item.total_refund.toLocaleString()}원
-                        </div>
-                        {item.memo && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{item.memo}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Pagination */}
-                {historyTotalPages > 1 && (
-                  <div className="mt-6 flex items-center justify-center gap-2">
-                    <button
-                      onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                      disabled={historyPage === 1}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
-                    >
-                      이전
-                    </button>
-                    <span className="px-4 text-sm text-slate-600 dark:text-slate-300">
-                      {historyPage} / {historyTotalPages}
-                    </span>
-                    <button
-                      onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
-                      disabled={historyPage >= historyTotalPages}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
-                    >
-                      다음
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        </div>
       </div>
-    </div>
   );
 }
 

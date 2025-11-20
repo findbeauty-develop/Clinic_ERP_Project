@@ -18,13 +18,42 @@ export class ReturnService {
   /**
    * Qaytarilishi mumkin bo'lgan mahsulotlarni olish
    * 미반납 수량 = Chiqarilgan miqdor - Qaytarilgan miqdor
+   * Optimized: N+1 query muammosini hal qilish - barcha return'larni bir marta olish
    */
   async getAvailableProducts(tenantId: string, search?: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    // 1. Barcha product'larni olish (is_returnable = true bo'lganlar)
+    // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
+    const allReturns = await (this.prisma as any).return.findMany({
+      where: { tenant_id: tenantId },
+      select: {
+        product_id: true,
+        outbound_id: true,
+        return_qty: true,
+      },
+    });
+
+    // 2. Product ID va Outbound ID bo'yicha guruhlash (Map ishlatish - tezroq)
+    const returnedByProduct = new Map<string, number>();
+    const returnedByOutbound = new Map<string, number>();
+
+    allReturns.forEach((ret: any) => {
+      // Product bo'yicha qaytarilgan miqdorni yig'ish
+      if (ret.product_id) {
+        const productSum = returnedByProduct.get(ret.product_id) || 0;
+        returnedByProduct.set(ret.product_id, productSum + (ret.return_qty || 0));
+      }
+
+      // Outbound bo'yicha qaytarilgan miqdorni yig'ish
+      if (ret.outbound_id) {
+        const outboundSum = returnedByOutbound.get(ret.outbound_id) || 0;
+        returnedByOutbound.set(ret.outbound_id, outboundSum + (ret.return_qty || 0));
+      }
+    });
+
+    // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
     const products = await (this.prisma as any).product.findMany({
       where: {
         tenant_id: tenantId,
@@ -58,21 +87,17 @@ export class ReturnService {
       },
     });
 
-    // 2. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash
-    const availableProducts = await Promise.all(
-      products.map(async (product: any) => {
+    // 4. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash (Map'lardan foydalanish)
+    const availableProducts = products
+      .map((product: any) => {
         // Chiqarilgan jami miqdor
         const totalOutbound = (product.outbounds || []).reduce(
           (sum: number, outbound: any) => sum + (outbound.outbound_qty || 0),
           0
         );
 
-        // Qaytarilgan jami miqdor
-        const totalReturned =
-          await this.returnRepository.getReturnedQuantity(
-            product.id,
-            tenantId
-          );
+        // Qaytarilgan jami miqdor (Map'dan olish - alohida query yo'q!)
+        const totalReturned = returnedByProduct.get(product.id) || 0;
 
         // Qaytarilishi mumkin bo'lgan miqdor
         const unreturnedQty = totalOutbound - totalReturned;
@@ -82,14 +107,9 @@ export class ReturnService {
           return null;
         }
 
-        // Batch'lar bo'yicha tafsilotlar
-        const batchDetails = await Promise.all(
-          (product.outbounds || []).map(async (outbound: any) => {
-            const batchReturned =
-              await this.returnRepository.getReturnedQuantityByOutbound(
-                outbound.id,
-                tenantId
-              );
+        // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
+        const batchDetails = (product.outbounds || []).map((outbound: any) => {
+          const batchReturned = returnedByOutbound.get(outbound.id) || 0;
             const availableQty = outbound.outbound_qty - batchReturned;
 
             return {
@@ -102,8 +122,7 @@ export class ReturnService {
               outboundDate: outbound.outbound_date,
               managerName: outbound.manager_name,
             };
-          })
-        );
+        });
 
         // Supplier ma'lumotlari
         const supplier = product.supplierProducts?.[0];
@@ -135,10 +154,10 @@ export class ReturnService {
           batches: batchDetails.filter((b: any) => b.availableQty > 0),
         };
       })
-    );
+      .filter((p: any) => p !== null);
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
-    return availableProducts.filter((p) => p !== null);
+    return availableProducts;
   }
 
   /**

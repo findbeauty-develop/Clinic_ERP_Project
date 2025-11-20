@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { apiGet, apiPost } from "../../lib/api";
 
 type Batch = {
@@ -40,42 +41,152 @@ type ScheduledItem = {
   isPackageItem?: boolean; // 패키지 구성품인지 여부
 };
 
+type PackageForOutbound = {
+  id: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  items?: {
+    productId: string;
+    productName: string;
+    brand: string;
+    unit: string;
+    quantity: number;
+  }[];
+};
+
+type PackageItemForOutbound = {
+  productId: string;
+  productName: string;
+  brand: string;
+  unit: string;
+  packageQuantity: number; // 패키지당 수량
+  currentStock: number;
+  minStock: number;
+  batches: {
+    id: string;
+    batchNo: string;
+    qty: number;
+    expiryDate?: string | null;
+    storage?: string | null;
+    isExpiringSoon?: boolean;
+    daysUntilExpiry?: number | null;
+  }[];
+};
+
 
 export default function OutboundPage() {
+  const pathname = usePathname();
+  // Rejim o'zgarishi - segmentli control orqali
+  const [isPackageMode, setIsPackageMode] = useState(pathname === "/outbound/package");
+  // Tab o'zgarishi - 출고 처리 yoki 출고 내역
+  const [activeTab, setActiveTab] = useState<"processing" | "history">("processing");
+  
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
   
+  // Product outbound state
   const [products, setProducts] = useState<ProductForOutbound[]>([]);
+  
+  // Package outbound state
+  const [packages, setPackages] = useState<PackageForOutbound[]>([]);
+  const [selectedPackageItems, setSelectedPackageItems] = useState<PackageItemForOutbound[]>([]);
+  const [packageCounts, setPackageCounts] = useState<Record<string, number>>({});
+  const [packageExpiryCache, setPackageExpiryCache] = useState<Record<string, number | null>>({});
+  
+  // Common state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
   
-  // Outbound processing form state
+  // Outbound processing form state (ikkala rejim uchun umumiy)
   const [managerName, setManagerName] = useState("");
   const [isDamaged, setIsDamaged] = useState(false);
   const [isDefective, setIsDefective] = useState(false);
-  const [additionalMemo, setAdditionalMemo] = useState("");
+  const [chartNumber, setChartNumber] = useState("");
   const [memo, setMemo] = useState("");
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
+  
+  // Member dropdown state
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  // History state
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotalItems, setHistoryTotalItems] = useState(0);
+  const historyItemsPerPage = 10;
 
   useEffect(() => {
     const memberData = localStorage.getItem("erp_member_data");
     if (memberData) {
       const member = JSON.parse(memberData);
       setManagerName(member.full_name || member.member_id || "");
+      // Add current member to members list
+      setMembers([{
+        id: member.member_id || "",
+        name: member.full_name || member.member_id || "",
+      }]);
     }
-  }, []);
+    
+    // Load members from localStorage (if stored)
+    const storedMembers = localStorage.getItem("erp_members_list");
+    if (storedMembers) {
+      try {
+        const parsedMembers = JSON.parse(storedMembers);
+        if (Array.isArray(parsedMembers) && parsedMembers.length > 0) {
+          setMembers(parsedMembers);
+        }
+      } catch (e) {
+        console.error("Failed to parse stored members", e);
+      }
+    }
+    
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.member-dropdown-container')) {
+        setShowMemberDropdown(false);
+      }
+    };
+    
+    if (showMemberDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMemberDropdown]);
 
   useEffect(() => {
-    fetchProducts();
-    setCurrentPage(1); // Reset to first page when search changes
-  }, [apiUrl, searchQuery]);
+    if (activeTab === "processing") {
+      if (isPackageMode) {
+        fetchPackages();
+      } else {
+        fetchProducts();
+      }
+      setCurrentPage(1); // Reset to first page when search changes
+    } else {
+      fetchHistory();
+    }
+  }, [apiUrl, searchQuery, isPackageMode, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      fetchHistory();
+    }
+  }, [historyPage, historySearchQuery]);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -96,6 +207,210 @@ export default function OutboundPage() {
       setError("제품 정보를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPackages = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
+      
+      setPackages(data);
+      
+      // Fetch expiry info for each package in parallel (for sorting)
+      const expiryPromises = data.map(async (pkg) => {
+        try {
+          const items = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`);
+          
+          // Find earliest expiry date from all batches
+          let earliestExpiry: number | null = null;
+          
+          items.forEach((item) => {
+            item.batches?.forEach((batch) => {
+              if (batch.expiryDate) {
+                const expiryDate = new Date(batch.expiryDate).getTime();
+                if (earliestExpiry === null || expiryDate < earliestExpiry) {
+                  earliestExpiry = expiryDate;
+                }
+              }
+            });
+          });
+          
+          return { packageId: pkg.id, expiry: earliestExpiry };
+        } catch (err) {
+          console.error(`Failed to load expiry info for package ${pkg.id}`, err);
+          return { packageId: pkg.id, expiry: null };
+        }
+      });
+      
+      // Wait for all expiry info to load
+      const expiryResults = await Promise.all(expiryPromises);
+      
+      // Update cache
+      const newCache: Record<string, number | null> = {};
+      expiryResults.forEach(({ packageId, expiry }) => {
+        newCache[packageId] = expiry;
+      });
+      setPackageExpiryCache(newCache);
+    } catch (err) {
+      console.error("Failed to load packages", err);
+      setError("패키지 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPackageItems = async (packageId: string) => {
+    try {
+      const data = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${packageId}/items`);
+      setSelectedPackageItems(data);
+    } catch (err) {
+      console.error("Failed to load package items", err);
+      alert("패키지 구성품 정보를 불러오지 못했습니다.");
+    }
+  };
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const queryParams = new URLSearchParams();
+      if (historySearchQuery) {
+        queryParams.append("search", historySearchQuery);
+      }
+      queryParams.append("page", historyPage.toString());
+      queryParams.append("limit", historyItemsPerPage.toString());
+      
+      const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
+      const data = await apiGet<{
+        items: any[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      }>(url);
+      
+      setHistoryData(data.items || []);
+      setHistoryTotalPages(data.totalPages || 1);
+      setHistoryTotalItems(data.total || 0);
+    } catch (err) {
+      console.error("Failed to load history", err);
+      setHistoryError("출고 내역을 불러오지 못했습니다.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Group history by date and manager
+  const groupedHistory = useMemo(() => {
+    const groups: { [key: string]: any[] } = {};
+    
+    historyData.forEach((item) => {
+      const outboundDateValue = item.outboundDate || item.outbound_date;
+      if (!outboundDateValue) {
+        return;
+      }
+
+      const outboundDate = new Date(outboundDateValue);
+      
+      if (isNaN(outboundDate.getTime())) {
+        return;
+      }
+
+      const date = outboundDate.toISOString().split("T")[0];
+      const time = outboundDate.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const manager = item.managerName || item.manager_name || "Unknown";
+      const groupKey = `${date} ${time} ${manager}님 출고`;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(item);
+    });
+
+    return Object.entries(groups).sort((a, b) => {
+      return b[0].localeCompare(a[0]);
+    });
+  }, [historyData]);
+
+  const handlePackageSelect = async (pkg: PackageForOutbound) => {
+    await fetchPackageItems(pkg.id);
+  };
+
+  const handleAddPackageToOutbound = async (pkg: PackageForOutbound) => {
+    // Check if package already exists in scheduled items
+    const existingPackageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
+    
+    if (existingPackageItems.length > 0) {
+      // Package already exists, just increment count (don't add duplicate items)
+      setPackageCounts((prev) => ({
+        ...prev,
+        [pkg.id]: (prev[pkg.id] || 0) + 1,
+      }));
+      // Don't add more items - just update the count
+      return;
+    }
+    
+    // New package - add items immediately (optimistic update)
+    if (pkg.items && pkg.items.length > 0) {
+      const timestamp = Date.now();
+      const optimisticItems: ScheduledItem[] = pkg.items.map((item, idx) => ({
+        productId: item.productId,
+        productName: item.productName,
+        batchId: `temp-${pkg.id}-${item.productId}-${timestamp}-${idx}`, // Unique temporary batch ID
+        batchNo: "로딩중...", // Will be updated when batch info loads
+        quantity: item.quantity,
+        unit: item.unit,
+        packageId: pkg.id,
+        packageName: pkg.name,
+        isPackageItem: true,
+      }));
+
+      // Add items to the beginning of the list (newest first)
+      setScheduledItems((prev) => [...optimisticItems, ...prev]);
+      
+      // Update package count immediately
+      setPackageCounts((prev) => ({
+        ...prev,
+        [pkg.id]: (prev[pkg.id] || 0) + 1,
+      }));
+
+      // Fetch batch information in background and update (non-blocking)
+      apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
+        .then((itemsWithBatches) => {
+          // Update scheduled items with real batch information
+          setScheduledItems((prev) => {
+            return prev.map((scheduledItem) => {
+              // Find matching optimistic item by packageId and productId
+              if (scheduledItem.packageId === pkg.id && scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)) {
+                const itemWithBatch = itemsWithBatches.find(
+                  (item) => item.productId === scheduledItem.productId
+                );
+                
+                if (itemWithBatch) {
+                  const firstBatch = itemWithBatch.batches[0];
+                  if (firstBatch && firstBatch.qty > 0) {
+                    return {
+                      ...scheduledItem,
+                      batchId: firstBatch.id,
+                      batchNo: firstBatch.batchNo,
+                      quantity: itemWithBatch.packageQuantity, // Use package quantity from API
+                    };
+                  }
+                }
+              }
+              return scheduledItem;
+            });
+          });
+        })
+        .catch((err) => {
+          console.error("Failed to load package items with batches", err);
+          // Keep optimistic items, user can still proceed
+        });
     }
   };
 
@@ -175,7 +490,7 @@ export default function OutboundPage() {
 
   const handleSubmit = async () => {
     if (scheduledItems.length === 0) {
-      alert("출고할 제품을 선택해주세요.");
+      alert(isPackageMode ? "출고할 패키지를 선택해주세요." : "출고할 제품을 선택해주세요.");
       return;
     }
 
@@ -184,89 +499,163 @@ export default function OutboundPage() {
       return;
     }
 
-    // 재고 부족 체크: 각 항목의 출고 수량이 재고를 초과하지 않는지 확인
-    const stockCheck = scheduledItems.every((item) => {
-      const product = products.find((p) => p.id === item.productId);
-      if (!product) return false;
-      const batch = product.batches?.find((b) => b.id === item.batchId);
-      if (!batch) return false;
-      return item.quantity <= batch.qty;
-    });
+    // 재고 부족 체크: Product items uchun (Package items alohida tekshiriladi)
+    const productItems = scheduledItems.filter((item) => !item.isPackageItem);
+    if (productItems.length > 0) {
+      const stockCheck = productItems.every((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        if (!product) return false;
+        const batch = product.batches?.find((b) => b.id === item.batchId);
+        if (!batch) return false;
+        return item.quantity <= batch.qty;
+      });
 
-    if (!stockCheck) {
-      alert("재고가 부족한 제품이 있습니다. 수량을 확인해주세요.");
-      return;
+      if (!stockCheck) {
+        alert("재고가 부족한 제품이 있습니다. 수량을 확인해주세요.");
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
-      const payload = {
-        items: scheduledItems.map((item) => ({
-          productId: item.productId,
-          batchId: item.batchId,
-          outboundQty: item.quantity,
-          managerName: managerName.trim(),
-          memo: memo.trim() || undefined,
-          isDamaged,
-          isDefective,
-        })),
-      };
+      // Product items va Package items'ni ajratish
+      const productItems = scheduledItems.filter((item) => !item.isPackageItem);
+      const packageItems = scheduledItems.filter((item) => item.isPackageItem);
 
-      const response = await apiPost(`${apiUrl}/outbound/bulk`, payload);
+      console.log("출고 시작:", {
+        productItems: productItems.length,
+        packageItems: packageItems.length,
+        total: scheduledItems.length,
+      });
+
+      // Ikkala rejim uchun ham 출고 qilish
+      const promises: Promise<any>[] = [];
+
+      // 1. Product items 출고 (agar mavjud bo'lsa)
+      if (productItems.length > 0) {
+        const productPayload = {
+          items: productItems.map((item) => ({
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            managerName: managerName.trim(),
+            chartNumber: chartNumber.trim() || undefined,
+            memo: memo.trim() || undefined,
+            isDamaged,
+            isDefective,
+          })),
+        };
+        promises.push(apiPost(`${apiUrl}/outbound/bulk`, productPayload));
+      }
+
+      // 2. Package items 출고 (agar mavjud bo'lsa)
+      if (packageItems.length > 0) {
+        // Group items by package to multiply quantity by package count
+        const itemsByPackage = packageItems.reduce((acc, item) => {
+          const key = `${item.packageId}-${item.productId}-${item.batchId}`;
+          if (!acc[key]) {
+            acc[key] = {
+              ...item,
+              quantity: item.quantity * (packageCounts[item.packageId || ""] || 1),
+            };
+          }
+          return acc;
+        }, {} as Record<string, ScheduledItem & { quantity: number }>);
+
+        const packagePayload = {
+          outboundType: "패키지",
+          managerName: managerName.trim(),
+          chartNumber: chartNumber.trim() || undefined,
+          memo: memo.trim() || undefined,
+          items: Object.values(itemsByPackage).map((item) => ({
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            packageId: item.packageId,
+          })),
+        };
+        promises.push(apiPost(`${apiUrl}/outbound/unified`, packagePayload));
+      }
+
+      // Ikkala 출고'ni bir vaqtda amalga oshirish
+      const responses = await Promise.allSettled(promises);
       
-      // 출고 후 목록 초기화 및 로그 기록
+      let allSuccess = true;
+      let allFailed: ScheduledItem[] = [];
+      let successCount = 0;
+      let failedCount = 0;
+
+      responses.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          const response = result.value;
+          if (response && response.failedItems && response.failedItems.length > 0) {
+            allSuccess = false;
+            const items = index === 0 ? productItems : packageItems;
+            const failed = items.filter((item) =>
+              response.failedItems.some(
+                (failed: any) =>
+                  failed.productId === item.productId && failed.batchId === item.batchId
+              )
+            );
+            allFailed.push(...failed);
+            failedCount += failed.length;
+            successCount += items.length - failed.length;
+          } else {
+            const items = index === 0 ? productItems : packageItems;
+            successCount += items.length;
+          }
+        } else {
+          allSuccess = false;
+          const items = index === 0 ? productItems : packageItems;
+          allFailed.push(...items);
+          failedCount += items.length;
+        }
+      });
+
+      // Log
       console.log("출고 완료:", {
         timestamp: new Date().toISOString(),
         manager: managerName.trim(),
-        items: scheduledItems.length,
-        itemsDetail: scheduledItems,
+        productItems: productItems.length,
+        packageItems: packageItems.length,
+        successCount,
+        failedCount,
       });
-      
-      // 성공한 항목과 실패한 항목 분리
-      if (response && response.failedItems && response.failedItems.length > 0) {
-        // 일부 항목만 실패한 경우
-        const failed = scheduledItems.filter((item) =>
-          response.failedItems.some(
-            (failed: any) =>
-              failed.productId === item.productId && failed.batchId === item.batchId
-          )
-        );
-        setFailedItems(failed);
-        const successCount = scheduledItems.length - failed.length;
-        alert(`${successCount}개 항목 출고 완료, ${failed.length}개 항목 실패했습니다. 실패한 항목만 재시도할 수 있습니다.`);
-      } else {
-        // 모든 항목 성공
+
+      // Natijalarni ko'rsatish
+      if (allSuccess) {
         alert("출고가 완료되었습니다.");
         setFailedItems([]);
-      }
-      
-      // 성공한 항목만 제거, 실패한 항목은 유지
-      if (response && response.failedItems && response.failedItems.length > 0) {
+        setScheduledItems([]);
+        setChartNumber("");
+        setMemo("");
+        setIsDamaged(false);
+        setIsDefective(false);
+        setPackageCounts({});
+      } else if (allFailed.length > 0) {
+        setFailedItems(allFailed);
+        alert(`${successCount}개 항목 출고 완료, ${failedCount}개 항목 실패했습니다. 실패한 항목만 재시도할 수 있습니다.`);
+        
+        // Failed items'larni scheduledItems'dan olib tashlash
         const failedIds = new Set(
-          response.failedItems.map((f: any) => `${f.productId}-${f.batchId}`)
+          allFailed.map((f) => `${f.productId}-${f.batchId}`)
         );
         setScheduledItems((prev) =>
           prev.filter(
             (item) => !failedIds.has(`${item.productId}-${item.batchId}`)
           )
         );
-      } else {
-        // 모든 항목 성공 시 초기화
-        setScheduledItems([]);
-        setAdditionalMemo("");
-        setMemo("");
-        setIsDamaged(false);
-        setIsDefective(false);
       }
       
       // Refresh data
-      fetchProducts();
+      if (isPackageMode) {
+        fetchPackages();
+      } else {
+        fetchProducts();
+      }
     } catch (err: any) {
       console.error("Failed to process outbound", err);
-      // 출고 실패 시 오류 메시지
       const errorMessage = err.response?.data?.message || err.message || "출고 처리 중 오류가 발생했습니다.";
-      
-      // 전체 실패 시 모든 항목을 실패 목록에 추가
       setFailedItems([...scheduledItems]);
       alert(`출고 실패: ${errorMessage}\n실패한 항목만 재시도할 수 있습니다.`);
     } finally {
@@ -278,14 +667,209 @@ export default function OutboundPage() {
     if (scheduledItems.length === 0) return;
     if (confirm("출고를 취소하시겠습니까?")) {
       setScheduledItems([]);
-      setAdditionalMemo("");
+      setChartNumber("");
       setMemo("");
       setIsDamaged(false);
       setIsDefective(false);
+      setPackageCounts({});
     }
   };
 
-  // Pagination calculations
+  const handleRetryFailed = async (item: ScheduledItem) => {
+    setSubmitting(true);
+    try {
+      if (item.isPackageItem) {
+        // Package item uchun
+        const payload = {
+          outboundType: "패키지",
+          managerName: managerName.trim(),
+          chartNumber: chartNumber.trim() || undefined,
+          memo: memo.trim() || undefined,
+          items: [{
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity * (packageCounts[item.packageId || ""] || 1),
+            packageId: item.packageId,
+          }],
+        };
+        await apiPost(`${apiUrl}/outbound/unified`, payload);
+      } else {
+        // Product item uchun
+        const payload = {
+          items: [{
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            managerName: managerName.trim(),
+            chartNumber: chartNumber.trim() || undefined,
+            memo: memo.trim() || undefined,
+            isDamaged,
+            isDefective,
+          }],
+        };
+        await apiPost(`${apiUrl}/outbound/bulk`, payload);
+      }
+      setFailedItems((prev) => prev.filter((i) => !(i.productId === item.productId && i.batchId === item.batchId)));
+      setScheduledItems((prev) => prev.filter((i) => !(i.productId === item.productId && i.batchId === item.batchId)));
+      alert("재시도 성공");
+      
+      // Refresh data
+      if (isPackageMode) {
+        fetchPackages();
+      } else {
+        fetchProducts();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "재시도 실패");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRetryAllFailed = async () => {
+    if (failedItems.length === 0) return;
+    setSubmitting(true);
+    try {
+      const productFailed = failedItems.filter((item) => !item.isPackageItem);
+      const packageFailed = failedItems.filter((item) => item.isPackageItem);
+
+      const promises: Promise<any>[] = [];
+
+      if (productFailed.length > 0) {
+        const payload = {
+          items: productFailed.map((item) => ({
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            managerName: managerName.trim(),
+            chartNumber: chartNumber.trim() || undefined,
+            memo: memo.trim() || undefined,
+            isDamaged,
+            isDefective,
+          })),
+        };
+        promises.push(apiPost(`${apiUrl}/outbound/bulk`, payload));
+      }
+
+      if (packageFailed.length > 0) {
+        const itemsByPackage = packageFailed.reduce((acc, item) => {
+          const key = `${item.packageId}-${item.productId}-${item.batchId}`;
+          if (!acc[key]) {
+            acc[key] = {
+              ...item,
+              quantity: item.quantity * (packageCounts[item.packageId || ""] || 1),
+            };
+          }
+          return acc;
+        }, {} as Record<string, ScheduledItem & { quantity: number }>);
+
+        const payload = {
+          outboundType: "패키지",
+          managerName: managerName.trim(),
+          chartNumber: chartNumber.trim() || undefined,
+          memo: memo.trim() || undefined,
+          items: Object.values(itemsByPackage).map((item) => ({
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            packageId: item.packageId,
+          })),
+        };
+        promises.push(apiPost(`${apiUrl}/outbound/unified`, payload));
+      }
+
+      const responses = await Promise.allSettled(promises);
+      
+      let allSuccess = true;
+      let remainingFailed: ScheduledItem[] = [];
+
+      responses.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          const response = result.value;
+          const items = index === 0 ? productFailed : packageFailed;
+          if (response && response.failedItems && response.failedItems.length > 0) {
+            allSuccess = false;
+            const failed = items.filter((item) =>
+              response.failedItems.some(
+                (failed: any) =>
+                  failed.productId === item.productId && failed.batchId === item.batchId
+              )
+            );
+            remainingFailed.push(...failed);
+          }
+        } else {
+          allSuccess = false;
+          const items = index === 0 ? productFailed : packageFailed;
+          remainingFailed.push(...items);
+        }
+      });
+
+      if (allSuccess) {
+        setFailedItems([]);
+        setScheduledItems((prev) => prev.filter((i) => !failedItems.some((f) => f.productId === i.productId && f.batchId === i.batchId)));
+        alert("모든 항목 재시도 성공");
+      } else {
+        setFailedItems(remainingFailed);
+        alert(`${failedItems.length - remainingFailed.length}개 항목 재시도 성공, ${remainingFailed.length}개 항목 실패`);
+      }
+
+      // Refresh data
+      if (isPackageMode) {
+        fetchPackages();
+      } else {
+        fetchProducts();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "재시도 실패");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Package filtering and pagination
+  const filteredPackages = useMemo(() => {
+    let filtered = packages;
+    
+    // Filter by search query if provided
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = packages.filter(
+        (pkg) =>
+          pkg.name.toLowerCase().includes(query) ||
+          pkg.description?.toLowerCase().includes(query) ||
+          pkg.items?.some(
+            (item) =>
+              item.productName.toLowerCase().includes(query) ||
+              item.brand.toLowerCase().includes(query)
+          )
+      );
+    }
+    
+    // Sort by expiry date: packages with expiring products first (FEFO)
+    return filtered.sort((a, b) => {
+      const aExpiry = packageExpiryCache[a.id];
+      const bExpiry = packageExpiryCache[b.id];
+      
+      // Packages with expiry dates come first
+      if (aExpiry !== null && bExpiry === null) return -1;
+      if (aExpiry === null && bExpiry !== null) return 1;
+      
+      // Both have expiry dates: sort by earliest expiry (FEFO)
+      if (aExpiry !== null && bExpiry !== null) {
+        return aExpiry - bExpiry;
+      }
+      
+      // Neither has expiry date: sort by name
+      return a.name.localeCompare(b.name);
+    });
+  }, [packages, searchQuery, packageExpiryCache]);
+
+  const paginatedPackages = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredPackages.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredPackages, currentPage, itemsPerPage]);
+
+  // Product Pagination calculations
   const totalPages = Math.ceil(products.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -314,38 +898,74 @@ export default function OutboundPage() {
           {/* Tabs */}
           <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
             <button
-              className="px-4 py-2 text-sm font-semibold border-b-2 border-sky-500 text-sky-600 dark:text-sky-400 transition"
+              onClick={() => setActiveTab("processing")}
+              className={`px-4 py-2 text-sm font-semibold transition ${
+                activeTab === "processing"
+                  ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
             >
               출고 처리
             </button>
-            <Link
-              href="/outbound/history"
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition"
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`px-4 py-2 text-sm font-semibold transition ${
+                activeTab === "history"
+                  ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
             >
               출고 내역
-            </Link>
+            </button>
           </div>
 
-          {/* Quick Outbound Bar */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400">
-            바코드 스캐너로 빠른 출고
-          </div>
+          {/* Quick Outbound Bar - faqat processing tab'da */}
+          {activeTab === "processing" && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400">
+              바코드 스캐너로 빠른 출고
+            </div>
+          )}
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
+        {activeTab === "processing" ? (
+          <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
             {/* Left Panel - Product/Package List */}
             <div className="space-y-4">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                {/* Segmented Control - Product/Package Outbound */}
+                <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    onClick={() => setIsPackageMode(false)}
+                    className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
+                      !isPackageMode
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    제품 출고
+                  </button>
+                  <button
+                    onClick={() => setIsPackageMode(true)}
+                    className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
+                      isPackageMode
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    패키지 출고
+                  </button>
+                </div>
+
                 <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
-                  전체 제품
+                  {isPackageMode ? "전체 패키지" : "전체 제품"}
                 </h2>
 
-                {/* Search Bar and Package Outbound Button */}
+                {/* Search Bar */}
                 <div className="mb-4 flex gap-3">
                   <div className="relative flex-1">
                     <input
                       type="text"
-                      placeholder="제품명, 브랜드, 배치번호로 검색..."
+                      placeholder={isPackageMode ? "패키지명, 제품명으로 검색..." : "제품명, 브랜드, 배치번호로 검색..."}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -364,31 +984,186 @@ export default function OutboundPage() {
                       />
                     </svg>
                   </div>
-                  <Link
-                    href="/outbound/package"
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 flex items-center justify-center whitespace-nowrap"
-                  >
-                    패키지 출고
-                  </Link>
+                  {isPackageMode && (
+                    <Link
+                      href="/packages/new"
+                      className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 flex items-center justify-center whitespace-nowrap"
+                    >
+                      새 패키지등록
+                    </Link>
+                  )}
                 </div>
 
-                {/* FIFO Warning */}
-                <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
-                      <span className="text-xs font-bold">i</span>
+                {/* FIFO Warning - faqat product rejimida */}
+                {!isPackageMode && (
+                  <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+                        <span className="text-xs font-bold">i</span>
+                      </div>
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        유효기한이 임박한 배치가 먼저 표시됩니다. 선입선출(FIFO)을 위해 상단의 배치부터 출고해주세요.
+                      </p>
                     </div>
-                    <p className="text-sm text-red-700 dark:text-red-300">
-                      유효기한이 임박한 배치가 먼저 표시됩니다. 선입선출(FIFO)을 위해 상단의 배치부터 출고해주세요.
-                    </p>
                   </div>
-                </div>
+                )}
 
-                {/* Product List */}
+                {/* Product or Package List */}
                 {loading ? (
                   <div className="py-8 text-center text-slate-500">로딩 중...</div>
                 ) : error ? (
                   <div className="py-8 text-center text-red-500">{error}</div>
+                ) : isPackageMode ? (
+                  // Package List
+                  filteredPackages.length === 0 ? (
+                    <div className="py-8 text-center text-slate-500">패키지가 없습니다.</div>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        {paginatedPackages.map((pkg) => {
+                          const packageCount = packageCounts[pkg.id] || 0;
+                          
+                          const handleDecreasePackage = () => {
+                            if (packageCount > 0) {
+                              const packageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
+                              if (packageItems.length > 0) {
+                                const itemsToRemove = new Set<string>();
+                                const seen = new Set<string>();
+                                
+                                packageItems.forEach((item) => {
+                                  const key = `${item.productId}-${item.batchId}`;
+                                  if (!seen.has(key)) {
+                                    seen.add(key);
+                                    itemsToRemove.add(key);
+                                  }
+                                });
+                                
+                                setScheduledItems((prev) => {
+                                  const result: ScheduledItem[] = [];
+                                  const removeCount: Record<string, number> = {};
+                                  
+                                  prev.forEach((item) => {
+                                    if (item.packageId === pkg.id && itemsToRemove.has(`${item.productId}-${item.batchId}`)) {
+                                      const key = `${item.productId}-${item.batchId}`;
+                                      removeCount[key] = (removeCount[key] || 0) + 1;
+                                      if (removeCount[key] === 1) {
+                                        return;
+                                      }
+                                    }
+                                    result.push(item);
+                                  });
+                                  
+                                  return result;
+                                });
+                                
+                                setPackageCounts((prev) => ({
+                                  ...prev,
+                                  [pkg.id]: Math.max(0, (prev[pkg.id] || 0) - 1),
+                                }));
+                              }
+                            }
+                          };
+                          
+                          return (
+                            <div
+                              key={pkg.id}
+                              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                                      {pkg.name}
+                                    </h3>
+                                    <Link
+                                      href={`/packages/${pkg.id}/edit`}
+                                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                      수정
+                                    </Link>
+                                  </div>
+                                  {pkg.items && pkg.items.length > 0 && (
+                                    <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                                      {pkg.items.map((item, idx) => {
+                                        const quantityStr = item.quantity > 0 
+                                          ? `${item.quantity}${item.unit || ""}` 
+                                          : "";
+                                        const itemText = quantityStr 
+                                          ? `${item.productName}-${quantityStr}` 
+                                          : item.productName;
+                                        
+                                        return (
+                                          <span key={`${item.productId}-${idx}`}>
+                                            {itemText}
+                                            {idx < pkg.items!.length - 1 && " "}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="ml-4 flex items-center gap-2">
+                                  <button
+                                    onClick={handleDecreasePackage}
+                                    disabled={packageCount === 0}
+                                    className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="w-12 text-center text-sm font-semibold text-slate-900 dark:text-white">
+                                    {packageCount}
+                                  </span>
+                                  <button
+                                    onClick={() => handleAddPackageToOutbound(pkg)}
+                                    className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Package Pagination */}
+                      {Math.ceil(filteredPackages.length / itemsPerPage) > 1 && (
+                        <div className="mt-6 flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </button>
+                          {Array.from({ length: Math.ceil(filteredPackages.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                                page === currentPage
+                                  ? "bg-blue-500 text-white"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPackages.length / itemsPerPage), p + 1))}
+                            disabled={currentPage >= Math.ceil(filteredPackages.length / itemsPerPage)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )
                 ) : products.length === 0 ? (
                   <div className="py-8 text-center text-slate-500">
                     제품이 없습니다.
@@ -503,7 +1278,7 @@ export default function OutboundPage() {
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-white">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
                       <svg
                         className="h-4 w-4"
                         fill="none"
@@ -514,31 +1289,71 @@ export default function OutboundPage() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          d="M19 9l-7 7-7-7"
                         />
                       </svg>
                     </div>
                     출고 처리
                   </h2>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    마지막 업데이트: {new Date().toLocaleString("ko-KR")}
-                  </span>
+                  {/* Manager - Header'da */}
+                  <div className="member-dropdown-container relative">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        출고 담당자
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowMemberDropdown(!showMemberDropdown)}
+                        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        성함 선택
+                        <svg
+                          className={`h-3 w-3 transition-transform ${showMemberDropdown ? "rotate-180" : ""}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                      <div className="relative">
+                       
+                        {showMemberDropdown && (
+                          <div className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            <div className="max-h-48 overflow-y-auto">
+                              {members.length > 0 ? (
+                                members.map((member) => (
+                                  <button
+                                    key={member.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setManagerName(member.name);
+                                      setShowMemberDropdown(false);
+                                    }}
+                                    className="w-full px-4 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                  >
+                                    {member.name}
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
+                                  멤버가 없습니다
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
-                  {/* Manager */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      담당자 *
-                    </label>
-                    <input
-                      type="text"
-                      value={managerName}
-                      onChange={(e) => setManagerName(e.target.value)}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      required
-                    />
-                  </div>
 
                   {/* Status Checkboxes */}
                 
@@ -607,35 +1422,20 @@ export default function OutboundPage() {
   </div>
 </div>
 
-                  {/* Additional Memo */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      추가 메모
-                    </label>
-                    <input
-                      type="text"
-                      value={additionalMemo}
-                      onChange={(e) => setAdditionalMemo(e.target.value)}
-                      placeholder="추가 메모를 입력하세요"
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    />
-                  </div>
-
-
                   {/* Memo Field */}
           
 
                   {/* Scheduled Outbound List */}
                   <div>
                     <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      출고 예정 목록
+                      출고 예정 목록 ({scheduledItems.length}개)
                     </h3>
                     {scheduledItems.length === 0 && failedItems.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-                        출고할 제품을 선택해주세요.
+                        {isPackageMode ? "패키지를 선택해주세요" : "출고할 제품을 선택해주세요."}
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
                         {/* 실패한 항목 표시 */}
                         {failedItems.length > 0 && (
                           <div className="mb-3 rounded-lg border-2 border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
@@ -651,12 +1451,11 @@ export default function OutboundPage() {
                                   className="flex items-center justify-between rounded border border-red-200 bg-white px-2 py-1 text-sm dark:border-red-800 dark:bg-slate-900/60"
                                 >
                                   <span className="text-red-700 dark:text-red-300">
-                                    {item.productName} {item.batchNo} {item.quantity}
+                                    {item.packageName ? `${item.packageName} - ` : ""}{item.productName} {item.batchNo} {item.quantity}
                                     {item.unit || "개"}
                                   </span>
                                   <button
                                     onClick={() => {
-                                      // 실패한 항목을 다시 scheduledItems에 추가
                                       setScheduledItems((prev) => {
                                         const exists = prev.some(
                                           (i) =>
@@ -666,7 +1465,6 @@ export default function OutboundPage() {
                                         if (exists) return prev;
                                         return [...prev, item];
                                       });
-                                      // 실패 목록에서 제거
                                       setFailedItems((prev) =>
                                         prev.filter(
                                           (f) =>
@@ -686,7 +1484,6 @@ export default function OutboundPage() {
                             </div>
                             <button
                               onClick={() => {
-                                // 모든 실패 항목을 다시 scheduledItems에 추가
                                 setScheduledItems((prev) => {
                                   const existingIds = new Set(
                                     prev.map(
@@ -708,67 +1505,237 @@ export default function OutboundPage() {
                           </div>
                         )}
 
-                        {/* 정상 출고 예정 목록 */}
-                        {scheduledItems.map((item, index) => {
-                          const isFailed = failedItems.some(
-                            (f) =>
-                              f.productId === item.productId &&
-                              f.batchId === item.batchId
-                          );
-                          return (
-                            <div
-                              key={`${item.productId}-${item.batchId}`}
-                              className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
-                                isFailed
-                                  ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
-                                  : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
-                              }`}
-                            >
-                              <span
-                                className={`text-sm ${
+                        {/* Scheduled Items - Product va Package items'ni ajratish */}
+                        {(() => {
+                          const productItems = scheduledItems.filter((item) => !item.isPackageItem);
+                          const packageItems = scheduledItems.filter((item) => item.isPackageItem);
+
+                          // Package items'ni guruhlash
+                          if (packageItems.length > 0) {
+                            const groupedByPackage = packageItems.reduce((acc, item) => {
+                              const key = item.packageId || 'single';
+                              if (!acc[key]) {
+                                acc[key] = {
+                                  packageId: item.packageId,
+                                  packageName: item.packageName || item.productName,
+                                  items: [],
+                                };
+                              }
+                              acc[key].items.push(item);
+                              return acc;
+                            }, {} as Record<string, { packageId?: string; packageName?: string; items: ScheduledItem[] }>);
+
+                            const packageOrder: string[] = [];
+                            packageItems.forEach((item) => {
+                              if (item.packageId && !packageOrder.includes(item.packageId)) {
+                                packageOrder.push(item.packageId);
+                              }
+                            });
+
+                            const orderedPackages = packageOrder.map((pkgId) => groupedByPackage[pkgId]).filter(Boolean);
+
+                            return (
+                              <>
+                                {/* Package items */}
+                                {orderedPackages.map((group, groupIdx) => {
+                                  const packageCount = packageCounts[group.packageId || ""] || 1;
+                                  const uniqueItems = group.items.reduce((acc, item) => {
+                                    const key = `${item.productId}-${item.batchId}`;
+                                    if (!acc[key]) {
+                                      acc[key] = item;
+                                    }
+                                    return acc;
+                                  }, {} as Record<string, ScheduledItem>);
+                                  const firstItem = group.items[0];
+                                  const unit = firstItem.unit || '세트';
+
+                                  return (
+                                    <div
+                                      key={`package-${group.packageId}-${groupIdx}`}
+                                      className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="font-semibold text-slate-900 dark:text-white">
+                                            {group.packageName}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm text-slate-600 dark:text-slate-400">
+                                            {packageCount}{unit}
+                                          </span>
+                                          <button
+                                            onClick={() => {
+                                              setScheduledItems((prev) =>
+                                                prev.filter((item) => item.packageId !== group.packageId)
+                                              );
+                                              setPackageCounts((prev) => ({
+                                                ...prev,
+                                                [group.packageId || ""]: 0,
+                                              }));
+                                            }}
+                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                          >
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {Object.values(uniqueItems).length > 0 && (
+                                        <div className="mt-2 ml-2 space-y-1">
+                                          {Object.values(uniqueItems).map((item, itemIdx) => (
+                                            <div
+                                              key={`${item.productId}-${item.batchId}-${itemIdx}`}
+                                              className="flex items-center justify-between text-sm"
+                                            >
+                                              <div className="flex items-center gap-2 flex-1">
+                                                <span className="text-slate-600 dark:text-slate-400">-</span>
+                                                <span className="text-slate-700 dark:text-slate-300">
+                                                  {item.productName}
+                                                </span>
+                                                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                                  {item.batchNo}
+                                                </span>
+                                              </div>
+                                              <span className="text-sm text-slate-600 dark:text-slate-400">
+                                                {item.quantity * packageCount}{item.unit}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+
+                                {/* Product items */}
+                                {productItems.map((item) => {
+                                  const isFailed = failedItems.some(
+                                    (f) =>
+                                      f.productId === item.productId &&
+                                      f.batchId === item.batchId
+                                  );
+                                  return (
+                                    <div
+                                      key={`${item.productId}-${item.batchId}`}
+                                      className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                                        isFailed
+                                          ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                                          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
+                                      }`}
+                                    >
+                                      <span
+                                        className={`text-sm ${
+                                          isFailed
+                                            ? "text-red-700 dark:text-red-300"
+                                            : "text-slate-700 dark:text-slate-200"
+                                        }`}
+                                      >
+                                        {item.productName} {item.batchNo} {item.quantity}
+                                        {item.unit || "개"}
+                                        {isFailed && (
+                                          <span className="ml-2 text-xs text-red-600 dark:text-red-400">
+                                            (실패)
+                                          </span>
+                                        )}
+                                      </span>
+                                      <button
+                                        onClick={() =>
+                                          handleQuantityChange(
+                                            item.productId,
+                                            item.batchId,
+                                            item.batchNo,
+                                            item.productName,
+                                            item.unit || "개",
+                                            item.quantity - 1
+                                          )
+                                        }
+                                        className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                      >
+                                        <svg
+                                          className="h-4 w-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M20 12H4"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            );
+                          }
+
+                          // Faqat product items
+                          return productItems.map((item) => {
+                            const isFailed = failedItems.some(
+                              (f) =>
+                                f.productId === item.productId &&
+                                f.batchId === item.batchId
+                            );
+                            return (
+                              <div
+                                key={`${item.productId}-${item.batchId}`}
+                                className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
                                   isFailed
-                                    ? "text-red-700 dark:text-red-300"
-                                    : "text-slate-700 dark:text-slate-200"
+                                    ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                                    : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
                                 }`}
                               >
-                                {item.productName} {item.batchNo} {item.quantity}
-                                {item.unit || "개"}
-                                {isFailed && (
-                                  <span className="ml-2 text-xs text-red-600 dark:text-red-400">
-                                    (실패)
-                                  </span>
-                                )}
-                              </span>
-                              <button
-                                onClick={() =>
-                                  handleQuantityChange(
-                                    item.productId,
-                                    item.batchId,
-                                    item.batchNo,
-                                    item.productName,
-                                    item.unit || "개",
-                                    item.quantity - 1
-                                  )
-                                }
-                                className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                              >
-                                <svg
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
+                                <span
+                                  className={`text-sm ${
+                                    isFailed
+                                      ? "text-red-700 dark:text-red-300"
+                                      : "text-slate-700 dark:text-slate-200"
+                                  }`}
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M20 12H4"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          );
-                        })}
+                                  {item.productName} {item.batchNo} {item.quantity}
+                                  {item.unit || "개"}
+                                  {isFailed && (
+                                    <span className="ml-2 text-xs text-red-600 dark:text-red-400">
+                                      (실패)
+                                    </span>
+                                  )}
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    handleQuantityChange(
+                                      item.productId,
+                                      item.batchId,
+                                      item.batchNo,
+                                      item.productName,
+                                      item.unit || "개",
+                                      item.quantity - 1
+                                    )
+                                  }
+                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                >
+                                  <svg
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M20 12H4"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            );
+                          });
+                        })()}
                         <div className="pt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                           총 {scheduledItems.length}항목
                           {failedItems.length > 0 && (
@@ -791,7 +1758,11 @@ export default function OutboundPage() {
                       disabled={
                         submitting ||
                         scheduledItems.length === 0 ||
+                        !managerName.trim() ||
                         scheduledItems.some((item) => {
+                          // Package items uchun tekshiruv yo'q
+                          if (item.isPackageItem) return false;
+                          // Product items uchun tekshiruv
                           const product = products.find((p) => p.id === item.productId);
                           if (!product) return true;
                           const batch = product.batches?.find((b) => b.id === item.batchId);
@@ -815,6 +1786,269 @@ export default function OutboundPage() {
               </div>
             </div>
           </div>
+        ) : (
+          // History Tab Content
+          <div className="space-y-4">
+            {/* History Header */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-500/20">
+                    <svg
+                      className="h-5 w-5 text-sky-600 dark:text-sky-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    최근 출고 내역
+                  </h2>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {historyTotalItems}건
+                  </span>
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+                </span>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="제품명, 출고자명, 출고상태..."
+                  value={historySearchQuery}
+                  onChange={(e) => {
+                    setHistorySearchQuery(e.target.value);
+                    setHistoryPage(1);
+                  }}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+                <svg
+                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            {/* History List */}
+            {historyLoading ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="text-slate-500">로딩 중...</div>
+              </div>
+            ) : historyError ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-red-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                {historyError}
+              </div>
+            ) : groupedHistory.length === 0 ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="text-slate-500">출고 내역이 없습니다.</div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {groupedHistory.map(([groupKey, items]) => {
+                  const [date, time, managerText] = groupKey.split(" ");
+                  const manager = managerText.replace("님 출고", "");
+                  
+                  return (
+                    <div
+                      key={groupKey}
+                      className="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+                    >
+                      {/* Group Header */}
+                      <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                              {date} {time} {managerText}
+                            </h3>
+                            {/* 패키지 출고와 단품 출고 구분 표시 */}
+                            {(items[0]?.outboundType || items[0]?.outbound_type) && (
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                (items[0].outboundType || items[0].outbound_type) === "패키지"
+                                  ? "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
+                                  : (items[0].outboundType || items[0].outbound_type) === "바코드"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                  : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
+                              }`}>
+                                {(items[0].outboundType || items[0].outbound_type) === "패키지" 
+                                  ? `패키지 출고${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}` : ''}`
+                                  : (items[0].outboundType || items[0].outbound_type) === "바코드" 
+                                  ? "바코드 출고" 
+                                  : "단품 출고"}
+                              </span>
+                            )}
+                          </div>
+                          {(items[0]?.memo?.includes("교육") || items[0]?.memo?.includes("테스트")) && (
+                            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
+                              {items[0]?.memo?.includes("교육") ? "교육용" : "테스트"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Items List */}
+                      <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                        {items.map((item: any) => {
+                          const product = item.product;
+                          const batch = item.batch;
+                          const outboundDateValue = item.outboundDate || item.outbound_date;
+                          const outboundDate = outboundDateValue ? new Date(outboundDateValue) : new Date();
+                          const isValidDate = !isNaN(outboundDate.getTime());
+                          const month = isValidDate ? outboundDate.getMonth() + 1 : new Date().getMonth() + 1;
+                          const day = isValidDate ? outboundDate.getDate() : new Date().getDate();
+                          const isDamaged = item.isDamaged || item.is_damaged || false;
+                          const isDefective = item.isDefective || item.is_defective || false;
+                          const hasSpecialNote = isDamaged || isDefective || item.memo;
+                          const specialNote = isDamaged
+                            ? "파손"
+                            : isDefective
+                            ? "불량"
+                            : item.memo?.includes("떨어뜨림")
+                            ? "떨어뜨림"
+                            : item.memo?.includes("반품")
+                            ? "반품"
+                            : item.memo || null;
+
+                          const outboundQty = item.outboundQty || item.outbound_qty || 0;
+                          const salePrice = product?.salePrice || product?.sale_price || 0;
+                          const price = salePrice ? salePrice * outboundQty : null;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="px-6 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1">
+                                  <div className="mb-2 flex items-center gap-2">
+                                    <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                                      {product?.name || "Unknown Product"}
+                                    </h4>
+                                    {(item.outboundType || item.outbound_type) === "패키지" && (item.packageName || item.package_name) && (
+                                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                        패키지: {item.packageName || item.package_name}
+                                      </span>
+                                    )}
+                                    {(batch?.batchNo || batch?.batch_no) && (
+                                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                                        ({(batch.batchNo || batch.batch_no)})
+                                      </span>
+                                    )}
+                                    {hasSpecialNote && (
+                                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white">
+                                        <span className="text-xs font-bold">!</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                                    <div>
+                                      {month}월 {day}일
+                                    </div>
+                                    <div>
+                                      {item.managerName || item.manager_name}에 의한 출고
+                                      {(batch?.batchNo || batch?.batch_no) && ` (배치: ${batch.batchNo || batch.batch_no})`}
+                                      {(item.patientName || item.patient_name) && ` - 환자: ${item.patientName || item.patient_name}`}
+                                      {(item.chartNumber || item.chart_number) && ` (차트번호: ${item.chartNumber || item.chart_number})`}
+                                      {item.memo && !isDamaged && !isDefective && ` - ${item.memo}`}
+                                    </div>
+                                    {specialNote && (
+                                      <div className="font-semibold text-red-600 dark:text-red-400">
+                                        특이사항 {specialNote}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="text-base font-bold text-slate-900 dark:text-white">
+                                    -{outboundQty}
+                                    {product?.unit || "개"}
+                                  </div>
+                                  {price && (
+                                    <div className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                                      ₩{price.toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {historyTotalPages > 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <span className="font-bold text-slate-900 dark:text-white">{historyPage}</span>
+                    <span className="text-slate-500 dark:text-slate-400"> / {historyTotalPages} 페이지</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                      disabled={historyPage === 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+
+                    {Array.from({ length: historyTotalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => setHistoryPage(page)}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                          page === historyPage
+                            ? "bg-blue-500 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+
+                    <button
+                      onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                      disabled={historyPage === historyTotalPages}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </main>
   );

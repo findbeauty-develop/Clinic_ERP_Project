@@ -426,7 +426,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사용 용량
+                        사용량
                       </label>
                       <div className="flex gap-2">
                         <input

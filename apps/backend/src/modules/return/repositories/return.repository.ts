@@ -153,6 +153,13 @@ export class ReturnRepository {
               name: true,
               brand: true,
               unit: true,
+              supplierProducts: {
+                take: 1,
+                orderBy: { created_at: "desc" },
+                select: {
+                  supplier_id: true,
+                },
+              },
             },
           },
           batch: {
@@ -165,6 +172,7 @@ export class ReturnRepository {
             select: {
               id: true,
               outbound_date: true,
+              manager_name: true,
             },
           },
         },

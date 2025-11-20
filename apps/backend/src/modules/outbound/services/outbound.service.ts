@@ -95,24 +95,25 @@ export class OutboundService {
     // Validation
     this.validateOutbound(batch, dto.outboundQty);
 
-    return this.prisma.$transaction(async (tx) => {
-      // Outbound record yaratish
-      const outbound = await (tx as any).outbound.create({
-        data: {
-          tenant_id: tenantId,
-          product_id: dto.productId,
-          batch_id: dto.batchId,
-          batch_no: batch.batch_no,
-          outbound_qty: dto.outboundQty,
-          manager_name: dto.managerName,
-          patient_name: dto.patientName ?? null,
-          chart_number: dto.chartNumber ?? null,
-          is_damaged: dto.isDamaged ?? false,
-          is_defective: dto.isDefective ?? false,
-          memo: dto.memo ?? null,
-          created_by: null, // TODO: User ID qo'shish
-        },
-      });
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Outbound record yaratish
+        const outbound = await (tx as any).outbound.create({
+          data: {
+            tenant_id: tenantId,
+            product_id: dto.productId,
+            batch_id: dto.batchId,
+            batch_no: batch.batch_no,
+            outbound_qty: dto.outboundQty,
+            manager_name: dto.managerName,
+            patient_name: dto.patientName ?? null,
+            chart_number: dto.chartNumber ?? null,
+            is_damaged: dto.isDamaged ?? false,
+            is_defective: dto.isDefective ?? false,
+            memo: dto.memo ?? null,
+            created_by: null, // TODO: User ID qo'shish
+          },
+        });
 
         // Stock deduction
         await this.deductStock(
@@ -123,8 +124,12 @@ export class OutboundService {
           tx as any
         );
 
-      return outbound;
-    });
+        return outbound;
+      },
+      {
+        timeout: 30000, // 30 seconds timeout for transaction
+      }
+    );
   }
 
   /**
@@ -165,52 +170,74 @@ export class OutboundService {
       this.validateOutbound(batch, item.outboundQty);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const createdOutbounds = [];
+    return this.prisma.$transaction(
+      async (tx) => {
+        const createdOutbounds = [];
+        // Product'larni bir marta yangilash uchun map
+        const productStockUpdates = new Map<string, number>();
 
-      for (const item of dto.items) {
-        const batch = batches.find(
-          (b: { id: string; product_id: string }) => b.id === item.batchId && b.product_id === item.productId
-        );
+        for (const item of dto.items) {
+          const batch = batches.find(
+            (b: { id: string; product_id: string }) => b.id === item.batchId && b.product_id === item.productId
+          );
 
-        // Outbound record yaratish
-        const outbound = await (tx as any).outbound.create({
-          data: {
-            tenant_id: tenantId,
-            product_id: item.productId,
-            batch_id: item.batchId,
-            batch_no: batch!.batch_no,
-            outbound_qty: item.outboundQty,
-            outbound_type: "제품",
-            manager_name: item.managerName,
-            patient_name: item.patientName ?? null,
-            chart_number: item.chartNumber ?? null,
-            is_damaged: item.isDamaged ?? false,
-            is_defective: item.isDefective ?? false,
-            memo: item.memo ?? null,
-            package_id: null,
-            created_by: null, // TODO: User ID qo'shish
-          },
-        });
+          // Outbound record yaratish
+          const outbound = await (tx as any).outbound.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: item.productId,
+              batch_id: item.batchId,
+              batch_no: batch!.batch_no,
+              outbound_qty: item.outboundQty,
+              outbound_type: "제품",
+              manager_name: item.managerName,
+              patient_name: item.patientName ?? null,
+              chart_number: item.chartNumber ?? null,
+              is_damaged: item.isDamaged ?? false,
+              is_defective: item.isDefective ?? false,
+              memo: item.memo ?? null,
+              package_id: null,
+              created_by: null, // TODO: User ID qo'shish
+            },
+          });
 
-        // Stock deduction
-        await this.deductStock(
-          item.batchId,
-          item.outboundQty,
-          item.productId,
-          tenantId,
-          tx as any
-        );
+          // Batch qty ni kamaytirish
+          await tx.batch.update({
+            where: { id: item.batchId },
+            data: { qty: { decrement: item.outboundQty } },
+          });
 
-        createdOutbounds.push(outbound);
+          // Product stock yangilash uchun yig'ish
+          const currentDecrement = productStockUpdates.get(item.productId) || 0;
+          productStockUpdates.set(item.productId, currentDecrement + item.outboundQty);
+
+          createdOutbounds.push(outbound);
+        }
+
+        // Barcha product'larni bir vaqtda yangilash
+        for (const [productId, totalDecrement] of productStockUpdates.entries()) {
+          // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
+          const totalStock = await tx.batch.aggregate({
+            where: { product_id: productId, tenant_id: tenantId },
+            _sum: { qty: true },
+          });
+
+          await tx.product.update({
+            where: { id: productId },
+            data: { current_stock: totalStock._sum.qty ?? 0 },
+          });
+        }
+
+        return {
+          success: true,
+          count: createdOutbounds.length,
+          items: createdOutbounds,
+        };
+      },
+      {
+        timeout: 30000, // 30 seconds timeout for transaction
       }
-
-      return {
-        success: true,
-        count: createdOutbounds.length,
-        items: createdOutbounds,
-      };
-    });
+    );
   }
 
   /**
@@ -558,57 +585,79 @@ export class OutboundService {
       };
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const createdOutbounds = [];
+    return this.prisma.$transaction(
+      async (tx) => {
+        const createdOutbounds = [];
+        // Product'larni bir marta yangilash uchun map
+        const productStockUpdates = new Map<string, number>();
 
-      for (const item of validItems) {
-        const batch = batches.find(
-          (b: { id: string; product_id: string }) =>
-            b.id === item.batchId && b.product_id === item.productId
-        );
+        for (const item of validItems) {
+          const batch = batches.find(
+            (b: { id: string; product_id: string }) =>
+              b.id === item.batchId && b.product_id === item.productId
+          );
 
-        // Outbound record yaratish
-        const outbound = await (tx as any).outbound.create({
-          data: {
-            tenant_id: tenantId,
-            product_id: item.productId,
-            batch_id: item.batchId,
-            batch_no: batch!.batch_no,
-            outbound_qty: item.outboundQty,
-            outbound_type: "패키지",
-            manager_name: dto.managerName,
-            patient_name: dto.patientName ?? null,
-            chart_number: dto.chartNumber ?? null,
-            is_damaged: false,
-            is_defective: false,
-            memo: dto.memo ?? null,
-            package_id: null,
-            created_by: null, // TODO: User ID qo'shish
-          },
-        });
+          // Outbound record yaratish
+          const outbound = await (tx as any).outbound.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: item.productId,
+              batch_id: item.batchId,
+              batch_no: batch!.batch_no,
+              outbound_qty: item.outboundQty,
+              outbound_type: "패키지",
+              manager_name: dto.managerName,
+              patient_name: dto.patientName ?? null,
+              chart_number: dto.chartNumber ?? null,
+              is_damaged: false,
+              is_defective: false,
+              memo: dto.memo ?? null,
+              package_id: null,
+              created_by: null, // TODO: User ID qo'shish
+            },
+          });
 
-        // Stock deduction
-        await this.deductStock(
-          item.batchId,
-          item.outboundQty,
-          item.productId,
-          tenantId,
-          tx as any
-        );
+          // Batch qty ni kamaytirish
+          await tx.batch.update({
+            where: { id: item.batchId },
+            data: { qty: { decrement: item.outboundQty } },
+          });
 
-        createdOutbounds.push(outbound);
-      }
+          // Product stock yangilash uchun yig'ish
+          const currentDecrement = productStockUpdates.get(item.productId) || 0;
+          productStockUpdates.set(item.productId, currentDecrement + item.outboundQty);
 
-      return {
-        success: true,
-        outboundIds: createdOutbounds.map((o: any) => o.id),
-        failedItems: failedItems.length > 0 ? failedItems : undefined,
-        message:
-          failedItems.length > 0
+          createdOutbounds.push(outbound);
+        }
+
+        // Barcha product'larni bir vaqtda yangilash
+        for (const [productId, totalDecrement] of productStockUpdates.entries()) {
+          // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
+          const totalStock = await tx.batch.aggregate({
+            where: { product_id: productId, tenant_id: tenantId },
+            _sum: { qty: true },
+          });
+
+          await tx.product.update({
+            where: { id: productId },
+            data: { current_stock: totalStock._sum.qty ?? 0 },
+          });
+        }
+
+        return {
+          success: true,
+          outboundIds: createdOutbounds.map((o: any) => o.id),
+          failedItems: failedItems.length > 0 ? failedItems : undefined,
+          message:
+            failedItems.length > 0
             ? `${validItems.length} items processed successfully, ${failedItems.length} items failed`
             : "All items processed successfully",
       };
-    });
+    },
+      {
+        timeout: 30000, // 30 seconds timeout for transaction
+      }
+    );
   }
 
   /**
@@ -679,6 +728,8 @@ export class OutboundService {
       async (tx) => {
         const createdOutbounds = [];
         const logs = [];
+        // Product'larni bir marta yangilash uchun map
+        const productStockUpdates = new Map<string, number>();
 
         for (const item of validItems) {
         const batch = batches.find(
@@ -712,14 +763,15 @@ export class OutboundService {
             },
           });
 
-          // Stock deduction
-          await this.deductStock(
-            item.batchId,
-            item.outboundQty,
-            item.productId,
-            tenantId,
-            tx
-          );
+          // Batch qty ni kamaytirish
+          await tx.batch.update({
+            where: { id: item.batchId },
+            data: { qty: { decrement: item.outboundQty } },
+          });
+
+          // Product stock yangilash uchun yig'ish
+          const currentDecrement = productStockUpdates.get(item.productId) || 0;
+          productStockUpdates.set(item.productId, currentDecrement + item.outboundQty);
 
           // 출고 로그 생성
           const log = {
@@ -753,6 +805,20 @@ export class OutboundService {
             error: error instanceof Error ? error.message : "Unknown error",
           });
         }
+      }
+
+      // Barcha product'larni bir vaqtda yangilash
+      for (const [productId, totalDecrement] of productStockUpdates.entries()) {
+        // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
+        const totalStock = await tx.batch.aggregate({
+          where: { product_id: productId, tenant_id: tenantId },
+          _sum: { qty: true },
+        });
+
+        await tx.product.update({
+          where: { id: productId },
+          data: { current_stock: totalStock._sum.qty ?? 0 },
+        });
       }
 
       // 실패한 항목lar uchun log
