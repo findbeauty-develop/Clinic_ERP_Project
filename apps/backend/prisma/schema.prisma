@@ -34,6 +34,7 @@ model Product {
   outbounds        Outbound[]
   packageItems     PackageItem[]
   returns          Return[]
+  orderItems       OrderItem[]
 
   @@index([tenant_id])
 }
@@ -115,6 +116,7 @@ model Batch {
   product   Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
   outbounds Outbound[]
   returns   Return[]
+  orderItems OrderItem[]
 
   @@index([tenant_id])
   @@index([product_id])
@@ -262,4 +264,92 @@ model Return {
   @@index([outbound_id])
   @@index([return_date])
   @@index([tenant_id, return_date])
+}
+
+// 주문 (Order) - Buyurtma
+model Order {
+  id          String    @id @default(uuid())
+  tenant_id   String
+  order_no    String    @unique // 주문서 번호 (Order number)
+  status      String    @default("draft") // draft, pending, confirmed, completed, cancelled
+  supplier_id String?   // 공급업체 ID (Supplier ID)
+  
+  // 주문 정보
+  total_amount Float    @default(0) // 총 주문 금액
+  order_date   DateTime @default(now()) // 주문 날짜
+  expected_delivery_date DateTime? // 예상 배송일
+  
+  // 담당자 정보
+  created_by   String?  // 주문 생성자
+  approved_by  String?  // 승인자
+  
+  // 기타
+  memo         String?  // 메모
+  
+  // Timestamps
+  created_at   DateTime @default(now())
+  updated_at   DateTime?
+  
+  // Relations
+  items        OrderItem[]
+  
+  @@index([tenant_id])
+  @@index([supplier_id])
+  @@index([status])
+  @@index([order_date])
+  @@index([tenant_id, status])
+  @@index([tenant_id, order_date])
+}
+
+// 주문 항목 (Order Item)
+model OrderItem {
+  id          String  @id @default(uuid())
+  tenant_id   String
+  order_id    String
+  product_id  String
+  batch_id    String? // Batch ID (agar batch bo'yicha buyurtma bo'lsa)
+  
+  // 주문 정보
+  quantity    Int     // 주문 수량
+  unit_price  Int     // 개당 가격 (purchase price)
+  total_price Int     // 총 가격 (quantity * unit_price)
+  
+  // 기타
+  memo        String? // 메모
+  
+  // Timestamps
+  created_at  DateTime @default(now())
+  updated_at  DateTime?
+  
+  // Relations
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  batch   Batch?  @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  
+  @@index([tenant_id])
+  @@index([order_id])
+  @@index([product_id])
+  @@index([batch_id])
+  @@index([tenant_id, order_id])
+}
+
+// 주문 초안 (Order Draft) - Session-based temporary order
+model OrderDraft {
+  id          String  @id @default(uuid())
+  tenant_id   String
+  session_id  String  // Frontend session ID yoki user ID
+  
+  // 초안 정보
+  items       Json    // OrderItem[] formatida JSON
+  total_amount Float  @default(0)
+  
+  // Timestamps
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+  expires_at  DateTime // Session expiration time
+  
+  @@unique([tenant_id, session_id])
+  @@index([tenant_id])
+  @@index([session_id])
+  @@index([expires_at])
 }
