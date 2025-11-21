@@ -105,8 +105,7 @@ export default function OutboundPage() {
   
   // Outbound processing form state (ikkala rejim uchun umumiy)
   const [managerName, setManagerName] = useState("");
-  const [isDamaged, setIsDamaged] = useState(false);
-  const [isDefective, setIsDefective] = useState(false);
+  const [statusType, setStatusType] = useState<"damaged" | "defective" | null>(null);
   const [chartNumber, setChartNumber] = useState("");
   const [memo, setMemo] = useState("");
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
@@ -125,7 +124,7 @@ export default function OutboundPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyTotalItems, setHistoryTotalItems] = useState(0);
-  const historyItemsPerPage = 10;
+  const historyItemsPerPage = 20;
 
   useEffect(() => {
     const memberData = localStorage.getItem("erp_member_data");
@@ -541,8 +540,8 @@ export default function OutboundPage() {
             managerName: managerName.trim(),
             chartNumber: chartNumber.trim() || undefined,
             memo: memo.trim() || undefined,
-            isDamaged,
-            isDefective,
+            isDamaged: statusType === "damaged",
+            isDefective: statusType === "defective",
           })),
         };
         promises.push(apiPost(`${apiUrl}/outbound/bulk`, productPayload));
@@ -629,8 +628,8 @@ export default function OutboundPage() {
         setScheduledItems([]);
         setChartNumber("");
         setMemo("");
-        setIsDamaged(false);
-        setIsDefective(false);
+        setStatusType(null);
+        setChartNumber("");
         setPackageCounts({});
       } else if (allFailed.length > 0) {
         setFailedItems(allFailed);
@@ -669,9 +668,58 @@ export default function OutboundPage() {
       setScheduledItems([]);
       setChartNumber("");
       setMemo("");
-      setIsDamaged(false);
-      setIsDefective(false);
+      setStatusType(null);
       setPackageCounts({});
+    }
+  };
+
+  // Product'ni chap panel'da ko'rsatish va scroll qilish
+  const scrollToProduct = (productId: string) => {
+    // Product card'ni topish
+    const productElement = document.getElementById(`product-card-${productId}`);
+    if (productElement) {
+      // Scroll qilish
+      productElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Highlight qilish (vaqtinchalik) - card'ning o'lchamiga mos
+      productElement.style.border = "2px solid rgb(14 165 233)";
+      productElement.style.backgroundColor = "rgb(240 249 255)";
+      productElement.style.borderRadius = "0.75rem";
+      productElement.style.boxSizing = "border-box";
+      productElement.style.position = "relative";
+      productElement.style.zIndex = "10";
+      setTimeout(() => {
+        productElement.style.border = "";
+        productElement.style.backgroundColor = "";
+        productElement.style.borderRadius = "";
+        productElement.style.boxSizing = "";
+        productElement.style.position = "";
+        productElement.style.zIndex = "";
+      }, 2000);
+    }
+  };
+
+  // Package'ni chap panel'da ko'rsatish va scroll qilish
+  const scrollToPackage = (packageId: string) => {
+    // Package card'ni topish
+    const packageElement = document.getElementById(`package-card-${packageId}`);
+    if (packageElement) {
+      // Scroll qilish
+      packageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Highlight qilish (vaqtinchalik) - card'ning o'lchamiga mos
+      packageElement.style.border = "2px solid rgb(14 165 233)";
+      packageElement.style.backgroundColor = "rgb(240 249 255)";
+      packageElement.style.borderRadius = "0.75rem";
+      packageElement.style.boxSizing = "border-box";
+      packageElement.style.position = "relative";
+      packageElement.style.zIndex = "10";
+      setTimeout(() => {
+        packageElement.style.border = "";
+        packageElement.style.backgroundColor = "";
+        packageElement.style.borderRadius = "";
+        packageElement.style.boxSizing = "";
+        packageElement.style.position = "";
+        packageElement.style.zIndex = "";
+      }, 2000);
     }
   };
 
@@ -703,8 +751,8 @@ export default function OutboundPage() {
             managerName: managerName.trim(),
             chartNumber: chartNumber.trim() || undefined,
             memo: memo.trim() || undefined,
-            isDamaged,
-            isDefective,
+            isDamaged: statusType === "damaged",
+            isDefective: statusType === "defective",
           }],
         };
         await apiPost(`${apiUrl}/outbound/bulk`, payload);
@@ -744,8 +792,8 @@ export default function OutboundPage() {
             managerName: managerName.trim(),
             chartNumber: chartNumber.trim() || undefined,
             memo: memo.trim() || undefined,
-            isDamaged,
-            isDefective,
+            isDamaged: statusType === "damaged",
+            isDefective: statusType === "defective",
           })),
         };
         promises.push(apiPost(`${apiUrl}/outbound/bulk`, payload));
@@ -883,7 +931,7 @@ export default function OutboundPage() {
 
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pt-10 sm:px-6 lg:px-8 lg:pb-4">
         {/* Header */}
         <header className="space-y-4">
           <div>
@@ -928,12 +976,14 @@ export default function OutboundPage() {
         </header>
 
         {activeTab === "processing" ? (
-          <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
+          <div className="grid gap-6 lg:grid-cols-[1fr,400px] lg:h-[calc(100vh-10rem)]">
             {/* Left Panel - Product/Package List */}
-            <div className="space-y-4">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                {/* Segmented Control - Product/Package Outbound */}
-                <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+            <div className="flex flex-col overflow-hidden">
+              <div className="flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex flex-col overflow-hidden">
+                {/* Fixed Header Section */}
+                <div className="flex-shrink-0">
+                  {/* Segmented Control - Product/Package Outbound */}
+                  <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
                   <button
                     onClick={() => setIsPackageMode(false)}
                     className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
@@ -994,21 +1044,23 @@ export default function OutboundPage() {
                   )}
                 </div>
 
-                {/* FIFO Warning - faqat product rejimida */}
-                {!isPackageMode && (
-                  <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
-                        <span className="text-xs font-bold">i</span>
+                  {/* FIFO Warning - faqat product rejimida */}
+                  {!isPackageMode && (
+                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+                          <span className="text-xs font-bold">i</span>
+                        </div>
+                        <p className="text-sm text-red-700 dark:text-red-300">
+                          유효기한이 임박한 배치가 먼저 표시됩니다. 선입선출(FIFO)을 위해 상단의 배치부터 출고해주세요.
+                        </p>
                       </div>
-                      <p className="text-sm text-red-700 dark:text-red-300">
-                        유효기한이 임박한 배치가 먼저 표시됩니다. 선입선출(FIFO)을 위해 상단의 배치부터 출고해주세요.
-                      </p>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Product or Package List */}
+                {/* Scrollable Product or Package List */}
+                <div className="flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                 {loading ? (
                   <div className="py-8 text-center text-slate-500">로딩 중...</div>
                 ) : error ? (
@@ -1067,6 +1119,7 @@ export default function OutboundPage() {
                           return (
                             <div
                               key={pkg.id}
+                              id={`package-card-${pkg.id}`}
                               className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
                             >
                               <div className="flex items-start justify-between">
@@ -1172,12 +1225,13 @@ export default function OutboundPage() {
                     <>
                       <div className="space-y-4">
                         {currentProducts.map((product) => (
-                          <ProductCard
-                            key={product.id}
-                            product={product}
-                            scheduledItems={scheduledItems}
-                            onQuantityChange={handleQuantityChange}
-                          />
+                          <div key={product.id} id={`product-card-${product.id}`} className="transition-all duration-300">
+                            <ProductCard
+                              product={product}
+                              scheduledItems={scheduledItems}
+                              onQuantityChange={handleQuantityChange}
+                            />
+                          </div>
                         ))}
                       </div>
 
@@ -1270,13 +1324,15 @@ export default function OutboundPage() {
                     )}
                   </>
                 )}
+                </div>
               </div>
             </div>
 
             {/* Right Panel - Outbound Processing */}
-            <div className="space-y-4">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                <div className="mb-4 flex items-center justify-between">
+            <div className="flex flex-col">
+              <div className="flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex flex-col overflow-hidden">
+                {/* Header - Fixed */}
+                <div className="mb-4 flex items-center justify-between flex-shrink-0">
                   <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
                       <svg
@@ -1353,77 +1409,98 @@ export default function OutboundPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                {/* Content - Scrollable */}
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
 
-                  {/* Status Checkboxes */}
-                
+                  {/* Status - Radio Buttons */}
+                  <div className="space-y-4">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      상태
+                    </label>
+                    <div className="flex gap-4">
+                      {/* 파손 */}
+                      <label 
+                        className="flex items-center gap-2 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setStatusType(statusType === "damaged" ? null : "damaged");
+                        }}
+                      >
+                        <div className="relative flex h-4 w-4 items-center justify-center">
+                          <input
+                            type="radio"
+                            name="status"
+                            checked={statusType === "damaged"}
+                            readOnly
+                            className="h-4 w-4 appearance-none rounded-full border-2 border-slate-300 bg-white checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 pointer-events-none"
+                          />
+                          {statusType === "damaged" && (
+                            <div className="absolute h-2 w-2 rounded-full bg-sky-500"></div>
+                          )}
+                        </div>
+                        <span className="text-sm text-slate-700 dark:text-slate-200">
+                          파손
+                        </span>
+                      </label>
 
-<div className="space-y-2">
-  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-    상태
-  </label>
-  <div className="flex gap-4">
-    <label className="flex items-center gap-2">
-      <div className="relative">
-        <input
-          type="checkbox"
-          checked={isDamaged}
-          onChange={(e) => setIsDamaged(e.target.checked)}
-          className="h-4 w-4 appearance-none rounded border border-slate-300 bg-white checked:bg-sky-500 checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0"
-        />
-        {isDamaged && (
-          <svg
-            className="pointer-events-none absolute left-0 top-0 h-4 w-4 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 12.75l6 6 9-13.5"
-            />
-          </svg>
-        )}
-      </div>
-      <span className="text-sm text-slate-700 dark:text-slate-200">
-        파손
-      </span>
-    </label>
-    <label className="flex items-center gap-2">
-      <div className="relative">
-        <input
-          type="checkbox"
-          checked={isDefective}
-          onChange={(e) => setIsDefective(e.target.checked)}
-          className="h-4 w-4 appearance-none rounded border border-slate-300 bg-white checked:bg-sky-500 checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0"
-        />
-        {isDefective && (
-          <svg
-            className="pointer-events-none absolute left-0 top-0 h-4 w-4 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 12.75l6 6 9-13.5"
-            />
-          </svg>
-        )}
-      </div>
-      <span className="text-sm text-slate-700 dark:text-slate-200">
-        불량
-      </span>
-    </label>
-  </div>
-</div>
+                      {/* 불량 */}
+                      <label 
+                        className="flex items-center gap-2 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setStatusType(statusType === "defective" ? null : "defective");
+                        }}
+                      >
+                        <div className="relative flex h-4 w-4 items-center justify-center">
+                          <input
+                            type="radio"
+                            name="status"
+                            checked={statusType === "defective"}
+                            readOnly
+                            className="h-4 w-4 appearance-none rounded-full border-2 border-slate-300 bg-white checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 pointer-events-none"
+                          />
+                          {statusType === "defective" && (
+                            <div className="absolute h-2 w-2 rounded-full bg-sky-500"></div>
+                          )}
+                        </div>
+                        <span className="text-sm text-slate-700 dark:text-slate-200">
+                          불량
+                        </span>
+                      </label>
+                    </div>
 
-                  {/* Memo Field */}
-          
+                    {/* Memo Field - faqat 파손 yoki 불량 tanlanganida */}
+                    {statusType && (
+                      <div className="mt-4">
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                          메모
+                        </label>
+                        <textarea
+                          placeholder="상태가 나쁜 이유를 입력하세요"
+                          value={memo}
+                          onChange={(e) => setMemo(e.target.value)}
+                          rows={3}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                      </div>
+                    )}
+
+                    {/* 차트번호 Field */}
+                    <div className="mt-4">
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                        차트번호
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="차트번호"
+                        value={chartNumber}
+                        onChange={(e) => setChartNumber(e.target.value)}
+                        className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
 
                   {/* Scheduled Outbound List */}
                   <div>
@@ -1448,14 +1525,18 @@ export default function OutboundPage() {
                               {failedItems.map((item) => (
                                 <div
                                   key={`failed-${item.productId}-${item.batchId}`}
-                                  className="flex items-center justify-between rounded border border-red-200 bg-white px-2 py-1 text-sm dark:border-red-800 dark:bg-slate-900/60"
+                                  onClick={() => !item.packageName && scrollToProduct(item.productId)}
+                                  className={`flex items-center justify-between rounded border border-red-200 bg-white px-2 py-1 text-sm dark:border-red-800 dark:bg-slate-900/60 ${
+                                    !item.packageName ? "cursor-pointer transition hover:bg-red-50 dark:hover:bg-red-900/30" : ""
+                                  }`}
                                 >
                                   <span className="text-red-700 dark:text-red-300">
                                     {item.packageName ? `${item.packageName} - ` : ""}{item.productName} {item.batchNo} {item.quantity}
                                     {item.unit || "개"}
                                   </span>
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setScheduledItems((prev) => {
                                         const exists = prev.some(
                                           (i) =>
@@ -1552,7 +1633,8 @@ export default function OutboundPage() {
                                   return (
                                     <div
                                       key={`package-${group.packageId}-${groupIdx}`}
-                                      className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                                      onClick={() => group.packageId && scrollToPackage(group.packageId)}
+                                      className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
                                     >
                                       <div className="flex items-center justify-between">
                                         <div className="flex-1">
@@ -1565,7 +1647,8 @@ export default function OutboundPage() {
                                             {packageCount}{unit}
                                           </span>
                                           <button
-                                            onClick={() => {
+                                            onClick={(e) => {
+                                              e.stopPropagation();
                                               setScheduledItems((prev) =>
                                                 prev.filter((item) => item.packageId !== group.packageId)
                                               );
@@ -1684,14 +1767,15 @@ export default function OutboundPage() {
                             return (
                               <div
                                 key={`${item.productId}-${item.batchId}`}
-                                className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                                onClick={() => scrollToProduct(item.productId)}
+                                className={`flex items-center justify-between rounded-lg border px-3 py-2 cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
                                   isFailed
                                     ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
                                     : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
                                 }`}
                               >
                                 <span
-                                  className={`text-sm ${
+                                  className={`text-sm flex-1 ${
                                     isFailed
                                       ? "text-red-700 dark:text-red-300"
                                       : "text-slate-700 dark:text-slate-200"
@@ -1706,7 +1790,8 @@ export default function OutboundPage() {
                                   )}
                                 </span>
                                 <button
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     handleQuantityChange(
                                       item.productId,
                                       item.batchId,
@@ -1714,8 +1799,8 @@ export default function OutboundPage() {
                                       item.productName,
                                       item.unit || "개",
                                       item.quantity - 1
-                                    )
-                                  }
+                                    );
+                                  }}
                                   className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                 >
                                   <svg
@@ -1751,37 +1836,38 @@ export default function OutboundPage() {
                   {/* Memo Field */}
               
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      onClick={handleSubmit}
-                      disabled={
-                        submitting ||
-                        scheduledItems.length === 0 ||
-                        !managerName.trim() ||
-                        scheduledItems.some((item) => {
-                          // Package items uchun tekshiruv yo'q
-                          if (item.isPackageItem) return false;
-                          // Product items uchun tekshiruv
-                          const product = products.find((p) => p.id === item.productId);
-                          if (!product) return true;
-                          const batch = product.batches?.find((b) => b.id === item.batchId);
-                          if (!batch) return true;
-                          return item.quantity > batch.qty || item.quantity <= 0;
-                        })
-                      }
-                      className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {submitting ? "처리 중..." : "출고 하기"}
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      disabled={scheduledItems.length === 0}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      출고 취소
-                    </button>
-                  </div>
+                </div>
+
+                {/* Action Buttons - Fixed at bottom */}
+                <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0 mt-4">
+                  <button
+                    onClick={handleSubmit}
+                    disabled={
+                      submitting ||
+                      scheduledItems.length === 0 ||
+                      !managerName.trim() ||
+                      scheduledItems.some((item) => {
+                        // Package items uchun tekshiruv yo'q
+                        if (item.isPackageItem) return false;
+                        // Product items uchun tekshiruv
+                        const product = products.find((p) => p.id === item.productId);
+                        if (!product) return true;
+                        const batch = product.batches?.find((b) => b.id === item.batchId);
+                        if (!batch) return true;
+                        return item.quantity > batch.qty || item.quantity <= 0;
+                      })
+                    }
+                    className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "처리 중..." : "출고 하기"}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={scheduledItems.length === 0}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    출고 취소
+                  </button>
                 </div>
               </div>
             </div>
@@ -1866,6 +1952,36 @@ export default function OutboundPage() {
                 {groupedHistory.map(([groupKey, items]) => {
                   const [date, time, managerText] = groupKey.split(" ");
                   const manager = managerText.replace("님 출고", "");
+                  const firstItem = items[0];
+                  const chartNumber = firstItem?.chartNumber || firstItem?.chart_number;
+                  const outboundId = firstItem?.outboundId || firstItem?.outbound_id || firstItem?.id;
+                  
+                  // Date format: YYYY-MM-DD HH:mm
+                  const formatDate = (dateStr: string, timeStr: string) => {
+                    try {
+                      const dateObj = new Date(dateStr);
+                      const year = dateObj.getFullYear();
+                      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                      const day = String(dateObj.getDate()).padStart(2, '0');
+                      
+                      // Time format: HH:mm (24-hour format)
+                      let formattedTime = timeStr;
+                      if (timeStr.includes('오전') || timeStr.includes('오후')) {
+                        const timeMatch = timeStr.match(/(\d+):(\d+)/);
+                        if (timeMatch) {
+                          const hour = parseInt(timeMatch[1]);
+                          const minute = timeMatch[2];
+                          const isPM = timeStr.includes('오후');
+                          const hour24 = isPM && hour !== 12 ? hour + 12 : (hour === 12 && !isPM ? 0 : hour);
+                          formattedTime = `${String(hour24).padStart(2, '0')}:${minute}`;
+                        }
+                      }
+                      
+                      return `${year}-${month}-${day} ${formattedTime}`;
+                    } catch {
+                      return `${dateStr} ${timeStr}`;
+                    }
+                  };
                   
                   return (
                     <div
@@ -1875,32 +1991,47 @@ export default function OutboundPage() {
                       {/* Group Header */}
                       <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                              {date} {time} {managerText}
-                            </h3>
-                            {/* 패키지 출고와 단품 출고 구분 표시 */}
-                            {(items[0]?.outboundType || items[0]?.outbound_type) && (
-                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                (items[0].outboundType || items[0].outbound_type) === "패키지"
-                                  ? "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
-                                  : (items[0].outboundType || items[0].outbound_type) === "바코드"
-                                  ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
-                                  : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
-                              }`}>
-                                {(items[0].outboundType || items[0].outbound_type) === "패키지" 
-                                  ? `패키지 출고${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}` : ''}`
-                                  : (items[0].outboundType || items[0].outbound_type) === "바코드" 
-                                  ? "바코드 출고" 
-                                  : "단품 출고"}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-base font-semibold text-slate-900 dark:text-white">
+                              {formatDate(date, time)}
+                            </span>
+                            <span className="text-base font-semibold text-slate-900 dark:text-white">
+                              {managerText}
+                            </span>
+                            {chartNumber && (
+                              <span className="text-base font-semibold text-slate-900 dark:text-white">
+                                차트번호: {chartNumber}
+                              </span>
+                            )}
+                            {/* 패키지 출고와 바코드 출고 구분 표시 */}
+                            {(firstItem?.outboundType || firstItem?.outbound_type) === "패키지" && (
+                              <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                {firstItem?.packageName || firstItem?.package_name ? `${firstItem.packageName || firstItem.package_name}님 출고` : '패키지 출고'}
+                              </span>
+                            )}
+                            {(firstItem?.outboundType || firstItem?.outbound_type) === "바코드" && (
+                              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-500/20 dark:text-green-300">
+                                바코드 출고
                               </span>
                             )}
                           </div>
-                          {(items[0]?.memo?.includes("교육") || items[0]?.memo?.includes("테스트")) && (
-                            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
-                              {items[0]?.memo?.includes("교육") ? "교육용" : "테스트"}
-                            </span>
-                          )}
+                          <button
+                            onClick={async () => {
+                              if (confirm("출고를 취소하시겠습니까?")) {
+                                try {
+                                  // TODO: Implement cancel outbound API call
+                                  // await apiDelete(`${apiUrl}/outbound/${outboundId}`);
+                                  alert("출고 취소 기능은 아직 구현되지 않았습니다.");
+                                } catch (error) {
+                                  console.error("Failed to cancel outbound:", error);
+                                  alert("출고 취소에 실패했습니다.");
+                                }
+                              }
+                            }}
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            출고 취소
+                          </button>
                         </div>
                       </div>
 
@@ -1959,23 +2090,41 @@ export default function OutboundPage() {
                                     )}
                                   </div>
 
-                                  <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                    <div>
+                                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span>
                                       {month}월 {day}일
-                                    </div>
-                                    <div>
+                                    </span>
+                                    <span>
                                       {item.managerName || item.manager_name}에 의한 출고
-                                      {(batch?.batchNo || batch?.batch_no) && ` (배치: ${batch.batchNo || batch.batch_no})`}
-                                      {(item.patientName || item.patient_name) && ` - 환자: ${item.patientName || item.patient_name}`}
-                                      {(item.chartNumber || item.chart_number) && ` (차트번호: ${item.chartNumber || item.chart_number})`}
-                                      {item.memo && !isDamaged && !isDefective && ` - ${item.memo}`}
-                                    </div>
+                                    </span>
+                                    {(batch?.batchNo || batch?.batch_no) && (
+                                      <span>
+                                        ({batch.batchNo || batch.batch_no})
+                                      </span>
+                                    )}
+                                    {(item.patientName || item.patient_name) && (
+                                      <span>
+                                        - 환자: {item.patientName || item.patient_name}
+                                      </span>
+                                    )}
+                                    {(item.chartNumber || item.chart_number) && (
+                                      <span>
+                                        (차트번호: {item.chartNumber || item.chart_number})
+                                      </span>
+                                    )}
+                                    {item.memo && !isDamaged && !isDefective && (
+                                      <span>
+                                        - {item.memo}
+                                      </span>
+                                    )}
                                     {specialNote && (
-                                      <div className="font-semibold text-red-600 dark:text-red-400">
+                                      <span className="font-semibold text-red-600 dark:text-red-400">
                                         특이사항 {specialNote}
-                                      </div>
+                                      </span>
                                     )}
                                   </div>
+                                </div>
                                 </div>
 
                                 <div className="flex flex-col items-end gap-1">

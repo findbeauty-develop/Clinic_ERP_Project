@@ -272,6 +272,11 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
     managerName: product.managerName || "",
     contactPhone: product.contactPhone || "",
     contactEmail: product.contactEmail || "",
+    expiryDate: product.expiryDate ? new Date(product.expiryDate).toISOString().split('T')[0] : "",
+    storageLocation: product.storageLocation || "",
+    memo: product.memo || "",
+    isReturnable: product.isReturnable || false,
+    refundAmount: product.refundAmount?.toString() || "",
   });
 
   const handleInputChange = (field: string, value: any) => {
@@ -333,6 +338,29 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
             contact_email: formData.contactEmail || undefined,
           },
         ];
+      }
+
+      // Additional fields
+      if (formData.expiryDate) {
+        payload.expiryDate = formData.expiryDate;
+      }
+      if (formData.storageLocation) {
+        payload.storageLocation = formData.storageLocation;
+      }
+      if (formData.memo) {
+        payload.memo = formData.memo;
+      }
+      payload.isReturnable = formData.isReturnable;
+      if (formData.refundAmount) {
+        payload.refundAmount = Number(formData.refundAmount) || 0;
+      }
+
+      // Return policy
+      if (formData.isReturnable || formData.refundAmount) {
+        payload.returnPolicy = {
+          is_returnable: formData.isReturnable,
+          refund_amount: formData.refundAmount ? Number(formData.refundAmount) : 0,
+        };
       }
 
       const updatedProductResponse = await apiPut<any>(`${apiUrl}/products/${product.id}`, payload);
@@ -634,6 +662,152 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Storage and Memo Info */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                유효기간
+              </label>
+              <input
+                type="date"
+                value={formData.expiryDate}
+                onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                보관 위치
+              </label>
+              <input
+                type="text"
+                value={formData.storageLocation}
+                onChange={(e) => handleInputChange("storageLocation", e.target.value)}
+                placeholder="예: 창고 A-3, 냉장실 1번"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              보관 메모
+            </label>
+            <textarea
+              value={formData.memo}
+              onChange={(e) => handleInputChange("memo", e.target.value)}
+              rows={3}
+              placeholder="보관 관련 메모를 입력하세요"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            />
+          </div>
+
+          {/* Return Policy */}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+            <h4 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-100">반납 정책</h4>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isReturnable"
+                  checked={formData.isReturnable}
+                  onChange={(e) => handleInputChange("isReturnable", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 bg-white text-indigo-600 focus:ring-2 focus:ring-indigo-500 checked:bg-indigo-500 checked:border-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <label htmlFor="isReturnable" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  반납 가능한 제품
+                </label>
+              </div>
+              {formData.isReturnable && (
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    반납시개당 가격 (원)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.refundAmount}
+                    onChange={(e) => handleInputChange("refundAmount", e.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Storage and Memo Info */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                유효기간
+              </label>
+              <input
+                type="date"
+                value={formData.expiryDate}
+                onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                보관 위치
+              </label>
+              <input
+                type="text"
+                value={formData.storageLocation}
+                onChange={(e) => handleInputChange("storageLocation", e.target.value)}
+                placeholder="예: 창고 A-3, 냉장실 1번"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              보관 메모
+            </label>
+            <textarea
+              value={formData.memo}
+              onChange={(e) => handleInputChange("memo", e.target.value)}
+              rows={3}
+              placeholder="보관 관련 메모를 입력하세요"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            />
+          </div>
+
+          {/* Return Policy */}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+            <h4 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-100">반납 정책</h4>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isReturnable"
+                  checked={formData.isReturnable}
+                  onChange={(e) => handleInputChange("isReturnable", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 bg-white text-indigo-600 focus:ring-2 focus:ring-indigo-500 checked:bg-indigo-500 checked:border-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <label htmlFor="isReturnable" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  반납 가능한 제품
+                </label>
+              </div>
+              {formData.isReturnable && (
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    반납시개당 가격 (원)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.refundAmount}
+                    onChange={(e) => handleInputChange("refundAmount", e.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

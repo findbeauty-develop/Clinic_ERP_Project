@@ -67,7 +67,7 @@ export default function PackageOutboundPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
   // Cache for package expiry info (packageId -> earliest expiry date timestamp)
   const [packageExpiryCache, setPackageExpiryCache] = useState<Record<string, number | null>>({});
   

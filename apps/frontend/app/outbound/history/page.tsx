@@ -255,7 +255,7 @@ export default function OutboundHistoryPage() {
                                 : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
                             }`}>
                               {(items[0].outboundType || items[0].outbound_type) === "패키지" 
-                                ? `패키지 출고${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}` : ''}`
+                                ? `${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}님 출고` : ''}`
                                 : (items[0].outboundType || items[0].outbound_type) === "바코드" 
                                 ? "바코드 출고" 
                                 : "단품 출고"}
@@ -329,22 +329,40 @@ export default function OutboundHistoryPage() {
                                   )}
                                 </div>
 
-                                <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                  <div>
-                                    {month}월 {day}일
+                                <div className="text-sm text-slate-600 dark:text-slate-400">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span>
+                                      {month}월 {day}일
+                                    </span>
+                                    <span>
+                                      {item.managerName || item.manager_name}에 의한 출고
+                                    </span>
+                                    {(batch?.batchNo || batch?.batch_no) && (
+                                      <span>
+                                        (배치: {batch.batchNo || batch.batch_no})
+                                      </span>
+                                    )}
+                                    {(item.patientName || item.patient_name) && (
+                                      <span>
+                                        - 환자: {item.patientName || item.patient_name}
+                                      </span>
+                                    )}
+                                    {(item.chartNumber || item.chart_number) && (
+                                      <span>
+                                        (차트번호: {item.chartNumber || item.chart_number})
+                                      </span>
+                                    )}
+                                    {item.memo && !isDamaged && !isDefective && (
+                                      <span>
+                                        - {item.memo}
+                                      </span>
+                                    )}
+                                    {specialNote && (
+                                      <span className="font-semibold text-red-600 dark:text-red-400">
+                                        특이사항 {specialNote}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div>
-                                    {item.managerName || item.manager_name}에 의한 출고
-                                    {(batch?.batchNo || batch?.batch_no) && ` (${batch.batchNo || batch.batch_no})`}
-                                    {(item.patientName || item.patient_name) && ` - 환자: ${item.patientName || item.patient_name}`}
-                                    {(item.chartNumber || item.chart_number) && ` (차트번호: ${item.chartNumber || item.chart_number})`}
-                                    {item.memo && !isDamaged && !isDefective && ` - ${item.memo}`}
-                                  </div>
-                                  {specialNote && (
-                                    <div className="font-semibold text-red-600 dark:text-red-400">
-                                      특이사항 {specialNote}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
 

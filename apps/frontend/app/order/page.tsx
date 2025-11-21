@@ -245,7 +245,9 @@ export default function OrderPage() {
   // Quantity o'zgartirish (Optimistic update bilan)
   const handleQuantityChange = useCallback(
     async (productId: string, batchId: string | undefined, newQuantity: number) => {
-      if (newQuantity < 0) return;
+      // Sanitize quantity - faqat musbat butun son bo'lishi kerak
+      const sanitizedQuantity = Math.max(0, Math.floor(newQuantity));
+      if (isNaN(sanitizedQuantity) || sanitizedQuantity < 0) return;
 
       // Product ma'lumotlarini topish
       const product = products.find(p => p.id === productId);
@@ -258,8 +260,8 @@ export default function OrderPage() {
       // Optimistic update - darhol local state'ni yangilash (itemId va productId ikkalasini ham yangilash)
       setQuantities((prev) => ({
         ...prev,
-        [productId]: newQuantity, // Product card uchun
-        [itemId]: newQuantity, // Draft item uchun
+        [productId]: sanitizedQuantity, // Product card uchun
+        [itemId]: sanitizedQuantity, // Draft item uchun
       }));
 
       // Optimistic draft update
@@ -269,7 +271,7 @@ export default function OrderPage() {
         const items = [...(prevDraft.items || [])];
         const existingItemIndex = items.findIndex((item) => item.id === itemId);
 
-        if (newQuantity === 0) {
+        if (sanitizedQuantity === 0) {
           // Item'ni o'chirish
           if (existingItemIndex >= 0) {
             items.splice(existingItemIndex, 1);
@@ -281,9 +283,9 @@ export default function OrderPage() {
             productId,
             batchId,
             supplierId,
-            quantity: newQuantity,
+            quantity: sanitizedQuantity,
             unitPrice,
-            totalPrice: newQuantity * unitPrice,
+            totalPrice: sanitizedQuantity * unitPrice,
             isHighlighted: existingItemIndex < 0, // Yangi item bo'lsa highlight
           };
 
@@ -326,7 +328,7 @@ export default function OrderPage() {
           ? localStorage.getItem("erp_access_token") 
           : null;
 
-        if (newQuantity === 0) {
+        if (sanitizedQuantity === 0) {
           await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
             method: "PUT",
             headers: {
@@ -347,7 +349,7 @@ export default function OrderPage() {
             body: JSON.stringify({
               productId,
               batchId,
-              quantity: newQuantity,
+              quantity: sanitizedQuantity,
             }),
           });
         }
@@ -559,13 +561,15 @@ export default function OrderPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() =>
+                              onClick={() => {
+                                const itemId = latestBatch?.id ? `${product.id}-${latestBatch.id}` : product.id;
+                                const currentQtyValue = quantities[itemId] || quantities[product.id] || 0;
                                 handleQuantityChange(
                                   product.id,
                                   latestBatch?.id,
-                                  Math.max(0, currentQty - 1)
-                                )
-                              }
+                                  Math.max(0, currentQtyValue - 1)
+                                );
+                              }}
                               className="flex h-8 w-8  mt-4 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                             >
                               -
@@ -575,7 +579,7 @@ export default function OrderPage() {
                               min="0"
                               value={currentQty}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
+                                const val = Math.max(0, Math.floor(parseInt(e.target.value) || 0));
                                 handleQuantityChange(
                                   product.id,
                                   latestBatch?.id,
@@ -585,13 +589,15 @@ export default function OrderPage() {
                               className="h-8 w-20 mt-4 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button
-                              onClick={() =>
+                              onClick={() => {
+                                const itemId = latestBatch?.id ? `${product.id}-${latestBatch.id}` : product.id;
+                                const currentQtyValue = quantities[itemId] || quantities[product.id] || 0;
                                 handleQuantityChange(
                                   product.id,
                                   latestBatch?.id,
-                                  currentQty + 1
-                                )
-                              }
+                                  Math.max(0, currentQtyValue + 1)
+                                );
+                              }}
                               className="flex h-8 w-8  mt-4 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                             >
                               +
