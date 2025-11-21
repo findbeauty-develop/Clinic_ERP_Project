@@ -4,6 +4,31 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 
+// Scrollbar styling
+const scrollbarStyles = `
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  .order-page-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .order-page-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .order-page-scrollbar::-webkit-scrollbar-thumb {
+    background: white;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  .order-page-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #f3f4f6;
+  }
+  /* Firefox */
+  .order-page-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: white transparent;
+  }
+`;
+
 type ProductWithRisk = {
   id: string;
   productName: string;
@@ -21,6 +46,9 @@ type ProductWithRisk = {
   riskScore: number;
   riskLevel: "high" | "medium" | "low";
   riskColor: string;
+  isReturnable?: boolean;
+  returnRefundAmount?: number;
+  returnableQuantity?: number;
   batches: Array<{
     id: string;
     batchNo: string;
@@ -76,6 +104,8 @@ export default function OrderPage() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({}); // Return qilinadigan miqdorlar
+  const [returnChecked, setReturnChecked] = useState<Record<string, boolean>>({}); // Return checkbox holati
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -122,7 +152,7 @@ export default function OrderPage() {
     fetchProducts();
   }, [apiUrl, filterTab]);
 
-  // Draft olish
+  // Draft olish (loading bilan)
   const fetchDraft = useCallback(async () => {
     setDraftLoading(true);
     try {
@@ -142,16 +172,44 @@ export default function OrderPage() {
       const data = await response.json();
       setDraft(data);
 
-      // Quantities'ni yangilash
+      // Quantities'ni yangilash (itemId va productId ikkalasini ham)
       const newQuantities: Record<string, number> = {};
       data.items?.forEach((item: DraftItem) => {
-        newQuantities[item.productId] = item.quantity;
+        const itemId = item.batchId ? `${item.productId}-${item.batchId}` : item.productId;
+        newQuantities[itemId] = item.quantity; // itemId bo'yicha
+        newQuantities[item.productId] = item.quantity; // productId bo'yicha (backward compatibility)
       });
       setQuantities(newQuantities);
     } catch (err) {
       console.error("Failed to load draft", err);
     } finally {
       setDraftLoading(false);
+    }
+  }, [apiUrl, sessionId]);
+
+  // Silent draft fetch (loading ko'rsatmasdan, quantities'ni yangilamaydi)
+  const fetchDraftSilent = useCallback(async () => {
+    try {
+      const token = typeof window !== "undefined" 
+        ? localStorage.getItem("erp_access_token") 
+        : null;
+      
+      const response = await fetch(`${apiUrl}/order/draft`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "x-session-id": sessionId,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch draft");
+
+      const data = await response.json();
+      // Faqat draft'ni qaytaramiz, quantities'ni yangilamaymiz
+      // Chunki optimistic update allaqachon qilingan
+      return data;
+    } catch (err) {
+      console.error("Failed to load draft silently", err);
+      return null;
     }
   }, [apiUrl, sessionId]);
 
@@ -184,24 +242,91 @@ export default function OrderPage() {
     searchProducts();
   }, [apiUrl, debouncedSearchQuery]);
 
-  // Quantity o'zgartirish
+  // Quantity o'zgartirish (Optimistic update bilan)
   const handleQuantityChange = useCallback(
     async (productId: string, batchId: string | undefined, newQuantity: number) => {
       if (newQuantity < 0) return;
 
+      // Product ma'lumotlarini topish
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+
+      const itemId = batchId ? `${productId}-${batchId}` : productId;
+      const unitPrice = product.unitPrice || 0;
+      const supplierId = product.supplierId || "unknown";
+
+      // Optimistic update - darhol local state'ni yangilash (itemId va productId ikkalasini ham yangilash)
       setQuantities((prev) => ({
         ...prev,
-        [productId]: newQuantity,
+        [productId]: newQuantity, // Product card uchun
+        [itemId]: newQuantity, // Draft item uchun
       }));
 
+      // Optimistic draft update
+      setDraft((prevDraft) => {
+        if (!prevDraft) return prevDraft;
+
+        const items = [...(prevDraft.items || [])];
+        const existingItemIndex = items.findIndex((item) => item.id === itemId);
+
+        if (newQuantity === 0) {
+          // Item'ni o'chirish
+          if (existingItemIndex >= 0) {
+            items.splice(existingItemIndex, 1);
+          }
+        } else {
+          // Item qo'shish yoki yangilash
+          const newItem = {
+            id: itemId,
+            productId,
+            batchId,
+            supplierId,
+            quantity: newQuantity,
+            unitPrice,
+            totalPrice: newQuantity * unitPrice,
+            isHighlighted: existingItemIndex < 0, // Yangi item bo'lsa highlight
+          };
+
+          if (existingItemIndex >= 0) {
+            items[existingItemIndex] = { ...items[existingItemIndex], ...newItem, isHighlighted: false };
+          } else {
+            items.push(newItem);
+          }
+        }
+
+        // Total amount hisoblash
+        const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
+
+        // Supplier bo'yicha grouping
+        const groupedBySupplier: Record<string, any> = {};
+        items.forEach((item) => {
+          const supId = item.supplierId || "unknown";
+          if (!groupedBySupplier[supId]) {
+            groupedBySupplier[supId] = {
+              supplierId: supId,
+              items: [],
+              totalAmount: 0,
+            };
+          }
+          groupedBySupplier[supId].items.push(item);
+          groupedBySupplier[supId].totalAmount += item.totalPrice;
+        });
+
+        return {
+          ...prevDraft,
+          items,
+          totalAmount,
+          groupedBySupplier: Object.values(groupedBySupplier),
+        };
+      });
+
+      // Background'da API call (silent)
       try {
         const token = typeof window !== "undefined" 
           ? localStorage.getItem("erp_access_token") 
           : null;
 
         if (newQuantity === 0) {
-          // Item'ni o'chirish
-          const itemId = batchId ? `${productId}-${batchId}` : productId;
           await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
             method: "PUT",
             headers: {
@@ -212,7 +337,6 @@ export default function OrderPage() {
             body: JSON.stringify({ quantity: 0 }),
           });
         } else {
-          // Item qo'shish yoki yangilash
           await fetch(`${apiUrl}/order/draft/items`, {
             method: "POST",
             headers: {
@@ -228,18 +352,44 @@ export default function OrderPage() {
           });
         }
 
-        // Draft'ni yangilash
-        await fetchDraft();
+        // Background'da draft'ni yangilash (silent, loading ko'rsatmasdan)
+        // Lekin quantities'ni yangilamaymiz, chunki optimistic update allaqachon qilingan
+        // Faqat draft'ni yangilaymiz, quantities'ni emas
+        // fetchDraftSilent ni o'chirib tashladik, chunki u quantity'larni qayta yangilayapti
+        // Optimistic update yetarli
       } catch (err) {
         console.error("Failed to update draft", err);
-        // Error bo'lsa, quantity'ni qaytarish
-        setQuantities((prev) => ({
-          ...prev,
-          [productId]: prev[productId] || 0,
-        }));
+        // Error bo'lsa, rollback - server'dan to'g'ri draft'ni olish
+        try {
+          const token = typeof window !== "undefined" 
+            ? localStorage.getItem("erp_access_token") 
+            : null;
+          
+          const response = await fetch(`${apiUrl}/order/draft`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "x-session-id": sessionId,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setDraft(data);
+            // Error bo'lganda quantities'ni ham yangilaymiz
+            const newQuantities: Record<string, number> = {};
+            data.items?.forEach((item: DraftItem) => {
+              const itemId = item.batchId ? `${item.productId}-${item.batchId}` : item.productId;
+              newQuantities[itemId] = item.quantity;
+              newQuantities[item.productId] = item.quantity;
+            });
+            setQuantities(newQuantities);
+          }
+        } catch (fetchErr) {
+          console.error("Failed to fetch draft on error", fetchErr);
+        }
       }
     },
-    [apiUrl, sessionId, fetchDraft]
+    [apiUrl, sessionId, products]
   );
 
   // Filter products
@@ -279,7 +429,31 @@ export default function OrderPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
+    <>
+      <style jsx global>{`
+        /* Webkit browsers (Chrome, Safari, Edge) */
+        .order-page-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .order-page-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .order-page-scrollbar::-webkit-scrollbar-thumb {
+          background: white;
+          border-radius: 4px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        .order-page-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #f3f4f6;
+        }
+        /* Firefox */
+        .order-page-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: white transparent;
+        }
+      `}</style>
+      <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-900">
       {/* Header */}
       <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center justify-between">
@@ -330,42 +504,11 @@ export default function OrderPage() {
                 <h2 className="font-semibold text-slate-900 dark:text-white">
                   재고 부족 제품
                 </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setFilterTab("low")}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                      filterTab === "low"
-                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                    }`}
-                  >
-                    소진부족
-                  </button>
-                  <button
-                    onClick={() => setFilterTab("expiring")}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                      filterTab === "expiring"
-                        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                    }`}
-                  >
-                    임박부족
-                  </button>
-                  <button
-                    onClick={() => setFilterTab("all")}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                      filterTab === "all"
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                    }`}
-                  >
-                    전체
-                  </button>
-                </div>
+                
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="order-page-scrollbar flex-1 overflow-y-auto p-6">
               {loading ? (
                 <div className="text-center text-slate-500 dark:text-slate-400">
                   불러오는 중...
@@ -381,8 +524,10 @@ export default function OrderPage() {
               ) : (
                 <div className="space-y-4">
                   {filteredProducts.map((product) => {
-                    const currentQty = quantities[product.id] || 0;
                     const latestBatch = product.batches[0];
+                    const itemId = latestBatch?.id ? `${product.id}-${latestBatch.id}` : product.id;
+                    // Quantity'ni topish: avval itemId bo'yicha, keyin productId bo'yicha
+                    const currentQty = quantities[itemId] || quantities[product.id] || 0;
                     const unitPrice = product.unitPrice || 0;
                     const riskTag = getRiskTag(product);
 
@@ -437,7 +582,7 @@ export default function OrderPage() {
                                   val
                                 );
                               }}
-                              className="h-8 w-20 mt-4 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                              className="h-8 w-20 mt-4 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button
                               onClick={() =>
@@ -482,23 +627,111 @@ export default function OrderPage() {
                             {product.batches.map((batch) => (
                               <div
                                 key={batch.id}
-                                className="flex items-center justify-between text-sm"
+                                className="relative flex items-center text-sm"
                               >
                                 <span className="font-medium text-slate-900 dark:text-white">
                                   {batch.batchNo}
                                 </span>
-                                <div className="flex items-center gap-4">
+                                <div className="absolute left-1/2 -translate-x-1/2">
                                   {batch.expiryDate && (
                                     <span className="text-orange-600 dark:text-orange-400">
                                       유통기간: {batch.expiryDate}
                                     </span>
                                   )}
-                                  <span className="font-semibold text-red-600 dark:text-red-400">
-                                    {batch.qty} 개
-                                  </span>
                                 </div>
+                                <span className="ml-auto font-semibold text-red-600 dark:text-red-400">
+                                  {batch.qty} 개
+                                </span>
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Return qilinadigan product section */}
+                        {product.isReturnable && product.returnableQuantity && product.returnableQuantity > 0 && (
+                          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={returnChecked[product.id] || false}
+                                  onChange={(e) => {
+                                    setReturnChecked((prev) => ({
+                                      ...prev,
+                                      [product.id]: e.target.checked,
+                                    }));
+                                    if (!e.target.checked) {
+                                      setReturnQuantities((prev) => {
+                                        const newQty = { ...prev };
+                                        delete newQty[product.id];
+                                        return newQty;
+                                      });
+                                    }
+                                  }}
+                                  className="h-4 w-4 rounded border-2 border-slate-300 bg-white accent-blue-600 focus:ring-2 focus:ring-blue-500 checked:bg-white checked:border-blue-600 dark:border-slate-600 dark:bg-white dark:checked:bg-white dark:checked:border-blue-600"
+                                  style={{ 
+                                    backgroundColor: 'white',
+                                    accentColor: '#2563eb'
+                                  }}
+                                />
+                                <label className="text-sm font-medium text-slate-900 dark:text-white">
+                                  반납 가능 제품: {product.returnableQuantity}개
+                                </label>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm text-slate-600 dark:text-slate-400">
+                                  개당 금액: {product.returnRefundAmount?.toLocaleString() || 0}원
+                                </span>
+                                {returnChecked[product.id] && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const currentReturnQty = returnQuantities[product.id] || 0;
+                                        setReturnQuantities((prev) => ({
+                                          ...prev,
+                                          [product.id]: Math.max(0, currentReturnQty - 1),
+                                        }));
+                                      }}
+                                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={product.returnableQuantity}
+                                      value={returnQuantities[product.id] || 0}
+                                      onChange={(e) => {
+                                        const val = Math.min(
+                                          product.returnableQuantity || 0,
+                                          Math.max(0, parseInt(e.target.value) || 0)
+                                        );
+                                        setReturnQuantities((prev) => ({
+                                          ...prev,
+                                          [product.id]: val,
+                                        }));
+                                      }}
+                                      className="h-7 w-16 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const currentReturnQty = returnQuantities[product.id] || 0;
+                                        setReturnQuantities((prev) => ({
+                                          ...prev,
+                                          [product.id]: Math.min(
+                                            product.returnableQuantity || 0,
+                                            currentReturnQty + 1
+                                          ),
+                                        }));
+                                      }}
+                                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -535,7 +768,7 @@ export default function OrderPage() {
                   />
                 </svg>
                 {showSearchResults && searchResults.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                  <div className="order-page-scrollbar absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
                     {searchResults.map((product) => (
                       <div
                         key={product.id}
@@ -569,7 +802,7 @@ export default function OrderPage() {
               </h2>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="order-page-scrollbar flex-1 overflow-y-auto p-6">
               {draftLoading ? (
                 <div className="text-center text-slate-500 dark:text-slate-400">
                   불러오는 중...
@@ -580,66 +813,118 @@ export default function OrderPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {draft.groupedBySupplier.map((group) => (
+                  {draft.groupedBySupplier.map((group) => {
+                    // Supplier name'ni topish
+                    const firstItem = group.items[0];
+                    const firstProduct = products.find((p) => p.id === firstItem?.productId);
+                    const supplierName = firstProduct?.supplierName || group.supplierId || "공급업체 없음";
+                    // Manager name hozircha yo'q, lekin kelajakda qo'shilishi mumkin
+                    const managerName = ""; // TODO: Backend'dan manager name kelganda qo'shish
+
+                    return (
                     <div
                       key={group.supplierId}
-                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
+                      className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
                     >
-                      <h3 className="mb-3 font-semibold text-slate-900 dark:text-white">
-                        {group.supplierId || "공급업체 없음"}
-                      </h3>
-                      <div className="space-y-2">
-                        {group.items.map((item) => {
-                          // Product name'ni topish
-                          const product = products.find((p) => p.id === item.productId);
-                          const productName = product?.productName || item.productId;
+                        {/* Supplier nomi, manager nomi va umumiy qiymat */}
+                        <div className="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {supplierName}
+                            {managerName && ` ${managerName}`}
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            총 {group.totalAmount.toLocaleString()}원
+                          </div>
+                        </div>
 
-                          return (
-                            <div
-                              key={item.id}
-                              className={`flex items-center justify-between rounded-lg border p-2 ${
-                                item.isHighlighted
-                                  ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20"
-                                  : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
-                              }`}
-                            >
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-slate-900 dark:text-white">
+                        {/* Product'lar ro'yxati */}
+                        <div className="space-y-2">
+                          {group.items.map((item) => {
+                            const product = products.find((p) => p.id === item.productId);
+                            const productName = product?.productName || item.productId;
+                            // Item ID yoki productId bo'yicha quantity topish
+                            const currentQty = quantities[item.id] || quantities[item.productId] || item.quantity;
+
+                            return (
+                              <div
+                                key={item.id}
+                                className={`flex items-center gap-2 rounded-lg border p-2 ${
+                                  item.isHighlighted
+                                    ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20"
+                                    : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
+                                }`}
+                              >
+                                {/* Product name */}
+                                <div className="flex-1 text-xs font-medium text-slate-900 dark:text-white">
                                   {productName}
                                   {item.isHighlighted && (
-                                    <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">
+                                    <span className="ml-1 text-[10px] text-blue-600 dark:text-blue-400">
                                       (신규)
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-xs text-slate-600 dark:text-slate-400">
-                                  {item.quantity}개 × {item.unitPrice.toLocaleString()}원 ={" "}
-                                  {item.totalPrice.toLocaleString()}원
+
+                                {/* Qty input */}
+                                <div className="flex items-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={currentQty}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                                      handleQuantityChange(
+                                        item.productId,
+                                        item.batchId,
+                                        val
+                                      );
+                                    }}
+                                    className="h-6 w-12 rounded border border-slate-300 bg-white px-1 text-center text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  />
+                                  <span className="text-xs text-slate-600 dark:text-slate-400">개</span>
                                 </div>
+
+                                {/* Unit price */}
+                                <div className="text-xs text-slate-600 dark:text-slate-400">
+                                  {item.unitPrice.toLocaleString()}원
+                                </div>
+
+                                {/* Total (unit price × qty) */}
+                                <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                                  {(item.unitPrice * currentQty).toLocaleString()}원
+                                </div>
+
+                                {/* Minus button */}
+                                <button
+                                  onClick={() =>
+                                    handleQuantityChange(
+                                      item.productId,
+                                      item.batchId,
+                                      0
+                                    )
+                                  }
+                                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-400 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:bg-slate-700 dark:hover:border-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                                >
+                                  <svg
+                                    className="h-3 w-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M20 12H4"
+                                    />
+                                  </svg>
+                                </button>
                               </div>
-                              <button
-                                onClick={() =>
-                                  handleQuantityChange(
-                                    item.productId,
-                                    item.batchId,
-                                    0
-                                  )
-                                }
-                                className="ml-2 flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="mt-3 border-t border-slate-200 pt-2 text-right dark:border-slate-700">
-                        <span className="font-semibold text-slate-900 dark:text-white">
-                          소계: {group.totalAmount.toLocaleString()}원
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -715,6 +1000,7 @@ export default function OrderPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
