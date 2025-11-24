@@ -9,6 +9,7 @@ interface MemberCreateInput {
   role: string;
   password_hash: string;
   clinic_name: string;
+  must_change_password?: boolean;
   full_name?: NullableString;
   phone_number?: NullableString;
   id_card_number?: NullableString;
@@ -82,6 +83,13 @@ export class MembersRepository {
         },
         tenant_id: tenantId,
       },
+    });
+  }
+
+  update(id: string, data: Partial<MemberCreateInput>) {
+    return this.prisma.member.update({
+      where: { id },
+      data,
     });
   }
 }

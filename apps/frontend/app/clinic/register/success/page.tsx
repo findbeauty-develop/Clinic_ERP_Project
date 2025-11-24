@@ -82,6 +82,7 @@ export default function ClinicRegisterSuccessPage() {
   const [loading, setLoading] = useState(true);
   const [showWarningPopup, setShowWarningPopup] = useState(false);
   const [showPasswordSentPopup, setShowPasswordSentPopup] = useState(false);
+  const [sendingCredentials, setSendingCredentials] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -193,6 +194,63 @@ export default function ClinicRegisterSuccessPage() {
     ],
     [owner]
   );
+
+  const handleSendCredentials = async () => {
+    if (!owner?.ownerPhoneNumber || !clinic?.name || members.length === 0) {
+      window.alert("필수 정보가 없습니다.");
+      return;
+    }
+
+    setSendingCredentials(true);
+    try {
+      const token = typeof window !== "undefined" 
+        ? localStorage.getItem("erp_access_token") 
+        : null;
+
+      // Owner'ni filter qilish (owner'ga yuborilmaydi, chunki u o'z password'ini tanlagan)
+      const membersToSend = members.filter(m => m.role !== "owner" && m.role !== "소유자");
+
+      if (membersToSend.length === 0) {
+        window.alert("전송할 계정 정보가 없습니다.");
+        return;
+      }
+
+      const response = await fetch(`${apiUrl}/iam/members/send-credentials`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          ownerPhoneNumber: owner.ownerPhoneNumber,
+          clinicName: clinic.name,
+          members: membersToSend.map(m => ({
+            memberId: m.memberId,
+            role: m.role,
+            temporaryPassword: m.password,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || "전송에 실패했습니다.");
+      }
+
+      const result = await response.json();
+      
+      if (result.smsSent || result.kakaoSent) {
+        setShowPasswordSentPopup(true);
+      } else {
+        window.alert("전송에 실패했습니다. 다시 시도해주세요.");
+      }
+    } catch (error: any) {
+      console.error("Failed to send credentials", error);
+      window.alert(error.message || "전송에 실패했습니다.");
+    } finally {
+      setSendingCredentials(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -405,9 +463,10 @@ export default function ClinicRegisterSuccessPage() {
                 onClick={() => {
                   setShowWarningPopup(true);
                 }}
-                className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                disabled={sendingCredentials}
+                className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                저장
+                {sendingCredentials ? "전송 중..." : "저장"}
               </button>
             </div>
           </div>
@@ -467,13 +526,14 @@ export default function ClinicRegisterSuccessPage() {
               <div className="mt-4 flex w-full gap-3">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setShowWarningPopup(false);
-                    setShowPasswordSentPopup(true);
+                    await handleSendCredentials();
                   }}
-                  className="flex-1 rounded-xl border-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
+                  disabled={sendingCredentials}
+                  className="flex-1 rounded-xl border-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  네
+                  {sendingCredentials ? "전송 중..." : "네"}
                 </button>
                 <button
                   type="button"

@@ -35,24 +35,28 @@ export class MembersService {
       label: string;
       password: string;
       isOwner: boolean;
+      isTemporary: boolean;
     }> = [
       {
         role: "owner",
         label: "owner1",
         password: dto.ownerPassword,
         isOwner: true,
+        isTemporary: false, // Owner o'z password'ini tanlaydi
       },
       {
         role: "manager",
         label: "manager1",
-        password: this.generateRandomPassword(),
+        password: this.generateTemporaryPassword(),
         isOwner: false,
+        isTemporary: true, // Temporary password
       },
       {
         role: "member",
         label: "member1",
-        password: this.generateRandomPassword(),
+        password: this.generateTemporaryPassword(),
         isOwner: false,
+        isTemporary: true, // Temporary password
       },
     ];
 
@@ -72,6 +76,7 @@ export class MembersService {
           tenant_id: tenantId,
           clinic_name: clinicSlug,
           created_by: userId,
+          must_change_password: definition.isTemporary, // Temporary password bo'lsa, birinchi login'da o'zgartirish majburiy
           full_name: definition.isOwner ? dto.ownerName : undefined,
           phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
           id_card_number: definition.isOwner
@@ -86,7 +91,7 @@ export class MembersService {
           result: {
             memberId,
             role: definition.role,
-            password: definition.isOwner ? undefined : definition.password,
+            password: definition.isOwner ? undefined : definition.password, // Temporary password faqat non-owner'lar uchun
           },
         };
       })
@@ -171,6 +176,18 @@ export class MembersService {
     return randomBytes(8).toString("base64url");
   }
 
+  /**
+   * Temporary password generate qilish (8-12 belgili, harflar va raqamlar)
+   */
+  private generateTemporaryPassword(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let password = '';
+    for (let i = 0; i < 10; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+
   public async login(memberId: string, password: string, tenantId?: string) {
     try {
       // Find member by member_id (which is unique globally)
@@ -207,6 +224,9 @@ export class MembersService {
         : "12h",
     } as SignOptions;
 
+    // must_change_password flag'ni olish
+    const mustChangePassword = member.must_change_password || false;
+
     const token = sign(
       {
         sub: member.id,
@@ -214,6 +234,7 @@ export class MembersService {
         tenant_id: member.tenant_id,
         roles: [member.role],
         clinic_name: member.clinic_name,
+        must_change_password: mustChangePassword,
       },
       secret,
       signOptions
@@ -229,6 +250,7 @@ export class MembersService {
           tenant_id: member.tenant_id,
           clinic_name: member.clinic_name,
           full_name: member.full_name,
+          mustChangePassword: mustChangePassword,
         },
       };
     } catch (error: any) {
@@ -247,6 +269,45 @@ export class MembersService {
         );
       }
       // Re-throw other errors (UnauthorizedException, etc.)
+      throw error;
+    }
+  }
+
+  /**
+   * Password o'zgartirish (birinchi login'da temporary password'ni o'zgartirish uchun)
+   */
+  public async changePassword(
+    memberId: string,
+    currentPassword: string,
+    newPassword: string,
+    tenantId?: string
+  ): Promise<void> {
+    try {
+      const member = await this.repository.findByMemberId(memberId, tenantId);
+
+      if (!member) {
+        throw new UnauthorizedException("Member not found");
+      }
+
+      // Current password'ni tekshirish
+      const isPasswordValid = await compare(currentPassword, member.password_hash);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException("Current password is incorrect");
+      }
+
+      // Yangi password'ni hash qilish
+      const newPasswordHash = await hash(newPassword, 12);
+
+      // Password'ni yangilash va must_change_password'ni false qilish
+      await this.repository.update(member.id, {
+        password_hash: newPasswordHash,
+        must_change_password: false,
+        updated_at: new Date(),
+      });
+
+      this.logger.log(`Password changed for member: ${memberId}`);
+    } catch (error) {
+      this.logger.error(`Failed to change password for ${memberId}`, error);
       throw error;
     }
   }

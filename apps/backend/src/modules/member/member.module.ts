@@ -10,6 +10,10 @@ import { SupabaseService } from "../../common/supabase.service";
 import { MemberLoginDto } from "./dto/member-login.dto";
 import { GoogleVisionService } from "./services/google-vision.service";
 import { CertificateParserService } from "./services/certificate-parser.service";
+import { MessageService } from "./services/message.service";
+import { TwilioProvider } from "./services/providers/twilio.provider";
+import { CoolSMSProvider } from "./services/providers/coolsms.provider";
+import { KakaoProvider } from "./services/providers/kakao.provider";
 
 @Module({
   controllers: [ClinicsController, MembersController],
@@ -23,6 +27,10 @@ import { CertificateParserService } from "./services/certificate-parser.service"
     MemberLoginDto,
     GoogleVisionService,
     CertificateParserService,
+    MessageService,
+    TwilioProvider,
+    CoolSMSProvider,
+    KakaoProvider,
   ],
 })
 export class MemberModule {}

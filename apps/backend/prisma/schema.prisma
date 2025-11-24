@@ -66,20 +66,21 @@ model Clinic {
 }
 
 model Member {
-  id             String    @id @default(uuid())
-  tenant_id      String
-  member_id      String    @unique
-  role           String
-  password_hash  String
-  clinic_name    String
-  full_name      String?
-  phone_number   String?
-  id_card_number String?
-  address        String?
-  created_at     DateTime  @default(now())
-  created_by     String?
-  updated_at     DateTime?
-  updated_by     String?
+  id                  String    @id @default(uuid())
+  tenant_id           String
+  member_id           String    @unique
+  role                String
+  password_hash       String
+  clinic_name         String
+  full_name           String?
+  phone_number        String?
+  id_card_number      String?
+  address             String?
+  must_change_password Boolean   @default(false) // Birinchi login'da password o'zgartirish majburiy
+  created_at          DateTime  @default(now())
+  created_by          String?
+  updated_at          DateTime?
+  updated_by          String?
 
   @@index([tenant_id])
 }
