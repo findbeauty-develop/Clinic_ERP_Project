@@ -1,2 +1,6 @@
 # Google Vision API credentials
-keys/google-vision.json
+keys/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
