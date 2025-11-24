@@ -73,13 +73,27 @@ export class OrderRepository {
 
   // OrderDraft CRUD
   findDraftBySession(sessionId: string, tenantId: string, tx?: Prisma.TransactionClient) {
-    return (this.getClient(tx) as any).orderDraft.findUnique({
-      where: {
-        tenant_id_session_id: {
-          tenant_id: tenantId,
-          session_id: sessionId,
+    if (tx) {
+      // Transaction ichida bo'lsa, executeWithRetry ishlatmaymiz
+      return (this.getClient(tx) as any).orderDraft.findUnique({
+        where: {
+          tenant_id_session_id: {
+            tenant_id: tenantId,
+            session_id: sessionId,
+          },
         },
-      },
+      });
+    }
+    // Transaction tashqarisida bo'lsa, executeWithRetry ishlatamiz
+    return this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).orderDraft.findUnique({
+        where: {
+          tenant_id_session_id: {
+            tenant_id: tenantId,
+            session_id: sessionId,
+          },
+        },
+      });
     });
   }
 
@@ -90,26 +104,53 @@ export class OrderRepository {
     expiresAt: Date,
     tx?: Prisma.TransactionClient
   ) {
-    return (this.getClient(tx) as any).orderDraft.upsert({
-      where: {
-        tenant_id_session_id: {
+    if (tx) {
+      // Transaction ichida bo'lsa, executeWithRetry ishlatmaymiz
+      return (this.getClient(tx) as any).orderDraft.upsert({
+        where: {
+          tenant_id_session_id: {
+            tenant_id: tenantId,
+            session_id: sessionId,
+          },
+        },
+        create: {
           tenant_id: tenantId,
           session_id: sessionId,
+          items: data.items,
+          total_amount: data.total_amount,
+          expires_at: expiresAt,
         },
-      },
-      create: {
-        tenant_id: tenantId,
-        session_id: sessionId,
-        items: data.items,
-        total_amount: data.total_amount,
-        expires_at: expiresAt,
-      },
-      update: {
-        items: data.items,
-        total_amount: data.total_amount,
-        updated_at: new Date(),
-        expires_at: expiresAt,
-      },
+        update: {
+          items: data.items,
+          total_amount: data.total_amount,
+          updated_at: new Date(),
+          expires_at: expiresAt,
+        },
+      });
+    }
+    // Transaction tashqarisida bo'lsa, executeWithRetry ishlatamiz
+    return this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).orderDraft.upsert({
+        where: {
+          tenant_id_session_id: {
+            tenant_id: tenantId,
+            session_id: sessionId,
+          },
+        },
+        create: {
+          tenant_id: tenantId,
+          session_id: sessionId,
+          items: data.items,
+          total_amount: data.total_amount,
+          expires_at: expiresAt,
+        },
+        update: {
+          items: data.items,
+          total_amount: data.total_amount,
+          updated_at: new Date(),
+          expires_at: expiresAt,
+        },
+      });
     });
   }
 

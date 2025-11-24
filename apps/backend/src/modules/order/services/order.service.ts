@@ -22,6 +22,7 @@ export interface ProductWithRisk {
   brand: string;
   supplierId: string | null;
   supplierName: string | null;
+  managerName: string | null; // 담당자명 (contact_name from supplierProduct)
   batchNo: string | null;
   expiryDate: string | null;
   unitPrice: number | null;
@@ -190,6 +191,7 @@ export class OrderService {
         brand: product.brand,
         supplierId: supplier?.supplier_id ?? null,
         supplierName: supplier?.supplier_id ?? null,
+        managerName: supplier?.contact_name ?? null, // 담당자명
         batchNo: latestBatch?.batch_no ?? null,
         expiryDate: latestBatch?.expiry_date
           ? latestBatch.expiry_date.toISOString().split("T")[0]
@@ -786,45 +788,73 @@ export class OrderService {
       }
     }
 
-    // Order number yaratish
-    const orderNo = await this.generateOrderNumber(tenantId);
+    // Supplier bo'yicha guruhlash
+    const groupedBySupplier: Record<string, any> = {};
+    for (const item of items) {
+      const supplierId = item.supplierId || "unknown";
+      if (!groupedBySupplier[supplierId]) {
+        groupedBySupplier[supplierId] = {
+          supplierId: supplierId,
+          items: [],
+          totalAmount: 0,
+        };
+      }
+      groupedBySupplier[supplierId].items.push(item);
+      groupedBySupplier[supplierId].totalAmount += item.totalPrice;
+    }
 
-    // Order yaratish
-    const order = await this.prisma.$transaction(async (tx: any) => {
-      const order = await (tx as any).order.create({
-        data: {
-          tenant_id: tenantId,
-          order_no: orderNo,
-          status: "pending",
-          supplier_id: dto.supplierId ?? null,
-          total_amount: draft.total_amount,
-          expected_delivery_date: dto.expectedDeliveryDate
-            ? new Date(dto.expectedDeliveryDate)
-            : null,
-          created_by: createdBy ?? null,
-          memo: dto.memo ?? null,
-        },
+    // Har bir supplier uchun alohida order yaratish
+    const createdOrders = [];
+    for (const [supplierId, group] of Object.entries(groupedBySupplier)) {
+      // Order number yaratish
+      const orderNo = await this.generateOrderNumber(tenantId);
+
+      // Supplier uchun memo olish
+      const supplierMemo = dto.supplierMemos?.[supplierId] || dto.memo || null;
+
+      // Order yaratish
+      const order = await this.prisma.$transaction(async (tx: any) => {
+        const order = await (tx as any).order.create({
+          data: {
+            tenant_id: tenantId,
+            order_no: orderNo,
+            status: "pending",
+            supplier_id: supplierId !== "unknown" ? supplierId : null,
+            total_amount: group.totalAmount,
+            expected_delivery_date: dto.expectedDeliveryDate
+              ? new Date(dto.expectedDeliveryDate)
+              : null,
+            created_by: createdBy ?? null,
+            memo: supplierMemo,
+          },
+        });
+
+        // Order items yaratish
+        await Promise.all(
+          group.items.map((item: any) =>
+            (tx as any).orderItem.create({
+              data: {
+                tenant_id: tenantId,
+                order_id: order.id,
+                product_id: item.productId,
+                batch_id: item.batchId ?? null,
+                quantity: item.quantity,
+                unit_price: item.unitPrice,
+                total_price: item.totalPrice,
+                memo: item.memo ?? null,
+              },
+            })
+          )
+        );
+
+        return order;
       });
 
-      // Order items yaratish
-      await Promise.all(
-        items.map((item: any) =>
-          (tx as any).orderItem.create({
-            data: {
-              tenant_id: tenantId,
-              order_id: order.id,
-              product_id: item.productId,
-              batch_id: item.batchId ?? null,
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              total_price: item.totalPrice,
-              memo: item.memo ?? null,
-            },
-          })
-        )
-      );
+      createdOrders.push(await this.orderRepository.findById(order.id, tenantId));
+    }
 
-      // Draft'ni o'chirish
+    // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
+    await this.prisma.$transaction(async (tx: any) => {
       await (tx as any).orderDraft.delete({
         where: {
           tenant_id_session_id: {
@@ -833,29 +863,132 @@ export class OrderService {
           },
         },
       });
-
-      return order;
     });
 
-    return this.orderRepository.findById(order.id, tenantId);
+    // Agar bitta order bo'lsa, uni qaytarish, aks holda array qaytarish
+    return createdOrders.length === 1 ? createdOrders[0] : createdOrders;
   }
 
   /**
    * Order number yaratish
+   * Format: YYMMDD + random 6 digits (000000YYMMDD + 6 random digits)
    */
   private async generateOrderNumber(tenantId: string): Promise<string> {
     const date = new Date();
-    const dateStr = date.toISOString().split("T")[0].replace(/-/g, "");
-    const count = await (this.prisma as any).order.count({
-      where: {
+    const year = String(date.getFullYear()).slice(-2); // YY
+    const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
+    const day = String(date.getDate()).padStart(2, "0"); // DD
+    const dateStr = `${year}${month}${day}`; // YYMMDD
+    
+    // Random 6 digits
+    const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    return `${dateStr}${randomDigits}`;
+  }
+
+  /**
+   * Order'lar ro'yxatini olish (History uchun)
+   */
+  async getOrders(tenantId: string, search?: string): Promise<any[]> {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const orders = await this.prisma.executeWithRetry(async () => {
+      const where: any = {
         tenant_id: tenantId,
-        order_no: {
-          startsWith: `ORDER-${dateStr}`,
+      };
+
+      // Search filter
+      if (search && search.trim()) {
+        where.OR = [
+          { order_no: { contains: search, mode: "insensitive" } },
+          { supplier_id: { contains: search, mode: "insensitive" } },
+          {
+            items: {
+              some: {
+                product: {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { brand: { contains: search, mode: "insensitive" } },
+                  ],
+                },
+              },
+            },
+          },
+        ];
+      }
+
+      return (this.prisma as any).order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  supplierProducts: {
+                    orderBy: { created_at: "desc" },
+                    take: 1,
+                  },
+                },
+              },
+              batch: true,
+            },
+            orderBy: { created_at: "asc" },
+          },
         },
-      },
+        orderBy: { created_at: "desc" },
+        take: 100, // Limit to 100 orders
+      });
     });
 
-    return `ORDER-${dateStr}-${String(count + 1).padStart(4, "0")}`;
+    // Format orders for frontend
+    return orders.map((order: any) => {
+      // Supplier va manager name'ni topish (items'dan)
+      let supplierName = order.supplier_id || "공급업체 없음";
+      let managerName = "";
+
+      if (order.items && order.items.length > 0) {
+        const firstItem = order.items[0];
+        if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
+          const supplierProduct = firstItem.product.supplierProducts[0];
+          supplierName = supplierProduct.supplier_id || supplierName;
+          managerName = supplierProduct.contact_name || "";
+        }
+      }
+
+      // Items'ni formatlash
+      const formattedItems = (order.items || []).map((item: any) => ({
+        id: item.id,
+        productId: item.product_id,
+        productName: item.product?.name || "제품명 없음",
+        brand: item.product?.brand || "",
+        batchId: item.batch_id,
+        batchNo: item.batch?.batch_no || null,
+        quantity: item.quantity,
+        unitPrice: item.unit_price,
+        totalPrice: item.total_price,
+      }));
+
+      // Total amount hisoblash
+      const totalAmount = formattedItems.reduce(
+        (sum: number, item: any) => sum + item.totalPrice,
+        0
+      );
+
+      return {
+        id: order.id,
+        orderNo: order.order_no,
+        supplierId: order.supplier_id,
+        supplierName: supplierName,
+        managerName: managerName,
+        status: order.status,
+        totalAmount: order.total_amount || totalAmount,
+        memo: order.memo,
+        createdAt: order.created_at,
+        items: formattedItems,
+      };
+    });
   }
 
   /**

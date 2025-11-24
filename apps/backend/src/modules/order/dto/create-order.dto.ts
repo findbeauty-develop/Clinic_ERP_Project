@@ -41,5 +41,9 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   expectedDeliveryDate?: string; // ISO date string
+
+  // Supplier bo'yicha memo'lar (supplierId -> memo mapping)
+  @IsOptional()
+  supplierMemos?: Record<string, string>; // { [supplierId]: memo }
 }
 

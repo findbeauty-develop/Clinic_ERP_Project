@@ -3,9 +3,11 @@ import { PrismaClient } from "@prisma/client";
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  [x: string]: any;
   private readonly logger = new Logger(PrismaService.name);
   private readonly maxRetries = 5;
   private readonly retryDelay = 3000; // 3 seconds
+  $transaction: any;
 
   constructor() {
     const databaseUrl = process.env.DATABASE_URL;

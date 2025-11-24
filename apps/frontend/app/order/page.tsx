@@ -35,6 +35,7 @@ type ProductWithRisk = {
   brand: string;
   supplierId: string | null;
   supplierName: string | null;
+  managerName: string | null; // 담당자명
   batchNo: string | null;
   expiryDate: string | null;
   unitPrice: number | null;
@@ -110,6 +111,12 @@ export default function OrderPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
+  const [orders, setOrders] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderSearchQuery, setOrderSearchQuery] = useState("");
+  const debouncedOrderSearchQuery = useDebounce(orderSearchQuery, 500);
   const [sessionId] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("order_session_id") || `session-${Date.now()}`;
@@ -216,6 +223,43 @@ export default function OrderPage() {
   useEffect(() => {
     fetchDraft();
   }, [fetchDraft]);
+
+  // Orders olish (History uchun)
+  const fetchOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    try {
+      const token = typeof window !== "undefined" 
+        ? localStorage.getItem("erp_access_token") 
+        : null;
+      
+      const queryParams = new URLSearchParams();
+      if (debouncedOrderSearchQuery.trim()) {
+        queryParams.append("search", debouncedOrderSearchQuery.trim());
+      }
+
+      const response = await fetch(`${apiUrl}/order?${queryParams.toString()}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch orders");
+
+      const data = await response.json();
+      setOrders(data || []);
+    } catch (err) {
+      console.error("Failed to load orders", err);
+      setOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [apiUrl, debouncedOrderSearchQuery]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      fetchOrders();
+    }
+  }, [activeTab, fetchOrders]);
 
   // Search products
   useEffect(() => {
@@ -959,27 +1003,12 @@ export default function OrderPage() {
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={async () => {
-                    try {
-                      const token = typeof window !== "undefined" 
-                        ? localStorage.getItem("erp_access_token") 
-                        : null;
-                      
-                      await fetch(`${apiUrl}/order`, {
-                        method: "POST",
-                        headers: {
-                          "Authorization": `Bearer ${token}`,
-                          "x-session-id": sessionId,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({}),
-                      });
-                      alert("주문서가 생성되었습니다.");
-                      await fetchDraft();
-                    } catch (err) {
-                      console.error("Failed to create order", err);
-                      alert("주문서 생성에 실패했습니다.");
+                  onClick={() => {
+                    if (!draft || draft.items.length === 0) {
+                      alert("주문 항목이 없습니다.");
+                      return;
                     }
+                    setShowOrderModal(true);
                   }}
                   className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                 >
@@ -1015,8 +1044,391 @@ export default function OrderPage() {
         </div>
       ) : (
         <div className="flex-1 p-6">
-          <div className="text-center text-slate-500 dark:text-slate-400">
-            주문 내역 기능은 곧 추가될 예정입니다.
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <input
+                type="text"
+                value={orderSearchQuery}
+                onChange={(e) => setOrderSearchQuery(e.target.value)}
+                placeholder="제품명, 브랜드, 공급처, 날짜(00-00-00)로 검색..."
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 pl-10 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white dark:placeholder-slate-500 dark:focus:ring-blue-800"
+              />
+              <svg
+                className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+          </div>
+
+          {/* Order List */}
+          {ordersLoading ? (
+            <div className="text-center text-slate-500 dark:text-slate-400">
+              주문 내역을 불러오는 중...
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="text-center text-slate-500 dark:text-slate-400">
+              주문 내역이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {orders.map((order) => {
+                // Date format: YYYY-MM-DD HH:MM
+                const orderDate = new Date(order.createdAt);
+                const dateStr = orderDate.toISOString().split("T")[0]; // YYYY-MM-DD
+                const timeStr = orderDate.toTimeString().split(" ")[0].slice(0, 5); // HH:MM
+                const formattedDate = `${dateStr} ${timeStr}`;
+
+                // Manager name (created_by'dan olish kerak, hozircha bo'sh)
+                const managerName = order.managerName || "담당자";
+
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-4 dark:border-slate-600 dark:bg-slate-800/50"
+                  >
+                    {/* Order Header */}
+                    <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {formattedDate} {managerName}님 출고
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          공급처: {order.supplierName} 담당자: {order.managerName || "담당자 없음"}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm("정말 주문을 취소하시겠습니까?")) return;
+                          // TODO: Order cancel API
+                          alert("주문 취소 기능은 곧 추가될 예정입니다.");
+                        }}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        오더 취소
+                      </button>
+                    </div>
+
+                    {/* Product List */}
+                    <div className="mb-3 space-y-2">
+                      {order.items.map((item: any) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50"
+                        >
+                          <div className="flex-1">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              {item.brand}
+                            </div>
+                            <div className="text-sm font-medium text-slate-900 dark:text-white">
+                              {item.productName}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                            <span>{item.quantity}개</span>
+                            <span>{item.unitPrice.toLocaleString()}원</span>
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {item.totalPrice.toLocaleString()}원
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total */}
+                    <div className="mb-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
+                        <span>총</span>
+                        <span>{order.totalAmount.toLocaleString()}원</span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          // TODO: Reorder functionality
+                          alert("재주문 기능은 곧 추가될 예정입니다.");
+                        }}
+                        className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      >
+                        재주문
+                      </button>
+                      <button
+                        onClick={() => {
+                          // TODO: View order form
+                          alert("주문서 보기 기능은 곧 추가될 예정입니다.");
+                        }}
+                        className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      >
+                        주문서 보기
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Order Confirmation Modal */}
+      {showOrderModal && draft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-4xl max-h-[90vh] rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
+            {/* Header */}
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                주문서 확인 및 생성
+              </h2>
+              <button
+                onClick={() => setShowOrderModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Info Banner */}
+            <div className="border-b border-slate-200 bg-blue-50 px-6 py-3 dark:border-slate-700 dark:bg-blue-900/20">
+              <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+                <span>
+                  정보 공유에 동의한 공급업체는 자동으로 주문 내역을 받게 됩니다.
+                </span>
+              </div>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="max-h-[calc(90vh-200px)] overflow-y-auto p-6 order-page-scrollbar">
+              <div className="space-y-6">
+                {draft.groupedBySupplier.map((group, groupIndex) => {
+                  // Supplier name va manager name'ni topish
+                  const firstItem = group.items[0];
+                  const firstProduct = products.find((p) => p.id === firstItem?.productId);
+                  const supplierName = firstProduct?.supplierName || group.supplierId || "공급업체 없음";
+                  
+                  // Manager name'ni topish (product'dan yoki supplier'dan)
+                  // Product'lardan manager name'ni topish
+                  const managerNames = group.items
+                    .map((item) => {
+                      const product = products.find((p) => p.id === item.productId);
+                      return product?.managerName || null;
+                    })
+                    .filter(Boolean);
+                  const managerName = managerNames[0] || ""; // Birinchi manager name'ni olish
+
+                  // Subtotal va VAT hisoblash
+                  const subtotal = group.totalAmount;
+                  const vat = Math.floor(subtotal * 0.1); // 10% VAT
+
+                  return (
+                    <div
+                      key={group.supplierId}
+                      className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50 ${
+                        groupIndex > 0 ? "mt-6 border-t-2 border-t-slate-300 dark:border-t-slate-600" : ""
+                      }`}
+                    >
+                      {/* Supplier Header */}
+                      <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-700">
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="h-5 w-5 text-slate-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                            />
+                          </svg>
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {supplierName}
+                            </div>
+                            {managerName && (
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                [담당자] {managerName}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Product List */}
+                      <div className="mb-4 space-y-2">
+                        {group.items.map((item) => {
+                          const product = products.find((p) => p.id === item.productId);
+                          const productName = product?.productName || "제품명 없음";
+                          const brand = product?.brand || "";
+                          const quantity = item.quantity;
+                          const unitPrice = item.unitPrice;
+                          const total = item.totalPrice;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50"
+                            >
+                              <div className="flex-1">
+                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  {brand}
+                                </div>
+                                <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                  {productName}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                                <span>{quantity}개</span>
+                                <span>X {unitPrice.toLocaleString()}원</span>
+                                <span className="font-semibold text-slate-900 dark:text-white">
+                                  = {total.toLocaleString()}원
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Summary */}
+                      <div className="mb-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                        <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                          총 {group.items.length}항목
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">합계:</span>
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {subtotal.toLocaleString()}원
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">VAT (10%):</span>
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {vat.toLocaleString()}원
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold dark:border-slate-700">
+                          <span className="text-slate-900 dark:text-white">총액:</span>
+                          <span className="text-slate-900 dark:text-white">
+                            {(subtotal + vat).toLocaleString()}원
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Order Memo */}
+                      <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                        <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          주문서 메모
+                        </label>
+                        <textarea
+                          value={orderMemos[group.supplierId] || ""}
+                          onChange={(e) =>
+                            setOrderMemos((prev) => ({
+                              ...prev,
+                              [group.supplierId]: e.target.value,
+                            }))
+                          }
+                          placeholder="주문서 메모를 입력하세요..."
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white dark:placeholder-slate-500 dark:focus:ring-blue-800"
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 border-t border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="text-lg font-semibold text-slate-900 dark:text-white">
+                  총액: {(() => {
+                    const totalSubtotal = draft.totalAmount;
+                    const totalVAT = Math.floor(totalSubtotal * 0.1);
+                    return (totalSubtotal + totalVAT).toLocaleString();
+                  })()}원
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowOrderModal(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-6 py-2 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = typeof window !== "undefined" 
+                          ? localStorage.getItem("erp_access_token") 
+                          : null;
+                        
+                        await fetch(`${apiUrl}/order`, {
+                          method: "POST",
+                          headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "x-session-id": sessionId,
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            supplierMemos: orderMemos, // Supplier ID bo'yicha memo'lar
+                          }),
+                        });
+                        alert("주문서가 생성되었습니다.");
+                        setShowOrderModal(false);
+                        setOrderMemos({});
+                        await fetchDraft();
+                        // Order history'ni yangilash va tab'ga o'tish
+                        setActiveTab("history");
+                        await fetchOrders();
+                      } catch (err) {
+                        console.error("Failed to create order", err);
+                        alert("주문서 생성에 실패했습니다.");
+                      }
+                    }}
+                    className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  >
+                    주문서 생성
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

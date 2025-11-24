@@ -26,13 +26,15 @@ export class ReturnService {
     }
 
     // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
-    const allReturns = await (this.prisma as any).return.findMany({
-      where: { tenant_id: tenantId },
-      select: {
-        product_id: true,
-        outbound_id: true,
-        return_qty: true,
-      },
+    const allReturns = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).return.findMany({
+        where: { tenant_id: tenantId },
+        select: {
+          product_id: true,
+          outbound_id: true,
+          return_qty: true,
+        },
+      });
     });
 
     // 2. Product ID va Outbound ID bo'yicha guruhlash (Map ishlatish - tezroq)
@@ -54,37 +56,39 @@ export class ReturnService {
     });
 
     // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
-    const products = await (this.prisma as any).product.findMany({
-      where: {
-        tenant_id: tenantId,
-        returnPolicy: {
-          is_returnable: true,
-        },
-      },
-      include: {
-        returnPolicy: true,
-        supplierProducts: {
-          take: 1, // Birinchi supplier'ni olish
-          orderBy: { created_at: "desc" },
-        },
-        batches: {
-          take: 1, // Latest batch for storage location
-          orderBy: { created_at: "desc" },
-          select: {
-            storage: true,
+    const products = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).product.findMany({
+        where: {
+          tenant_id: tenantId,
+          returnPolicy: {
+            is_returnable: true,
           },
         },
-        outbounds: {
-          select: {
-            id: true,
-            batch_id: true,
-            batch_no: true,
-            outbound_qty: true,
-            outbound_date: true,
-            manager_name: true,
+        include: {
+          returnPolicy: true,
+          supplierProducts: {
+            take: 1, // Birinchi supplier'ni olish
+            orderBy: { created_at: "desc" },
+          },
+          batches: {
+            take: 1, // Latest batch for storage location
+            orderBy: { created_at: "desc" },
+            select: {
+              storage: true,
+            },
+          },
+          outbounds: {
+            select: {
+              id: true,
+              batch_id: true,
+              batch_no: true,
+              outbound_qty: true,
+              outbound_date: true,
+              manager_name: true,
+            },
           },
         },
-      },
+      });
     });
 
     // 4. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash (Map'lardan foydalanish)

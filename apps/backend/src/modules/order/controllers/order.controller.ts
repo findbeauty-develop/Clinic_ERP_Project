@@ -146,9 +146,11 @@ export class OrderController {
    */
   @Get()
   @ApiOperation({ summary: "Get all orders" })
-  async getOrders(@Tenant() tenantId: string) {
-    // Implementation will be added
-    return { message: "Not implemented yet" };
+  async getOrders(
+    @Tenant() tenantId: string,
+    @Query("search") search?: string
+  ) {
+    return this.orderService.getOrders(tenantId, search);
   }
 
   /**

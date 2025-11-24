@@ -95,12 +95,11 @@ export class OutboundService {
     // Validation
     this.validateOutbound(batch, dto.outboundQty);
 
-    return this.prisma.$transaction(
-      async (tx) => {
-        // Outbound record yaratish
-        const outbound = await (tx as any).outbound.create({
-          data: {
-            tenant_id: tenantId,
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Outbound record yaratish
+      const outbound = await tx.outbound.create({
+        data: {
+          tenant_id: tenantId,
             product_id: dto.productId,
             batch_id: dto.batchId,
             batch_no: batch.batch_no,
@@ -171,7 +170,7 @@ export class OutboundService {
     }
 
     return this.prisma.$transaction(
-      async (tx) => {
+      async (tx: any) => {
         const createdOutbounds = [];
         // Product'larni bir marta yangilash uchun map
         const productStockUpdates = new Map<string, number>();
@@ -586,8 +585,8 @@ export class OutboundService {
     }
 
     return this.prisma.$transaction(
-      async (tx) => {
-        const createdOutbounds = [];
+      async (tx: any) => {
+        const createdOutbounds: any[] = [];
         // Product'larni bir marta yangilash uchun map
         const productStockUpdates = new Map<string, number>();
 
@@ -725,11 +724,11 @@ export class OutboundService {
     }
 
     return this.prisma.$transaction(
-      async (tx) => {
-        const createdOutbounds = [];
-        const logs = [];
+      async (tx: any) => {
+        const createdOutbounds: any[] = [];
+        const logs: any[] = [];
         // Product'larni bir marta yangilash uchun map
-        const productStockUpdates = new Map<string, number>();
+        const productStockUpdates: Map<string, number> = new Map<string, number>();
 
         for (const item of validItems) {
         const batch = batches.find(
