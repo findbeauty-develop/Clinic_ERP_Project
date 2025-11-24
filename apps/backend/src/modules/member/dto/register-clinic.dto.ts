@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString } from "class-validator";
+import { IsArray, IsDateString, IsOptional, IsString } from "class-validator";
 
 export class RegisterClinicDto {
   @IsOptional()
@@ -42,5 +42,13 @@ export class RegisterClinicDto {
   @IsArray()
   @IsString({ each: true })
   documentImageUrls?: string[]; // document-img
+
+  @IsOptional()
+  @IsDateString()
+  openDate?: string; // 개설신고일자 (Open date from OCR)
+
+  @IsOptional()
+  @IsString()
+  doctorName?: string; // 성명 (Doctor name from OCR)
 }
 

@@ -8,6 +8,8 @@ import { MembersRepository } from "./repositories/members.repository";
 import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { MemberLoginDto } from "./dto/member-login.dto";
+import { GoogleVisionService } from "./services/google-vision.service";
+import { CertificateParserService } from "./services/certificate-parser.service";
 
 @Module({
   controllers: [ClinicsController, MembersController],
@@ -18,8 +20,9 @@ import { MemberLoginDto } from "./dto/member-login.dto";
     MembersRepository,
     PrismaService,
     SupabaseService,
-    MemberLoginDto
-    
+    MemberLoginDto,
+    GoogleVisionService,
+    CertificateParserService,
   ],
 })
 export class MemberModule {}

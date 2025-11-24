@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "clinic-erp-project",
+  "private_key_id": "02129d68728d2bdb05072816c9410ff8b70a04a8",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDxGTGKJIoewu09\nQr3VkmimCzqrGkXOK6ZpPDSfjhGTjBlmVo5qU2YQKd4BWAMxjunpTbObclqKobiQ\nAXgOntIuD/zknr1/kyyZSq2dTy/ofmODcccqwjlpj8xhdLMIRGQ2KuaK1AsmmsxE\n7IpqkqE7aN//2/V8fSGBNeasu3w/oJdbBvX/80dNC2sE3fWaf+ikVUZA2ZBOyyVr\nPubRSB/00AiJOmChQucHD3CzkakwJXXL+JBg+iJDI4TSUdugD1KNw3LCAHCvvUD8\nY3M/rBtTPcr1e6B67abHLX8nwYrYsV6LtBkGp2xArTG614xIwGCIVHQ9Lef1PltT\n23xs++v/AgMBAAECggEACIcJl4c/U2M1nOsVZ85r4SOYiaC+Q1KL6kD044fU21Ej\nPNlm5B/bBktUzNteEYyqfVQAPElJJoodywoiQvIfIP3zxepPbYm5FBruFRhN6308\n69NEZiDEgxVQ90l3Y513perSiKqDUnQ7MVzkcGyLQ1ysP5J6FlMeskFDzWw8Msvb\nur1EyMllDOREoJr8g5vdzukva6mV07WUhKyi0ciuZJXoyW8S8sj2uLwC303MDhKC\nHZzK985LosgfgwfOI2fsr6siPKsZCrBkFHUhTJHsT419FmqUy4fVQuLQR1d3oFrf\neZfQlCRq1esaQT4ChAxB6QXxB+/8X+ZrRfMb8mmI8QKBgQD9QtfSkA/v+2+4U51N\nBHI5yahqlc9Z7yXmXIZA7Prm6VkLvxZTzw2Rkawzy8EnXEch1ahiQ9hqjoUoCV0Z\nN/QJ/NnLo6s4RtGigLqVfGtGWiL1V211O0cLUA8YMlf5FfWu/rdRuPkGKEWqi7Vg\nwfNUO13t9oCCgz20lZ4Gnu4UswKBgQDztK2I0J0ehV6RPjd6k814pxm3IRmCbywt\nzP4PbRTg/p7Qr6aMSNSkkSM544s4uxFUnIkaY6x979dRK/xccnsinqCNTCDnXtKT\nH9xbso1hSjChgA1fXS3rWC/xp3hC7RZD7kDKZofbkQMCLR3HdiZJyOSgkv1SBT3t\nKcQ1XFuphQKBgQDJo/WX5TF7PbKWjKQaFOcpEWCw8/PyQ9DmF1agzM17GeDW1F5f\nfePsuZHkb16rCvJrguQc0K23MR/dX48rK/x2E0YIt5f0J5ZzDpD/wd7bVZqtwd0Z\nUIfg/u31sueOHyjMGms0etRyTZAiGDfiAKnOr7G6a9+nifyQEeuOk+00twKBgFOr\nIDjshkTIPSNYXOu0esKFfAqnTn69dEl1K3RYWua0BApZg7B+AKNPQOzK9i1P7C9E\nXr20oq/J+/5eP5Htq+DC3RQlotZMc7cXJSxGLMvOEMwhjnXDI9S8vhkVCfDQPOit\nj4jtko8LRiElJCgqpBKI6hVG4bmbGxulTzuSrdWRAoGBAI07M+mqASwhHRLrb8BS\nTsfe7OkHN/qHlmaLEamAx/af1txtiKqnTo7X6eIKcvfKbXMGApIOm5DUpKoNmL4D\n04nuybWZH7DUxxbHZkrp3FHGzr+N9idJO+IFAIYDTn1IGminU1HILyaziA6yEtmW\n0/hxGnNYoiOJpFOFKfEMS2MU\n-----END PRIVATE KEY-----\n",
+  "client_email": "clinic-ocr-service@clinic-erp-project.iam.gserviceaccount.com",
+  "client_id": "102674845887010976862",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/clinic-ocr-service%40clinic-erp-project.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

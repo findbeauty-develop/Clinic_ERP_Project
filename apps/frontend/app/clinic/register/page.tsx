@@ -14,6 +14,8 @@ type Clinic = {
   license_number: string;
   document_issue_number: string;
   document_image_urls?: string[];
+  open_date?: string | null; // 개설신고일자
+  doctor_name?: string | null; // 성명
   tenant_id?: string | null;
   created_at?: string;
 };
@@ -29,6 +31,8 @@ type ClinicForm = {
   licenseNumber: string;
   documentIssueNumber: string;
   documentImageUrls: string[];
+  openDate?: string; // 개설신고일자 (from OCR)
+  doctorName?: string; // 성명 (from OCR)
 };
 
 const initialForm: ClinicForm = {
@@ -42,6 +46,8 @@ const initialForm: ClinicForm = {
   licenseNumber: "",
   documentIssueNumber: "",
   documentImageUrls: [],
+  openDate: "",
+  doctorName: "",
 };
 
 const categoryOptions = ["피부과", "성형외과", "치과", "안과", "내과"];
@@ -53,6 +59,7 @@ export default function ClinicRegisterPage() {
   const [token, setToken] = useState("");
   const [isLoadingClinic, setIsLoadingClinic] = useState(true);
   const [clinicId, setClinicId] = useState<string | null>(null);
+  const [isVerifyingCertificate, setIsVerifyingCertificate] = useState(false);
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
 
   useEffect(() => {
@@ -140,6 +147,8 @@ export default function ClinicRegisterPage() {
             licenseNumber: matchedClinic.license_number || "",
             documentIssueNumber: matchedClinic.document_issue_number || "",
             documentImageUrls: imageUrls,
+            openDate: matchedClinic.open_date ? new Date(matchedClinic.open_date).toISOString().split('T')[0] : "",
+            doctorName: matchedClinic.doctor_name || "",
           });
         } else {
           console.log("Clinic not found for editing");
@@ -156,6 +165,162 @@ export default function ClinicRegisterPage() {
 
   const updateField = (key: keyof ClinicForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleCertificateUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsVerifyingCertificate(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${apiUrl}/iam/members/clinics/verify-certificate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.isValid) {
+        // Auto-fill form fields from OCR results
+        // Use mappedData if available (ready for RegisterClinicDto), otherwise use fields
+        if (data.mappedData) {
+          setForm((prev) => ({
+            ...prev,
+            name: data.mappedData.name || prev.name,
+            category: data.mappedData.category || prev.category,
+            location: data.mappedData.location || prev.location,
+            medicalSubjects: data.mappedData.medicalSubjects || prev.medicalSubjects,
+            licenseType: data.mappedData.licenseType || prev.licenseType,
+            licenseNumber: data.mappedData.licenseNumber || prev.licenseNumber,
+            documentIssueNumber: data.mappedData.documentIssueNumber || prev.documentIssueNumber,
+            openDate: data.mappedData.openDate || prev.openDate,
+            doctorName: data.mappedData.doctorName || prev.doctorName,
+          }));
+        } else {
+          // Fallback to fields if mappedData is not available
+          setForm((prev) => ({
+            ...prev,
+            name: data.fields.clinicName || prev.name,
+            category: data.fields.clinicType || prev.category,
+            location: data.fields.address || prev.location,
+            medicalSubjects: data.fields.department || prev.medicalSubjects,
+            licenseNumber: data.fields.doctorLicenseNo || prev.licenseNumber,
+            documentIssueNumber: data.fields.reportNumber || prev.documentIssueNumber,
+            openDate: data.fields.openDate || prev.openDate,
+            doctorName: data.fields.doctorName || prev.doctorName,
+          }));
+        }
+
+        // Add the uploaded file URL to documentImageUrls if available
+        if (data.fileUrl) {
+          // Prepend API URL if it's a relative path
+          const fullUrl = data.fileUrl.startsWith("http") 
+            ? data.fileUrl 
+            : `${apiUrl}${data.fileUrl}`;
+          setForm((prev) => ({
+            ...prev,
+            documentImageUrls: [...prev.documentImageUrls, fullUrl],
+          }));
+        } else {
+          // Fallback: convert file to base64 if fileUrl is not available
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64Image = reader.result as string;
+            setForm((prev) => ({
+              ...prev,
+              documentImageUrls: [...prev.documentImageUrls, base64Image],
+            }));
+          };
+          reader.readAsDataURL(file);
+        }
+
+        // Show success message
+        window.alert("인증서가 성공적으로 인식되었습니다. 필드가 자동으로 채워졌습니다.");
+      } else {
+        // Show warning but still allow user to proceed
+        const warnings = data.warnings?.join("\n") || "인증서 인식에 실패했습니다.";
+        window.alert(`인증서 인식 결과:\n${warnings}\n\n수동으로 입력해주세요.`);
+        
+        // Still try to fill what we can from fields or mappedData
+        if (data.mappedData) {
+          setForm((prev) => ({
+            ...prev,
+            name: data.mappedData.name || prev.name,
+            category: data.mappedData.category || prev.category,
+            location: data.mappedData.location || prev.location,
+            medicalSubjects: data.mappedData.medicalSubjects || prev.medicalSubjects,
+            licenseType: data.mappedData.licenseType || prev.licenseType,
+            licenseNumber: data.mappedData.licenseNumber || prev.licenseNumber,
+            documentIssueNumber: data.mappedData.documentIssueNumber || prev.documentIssueNumber,
+            openDate: data.mappedData.openDate || prev.openDate,
+            doctorName: data.mappedData.doctorName || prev.doctorName,
+          }));
+        } else if (data.fields) {
+          setForm((prev) => ({
+            ...prev,
+            name: data.fields.clinicName || prev.name,
+            category: data.fields.clinicType || prev.category,
+            location: data.fields.address || prev.location,
+            medicalSubjects: data.fields.department || prev.medicalSubjects,
+            licenseNumber: data.fields.doctorLicenseNo || prev.licenseNumber,
+            documentIssueNumber: data.fields.reportNumber || prev.documentIssueNumber,
+            openDate: data.fields.openDate || prev.openDate,
+            doctorName: data.fields.doctorName || prev.doctorName,
+          }));
+        }
+        
+        // Add the uploaded file URL to documentImageUrls if available
+        if (data.fileUrl) {
+          const fullUrl = data.fileUrl.startsWith("http") 
+            ? data.fileUrl 
+            : `${apiUrl}${data.fileUrl}`;
+          setForm((prev) => ({
+            ...prev,
+            documentImageUrls: [...prev.documentImageUrls, fullUrl],
+          }));
+        } else {
+          // Fallback: convert file to base64 if fileUrl is not available
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64Image = reader.result as string;
+            setForm((prev) => ({
+              ...prev,
+              documentImageUrls: [...prev.documentImageUrls, base64Image],
+            }));
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    } catch (error) {
+      console.error("Certificate verification error:", error);
+      window.alert("인증서 검증 중 오류가 발생했습니다. 수동으로 입력해주세요.");
+      
+      // Still add the image to documentImageUrls even if verification fails
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Image = reader.result as string;
+        setForm((prev) => ({
+          ...prev,
+          documentImageUrls: [...prev.documentImageUrls, base64Image],
+        }));
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsVerifyingCertificate(false);
+      // Reset input value to allow re-uploading the same file
+      event.target.value = "";
+    }
   };
 
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -202,6 +367,8 @@ export default function ClinicRegisterPage() {
       licenseNumber: form.licenseNumber,
       documentIssueNumber: form.documentIssueNumber,
       documentImageUrls: form.documentImageUrls,
+      openDate: form.openDate || undefined,
+      doctorName: form.doctorName || undefined,
     };
 
     setLoading(true);
@@ -426,9 +593,26 @@ export default function ClinicRegisterPage() {
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div className="md:col-span-1">
-                <label className="mb-2 block text-sm font-medium text-slate-600">
-                  명칭 *
-                </label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-600">
+                    명칭 *
+                  </label>
+                  <label className="cursor-pointer text-xs text-indigo-600 hover:text-indigo-700">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCertificateUpload}
+                      disabled={isVerifyingCertificate}
+                      className="hidden"
+                      id="certificateUpload"
+                    />
+                    {isVerifyingCertificate ? (
+                      <span className="text-slate-400">인증 중...</span>
+                    ) : (
+                      <span>📄 인증서 OCR</span>
+                    )}
+                  </label>
+                </div>
                 <input
                   type="text"
                   value={form.name}

@@ -52,6 +52,11 @@ model Clinic {
   license_number        String
   document_issue_number String
   document_image_urls   String[]  @default([])
+  
+  // OCR'dan olingan field'lar (Optional)
+  open_date             DateTime? // 개설신고일자 (Open date from OCR)
+  doctor_name           String?   // 성명 (Doctor name from OCR)
+  
   created_at            DateTime  @default(now())
   created_by            String?
   updated_at            DateTime?

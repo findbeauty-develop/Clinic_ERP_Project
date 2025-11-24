@@ -8,3 +8,5 @@ coverage
 *.log
 .pnpm-store
 .pnpm-store/**
+# Google Cloud Vision API credentials
+apps/backend/keys/google-vision.json
