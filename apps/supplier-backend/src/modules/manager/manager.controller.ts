@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from "@nestjs/swagger";
 import { ManagerService } from "./manager.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterCompanyDto } from "./dto/register-company.dto";
+import { RegisterContactDto } from "./dto/register-contact.dto";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
 import type { Request } from "express";
@@ -150,6 +151,12 @@ export class ManagerController {
   @ApiOperation({ summary: "Register company information (step 3)" })
   async registerCompany(@Body() dto: RegisterCompanyDto) {
     return this.managerService.registerCompany(dto);
+  }
+
+  @Post("register-contact")
+  @ApiOperation({ summary: "Register contact person information (step 4)" })
+  async registerContact(@Body() dto: RegisterContactDto) {
+    return this.managerService.registerContact(dto);
   }
 }
 
