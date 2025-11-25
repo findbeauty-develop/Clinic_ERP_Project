@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 // Scrollbar styling
 const scrollbarStyles = `
@@ -117,6 +119,10 @@ export default function OrderPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const debouncedOrderSearchQuery = useDebounce(orderSearchQuery, 500);
+  const [showOrderFormModal, setShowOrderFormModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [orderFormMemo, setOrderFormMemo] = useState<string>("");
+  const orderFormRef = useRef<HTMLDivElement>(null);
   const [sessionId] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("order_session_id") || `session-${Date.now()}`;
@@ -130,6 +136,13 @@ export default function OrderPage() {
       localStorage.setItem("order_session_id", sessionId);
     }
   }, [sessionId]);
+
+  // Order form modal ochilganda memo'ni yangilash
+  useEffect(() => {
+    if (selectedOrder) {
+      setOrderFormMemo(selectedOrder.memo || "");
+    }
+  }, [selectedOrder]);
 
   // Products olish
   useEffect(() => {
@@ -1095,6 +1108,7 @@ export default function OrderPage() {
                   <div
                     key={order.id}
                     className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-4 dark:border-slate-600 dark:bg-slate-800/50"
+                    style={{ borderLeft: 'none', borderRight: 'none' }}
                   >
                     {/* Order Header */}
                     <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
@@ -1119,36 +1133,42 @@ export default function OrderPage() {
                     </div>
 
                     {/* Product List */}
-                    <div className="mb-3 space-y-2">
-                      {order.items.map((item: any) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50"
-                        >
-                          <div className="flex-1">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              {item.brand}
-                            </div>
-                            <div className="text-sm font-medium text-slate-900 dark:text-white">
-                              {item.productName}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                            <span>{item.quantity}개</span>
-                            <span>{item.unitPrice.toLocaleString()}원</span>
-                            <span className="font-semibold text-slate-900 dark:text-white">
-                              {item.totalPrice.toLocaleString()}원
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Product List */}
+<div className="mb-3 space-y-2">
+  {order.items.map((item: any) => (
+    <div
+      key={item.id}
+      className="relative flex items-center justify-between bg-white px-4 py-2 dark:border-blue-500 dark:bg-slate-800/50"
+      style={{ borderLeft: 'none', borderRight: 'none' }}
+    >
+      {/* Dotted border inside */}
+      <div className="absolute inset-x-0 top-0 border-t border-dashed border-blue-200 dark:border-blue-400"></div>
+      <div className="absolute inset-x-0 bottom-0 border-b border-dashed border-blue-200 dark:border-blue-400"></div>
+      
+      <div className="flex-shrink-0 w-32 text-sm font-medium text-slate-900 dark:text-white truncate" title={item.productName}>
+        {item.productName}
+      </div>
+      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400">
+        브랜드: {item.brand}
+      </div>
+      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400 text-right">
+        수량: {item.quantity}개
+      </div>
+      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400 text-right">
+        단가 {item.unitPrice.toLocaleString()}
+      </div>
+      <div className="flex-shrink-0 w-36 text-sm font-semibold text-slate-900 dark:text-white text-right">
+        총금액: {item.totalPrice.toLocaleString()}
+      </div>
+    </div>
+  ))}
+</div>
 
                     {/* Total */}
                     <div className="mb-3 border-t border-slate-200 pt-2 dark:border-slate-700">
                       <div className="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
-                        <span>총</span>
-                        <span>{order.totalAmount.toLocaleString()}원</span>
+                        <span></span>
+                        <span>총 {order.totalAmount.toLocaleString()}원</span>
                       </div>
                     </div>
 
@@ -1165,8 +1185,9 @@ export default function OrderPage() {
                       </button>
                       <button
                         onClick={() => {
-                          // TODO: View order form
-                          alert("주문서 보기 기능은 곧 추가될 예정입니다.");
+                          setSelectedOrder(order);
+                          setOrderFormMemo(order.memo || "");
+                          setShowOrderFormModal(true);
                         }}
                         className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                       >
@@ -1426,6 +1447,323 @@ export default function OrderPage() {
                   >
                     주문서 생성
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Form Modal */}
+      {showOrderFormModal && selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-100 p-4">
+          <div ref={orderFormRef} className="relative w-full max-w-5xl max-h-[95vh] bg-white shadow-2xl border border-blue-200 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-blue-200 bg-white px-6 py-4">
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const orderDate = new Date(selectedOrder.createdAt);
+                  const dateStr = orderDate.toISOString().split("T")[0];
+                  const timeStr = orderDate.toTimeString().split(" ")[0].slice(0, 5);
+                  return (
+                    <>
+                      <div className="text-base font-semibold text-slate-900">
+                        {dateStr} {timeStr}
+                      </div>
+                      <div className="text-base text-slate-900">
+                        {selectedOrder.supplierName || "A사"}
+                      </div>
+                      <div className="text-base text-slate-900">
+                        {selectedOrder.managerName || "담당자"}님 출고
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (!orderFormRef.current) return;
+                    
+                    try {
+                      // Hide buttons and close button before capturing
+                      const buttons = orderFormRef.current.querySelectorAll('button');
+                      buttons.forEach(btn => {
+                        (btn as HTMLElement).style.display = 'none';
+                      });
+
+                      // Capture the element as canvas
+                      const canvas = await html2canvas(orderFormRef.current, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                      });
+
+                      // Show buttons again
+                      buttons.forEach((btn: Element) => {
+                        (btn as HTMLElement).style.display = '';
+                      });
+
+                      // Create PDF
+                      const imgData = canvas.toDataURL('image/png');
+                      const pdf = new jsPDF('p', 'mm', 'a4');
+                      
+                      const pdfWidth = pdf.internal.pageSize.getWidth();
+                      const pdfHeight = pdf.internal.pageSize.getHeight();
+                      const imgWidth = canvas.width;
+                      const imgHeight = canvas.height;
+                      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                      const imgY = 0;
+
+                      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+                      
+                      // Generate filename
+                      const orderDate = new Date(selectedOrder.createdAt);
+                      const dateStr = orderDate.toISOString().split("T")[0];
+                      const filename = `주문서_${selectedOrder.orderNo || dateStr}_${Date.now()}.pdf`;
+                      
+                      // Save PDF
+                      pdf.save(filename);
+                    } catch (error) {
+                      console.error('PDF 생성 중 오류 발생:', error);
+                      alert('PDF 저장에 실패했습니다. 다시 시도해주세요.');
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded border border-blue-500 bg-white px-4 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  주문서 PDF 저장
+                </button>
+                <button
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="flex items-center gap-2 rounded border border-blue-500 bg-white px-4 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                    />
+                  </svg>
+                  주문서 출력
+                </button>
+                <button
+                  onClick={() => {
+                    setShowOrderFormModal(false);
+                    setSelectedOrder(null);
+                    setOrderFormMemo("");
+                  }}
+                  className="ml-2 text-slate-400 hover:text-slate-600"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+              <div className="space-y-4">
+                {/* 주문처 and 공급처 Information */}
+                <div className="grid grid-cols-2 gap-0 border border-blue-200 bg-white">
+                  {/* 주문처 (Orderer) */}
+                  <div className="border-r border-blue-200 p-4">
+                    <div className="text-xl font-bold text-slate-900 mb-3">
+                      {selectedOrder.supplierName || "A사"}
+                    </div>
+                    <div className="text-sm text-slate-700 mb-1">
+                      [구매 주문번호] {selectedOrder.orderNo || "-"}
+                    </div>
+                    <div className="text-sm text-slate-700 mb-3">
+                      주문처: XXXXClinic
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [납품주소] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [전화번호] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-3">
+                      [팩스번호] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [담당자] 성함
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      [연락처] 000-0000-0000
+                    </div>
+                  </div>
+
+                  {/* 공급처 (Supplier) */}
+                  <div className="p-4">
+                    <div className="text-sm font-semibold text-slate-900 mb-3">
+                      공급처: {selectedOrder.supplierName || "A사"}
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [회사주소] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [전화번호] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-3">
+                      [팩스번호] 자동 작성
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [담당자] {selectedOrder.managerName || "성함"}
+                    </div>
+                    <div className="text-xs text-slate-600 mb-1">
+                      [이메일] 000@000.com
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      [연락처] 000-0000-0000
+                    </div>
+                  </div>
+                </div>
+
+                {/* Product Table */}
+                <div className="border border-blue-200 bg-white overflow-hidden">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
+                          브랜드
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
+                          제품
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
+                          상품코드
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-700">
+                          수량
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-right text-xs font-semibold text-slate-700">
+                          단가
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-right text-xs font-semibold text-slate-700">
+                          금액
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-right text-xs font-semibold text-slate-700">
+                          할인
+                        </th>
+                        <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
+                          비고
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                        selectedOrder.items.map((item: any, index: number) => (
+                          <tr key={item.id || index} className="bg-white">
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900">
+                              {item.brand || "-"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900">
+                              {item.productName || "-"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600">
+                              {item.batchNo || "-"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-center">
+                              {item.quantity || 0}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-right">
+                              {item.unitPrice ? item.unitPrice.toLocaleString() : "0"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-right">
+                              {item.totalPrice ? item.totalPrice.toLocaleString() : "0"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600 text-right">
+                              0
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600">
+                              -
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="border border-slate-300 px-3 py-4 text-center text-sm text-slate-500">
+                            주문 항목이 없습니다.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer: Memo and Total */}
+                <div className="grid grid-cols-2 gap-0 border border-blue-200 bg-white">
+                  {/* Memo Section */}
+                  <div className="border-r border-blue-200 p-4">
+                    <div className="text-sm font-semibold text-slate-700 mb-2">
+                      [메모]
+                    </div>
+                    <textarea
+                      value={orderFormMemo}
+                      onChange={(e) => setOrderFormMemo(e.target.value)}
+                      className="w-full h-24 border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      placeholder="메모를 입력하세요..."
+                    />
+                  </div>
+
+                  {/* Total Section */}
+                  <div className="p-4 flex flex-col justify-end">
+                    {(() => {
+                      const totalAmount = selectedOrder.totalAmount || 0;
+                      const vatAmount = Math.floor(totalAmount * 0.1);
+                      const grandTotal = totalAmount + vatAmount;
+                      return (
+                        <>
+                          <div className="text-sm text-slate-700 mb-2">
+                            [총금액] {totalAmount.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-slate-700 mb-2">
+                            [+VAT금액] {vatAmount.toLocaleString()}
+                          </div>
+                          <div className="text-sm font-semibold text-slate-900 border-t border-slate-300 pt-2 mt-2">
+                            합계: {grandTotal.toLocaleString()}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>
