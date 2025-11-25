@@ -40,7 +40,7 @@ model Product {
 }
 
 model Clinic {
-  id                    String    @id @default(uuid())
+  id                    String   @id @default(uuid())
   tenant_id             String
   name                  String
   english_name          String
@@ -51,36 +51,36 @@ model Clinic {
   license_type          String
   license_number        String
   document_issue_number String
-  document_image_urls   String[]  @default([])
-  
+  document_image_urls   String[] @default([])
+
   // OCR'dan olingan field'lar (Optional)
-  open_date             DateTime? // 개설신고일자 (Open date from OCR)
-  doctor_name           String?   // 성명 (Doctor name from OCR)
-  
-  created_at            DateTime  @default(now())
-  created_by            String?
-  updated_at            DateTime?
-  updated_by            String?
+  open_date   DateTime? // 개설신고일자 (Open date from OCR)
+  doctor_name String? // 성명 (Doctor name from OCR)
+
+  created_at DateTime  @default(now())
+  created_by String?
+  updated_at DateTime?
+  updated_by String?
 
   @@index([tenant_id])
 }
 
 model Member {
-  id                  String    @id @default(uuid())
-  tenant_id           String
-  member_id           String    @unique
-  role                String
-  password_hash       String
-  clinic_name         String
-  full_name           String?
-  phone_number        String?
-  id_card_number      String?
-  address             String?
+  id                   String    @id @default(uuid())
+  tenant_id            String
+  member_id            String    @unique
+  role                 String
+  password_hash        String
+  clinic_name          String
+  full_name            String?
+  phone_number         String?
+  id_card_number       String?
+  address              String?
   must_change_password Boolean   @default(false) // Birinchi login'da password o'zgartirish majburiy
-  created_at          DateTime  @default(now())
-  created_by          String?
-  updated_at          DateTime?
-  updated_by          String?
+  created_at           DateTime  @default(now())
+  created_by           String?
+  updated_at           DateTime?
+  updated_by           String?
 
   @@index([tenant_id])
 }
@@ -119,9 +119,9 @@ model Batch {
   created_at       DateTime  @default(now())
   updated_at       DateTime?
 
-  product   Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  outbounds Outbound[]
-  returns   Return[]
+  product    Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  outbounds  Outbound[]
+  returns    Return[]
   orderItems OrderItem[]
 
   @@index([tenant_id])
@@ -274,31 +274,31 @@ model Return {
 
 // 주문 (Order) - Buyurtma
 model Order {
-  id          String    @id @default(uuid())
+  id          String  @id @default(uuid())
   tenant_id   String
-  order_no    String    @unique // 주문서 번호 (Order number)
-  status      String    @default("draft") // draft, pending, confirmed, completed, cancelled
-  supplier_id String?   // 공급업체 ID (Supplier ID)
-  
+  order_no    String  @unique // 주문서 번호 (Order number)
+  status      String  @default("draft") // draft, pending, confirmed, completed, cancelled
+  supplier_id String? // 공급업체 ID (Supplier ID)
+
   // 주문 정보
-  total_amount Float    @default(0) // 총 주문 금액
-  order_date   DateTime @default(now()) // 주문 날짜
+  total_amount           Float     @default(0) // 총 주문 금액
+  order_date             DateTime  @default(now()) // 주문 날짜
   expected_delivery_date DateTime? // 예상 배송일
-  
+
   // 담당자 정보
-  created_by   String?  // 주문 생성자
-  approved_by  String?  // 승인자
-  
+  created_by  String? // 주문 생성자
+  approved_by String? // 승인자
+
   // 기타
-  memo         String?  // 메모
-  
+  memo String? // 메모
+
   // Timestamps
-  created_at   DateTime @default(now())
-  updated_at   DateTime?
-  
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+
   // Relations
-  items        OrderItem[]
-  
+  items OrderItem[]
+
   @@index([tenant_id])
   @@index([supplier_id])
   @@index([status])
@@ -309,29 +309,29 @@ model Order {
 
 // 주문 항목 (Order Item)
 model OrderItem {
-  id          String  @id @default(uuid())
-  tenant_id   String
-  order_id    String
-  product_id  String
-  batch_id    String? // Batch ID (agar batch bo'yicha buyurtma bo'lsa)
-  
+  id         String  @id @default(uuid())
+  tenant_id  String
+  order_id   String
+  product_id String
+  batch_id   String? // Batch ID (agar batch bo'yicha buyurtma bo'lsa)
+
   // 주문 정보
-  quantity    Int     // 주문 수량
-  unit_price  Int     // 개당 가격 (purchase price)
-  total_price Int     // 총 가격 (quantity * unit_price)
-  
+  quantity    Int // 주문 수량
+  unit_price  Int // 개당 가격 (purchase price)
+  total_price Int // 총 가격 (quantity * unit_price)
+
   // 기타
-  memo        String? // 메모
-  
+  memo String? // 메모
+
   // Timestamps
-  created_at  DateTime @default(now())
-  updated_at  DateTime?
-  
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+
   // Relations
   order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
   batch   Batch?  @relation(fields: [batch_id], references: [id], onDelete: SetNull)
-  
+
   @@index([tenant_id])
   @@index([order_id])
   @@index([product_id])
@@ -341,19 +341,19 @@ model OrderItem {
 
 // 주문 초안 (Order Draft) - Session-based temporary order
 model OrderDraft {
-  id          String  @id @default(uuid())
-  tenant_id   String
-  session_id  String  // Frontend session ID yoki user ID
-  
+  id         String @id @default(uuid())
+  tenant_id  String
+  session_id String // Frontend session ID yoki user ID
+
   // 초안 정보
-  items       Json    // OrderItem[] formatida JSON
-  total_amount Float  @default(0)
-  
+  items        Json // OrderItem[] formatida JSON
+  total_amount Float @default(0)
+
   // Timestamps
-  created_at  DateTime @default(now())
-  updated_at  DateTime @default(now())
-  expires_at  DateTime // Session expiration time
-  
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  expires_at DateTime // Session expiration time
+
   @@unique([tenant_id, session_id])
   @@index([tenant_id])
   @@index([session_id])

@@ -37,8 +37,8 @@ class CompanyDataDto {
 
   @ApiProperty()
   @IsString()
-  @IsOptional()
-  companyEmail?: string;
+  @IsNotEmpty()
+  companyEmail!: string;
 
   @ApiProperty()
   @IsString()
