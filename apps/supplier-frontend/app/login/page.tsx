@@ -6,7 +6,7 @@ import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -19,12 +19,19 @@ export default function LoginPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+      
+      // Detect if identifier is email or managerId
+      const isEmail = identifier.includes("@");
+      const loginData = isEmail
+        ? { email: identifier, password }
+        : { managerId: identifier, password };
+
       const response = await fetch(`${apiUrl}/supplier/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(loginData),
       });
 
       if (!response.ok) {
@@ -92,13 +99,13 @@ export default function LoginPage() {
 
             {/* Login Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email Input */}
+              {/* Email/Manager ID Input */}
               <div>
                 <label
-                  htmlFor="email"
+                  htmlFor="identifier"
                   className="mb-2 block text-sm font-medium text-slate-700"
                 >
-                  핸드폰번호/ID
+                  이메일 또는 담당자 ID
                 </label>
                 <div className="relative">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -112,19 +119,19 @@ export default function LoginPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                       />
                     </svg>
                   </div>
                   <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="example@supplier.com"
-                    className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
+                    id="identifier"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="이메일 또는 담당자 ID (예: supplier@example.com 또는 회사명1234)"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
                     required
-                    autoComplete="email"
+                    autoComplete="username"
                   />
                 </div>
               </div>

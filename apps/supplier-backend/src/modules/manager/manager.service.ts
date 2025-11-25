@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../../core/prisma.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterContactDto } from "./dto/register-contact.dto";
+import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { hash } from "bcryptjs";
 
 @Injectable()
@@ -155,6 +156,56 @@ export class ManagerService {
         responsibleRegions: uniqueRegions,
         responsibleProducts: uniqueProducts,
         status: "pending",
+      },
+    };
+  }
+
+  async registerComplete(dto: RegisterCompleteDto) {
+    // 1. Hash password
+    const passwordHash = await hash(dto.contact.password, 10);
+
+    // 2. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
+    let managerId = dto.managerId;
+    if (!managerId) {
+      const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
+      // Generate random 4-digit number (1000-9999)
+      const randomNumber = Math.floor(1000 + Math.random() * 9000);
+      managerId = `${formattedCompanyName}${randomNumber}`;
+      
+      // TODO: Check for duplicate managerId in database
+      // const existing = await this.prisma.supplierManager.findFirst({
+      //   where: { manager_id: managerId },
+      // });
+      // if (existing) {
+      //   // Regenerate if duplicate
+      //   const newRandomNumber = Math.floor(1000 + Math.random() * 9000);
+      //   managerId = `${formattedCompanyName}${newRandomNumber}`;
+      // }
+    }
+
+    // 3. Save all registration data
+    // TODO: Create Supplier, SupplierManager, SupplierContact models in Prisma schema
+    // This is a complete registration that combines all steps
+    
+    // For now, return success response
+    return {
+      message: "회원가입이 완료되었습니다. 로그인해주세요.",
+      managerId: managerId,
+      data: {
+        manager: {
+          name: dto.manager.name,
+          phoneNumber: dto.manager.phoneNumber,
+        },
+        company: {
+          companyName: dto.company.companyName,
+          businessNumber: dto.company.businessNumber,
+        },
+        contact: {
+          email1: dto.contact.email1,
+          email2: dto.contact.email2,
+        },
+        managerId: managerId,
+        status: "pending", // Pending approval
       },
     };
   }

@@ -1,13 +1,24 @@
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { IsString, MinLength, ValidateIf, IsOptional } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
 export class LoginDto {
   @ApiProperty({
     example: "supplier@example.com",
-    description: "Supplier email address",
+    description: "Supplier email address (if using email login)",
+    required: false,
   })
-  @IsEmail({}, { message: "올바른 이메일 주소를 입력하세요" })
-  email!: string;
+  @IsOptional()
+  @IsString({ message: "이메일을 입력하세요" })
+  email?: string;
+
+  @ApiProperty({
+    example: "한국합금+1234",
+    description: "Manager ID (if using managerId login)",
+    required: false,
+  })
+  @IsOptional()
+  @IsString({ message: "담당자 ID를 입력하세요" })
+  managerId?: string;
 
   @ApiProperty({
     example: "password123",

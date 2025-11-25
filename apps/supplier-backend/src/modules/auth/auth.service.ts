@@ -9,32 +9,56 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   async login(loginDto: LoginDto) {
+    const { email, managerId, password } = loginDto;
+
+    // Validate that either email or managerId is provided
+    if (!email && !managerId) {
+      throw new UnauthorizedException("이메일 또는 담당자 ID를 입력하세요");
+    }
+
     // TODO: Implement actual supplier authentication
     // For now, return a mock response
     
-    const { email, password } = loginDto;
-
     // Mock authentication - replace with actual supplier lookup
-    // const supplier = await this.prisma.supplier.findUnique({
-    //   where: { email },
-    // });
-    // 
-    // if (!supplier) {
-    //   throw new UnauthorizedException("Invalid credentials");
-    // }
-    // 
-    // const isPasswordValid = await compare(password, supplier.password_hash);
-    // if (!isPasswordValid) {
-    //   throw new UnauthorizedException("Invalid credentials");
+    // if (email) {
+    //   const supplier = await this.prisma.supplier.findUnique({
+    //     where: { email },
+    //   });
+    //   
+    //   if (!supplier) {
+    //     throw new UnauthorizedException("Invalid credentials");
+    //   }
+    //   
+    //   const isPasswordValid = await compare(password, supplier.password_hash);
+    //   if (!isPasswordValid) {
+    //     throw new UnauthorizedException("Invalid credentials");
+    //   }
+    // } else if (managerId) {
+    //   const supplier = await this.prisma.supplierManager.findFirst({
+    //     where: { manager_id: managerId },
+    //     include: { supplier: true },
+    //   });
+    //   
+    //   if (!supplier) {
+    //     throw new UnauthorizedException("Invalid credentials");
+    //   }
+    //   
+    //   const isPasswordValid = await compare(password, supplier.password_hash);
+    //   if (!isPasswordValid) {
+    //     throw new UnauthorizedException("Invalid credentials");
+    //   }
     // }
 
     // Generate JWT token
     const secret = process.env.SUPPLIER_JWT_SECRET || process.env.SUPABASE_JWT_SECRET || "supplier-secret";
     
+    const identifier = email || managerId;
+    
     const token = sign(
       {
         sub: "supplier-id", // supplier.id
-        email: email,
+        email: email || undefined,
+        managerId: managerId || undefined,
         type: "supplier",
       },
       secret,
@@ -46,6 +70,7 @@ export class AuthService {
       token,
       supplier: {
         email: email,
+        managerId: managerId,
         // Add other supplier fields
       },
     };

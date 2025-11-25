@@ -219,7 +219,7 @@ export default function ContactInfoPage() {
         })
       );
 
-      // Keyingi step'ga o'tish (S 0-5)
+      // Keyingi step'ga o'tish (S 0-5 - 계정 정보확인)
       router.push("/register/complete");
     } catch (error: any) {
       setErrors({ submit: error.message || "저장에 실패했습니다" });

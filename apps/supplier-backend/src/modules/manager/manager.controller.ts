@@ -15,6 +15,7 @@ import { ManagerService } from "./manager.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterCompanyDto } from "./dto/register-company.dto";
 import { RegisterContactDto } from "./dto/register-contact.dto";
+import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
 import type { Request } from "express";
@@ -157,6 +158,12 @@ export class ManagerController {
   @ApiOperation({ summary: "Register contact person information (step 4)" })
   async registerContact(@Body() dto: RegisterContactDto) {
     return this.managerService.registerContact(dto);
+  }
+
+  @Post("register-complete")
+  @ApiOperation({ summary: "Complete registration with all data (final step)" })
+  async registerComplete(@Body() dto: RegisterCompleteDto) {
+    return this.managerService.registerComplete(dto);
   }
 }
 

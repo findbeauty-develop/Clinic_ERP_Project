@@ -7,7 +7,7 @@ export function MobileNav() {
   const pathname = usePathname();
 
   // Login va register page'larida mobile nav ko'rsatilmaydi
-  const hiddenPaths = ["/login", "/register", "/forgot-password", "/register/company", "/register/contact"];
+  const hiddenPaths = ["/login", "/register", "/forgot-password", "/register/company", "/register/contact", "/register/complete"];
   if (hiddenPaths.includes(pathname)) {
     return null;
   }
