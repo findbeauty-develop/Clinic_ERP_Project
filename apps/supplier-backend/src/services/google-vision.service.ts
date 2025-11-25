@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ImageAnnotatorClient } from "@google-cloud/vision";
 import { resolve } from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 
 @Injectable()
 export class GoogleVisionService {
@@ -29,12 +29,10 @@ export class GoogleVisionService {
         return;
       }
 
-      // Set the environment variable to absolute path (for Google Cloud client)
-      // This ensures the client can find the credentials when making API calls
+      // Set environment variable to absolute path
       process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
 
-      // Initialize client - it will use GOOGLE_APPLICATION_CREDENTIALS env var
-      // Same approach as clinic backend
+      // Initialize client - same as clinic backend (let it use env var)
       this.client = new ImageAnnotatorClient();
       
       this.logger.log(`Google Cloud Vision client initialized successfully with credentials: ${credentialsPath}`);
@@ -43,7 +41,6 @@ export class GoogleVisionService {
       if (error instanceof Error) {
         this.logger.error(`Error details: ${error.message}`);
       }
-      // Client will be null, methods will handle this gracefully
     }
   }
 
@@ -81,4 +78,3 @@ export class GoogleVisionService {
     }
   }
 }
-

@@ -48,14 +48,20 @@ export default function CompanyInfoPage() {
         // OCR natijalarini form'ga to'ldirish
         if (ocr.parsedFields) {
           const fields = ocr.parsedFields;
+          
+          // Auto-fill form fields from OCR
           setFormData(prev => ({
             ...prev,
-            companyName: fields.companyName || "",
-            businessNumber: fields.businessNumber || "",
-            companyAddress: fields.address || "",
-            businessType: fields.businessType || "",
-            businessItem: fields.businessItem || "",
-            // Email OCR'dan kelmasa bo'sh qoldiriladi
+            // 법인명 -> 회사명
+            companyName: fields.companyName || prev.companyName,
+            // 등록번호 -> 사업자등록번호
+            businessNumber: fields.businessNumber || prev.businessNumber,
+            // 사업장 소재지 or 본점소재지 -> 회사 주소
+            companyAddress: fields.address || prev.companyAddress,
+            // Optional fields
+            businessType: fields.businessType || prev.businessType,
+            businessItem: fields.businessItem || prev.businessItem,
+            // Email OCR'dan kelmasa bo'sh qoldiriladi (user to'ldirishi kerak)
           }));
         }
       } catch (error) {
@@ -237,7 +243,7 @@ export default function CompanyInfoPage() {
                   }
                 }}
                 placeholder="회사명을 입력하세요"
-                className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                   errors.companyName
                     ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                     : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -269,7 +275,7 @@ export default function CompanyInfoPage() {
                 }}
                 placeholder="XXX-XX-XXXXX"
                 maxLength={13}
-                className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                   errors.businessNumber
                     ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                     : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -300,7 +306,7 @@ export default function CompanyInfoPage() {
                   }
                 }}
                 placeholder="02-1234-5678"
-                className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                   errors.companyPhone
                     ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                     : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -330,7 +336,7 @@ export default function CompanyInfoPage() {
                   }
                 }}
                 placeholder="company@example.com"
-                className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                   errors.companyEmail
                     ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                     : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -353,7 +359,7 @@ export default function CompanyInfoPage() {
                 }}
                 placeholder="서울시 강남구..."
                 rows={3}
-                className="w-full resize-none rounded-lg border border-slate-300 py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:ring-offset-0 sm:text-base"
+                className="w-full resize-none rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:ring-offset-0 sm:text-base"
               />
             </div>
 
@@ -371,7 +377,7 @@ export default function CompanyInfoPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, businessType: e.target.value })
                       }
-                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
+                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
                       readOnly
                     />
                   </div>
@@ -387,7 +393,7 @@ export default function CompanyInfoPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, businessItem: e.target.value })
                       }
-                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
+                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
                       readOnly
                     />
                   </div>

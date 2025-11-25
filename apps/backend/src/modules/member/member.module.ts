@@ -14,6 +14,7 @@ import { MessageService } from "./services/message.service";
 import { TwilioProvider } from "./services/providers/twilio.provider";
 import { CoolSMSProvider } from "./services/providers/coolsms.provider";
 import { KakaoProvider } from "./services/providers/kakao.provider";
+import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
 
 @Module({
   controllers: [ClinicsController, MembersController],
@@ -31,6 +32,7 @@ import { KakaoProvider } from "./services/providers/kakao.provider";
     TwilioProvider,
     CoolSMSProvider,
     KakaoProvider,
+    KTCommunisProvider,
   ],
 })
 export class MemberModule {}

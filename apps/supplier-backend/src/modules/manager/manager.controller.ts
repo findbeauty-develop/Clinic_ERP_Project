@@ -106,6 +106,7 @@ export class ManagerController {
 
     // OCR processing
     let ocrResult = null;
+    let ocrError = null;
     try {
       // Read file buffer for OCR
       const buffer = await fs.readFile(filePath);
@@ -122,6 +123,7 @@ export class ManagerController {
       };
     } catch (error) {
       // OCR failed, but continue with file upload
+      ocrError = error instanceof Error ? error.message : String(error);
       console.error("OCR processing failed:", error);
       // Don't throw error, just continue without OCR result
     }
@@ -134,6 +136,7 @@ export class ManagerController {
       filename: file.filename,
       size: file.size,
       ocrResult,
+      ocrError: ocrError || undefined, // Debug uchun error'ni ham qaytaramiz
     };
   }
 

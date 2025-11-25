@@ -4,6 +4,7 @@ import { IMessageProvider } from './message-provider.interface';
 import { TwilioProvider } from './providers/twilio.provider';
 import { CoolSMSProvider } from './providers/coolsms.provider';
 import { KakaoProvider } from './providers/kakao.provider';
+import { KTCommunisProvider } from './providers/kt-communis.provider';
 
 @Injectable()
 export class MessageService {
@@ -15,6 +16,7 @@ export class MessageService {
     private twilioProvider: TwilioProvider,
     private coolSMSProvider: CoolSMSProvider,
     private kakaoProvider: KakaoProvider,
+    private ktCommunisProvider: KTCommunisProvider,
   ) {
     // Config'dan provider tanlash
     const providerName = this.configService.get<string>('MESSAGE_PROVIDER') || 'coolsms';
@@ -30,6 +32,7 @@ export class MessageService {
         return this.coolSMSProvider;
       case 'kakao':
         return this.kakaoProvider;
+      return this.ktCommunisProvider;
       default:
         this.logger.warn(`Unknown provider: ${name}, using CoolSMS`);
         return this.coolSMSProvider;
