@@ -38,6 +38,7 @@ export class SupplierService {
         // 담당자 정보
         managerId: manager?.manager_id || null, // 담당자 ID
         managerName: manager?.name || null, // 이름
+        position: manager?.position || null, // 직함
         phoneNumber: manager?.phone_number || null, // 담당자 핸드폰 번호
         email1: manager?.email1 || null, // 이메일1
         email2: manager?.email2 || null, // 이메일2
@@ -48,6 +49,7 @@ export class SupplierService {
         managers: supplier.managers?.map((m: any) => ({
           managerId: m.manager_id,
           name: m.name,
+          position: m.position,
           phoneNumber: m.phone_number,
           email1: m.email1,
           email2: m.email2,

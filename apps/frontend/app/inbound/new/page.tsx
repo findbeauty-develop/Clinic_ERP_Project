@@ -48,6 +48,20 @@ export default function InboundNewPage() {
     return today.toISOString().split('T')[0]; // YYYY-MM-DD format
   });
   
+  // Supplier search states
+  const [supplierSearchCompanyName, setSupplierSearchCompanyName] = useState("");
+  const [supplierSearchManagerName, setSupplierSearchManagerName] = useState("");
+  const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] = useState("");
+  const [supplierSearchResults, setSupplierSearchResults] = useState<Array<{
+    companyName: string;
+    managerId: string;
+    managerName: string;
+    position: string | null;
+    phoneNumber: string;
+  }>>([]);
+  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
+  const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
+  
   // Form state
   const [formData, setFormData] = useState({
     // Product info
@@ -121,6 +135,81 @@ export default function InboundNewPage() {
         handleInputChange("image", base64String);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Supplier search function
+  const searchSuppliers = async (companyName?: string, managerName?: string, phoneNumber?: string) => {
+    if (!companyName && !managerName && !phoneNumber) {
+      setSupplierSearchResults([]);
+      return;
+    }
+
+    setSupplierSearchLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const tenantId = localStorage.getItem("tenantId");
+      
+      const params = new URLSearchParams();
+      if (companyName) params.append("companyName", companyName);
+      if (managerName) params.append("managerName", managerName);
+      if (phoneNumber) params.append("phoneNumber", phoneNumber);
+
+      const response = await fetch(`${apiUrl}/supplier/search?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Tenant-Id": tenantId || "",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const results = data.map((item: any) => ({
+          companyName: item.companyName || "",
+          managerId: item.managerId || "",
+          managerName: item.managerName || "",
+          position: item.position || null,
+          phoneNumber: item.phoneNumber || "",
+        }));
+        setSupplierSearchResults(results);
+      } else {
+        setSupplierSearchResults([]);
+      }
+    } catch (error) {
+      console.error("Error searching suppliers:", error);
+      setSupplierSearchResults([]);
+    } finally {
+      setSupplierSearchLoading(false);
+    }
+  };
+
+  // Handle search button click - requires both companyName and managerName
+  const handleSupplierSearch = () => {
+    if (supplierSearchCompanyName && supplierSearchManagerName) {
+      searchSuppliers(supplierSearchCompanyName, supplierSearchManagerName, undefined);
+    } else {
+      setSupplierSearchResults([]);
+    }
+  };
+
+  // Handle supplier result selection
+  const handleSupplierResultSelect = (index: number) => {
+    setSelectedSupplierResult(index);
+    const result = supplierSearchResults[index];
+    if (result) {
+      handleInputChange("supplierId", result.managerId);
+      handleInputChange("supplierName", result.companyName);
+      handleInputChange("supplierContactName", result.managerName);
+      handleInputChange("supplierContactPhone", result.phoneNumber);
+    }
+  };
+
+  // Handle phone number search
+  const handlePhoneNumberSearch = () => {
+    if (supplierSearchPhoneNumber) {
+      searchSuppliers(undefined, undefined, supplierSearchPhoneNumber);
     }
   };
 
@@ -686,67 +775,129 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <TruckIcon className="h-5 w-5 text-indigo-500" />
-            공급업체 정보
+            공급업체 정보 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="flex items-center justify-between">
-              <span className="text-base font-semibold text-slate-800 dark:text-slate-100">기존 담당자 선택</span>
-              <div className="flex -space-x-2">
-                <Avatar color="bg-sky-500" />
-                <Avatar color="bg-indigo-500" />
+            {/* Search Fields */}
+            <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  공급업체명
+                </label>
+                <input
+                  type="text"
+                  value={supplierSearchCompanyName}
+                  onChange={(e) => setSupplierSearchCompanyName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                      handleSupplierSearch();
+                    }
+                  }}
+                  placeholder="공급업체명을 입력해주세요."
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  담당자
+                </label>
+                <input
+                  type="text"
+                  value={supplierSearchManagerName}
+                  onChange={(e) => setSupplierSearchManagerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                      handleSupplierSearch();
+                    }
+                  }}
+                  placeholder="담당자 이름"
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleSupplierSearch}
+                  disabled={supplierSearchLoading || !supplierSearchCompanyName || !supplierSearchManagerName}
+                  className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  title="검색"
+                >
+                  {supplierSearchLoading ? (
+                    <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <SearchIcon className="h-5 w-5" />
+                  )}
+                </button>
               </div>
             </div>
-            <div className="mt-6 space-y-6">
-              <SelectField
-                label="기존 담당자를 선택하거나 새로 입력하세요"
-                options={supplierManagers.map(m => m.displayName)}
-                value={supplierManagers.find(m => m.id === formData.supplierId)?.displayName || ""}
-                onChange={(value) => {
-                  const selectedManager = supplierManagers.find(m => m.displayName === value);
-                  if (selectedManager) {
-                    handleInputChange("supplierId", selectedManager.id);
-                    // If not "새 담당자 등록", auto-fill contact name
-                    if (selectedManager.id !== "new" && selectedManager.fullName) {
-                      handleInputChange("supplierContactName", selectedManager.fullName);
-                    }
-                  }
-                }}
-              />
-              <InputField
-                label="공급업체명"
-                placeholder="공급업체명을 입력하세요"
-                value={formData.supplierName}
-                onChange={(e) => handleInputChange("supplierName", e.target.value)}
-              />
-              <div className="grid gap-5 sm:grid-cols-2">
-                <InputField
-                  label="담당자 이름"
-                  placeholder="담당자 이름을 입력하세요"
-                  value={formData.supplierContactName}
-                  onChange={(e) => handleInputChange("supplierContactName", e.target.value)}
-                />
-                <InputField
-                  label="담당자 연락처"
-                  placeholder="담당자 연락처를 입력하세요"
-                  value={formData.supplierContactPhone}
-                  onChange={(e) => handleInputChange("supplierContactPhone", e.target.value)}
-                />
+
+            {/* Search Results Table */}
+            {supplierSearchResults.length > 0 && (
+              <div className="mb-6 overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">회사명</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">이름</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">직함</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">핸드폰 번호</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">담당자 ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {supplierSearchResults.map((result, index) => (
+                      <tr
+                        key={index}
+                        onClick={() => handleSupplierResultSelect(index)}
+                        className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
+                          selectedSupplierResult === index ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.companyName}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerName}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.position || "-"}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.phoneNumber}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerId}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <InputField
-                label="공급업체 이메일"
-                placeholder="example@supplier.com"
-                inputProps={{ type: "email" }}
-                value={formData.supplierEmail}
-                onChange={(e) => handleInputChange("supplierEmail", e.target.value)}
-              />
-              <TextareaField
-                label="공급업체 특이사항"
-                placeholder="해당 공급업체에 대한 특별한 지시사항이나 메모를 입력하세요 (예: 특정 요일에만 배송 가능)"
-                rows={3}
-                value={formData.supplierNote}
-                onChange={(e) => handleInputChange("supplierNote", e.target.value)}
-              />
-              <TextareaField label="메모" placeholder="추가 메모를 입력하세요" rows={4} />
+            )}
+
+            {/* Phone Number Search Section */}
+            <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
+              <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
+                <span className="mt-0.5">▲</span>
+                <span>담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해 보세요.</span>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    핸드폰 번호
+                  </label>
+                  <input
+                    type="tel"
+                    value={supplierSearchPhoneNumber}
+                    onChange={(e) => setSupplierSearchPhoneNumber(e.target.value)}
+                    placeholder="000-0000-0000"
+                    className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handlePhoneNumberSearch}
+                    disabled={supplierSearchLoading || !supplierSearchPhoneNumber}
+                    className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
+                  >
+                    {supplierSearchLoading ? "검색 중..." : "검색하기"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>

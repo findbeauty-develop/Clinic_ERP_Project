@@ -62,17 +62,14 @@ export class MembersRepository {
     );
   }
 
-  findByMemberId(memberId: string, tenantId?: string) {
+  async findByMemberId(memberId: string, tenantId?: string) {
     const where: any = { member_id: memberId };
     if (tenantId) {
       where.tenant_id = tenantId;
     }
-    // Use executeWithRetry to handle connection errors gracefully
-    const prisma = this.prisma as any;
-    return prisma.executeWithRetry(async () => {
-      return await prisma.member.findFirst({
-        where,
-      });
+    // Direct query - Prisma handles connection automatically
+    return await this.prisma.member.findFirst({
+      where,
     });
   }
 

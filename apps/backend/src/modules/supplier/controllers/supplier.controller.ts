@@ -14,7 +14,7 @@ import { Tenant } from "../../../common/decorators/tenant.decorator";
 @ApiTags("supplier")
 @ApiBearerAuth()
 @Controller("supplier")
-@UseGuards(JwtTenantGuard)
+// @UseGuards(JwtTenantGuard)
 export class SupplierController {
   constructor(private readonly supplierService: SupplierService) {}
 
