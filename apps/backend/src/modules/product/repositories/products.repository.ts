@@ -7,7 +7,7 @@ export class ProductsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   private getClient(tx?: Prisma.TransactionClient) {
-    return tx ?? this.prisma;
+    return (tx ?? this.prisma) as any;
   }
 
   create(data: any, tenantId: string, tx?: Prisma.TransactionClient) {

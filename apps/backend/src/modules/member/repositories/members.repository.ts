@@ -68,8 +68,9 @@ export class MembersRepository {
       where.tenant_id = tenantId;
     }
     // Use executeWithRetry to handle connection errors gracefully
-    return this.prisma.executeWithRetry(async () => {
-      return await this.prisma.member.findFirst({
+    const prisma = this.prisma as any;
+    return prisma.executeWithRetry(async () => {
+      return await prisma.member.findFirst({
         where,
       });
     });

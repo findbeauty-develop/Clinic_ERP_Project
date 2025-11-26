@@ -69,7 +69,7 @@ export class OrderService {
 
     // Barcha product'larni olish (batches va supplierProducts bilan)
     const products = await this.prisma.executeWithRetry(async () => {
-      const where: Prisma.ProductWhereInput = {
+      const where: any = {
         tenant_id: tenantId,
         is_active: true,
       };
@@ -120,7 +120,7 @@ export class OrderService {
     });
 
     // Har bir product uchun risk score hisoblash
-    const productsWithRisk: (ProductWithRisk | null)[] = products.map((product) => {
+    const productsWithRisk: (ProductWithRisk | null)[] = products.map((product: any) => {
       const latestBatch = product.batches?.[0];
       const supplier = product.supplierProducts?.[0];
 
@@ -205,7 +205,7 @@ export class OrderService {
         riskScore: riskScore,
         riskLevel: riskLevel,
         riskColor: riskColor,
-        batches: product.batches.map((batch) => ({
+        batches: product.batches.map((batch: any) => ({
           id: batch.id,
           batchNo: batch.batch_no,
           expiryDate: batch.expiry_date
@@ -303,7 +303,7 @@ export class OrderService {
     const limit = query.limit || 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ProductWhereInput = {
+    const where: any = {
       tenant_id: tenantId,
       is_active: true,
     };
@@ -360,10 +360,10 @@ export class OrderService {
       });
     });
 
-    const formattedProducts = products.map((product) => {
+    const formattedProducts = products.map((product: any) => {
       const supplier = product.supplierProducts?.[0];
       const totalStock = product.batches.reduce(
-        (sum, batch) => sum + batch.qty,
+        (sum: number, batch: any) => sum + batch.qty,
         0
       );
 
@@ -376,7 +376,7 @@ export class OrderService {
         unitPrice: supplier?.purchase_price ?? product.purchase_price ?? null,
         totalStock: totalStock,
         unit: product.unit,
-        batches: product.batches.map((batch) => ({
+        batches: product.batches.map((batch: any) => ({
           batchNo: batch.batch_no,
           qty: batch.qty,
           expiryDate: batch.expiry_date

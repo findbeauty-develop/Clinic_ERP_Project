@@ -95,7 +95,7 @@ export class OutboundService {
     // Validation
     this.validateOutbound(batch, dto.outboundQty);
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return this.prisma.$transaction(async (tx: any) => {
       // Outbound record yaratish
       const outbound = await tx.outbound.create({
         data: {
@@ -862,7 +862,7 @@ export class OutboundService {
     outboundQty: number,
     productId: string,
     tenantId: string,
-    tx: Prisma.TransactionClient
+    tx: any
   ): Promise<void> {
     // 1. Batch qty ni kamaytirish
     await tx.batch.update({

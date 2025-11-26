@@ -29,7 +29,7 @@ export class ProductsService {
       imageUrl = savedImage;
     }
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const resolvedStatus =
         dto.status ?? (dto.isActive === false ? "단종" : "활성");
       const resolvedIsActive =
@@ -300,7 +300,7 @@ export class ProductsService {
       dto.isActive ??
       (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
 
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await this.prisma.$transaction(async (tx: any) => {
       await tx.product.update({
         where: { id },
         data: {
@@ -424,7 +424,7 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await this.prisma.$transaction(async (tx: any) => {
       await tx.batch.deleteMany({
         where: { product_id: id, tenant_id: tenantId },
       });
@@ -526,7 +526,7 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return this.prisma.$transaction(async (tx: any) => {
       // Avtomatik batch_no yaratish
       const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
@@ -586,7 +586,7 @@ export class ProductsService {
   private async generateBatchNo(
     productId: string,
     tenantId: string,
-    tx: Prisma.TransactionClient
+    tx: any
   ): Promise<string> {
     // 9 xonalik random raqam yaratish (100000000 - 999999999)
     const random9Digits = Math.floor(
