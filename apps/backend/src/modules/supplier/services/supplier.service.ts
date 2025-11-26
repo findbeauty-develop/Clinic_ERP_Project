@@ -6,13 +6,14 @@ import { SearchSupplierDto } from "../dto/search-supplier.dto";
 export class SupplierService {
   constructor(private readonly repository: SupplierRepository) {}
 
-  async searchSuppliers(dto: SearchSupplierDto) {
+  async searchSuppliers(dto: SearchSupplierDto, tenantId: string) {
     // Validate that at least one search parameter is provided
     if (!dto.companyName && !dto.phoneNumber && !dto.managerName) {
       throw new Error("회사명, 담당자 핸드폰 번호 또는 담당자 이름 중 하나는 필수입니다");
     }
 
     const suppliers = await this.repository.searchSuppliers(
+      tenantId,
       dto.companyName,
       dto.phoneNumber,
       dto.managerName
@@ -46,6 +47,53 @@ export class SupplierService {
         managerStatus: manager?.status || null, // 담당자 상태
 
         // All managers (if multiple)
+        managers: supplier.managers?.map((m: any) => ({
+          managerId: m.manager_id,
+          name: m.name,
+          position: m.position,
+          phoneNumber: m.phone_number,
+          email1: m.email1,
+          email2: m.email2,
+          responsibleProducts: m.responsible_products,
+          status: m.status,
+        })) || [],
+      };
+    });
+  }
+
+  /**
+   * Fallback search by phone number without transaction history filter
+   * Used when main search returns no results
+   */
+  async searchSuppliersByPhone(phoneNumber: string) {
+    if (!phoneNumber) {
+      throw new Error("핸드폰 번호는 필수입니다");
+    }
+
+    const suppliers = await this.repository.searchSuppliersByPhone(phoneNumber);
+
+    // Format response (same format as searchSuppliers)
+    return suppliers.map((supplier: any) => {
+      const manager = supplier.managers?.[0];
+
+      return {
+        companyName: supplier.company_name,
+        companyAddress: supplier.company_address,
+        businessNumber: supplier.business_number,
+        companyPhone: supplier.company_phone,
+        companyEmail: supplier.company_email,
+        businessType: supplier.business_type,
+        businessItem: supplier.business_item,
+        productCategories: supplier.product_categories,
+        status: supplier.status,
+        managerId: manager?.manager_id || null,
+        managerName: manager?.name || null,
+        position: manager?.position || null,
+        phoneNumber: manager?.phone_number || null,
+        email1: manager?.email1 || null,
+        email2: manager?.email2 || null,
+        responsibleProducts: manager?.responsible_products || [],
+        managerStatus: manager?.status || null,
         managers: supplier.managers?.map((m: any) => ({
           managerId: m.manager_id,
           name: m.name,

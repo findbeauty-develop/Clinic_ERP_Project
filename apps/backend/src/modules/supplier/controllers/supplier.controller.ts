@@ -52,7 +52,30 @@ export class SupplierController {
       );
     }
 
-    return this.supplierService.searchSuppliers(query);
+    return this.supplierService.searchSuppliers(query, tenantId);
+  }
+
+  @Get("search-by-phone")
+  @ApiOperation({
+    summary: "공급업체 핸드폰 번호로 검색 (Fallback search by phone)",
+    description:
+      "거래 이력이 없는 공급업체도 찾을 수 있는 폴백 검색입니다. 핸드폰 번호로만 검색합니다.",
+  })
+  @ApiQuery({
+    name: "phoneNumber",
+    required: true,
+    type: String,
+    description: "담당자 핸드폰 번호 (Manager phone number)",
+  })
+  async searchSuppliersByPhone(
+    @Query("phoneNumber") phoneNumber: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!phoneNumber) {
+      throw new BadRequestException("핸드폰 번호는 필수입니다");
+    }
+
+    return this.supplierService.searchSuppliersByPhone(phoneNumber);
   }
 }
 

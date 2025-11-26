@@ -67,6 +67,22 @@ export default function InboundNewPage() {
     responsibleProducts: string[];
   }>>([]);
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
+  const [supplierSearchFallback, setSupplierSearchFallback] = useState(false); // For fallback search
+  const [showSupplierConfirmModal, setShowSupplierConfirmModal] = useState(false); // Modal for confirming supplier without transaction history
+  const [pendingSupplier, setPendingSupplier] = useState<{
+    companyName: string;
+    companyAddress: string | null;
+    businessNumber: string;
+    companyPhone: string | null;
+    companyEmail: string;
+    managerId: string;
+    managerName: string;
+    position: string | null;
+    phoneNumber: string;
+    email1: string | null;
+    email2: string | null;
+    responsibleProducts: string[];
+  } | null>(null);
   const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     companyName: string;
@@ -163,10 +179,12 @@ export default function InboundNewPage() {
   const searchSuppliers = async (companyName?: string, managerName?: string, phoneNumber?: string) => {
     if (!companyName && !managerName && !phoneNumber) {
       setSupplierSearchResults([]);
+      setSupplierSearchFallback(false);
       return;
     }
 
     setSupplierSearchLoading(true);
+    setSupplierSearchFallback(false);
     try {
       const token = localStorage.getItem("token");
       const tenantId = localStorage.getItem("tenantId");
@@ -202,11 +220,80 @@ export default function InboundNewPage() {
           responsibleProducts: item.responsibleProducts || [],
         }));
         setSupplierSearchResults(results);
+        
+        // If no results and we have companyName + managerName, show fallback option
+        if (results.length === 0 && companyName && managerName) {
+          setSupplierSearchFallback(true);
+        }
+      } else {
+        setSupplierSearchResults([]);
+        if (companyName && managerName) {
+          setSupplierSearchFallback(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error searching suppliers:", error);
+      setSupplierSearchResults([]);
+      if (companyName && managerName) {
+        setSupplierSearchFallback(true);
+      }
+    } finally {
+      setSupplierSearchLoading(false);
+    }
+  };
+
+  // Fallback search by phone number (without transaction history filter)
+  const searchSuppliersByPhone = async (phoneNumber: string) => {
+    if (!phoneNumber) {
+      setSupplierSearchResults([]);
+      return;
+    }
+
+    setSupplierSearchLoading(true);
+    setSupplierSearchFallback(false);
+    try {
+      const token = localStorage.getItem("token");
+      const tenantId = localStorage.getItem("tenantId");
+
+      const response = await fetch(`${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(phoneNumber)}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Tenant-Id": tenantId || "",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const results = data.map((item: any) => ({
+          companyName: item.companyName || "",
+          companyAddress: item.companyAddress || null,
+          businessNumber: item.businessNumber || "",
+          companyPhone: item.companyPhone || null,
+          companyEmail: item.companyEmail || "",
+          managerId: item.managerId || "",
+          managerName: item.managerName || "",
+          position: item.position || null,
+          phoneNumber: item.phoneNumber || "",
+          email1: item.email1 || null,
+          email2: item.email2 || null,
+          responsibleProducts: item.responsibleProducts || [],
+        }));
+        
+        // If results found from fallback search, show confirmation modal
+        if (results.length > 0) {
+          setPendingSupplier(results[0]); // Show modal for first result
+          setShowSupplierConfirmModal(true);
+          setSupplierSearchResults([]); // Don't show in table yet
+        } else {
+          setSupplierSearchResults([]);
+        }
       } else {
         setSupplierSearchResults([]);
       }
     } catch (error) {
-      console.error("Error searching suppliers:", error);
+      console.error("Error searching suppliers by phone:", error);
       setSupplierSearchResults([]);
     } finally {
       setSupplierSearchLoading(false);
@@ -242,10 +329,33 @@ export default function InboundNewPage() {
     setSelectedSupplierResult(null);
   };
 
-  // Handle phone number search
+  // Handle confirm supplier from modal (네 button)
+  const handleConfirmSupplier = () => {
+    if (pendingSupplier) {
+      setSelectedSupplierDetails(pendingSupplier);
+      handleInputChange("supplierId", pendingSupplier.managerId);
+      handleInputChange("supplierName", pendingSupplier.companyName);
+      handleInputChange("supplierContactName", pendingSupplier.managerName);
+      handleInputChange("supplierContactPhone", pendingSupplier.phoneNumber);
+      handleInputChange("supplierEmail", pendingSupplier.email1 || "");
+      setShowSupplierConfirmModal(false);
+      setPendingSupplier(null);
+    }
+  };
+
+  // Handle direct input (직접 입력 button)
+  const handleDirectInput = () => {
+    // TODO: Show manual entry card (not implemented yet)
+    setShowSupplierConfirmModal(false);
+    setPendingSupplier(null);
+    // For now, just close the modal
+    // In future, this will open manual entry form
+  };
+
+  // Handle phone number search (fallback search)
   const handlePhoneNumberSearch = () => {
     if (supplierSearchPhoneNumber) {
-      searchSuppliers(undefined, undefined, supplierSearchPhoneNumber);
+      searchSuppliersByPhone(supplierSearchPhoneNumber);
     }
   };
 
@@ -1005,6 +1115,23 @@ export default function InboundNewPage() {
                   </div>
                 )}
 
+                {/* No Results Message with Fallback Option */}
+                {!supplierSearchLoading && supplierSearchResults.length === 0 && supplierSearchFallback && (
+                  <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 text-amber-600 dark:text-amber-400">ℹ️</span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                          거래 이력이 있는 공급업체를 찾을 수 없습니다.
+                        </p>
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                          등록된 공급업체를 찾으려면 아래에서 핸드폰 번호로 검색해보세요.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Phone Number Search Section */}
                 <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
                   <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
@@ -1240,6 +1367,69 @@ export default function InboundNewPage() {
           </div>
         </footer>
       </div>
+
+      {/* Supplier Confirmation Modal */}
+      {showSupplierConfirmModal && pendingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowSupplierConfirmModal(false);
+                setPendingSupplier(null);
+              }}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  프랫품 이미 정보있는 담당자입니다.
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  이 담당자 정보를 추가하시겠습니까?
+                </p>
+              </div>
+
+              {/* Supplier Info Preview */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {pendingSupplier.companyName}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    {pendingSupplier.managerName} ({pendingSupplier.phoneNumber})
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleDirectInput}
+                  className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  직접 입력
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSupplier}
+                  className="flex-1 rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+                >
+                  네
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
