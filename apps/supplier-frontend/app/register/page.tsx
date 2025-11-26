@@ -267,27 +267,40 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 sm:p-6">
-        <div className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 text-purple-600 sm:h-12 sm:w-12">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-              />
-            </svg>
+      <div className="p-4 sm:p-6">
+        <div className="mb-6 flex items-center justify-between sm:mb-8">
+          
+        </div>
+
+        {/* Progress Indicator - 4 steps */}
+        <div className="mb-6 flex items-center justify-between gap-1 sm:mb-8 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
+              1
+            </div>
+            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">계정 정보</span>
           </div>
-          <h1 className="text-lg font-bold text-slate-900 sm:text-xl">
-            Supplier ERP
-          </h1>
+          <div className="h-0.5 flex-1 bg-slate-200"></div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
+              2
+            </div>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">회사 정보</span>
+          </div>
+          <div className="h-0.5 flex-1 bg-slate-200"></div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
+              3
+            </div>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 정보</span>
+          </div>
+          <div className="h-0.5 flex-1 bg-slate-200"></div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
+              4
+            </div>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 ID</span>
+          </div>
         </div>
       </div>
 
@@ -366,7 +379,7 @@ export default function RegisterPage() {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   placeholder="이름을 입력하세요"
-                  className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                  className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                     errors.name
                       ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                       : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -408,7 +421,7 @@ export default function RegisterPage() {
                     }}
                     placeholder="01012345678"
                     maxLength={11}
-                    className={`w-full rounded-lg border py-3 px-4 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                    className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
                       errors.phoneNumber
                         ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                         : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"

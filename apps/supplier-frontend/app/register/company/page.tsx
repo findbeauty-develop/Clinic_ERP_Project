@@ -190,27 +190,34 @@ export default function CompanyInfoPage() {
           <h1 className="text-2xl font-bold text-slate-900">뷰티재고</h1>
         </div>
 
-        {/* Progress Indicator */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-medium text-slate-600">
+        {/* Progress Indicator - 4 steps */}
+        <div className="mb-6 flex items-center justify-between gap-1 sm:mb-8 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               1
             </div>
-            <span className="text-sm text-slate-600">계정 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">계정 정보</span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
               2
             </div>
-            <span className="text-sm font-medium text-slate-900">회사 정보</span>
+            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">회사 정보</span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-medium text-slate-600">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               3
             </div>
-            <span className="text-sm text-slate-600">담당자 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 정보</span>
+          </div>
+          <div className="h-0.5 flex-1 bg-slate-200"></div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
+              4
+            </div>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 ID</span>
           </div>
         </div>
 
