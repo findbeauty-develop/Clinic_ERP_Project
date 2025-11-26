@@ -54,13 +54,34 @@ export default function InboundNewPage() {
   const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] = useState("");
   const [supplierSearchResults, setSupplierSearchResults] = useState<Array<{
     companyName: string;
+    companyAddress: string | null;
+    businessNumber: string;
+    companyPhone: string | null;
+    companyEmail: string;
     managerId: string;
     managerName: string;
     position: string | null;
     phoneNumber: string;
+    email1: string | null;
+    email2: string | null;
+    responsibleProducts: string[];
   }>>([]);
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
   const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
+  const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
+    companyName: string;
+    companyAddress: string | null;
+    businessNumber: string;
+    companyPhone: string | null;
+    companyEmail: string;
+    managerId: string;
+    managerName: string;
+    position: string | null;
+    phoneNumber: string;
+    email1: string | null;
+    email2: string | null;
+    responsibleProducts: string[];
+  } | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -168,10 +189,17 @@ export default function InboundNewPage() {
         const data = await response.json();
         const results = data.map((item: any) => ({
           companyName: item.companyName || "",
+          companyAddress: item.companyAddress || null,
+          businessNumber: item.businessNumber || "",
+          companyPhone: item.companyPhone || null,
+          companyEmail: item.companyEmail || "",
           managerId: item.managerId || "",
           managerName: item.managerName || "",
           position: item.position || null,
           phoneNumber: item.phoneNumber || "",
+          email1: item.email1 || null,
+          email2: item.email2 || null,
+          responsibleProducts: item.responsibleProducts || [],
         }));
         setSupplierSearchResults(results);
       } else {
@@ -199,11 +227,19 @@ export default function InboundNewPage() {
     setSelectedSupplierResult(index);
     const result = supplierSearchResults[index];
     if (result) {
+      setSelectedSupplierDetails(result);
       handleInputChange("supplierId", result.managerId);
       handleInputChange("supplierName", result.companyName);
       handleInputChange("supplierContactName", result.managerName);
       handleInputChange("supplierContactPhone", result.phoneNumber);
+      handleInputChange("supplierEmail", result.email1 || "");
     }
+  };
+
+  // Handle supplier details close/back
+  const handleSupplierDetailsClose = () => {
+    setSelectedSupplierDetails(null);
+    setSelectedSupplierResult(null);
   };
 
   // Handle phone number search
@@ -778,127 +814,230 @@ export default function InboundNewPage() {
             공급업체 정보 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            {/* Search Fields */}
-            <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  공급업체명
-                </label>
-                <input
-                  type="text"
-                  value={supplierSearchCompanyName}
-                  onChange={(e) => setSupplierSearchCompanyName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
-                      handleSupplierSearch();
-                    }
-                  }}
-                  placeholder="공급업체명을 입력해주세요."
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  담당자
-                </label>
-                <input
-                  type="text"
-                  value={supplierSearchManagerName}
-                  onChange={(e) => setSupplierSearchManagerName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
-                      handleSupplierSearch();
-                    }
-                  }}
-                  placeholder="담당자 이름"
-                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={handleSupplierSearch}
-                  disabled={supplierSearchLoading || !supplierSearchCompanyName || !supplierSearchManagerName}
-                  className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-                  title="검색"
-                >
-                  {supplierSearchLoading ? (
-                    <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <SearchIcon className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-            </div>
+            {selectedSupplierDetails ? (
+              /* Full Supplier Details Card */
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">공급업체 상세 정보</h3>
+                
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Left Column */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사명</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.companyName}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사 주소</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.companyAddress || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이름</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.managerName}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이메일 1</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.email1 || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이메일 2</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.email2 || "-"}
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Search Results Table */}
-            {supplierSearchResults.length > 0 && (
-              <div className="mb-6 overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">회사명</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">이름</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">직함</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">핸드폰 번호</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">담당자 ID</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {supplierSearchResults.map((result, index) => (
-                      <tr
-                        key={index}
-                        onClick={() => handleSupplierResultSelect(index)}
-                        className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
-                          selectedSupplierResult === index ? "bg-blue-50 dark:bg-blue-900/20" : ""
-                        }`}
-                      >
-                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.companyName}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerName}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.position || "-"}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.phoneNumber}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerId}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  {/* Right Column */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">사업자 등록번호</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.businessNumber}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사 전화번호</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.companyPhone || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">담당자 ID</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.managerId}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">핸드폰 번호</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.phoneNumber}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">담당 제품</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.responsibleProducts.length > 0 
+                          ? selectedSupplierDetails.responsibleProducts.join(", ")
+                          : "-"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-            {/* Phone Number Search Section */}
-            <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
-              <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
-                <span className="mt-0.5">▲</span>
-                <span>담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해 보세요.</span>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    핸드폰 번호
-                  </label>
-                  <input
-                    type="tel"
-                    value={supplierSearchPhoneNumber}
-                    onChange={(e) => setSupplierSearchPhoneNumber(e.target.value)}
-                    placeholder="000-0000-0000"
-                    className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                {/* 메모 - Full Width */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">메모</label>
+                  <textarea
+                    rows={4}
+                    value={formData.supplierNote}
+                    onChange={(e) => handleInputChange("supplierNote", e.target.value)}
+                    placeholder="메모를 입력하세요"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
                   />
                 </div>
-                <div className="flex items-end">
+
+                <div className="flex justify-end pt-4">
                   <button
                     type="button"
-                    onClick={handlePhoneNumberSearch}
-                    disabled={supplierSearchLoading || !supplierSearchPhoneNumber}
-                    className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
+                    onClick={handleSupplierDetailsClose}
+                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                   >
-                    {supplierSearchLoading ? "검색 중..." : "검색하기"}
+                    확인하기
                   </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Search Fields */}
+                <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      공급업체명
+                    </label>
+                    <input
+                      type="text"
+                      value={supplierSearchCompanyName}
+                      onChange={(e) => setSupplierSearchCompanyName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                          handleSupplierSearch();
+                        }
+                      }}
+                      placeholder="공급업체명을 입력해주세요."
+                      className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      담당자
+                    </label>
+                    <input
+                      type="text"
+                      value={supplierSearchManagerName}
+                      onChange={(e) => setSupplierSearchManagerName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                          handleSupplierSearch();
+                        }
+                      }}
+                      placeholder="담당자 이름"
+                      className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleSupplierSearch}
+                      disabled={supplierSearchLoading || !supplierSearchCompanyName || !supplierSearchManagerName}
+                      className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                      title="검색"
+                    >
+                      {supplierSearchLoading ? (
+                        <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <SearchIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search Results Table */}
+                {supplierSearchResults.length > 0 && (
+                  <div className="mb-6 overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">회사명</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">이름</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">직함</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">핸드폰 번호</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">담당자 ID</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {supplierSearchResults.map((result, index) => (
+                          <tr
+                            key={index}
+                            onClick={() => handleSupplierResultSelect(index)}
+                            className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
+                              selectedSupplierResult === index ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                            }`}
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.companyName}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerName}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.position || "-"}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.phoneNumber}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerId}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Phone Number Search Section */}
+                <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
+                  <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
+                    <span className="mt-0.5">▲</span>
+                    <span>담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해 보세요.</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        핸드폰 번호
+                      </label>
+                      <input
+                        type="tel"
+                        value={supplierSearchPhoneNumber}
+                        onChange={(e) => setSupplierSearchPhoneNumber(e.target.value)}
+                        placeholder="000-0000-0000"
+                        className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={handlePhoneNumberSearch}
+                        disabled={supplierSearchLoading || !supplierSearchPhoneNumber}
+                        className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
+                      >
+                        {supplierSearchLoading ? "검색 중..." : "검색하기"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
