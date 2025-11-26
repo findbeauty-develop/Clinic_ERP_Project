@@ -96,12 +96,39 @@ CREATE INDEX IF NOT EXISTS "OrderDraft_session_id_idx" ON "OrderDraft"("session_
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "OrderDraft_expires_at_idx" ON "OrderDraft"("expires_at");
 
--- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'OrderItem_order_id_fkey'
+    ) THEN
+        ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_order_id_fkey" 
+        FOREIGN KEY ("order_id") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'OrderItem_product_id_fkey'
+    ) THEN
+        ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_product_id_fkey" 
+        FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'OrderItem_batch_id_fkey'
+    ) THEN
+        ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_batch_id_fkey" 
+        FOREIGN KEY ("batch_id") REFERENCES "Batch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $$;
 

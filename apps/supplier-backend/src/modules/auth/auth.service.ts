@@ -41,6 +41,11 @@ export class AuthService {
         throw new UnauthorizedException("승인 대기 중인 계정입니다. 승인 후 로그인해주세요.");
       }
 
+      // Check if password_hash exists (should not be null for approved managers)
+      if (!manager.password_hash) {
+        throw new UnauthorizedException("비밀번호가 설정되지 않았습니다. 관리자에게 문의하세요.");
+      }
+
       // Verify password
       const isPasswordValid = await compare(password, manager.password_hash);
       if (!isPasswordValid) {

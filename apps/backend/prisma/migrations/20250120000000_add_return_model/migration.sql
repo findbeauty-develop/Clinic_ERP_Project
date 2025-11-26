@@ -38,12 +38,39 @@ CREATE INDEX IF NOT EXISTS "Return_return_date_idx" ON "Return"("return_date");
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "Return_tenant_id_return_date_idx" ON "Return"("tenant_id", "return_date");
 
--- AddForeignKey
-ALTER TABLE "Return" ADD CONSTRAINT "Return_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Return_product_id_fkey'
+    ) THEN
+        ALTER TABLE "Return" ADD CONSTRAINT "Return_product_id_fkey" 
+        FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Return" ADD CONSTRAINT "Return_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "Batch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Return_batch_id_fkey'
+    ) THEN
+        ALTER TABLE "Return" ADD CONSTRAINT "Return_batch_id_fkey" 
+        FOREIGN KEY ("batch_id") REFERENCES "Batch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Return" ADD CONSTRAINT "Return_outbound_id_fkey" FOREIGN KEY ("outbound_id") REFERENCES "Outbound"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- AddForeignKey (with existence check)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Return_outbound_id_fkey'
+    ) THEN
+        ALTER TABLE "Return" ADD CONSTRAINT "Return_outbound_id_fkey" 
+        FOREIGN KEY ("outbound_id") REFERENCES "Outbound"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $$;
 

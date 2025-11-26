@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "Product" (
+CREATE TABLE IF NOT EXISTS "Product" (
     "id" TEXT NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "sku" TEXT NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE "Product" (
 );
 
 -- CreateTable
-CREATE TABLE "Clinic" (
+CREATE TABLE IF NOT EXISTS "Clinic" (
     "id" TEXT NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -38,4 +38,4 @@ CREATE TABLE "Clinic" (
 );
 
 -- CreateIndex
-CREATE INDEX "Clinic_tenant_id_idx" ON "Clinic"("tenant_id");
+CREATE INDEX IF NOT EXISTS "Clinic_tenant_id_idx" ON "Clinic"("tenant_id");

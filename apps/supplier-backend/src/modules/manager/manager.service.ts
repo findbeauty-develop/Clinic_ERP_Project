@@ -165,35 +165,69 @@ export class ManagerService {
       // 1. Hash password
       const passwordHash = await hash(dto.contact.password, 10);
 
-      // 2. Check for duplicate business number
+      // 2. Check for existing supplier by business_number
       const existingSupplier = await this.prisma.supplier.findUnique({
         where: { business_number: dto.company.businessNumber },
       });
 
-      if (existingSupplier) {
-        throw new ConflictException("이미 등록된 사업자 등록번호입니다");
-      }
-
-      // 3. Check for duplicate phone number
-      const existingManager = await this.prisma.supplierManager.findFirst({
+      // 3. Check for existing manager by phone_number
+      const existingManager = await this.prisma.supplierManager.findUnique({
         where: { phone_number: dto.manager.phoneNumber },
       });
 
+      // 4. Check for duplicate email1 (only if not updating existing manager)
+      if (!existingManager || existingManager.email1 !== dto.contact.email1) {
+        const existingEmail = await this.prisma.supplierManager.findFirst({
+          where: { email1: dto.contact.email1 },
+        });
+
+        if (existingEmail && existingEmail.id !== existingManager?.id) {
+          throw new ConflictException("이미 등록된 이메일 주소입니다");
+        }
+      }
+
+      // 5. Agar manager mavjud bo'lsa va password_hash null bo'lsa (clinic tomonidan yaratilgan)
+      // yoki password_hash mavjud bo'lsa (allaqachon ro'yxatdan o'tgan) - error
       if (existingManager) {
-        throw new ConflictException("이미 등록된 휴대폰 번호입니다");
+        if (existingManager.password_hash) {
+          throw new ConflictException("이미 등록된 휴대폰 번호입니다");
+        }
+        // Agar password_hash null bo'lsa, update qilamiz
       }
 
-      // 4. Check for duplicate email1
-      const existingEmail = await this.prisma.supplierManager.findFirst({
-        where: { email1: dto.contact.email1 },
-      });
+      // 6. Supplier upsert (business_number bo'yicha)
+      const supplier = existingSupplier
+        ? await this.prisma.supplier.update({
+            where: { id: existingSupplier.id },
+            data: {
+              company_name: dto.company.companyName,
+              company_phone: dto.company.companyPhone || null,
+              company_email: dto.company.companyEmail || "",
+              company_address: dto.company.companyAddress || null,
+              business_type: dto.company.businessType || null,
+              business_item: dto.company.businessItem || null,
+              product_categories: dto.company.productCategories || [],
+              share_consent: dto.company.shareConsent || false,
+              updated_at: new Date(),
+            },
+          })
+        : await this.prisma.supplier.create({
+            data: {
+              company_name: dto.company.companyName,
+              business_number: dto.company.businessNumber,
+              company_phone: dto.company.companyPhone || null,
+              company_email: dto.company.companyEmail || "",
+              company_address: dto.company.companyAddress || null,
+              business_type: dto.company.businessType || null,
+              business_item: dto.company.businessItem || null,
+              product_categories: dto.company.productCategories || [],
+              share_consent: dto.company.shareConsent || false,
+              status: "pending",
+            },
+          });
 
-      if (existingEmail) {
-        throw new ConflictException("이미 등록된 이메일 주소입니다");
-      }
-
-      // 5. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
-      let managerId = dto.managerId;
+      // 7. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
+      let managerId = dto.managerId || existingManager?.manager_id;
       if (!managerId) {
         const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
         // Generate random 4-digit number (1000-9999)
@@ -218,8 +252,8 @@ export class ManagerService {
         if (existingId) {
           throw new BadRequestException("담당자 ID 생성에 실패했습니다. 다시 시도해주세요.");
         }
-      } else {
-        // Check if provided managerId is unique
+      } else if (dto.managerId && dto.managerId !== existingManager?.manager_id) {
+        // Check if provided managerId is unique (only if different from existing)
         const existingId = await this.prisma.supplierManager.findUnique({
           where: { manager_id: managerId },
         });
@@ -229,7 +263,7 @@ export class ManagerService {
         }
       }
 
-      // 6. Remove duplicates from regions and products
+      // 8. Remove duplicates from regions and products
       const uniqueRegions = Array.from(
         new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
       );
@@ -237,41 +271,45 @@ export class ManagerService {
         new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
       );
 
-      // 7. Create Supplier (Company)
-      const supplier = await this.prisma.supplier.create({
-        data: {
-          company_name: dto.company.companyName,
-          business_number: dto.company.businessNumber,
-          company_phone: dto.company.companyPhone || null,
-          company_email: dto.company.companyEmail || "",
-          company_address: dto.company.companyAddress || null,
-          business_type: dto.company.businessType || null,
-          business_item: dto.company.businessItem || null,
-          product_categories: dto.company.productCategories || [],
-          share_consent: dto.company.shareConsent || false,
-          status: "pending",
-        },
-      });
+      // 9. SupplierManager upsert (phone_number bo'yicha)
+      const manager = existingManager
+        ? await this.prisma.supplierManager.update({
+            where: { id: existingManager.id },
+            data: {
+              supplier_id: supplier.id,
+              manager_id: managerId,
+              name: dto.manager.name,
+              certificate_image_url: dto.manager.certificateImageUrl || existingManager.certificate_image_url,
+              password_hash: passwordHash, // Update password_hash
+              email1: dto.contact.email1, // Update email1
+              email2: dto.contact.email2 || null,
+              responsible_regions: uniqueRegions,
+              responsible_products: uniqueProducts,
+              position: dto.manager.position || null,
+              created_by: "supplier", // Supplier tomonidan to'ldirilganini belgilash
+              status: "pending",
+              updated_at: new Date(),
+            },
+          })
+        : await this.prisma.supplierManager.create({
+            data: {
+              supplier_id: supplier.id,
+              manager_id: managerId,
+              name: dto.manager.name,
+              phone_number: dto.manager.phoneNumber,
+              certificate_image_url: dto.manager.certificateImageUrl || null,
+              password_hash: passwordHash,
+              email1: dto.contact.email1,
+              email2: dto.contact.email2 || null,
+              responsible_regions: uniqueRegions,
+              responsible_products: uniqueProducts,
+              position: dto.manager.position || null,
+              created_by: "supplier",
+              status: "pending",
+            },
+          });
 
-      // 8. Create SupplierManager (Contact Person)
-      const manager = await this.prisma.supplierManager.create({
-        data: {
-          supplier_id: supplier.id,
-          manager_id: managerId,
-          name: dto.manager.name,
-          phone_number: dto.manager.phoneNumber,
-          certificate_image_url: dto.manager.certificateImageUrl || null,
-          password_hash: passwordHash,
-          email1: dto.contact.email1,
-          email2: dto.contact.email2 || null,
-          responsible_regions: uniqueRegions,
-          responsible_products: uniqueProducts,
-          position: dto.manager.position || null,
-          status: "pending",
-        },
-      });
-
-      // 9. Create region tags
+      // 10. Create region tags
       for (const region of uniqueRegions) {
         await this.prisma.supplierRegionTag.upsert({
           where: { name: region },
@@ -280,7 +318,7 @@ export class ManagerService {
         });
       }
 
-      // 10. Create product tags
+      // 11. Create product tags
       for (const product of uniqueProducts) {
         await this.prisma.supplierProductTag.upsert({
           where: { name: product },

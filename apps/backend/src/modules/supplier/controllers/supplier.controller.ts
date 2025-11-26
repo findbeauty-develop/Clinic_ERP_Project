@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Post,
+  Body,
   Query,
   UseGuards,
   BadRequestException,
@@ -8,6 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { SupplierService } from "../services/supplier.service";
 import { SearchSupplierDto } from "../dto/search-supplier.dto";
+import { CreateSupplierManualDto } from "../dto/create-supplier-manual.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 
@@ -76,6 +79,29 @@ export class SupplierController {
     }
 
     return this.supplierService.searchSuppliersByPhone(phoneNumber);
+  }
+
+  @Post("create-manual")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({
+    summary: "Clinic tomonidan manual supplier yaratish/update qilish",
+    description:
+      "Clinic tomonidan supplier ma'lumotlarini manual kiritish. business_number va phone_number bo'yicha upsert qiladi.",
+  })
+  async createSupplierManual(
+    @Body() dto: CreateSupplierManualDto,
+    @Tenant() tenantId: string
+  ) {
+    console.log("Received create-manual request:", { dto, tenantId });
+    
+    if (!dto.companyName || !dto.businessNumber) {
+      throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
+    }
+
+    const result = await this.supplierService.createOrUpdateSupplierManual(dto, tenantId);
+    console.log("Supplier created/updated successfully:", result);
+    
+    return result;
   }
 }
 

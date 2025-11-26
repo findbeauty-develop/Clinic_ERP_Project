@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "Member" (
+CREATE TABLE IF NOT EXISTS "Member" (
     "id" TEXT NOT NULL,
     "tenant_id" TEXT NOT NULL,
     "member_code" TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE "Member" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Member_member_code_key" ON "Member"("member_code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Member_member_code_key" ON "Member"("member_code");
 
 -- CreateIndex
-CREATE INDEX "Member_tenant_id_idx" ON "Member"("tenant_id");
+CREATE INDEX IF NOT EXISTS "Member_tenant_id_idx" ON "Member"("tenant_id");

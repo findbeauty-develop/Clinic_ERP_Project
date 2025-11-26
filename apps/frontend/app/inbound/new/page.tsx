@@ -69,6 +69,8 @@ export default function InboundNewPage() {
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
   const [supplierSearchFallback, setSupplierSearchFallback] = useState(false); // For fallback search
   const [showSupplierConfirmModal, setShowSupplierConfirmModal] = useState(false); // Modal for confirming supplier without transaction history
+  const [showManualEntryForm, setShowManualEntryForm] = useState(false); // Manual entry form
+  const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>(""); // Phone number for manual entry
   const [pendingSupplier, setPendingSupplier] = useState<{
     companyName: string;
     companyAddress: string | null;
@@ -287,9 +289,15 @@ export default function InboundNewPage() {
           setShowSupplierConfirmModal(true);
           setSupplierSearchResults([]); // Don't show in table yet
         } else {
+          // No supplier found - show modal with direct input option
+          setPendingSupplierPhone(phoneNumber);
+          setShowSupplierConfirmModal(true);
           setSupplierSearchResults([]);
         }
       } else {
+        // Error or no results - show modal with direct input option
+        setPendingSupplierPhone(phoneNumber);
+        setShowSupplierConfirmModal(true);
         setSupplierSearchResults([]);
       }
     } catch (error) {
@@ -345,11 +353,202 @@ export default function InboundNewPage() {
 
   // Handle direct input (직접 입력 button)
   const handleDirectInput = () => {
-    // TODO: Show manual entry card (not implemented yet)
     setShowSupplierConfirmModal(false);
-    setPendingSupplier(null);
-    // For now, just close the modal
-    // In future, this will open manual entry form
+    setShowManualEntryForm(true);
+    // Keep pendingSupplierPhone for pre-filling phone number
+  };
+
+  // Manual entry form state
+  const [manualEntryForm, setManualEntryForm] = useState({
+    managerName: "",
+    position: "",
+    phoneNumber: "",
+    companyName: "",
+    companyAddress: "",
+    businessNumber: "",
+    companyPhone: "",
+    email1: "",
+    email2: "",
+    responsibleProducts: "",
+    memo: "",
+    certificateImage: null as File | null,
+    certificatePreview: "",
+    certificateUrl: "",
+  });
+
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [savingManualEntry, setSavingManualEntry] = useState(false);
+
+  // Initialize phone number when manual entry form opens
+  useEffect(() => {
+    if (showManualEntryForm && pendingSupplierPhone) {
+      setManualEntryForm((prev) => ({
+        ...prev,
+        phoneNumber: pendingSupplierPhone,
+      }));
+    }
+  }, [showManualEntryForm, pendingSupplierPhone]);
+
+  // Handle certificate upload
+  const handleCertificateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setManualEntryForm((prev) => ({
+        ...prev,
+        certificatePreview: reader.result as string,
+        certificateImage: file,
+      }));
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server
+    setUploadingCertificate(true);
+    try {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Use supplier-backend API for certificate upload
+      const supplierApiUrl = process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
+      const response = await fetch(`${supplierApiUrl}/supplier/manager/upload-certificate`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("파일 업로드에 실패했습니다");
+      }
+
+      const data = await response.json();
+      setManualEntryForm((prev) => ({
+        ...prev,
+        certificateUrl: data.fileUrl,
+      }));
+
+      // Auto-fill from OCR if available
+      if (data.ocrResult?.parsedFields) {
+        const fields = data.ocrResult.parsedFields;
+        setManualEntryForm((prev) => ({
+          ...prev,
+          companyName: fields.companyName || prev.companyName,
+          businessNumber: fields.businessNumber || prev.businessNumber,
+          companyAddress: fields.companyAddress || prev.companyAddress,
+          companyPhone: fields.companyPhone || prev.companyPhone,
+        }));
+      }
+    } catch (error: any) {
+      console.error("Error uploading certificate:", error);
+      alert(error.message || "파일 업로드에 실패했습니다");
+    } finally {
+      setUploadingCertificate(false);
+    }
+  };
+
+  // Handle manual entry form submission
+  const handleManualEntrySubmit = async () => {
+    // Validate required fields
+    if (!manualEntryForm.managerName || !manualEntryForm.phoneNumber) {
+      alert("담당자 이름과 핸드폰 번호는 필수입니다.");
+      return;
+    }
+
+
+    // Validate phone number format
+    const phoneNumber = manualEntryForm.phoneNumber.replace(/-/g, "");
+    if (!/^010\d{8}$/.test(phoneNumber)) {
+      alert("휴대폰 번호 형식이 올바르지 않습니다 (예: 01012345678)");
+      return;
+    }
+
+    setSavingManualEntry(true);
+    try {
+      const token = typeof window !== "undefined" 
+        ? localStorage.getItem("erp_access_token") || localStorage.getItem("token")
+        : null;
+
+      // Validate business number format if provided
+      let businessNumber = manualEntryForm.businessNumber.trim();
+      if (businessNumber && !/^\d{3}-\d{2}-\d{5}$/.test(businessNumber)) {
+        alert("사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)");
+        return;
+      }
+
+      // If business number is not provided, generate a temporary one
+      // Format: 000-00-XXXXX (where XXXXX is last 5 digits of phone number)
+      if (!businessNumber) {
+        const phoneLast5 = phoneNumber.slice(-5);
+        businessNumber = `000-00-${phoneLast5}`;
+      }
+
+      // Prepare data for API
+      const supplierData = {
+        companyName: manualEntryForm.companyName || "미입력",
+        businessNumber: businessNumber,
+        companyPhone: manualEntryForm.companyPhone || undefined,
+        companyEmail: manualEntryForm.email1 || undefined,
+        companyAddress: manualEntryForm.companyAddress || undefined,
+        managerName: manualEntryForm.managerName,
+        phoneNumber: phoneNumber, // Format: 01012345678
+        managerEmail: manualEntryForm.email1 || undefined,
+      };
+
+      console.log("Creating supplier manually:", supplierData);
+
+      // Call API to create supplier
+      const response = await fetch(`${apiUrl}/supplier/create-manual`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(supplierData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `서버 오류: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Supplier created successfully:", result);
+
+      // Update form data with supplier info
+      handleInputChange("supplierName", manualEntryForm.companyName);
+      handleInputChange("supplierContactName", manualEntryForm.managerName);
+      handleInputChange("supplierContactPhone", phoneNumber);
+      handleInputChange("supplierEmail", manualEntryForm.email1);
+      handleInputChange("supplierNote", manualEntryForm.memo);
+
+      // Close manual entry form and show supplier details
+      setShowManualEntryForm(false);
+      setSelectedSupplierDetails({
+        companyName: manualEntryForm.companyName || "미입력",
+        companyAddress: manualEntryForm.companyAddress || null,
+        businessNumber: manualEntryForm.businessNumber || "000-00-00000",
+        companyPhone: manualEntryForm.companyPhone || null,
+        companyEmail: manualEntryForm.email1 || "",
+        managerId: result.manager?.managerId || "",
+        managerName: manualEntryForm.managerName,
+        position: manualEntryForm.position || null,
+        phoneNumber: phoneNumber,
+        email1: manualEntryForm.email1 || null,
+        email2: manualEntryForm.email2 || null,
+        responsibleProducts: manualEntryForm.responsibleProducts
+          ? manualEntryForm.responsibleProducts.split(",").map((p) => p.trim())
+          : [],
+      });
+
+      alert("공급업체가 성공적으로 등록되었습니다.");
+    } catch (error: any) {
+      console.error("Error saving manual entry:", error);
+      alert(error.message || "저장에 실패했습니다");
+    } finally {
+      setSavingManualEntry(false);
+    }
   };
 
   // Handle phone number search (fallback search)
@@ -1023,6 +1222,264 @@ export default function InboundNewPage() {
                   </button>
                 </div>
               </div>
+            ) : showManualEntryForm ? (
+              /* Manual Entry Form */
+              <div className="space-y-6">
+                {/* Header with back button */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+                    <svg className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      담당자님 정보 없습니다. 입력 부탁드립니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowManualEntryForm(false);
+                      setPendingSupplierPhone("");
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    뒤로
+                  </button>
+                </div>
+
+                {/* Form Content */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Left Column */}
+                  <div className="space-y-4">
+                    {/* 담당자 이름 + 직함 */}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        담당자 이름*
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={manualEntryForm.managerName}
+                          onChange={(e) =>
+                            setManualEntryForm((prev) => ({ ...prev, managerName: e.target.value }))
+                          }
+                          placeholder="성함"
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                        />
+                        <input
+                          type="text"
+                          value={manualEntryForm.position}
+                          onChange={(e) =>
+                            setManualEntryForm((prev) => ({ ...prev, position: e.target.value }))
+                          }
+                          placeholder="직함"
+                          className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 사업자등록증 업로드 */}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        사업자등록증
+                      </label>
+                      <div className="space-y-2">
+                        {manualEntryForm.certificatePreview ? (
+                          <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+                            <img
+                              src={manualEntryForm.certificatePreview}
+                              alt="Certificate preview"
+                              className="h-48 w-full object-contain rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  certificatePreview: "",
+                                  certificateImage: null,
+                                  certificateUrl: "",
+                                }));
+                              }}
+                              className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                            <div className="text-center">
+                              <p className="text-sm text-slate-500 dark:text-slate-400">이미지를 업로드하세요</p>
+                            </div>
+                          </div>
+                        )}
+                        <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                          {uploadingCertificate ? "업로드 중..." : "사업자등록증 업데이트"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleCertificateUpload}
+                            disabled={uploadingCertificate}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        핸드폰 번호*
+                      </label>
+                      <input
+                        type="tel"
+                        value={manualEntryForm.phoneNumber}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, phoneNumber: e.target.value }))
+                        }
+                        placeholder="000-0000-0000"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        회사명
+                      </label>
+                      <input
+                        type="text"
+                        value={manualEntryForm.companyName}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, companyName: e.target.value }))
+                        }
+                        placeholder="회사명"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        회사 주소
+                      </label>
+                      <input
+                        type="text"
+                        value={manualEntryForm.companyAddress}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, companyAddress: e.target.value }))
+                        }
+                        placeholder="XXX XXX XXX XXXXXX"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        사업자 등록번호
+                      </label>
+                      <input
+                        type="text"
+                        value={manualEntryForm.businessNumber}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, businessNumber: e.target.value }))
+                        }
+                        placeholder="00-000-0000"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        회사 전화번호
+                      </label>
+                      <input
+                        type="tel"
+                        value={manualEntryForm.companyPhone}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, companyPhone: e.target.value }))
+                        }
+                        placeholder="00-0000-0000"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        이메일 1
+                      </label>
+                      <input
+                        type="email"
+                        value={manualEntryForm.email1}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, email1: e.target.value }))
+                        }
+                        placeholder="XXXXXXXXX@xxx.com"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        이메일 2
+                      </label>
+                      <input
+                        type="email"
+                        value={manualEntryForm.email2}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, email2: e.target.value }))
+                        }
+                        placeholder="XXXXXXXXX@xxx.com"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        담당 제품
+                      </label>
+                      <input
+                        type="text"
+                        value={manualEntryForm.responsibleProducts}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, responsibleProducts: e.target.value }))
+                        }
+                        placeholder="XXXXXX01"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        메모
+                      </label>
+                      <textarea
+                        value={manualEntryForm.memo}
+                        onChange={(e) =>
+                          setManualEntryForm((prev) => ({ ...prev, memo: e.target.value }))
+                        }
+                        rows={3}
+                        placeholder="메모를 입력하세요"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end pt-4">
+                  <button
+                    type="button"
+                    onClick={handleManualEntrySubmit}
+                    disabled={savingManualEntry || !manualEntryForm.managerName || !manualEntryForm.phoneNumber}
+                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  >
+                    {savingManualEntry ? "저장 중..." : "저장 및 등록"}
+                  </button>
+                </div>
+              </div>
             ) : (
               <>
                 {/* Search Fields */}
@@ -1369,7 +1826,7 @@ export default function InboundNewPage() {
       </div>
 
       {/* Supplier Confirmation Modal */}
-      {showSupplierConfirmModal && pendingSupplier && (
+      {showSupplierConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800">
             {/* Close Button */}
@@ -1378,6 +1835,7 @@ export default function InboundNewPage() {
               onClick={() => {
                 setShowSupplierConfirmModal(false);
                 setPendingSupplier(null);
+                setPendingSupplierPhone("");
               }}
               className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
@@ -1388,48 +1846,77 @@ export default function InboundNewPage() {
 
             {/* Modal Content */}
             <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  프랫품 이미 정보있는 담당자입니다.
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  이 담당자 정보를 추가하시겠습니까?
-                </p>
-              </div>
+              {pendingSupplier ? (
+                <>
+                  {/* Supplier found in system */}
+                  <div className="space-y-2">
+                    <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                      프랫품 이미 정보있는 담당자입니다.
+                    </p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      이 담당자 정보를 추가하시겠습니까?
+                    </p>
+                  </div>
 
-              {/* Supplier Info Preview */}
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
-                <div className="space-y-1 text-sm">
-                  <p className="font-medium text-slate-900 dark:text-slate-100">
-                    {pendingSupplier.companyName}
-                  </p>
-                  <p className="text-slate-600 dark:text-slate-400">
-                    {pendingSupplier.managerName} ({pendingSupplier.phoneNumber})
-                  </p>
-                </div>
-              </div>
+                  {/* Supplier Info Preview */}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                    <div className="space-y-1 text-sm">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        {pendingSupplier.companyName}
+                      </p>
+                      <p className="text-slate-600 dark:text-slate-400">
+                        {pendingSupplier.managerName} ({pendingSupplier.phoneNumber})
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleDirectInput}
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                >
-                  직접 입력
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmSupplier}
-                  className="flex-1 rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
-                >
-                  네
-                </button>
-              </div>
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleDirectInput}
+                      className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      직접 입력
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmSupplier}
+                      className="flex-1 rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    >
+                      네
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Supplier not found in system */}
+                  <div className="space-y-2">
+                    <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                      담당자님 정보 없습니다.
+                    </p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      입력 부탁드립니다.
+                    </p>
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleDirectInput}
+                      className="rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    >
+                      직접 입력
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
+
     </main>
   );
 }
