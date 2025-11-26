@@ -5,18 +5,29 @@ import { PrismaService } from "../../../core/prisma.service";
 export class SupplierRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async searchSuppliers(companyName?: string, phoneNumber?: string) {
+  async searchSuppliers(companyName?: string, phoneNumber?: string, managerName?: string) {
     const prisma = this.prisma as any;
 
-    // If searching by phone number, find manager first, then get supplier
-    if (phoneNumber && !companyName) {
+    // If searching by phone number or manager name only, find manager first, then get supplier
+    if ((phoneNumber || managerName) && !companyName) {
+      const managerWhere: any = {};
+      
+      if (phoneNumber) {
+        managerWhere.phone_number = {
+          contains: phoneNumber,
+          mode: "insensitive",
+        };
+      }
+      
+      if (managerName) {
+        managerWhere.name = {
+          contains: managerName,
+          mode: "insensitive",
+        };
+      }
+
       const managers = await prisma.supplierManager.findMany({
-        where: {
-          phone_number: {
-            contains: phoneNumber,
-            mode: "insensitive",
-          },
-        },
+        where: managerWhere,
         include: {
           supplier: true,
         },
@@ -33,12 +44,22 @@ export class SupplierRepository {
         },
         include: {
           managers: {
-            where: {
-              phone_number: {
-                contains: phoneNumber,
-                mode: "insensitive",
-              },
-            },
+            where: (() => {
+              const where: any = {};
+              if (phoneNumber) {
+                where.phone_number = {
+                  contains: phoneNumber,
+                  mode: "insensitive",
+                };
+              }
+              if (managerName) {
+                where.name = {
+                  contains: managerName,
+                  mode: "insensitive",
+                };
+              }
+              return Object.keys(where).length > 0 ? where : undefined;
+            })(),
             select: {
               id: true,
               manager_id: true,
@@ -67,14 +88,34 @@ export class SupplierRepository {
       };
     }
 
-    if (phoneNumber && companyName) {
-      where.managers = {
-        some: {
+    // Add manager filters if company name is also provided
+    if ((phoneNumber || managerName) && companyName) {
+      const managerConditions: any[] = [];
+      
+      if (phoneNumber) {
+        managerConditions.push({
           phone_number: {
             contains: phoneNumber,
             mode: "insensitive",
           },
-        },
+        });
+      }
+      
+      if (managerName) {
+        managerConditions.push({
+          name: {
+            contains: managerName,
+            mode: "insensitive",
+          },
+        });
+      }
+
+      where.managers = {
+        some: managerConditions.length === 1 
+          ? managerConditions[0]
+          : {
+              AND: managerConditions,
+            },
       };
     }
 
@@ -82,14 +123,22 @@ export class SupplierRepository {
       where,
       include: {
         managers: {
-          where: phoneNumber
-            ? {
-                phone_number: {
-                  contains: phoneNumber,
-                  mode: "insensitive",
-                },
-              }
-            : undefined,
+          where: (() => {
+            const where: any = {};
+            if (phoneNumber) {
+              where.phone_number = {
+                contains: phoneNumber,
+                mode: "insensitive",
+              };
+            }
+            if (managerName) {
+              where.name = {
+                contains: managerName,
+                mode: "insensitive",
+              };
+            }
+            return Object.keys(where).length > 0 ? where : undefined;
+          })(),
           select: {
             id: true,
             manager_id: true,

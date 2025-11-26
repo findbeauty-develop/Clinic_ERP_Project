@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     name: "",
     phoneNumber: "",
+    position: "",
   });
   const [certificateImage, setCertificateImage] = useState<File | null>(null);
   const [certificatePreview, setCertificatePreview] = useState<string>("");
@@ -194,6 +195,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           name: formData.name,
           phoneNumber: formData.phoneNumber,
+          position: formData.position || undefined,
           certificateImageUrl: certificateUrl,
         }),
       });
@@ -210,6 +212,7 @@ export default function RegisterPage() {
       localStorage.setItem('supplier_registration_step2', JSON.stringify({
         name: formData.name,
         phoneNumber: formData.phoneNumber,
+        position: formData.position || undefined,
         certificateUrl: certificateUrl,
       }));
 
@@ -362,39 +365,124 @@ export default function RegisterPage() {
             )}
 
             {/* Registration Form */}
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Name */}
-              <div>
-                <label
-                  htmlFor="name"
-                  className="mb-2 block text-sm font-medium text-slate-700"
-                >
-                  이름
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="이름을 입력하세요"
-                  className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
-                    errors.name
-                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
-                      : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
-                  }`}
-                />
-                {errors.name && (
-                  <p className="mt-1 text-xs text-red-600">{errors.name}</p>
-                )}
+            <form onSubmit={handleSubmit} className="space-y-4 pb-20 sm:space-y-5 sm:pb-5">
+              {/* Name and 직함 side by side */}
+              <div className="flex flex-row gap-3 sm:gap-4">
+                {/* Name - Left side */}
+                <div className="flex-1">
+                  <label
+                    htmlFor="name"
+                    className="mb-1.5 block text-sm font-medium text-slate-700 sm:mb-2"
+                  >
+                    이름
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder="이름을 입력하세요"
+                    className={`w-full rounded-lg border py-2.5 px-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:py-3 sm:px-4 sm:text-base ${
+                      errors.name
+                        ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                        : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
+                    }`}
+                  />
+                  {errors.name && (
+                    <p className="mt-1 text-xs text-red-600 sm:text-xs">{errors.name}</p>
+                  )}
+                </div>
+
+                {/* 직함 (Job Title) - Right side */}
+                <div className="flex-1 relative z-10">
+                  <label
+                    htmlFor="position"
+                    className="mb-1.5 block text-sm font-medium text-slate-700 sm:mb-2"
+                  >
+                    직함
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="position"
+                      value={formData.position}
+                      onChange={(e) =>
+                        setFormData({ ...formData, position: e.target.value })
+                      }
+                      onFocus={(e) => {
+                        // Scroll to ensure dropdown opens downward on mobile
+                        const target = e.currentTarget as HTMLSelectElement;
+                        if (!target) return;
+                        
+                        setTimeout(() => {
+                          try {
+                            const rect = target.getBoundingClientRect();
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const viewportHeight = window.innerHeight;
+                            const elementBottom = rect.bottom + scrollTop;
+                            const spaceBelow = viewportHeight - rect.bottom;
+                            
+                            // If less than 200px space below, scroll down
+                            if (spaceBelow < 200) {
+                              window.scrollTo({
+                                top: elementBottom - viewportHeight + 250,
+                                behavior: 'smooth'
+                              });
+                            }
+                          } catch (error) {
+                            // Silently handle any errors
+                            console.error('Error scrolling for dropdown:', error);
+                          }
+                        }, 100);
+                      }}
+                      className={`w-full appearance-none rounded-lg border py-2.5 pl-3.5 pr-10 text-base text-slate-900 focus:outline-none focus:ring-2 sm:py-3 sm:pl-4 sm:text-base ${
+                        errors.position
+                          ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                          : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
+                      } ${!formData.position ? "text-slate-400" : "text-slate-900"}`}
+                      style={{ 
+                        WebkitAppearance: "none",
+                        MozAppearance: "none",
+                        appearance: "none",
+                      }}
+                    >
+                      <option value="" disabled hidden>
+                        직함
+                      </option>
+                      <option value="사원">사원</option>
+                      <option value="주임">주임</option>
+                      <option value="대리">대리</option>
+                      <option value="과장">과장</option>
+                      <option value="차장">차장</option>
+                      <option value="부장">부장</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                      <svg
+                        className="h-5 w-5 text-slate-400 sm:h-5 sm:w-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  {errors.position && (
+                    <p className="mt-1 text-xs text-red-600 sm:text-xs">{errors.position}</p>
+                  )}
+                </div>
               </div>
 
               {/* Phone Number */}
               <div>
                 <label
                   htmlFor="phoneNumber"
-                  className="mb-2 block text-sm font-medium text-slate-700"
+                  className="mb-1.5 block text-sm font-medium text-slate-700 sm:mb-2"
                 >
                   핸드폰번호/ID
                 </label>
@@ -421,7 +509,7 @@ export default function RegisterPage() {
                     }}
                     placeholder="01012345678"
                     maxLength={11}
-                    className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                    className={`w-full rounded-lg border py-2.5 px-3.5 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:py-3 sm:px-4 sm:text-base ${
                       errors.phoneNumber
                         ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                         : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
@@ -453,7 +541,7 @@ export default function RegisterPage() {
                   )}
                 </div>
                 {errors.phoneNumber && (
-                  <p className="mt-1 text-xs text-red-600">
+                  <p className="mt-1 text-xs text-red-600 sm:text-xs">
                     {errors.phoneNumber}
                   </p>
                 )}

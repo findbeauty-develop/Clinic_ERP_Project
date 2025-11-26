@@ -22,7 +22,7 @@ export class SupplierController {
   @ApiOperation({
     summary: "공급업체 검색 (Search suppliers)",
     description:
-      "회사명 또는 담당자 핸드폰 번호로 공급업체를 검색합니다. 회사명, 회사주소, 담당자 정보 등을 반환합니다.",
+      "회사명, 담당자 핸드폰 번호 또는 담당자 이름으로 공급업체를 검색합니다. 회사명, 회사주소, 담당자 정보 등을 반환합니다.",
   })
   @ApiQuery({
     name: "companyName",
@@ -36,13 +36,19 @@ export class SupplierController {
     type: String,
     description: "담당자 핸드폰 번호 (Manager phone number)",
   })
+  @ApiQuery({
+    name: "managerName",
+    required: false,
+    type: String,
+    description: "담당자 이름 (Manager name)",
+  })
   async searchSuppliers(
     @Query() query: SearchSupplierDto,
     @Tenant() tenantId: string
   ) {
-    if (!query.companyName && !query.phoneNumber) {
+    if (!query.companyName && !query.phoneNumber && !query.managerName) {
       throw new BadRequestException(
-        "회사명 또는 담당자 핸드폰 번호 중 하나는 필수입니다"
+        "회사명, 담당자 핸드폰 번호 또는 담당자 이름 중 하나는 필수입니다"
       );
     }
 

@@ -49,6 +49,7 @@ model SupplierManager {
   // 담당 정보
   responsible_regions   String[]  @default([]) // 담당 지역
   responsible_products  String[]  @default([]) // 담당 제품
+  position              String?   // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
   
   status                String    @default("pending") // pending, approved, rejected, active
   created_at            DateTime  @default(now())

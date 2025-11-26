@@ -8,6 +8,7 @@ interface RegistrationData {
   step2Data?: {
     name?: string;
     phoneNumber?: string;
+    position?: string;
     certificateUrl?: string;
   };
   step3Data?: {
@@ -87,6 +88,7 @@ export default function CompletePage() {
         manager: {
           name: registrationData.step2Data?.name,
           phoneNumber: registrationData.step2Data?.phoneNumber,
+          position: registrationData.step2Data?.position,
           certificateImageUrl: registrationData.step2Data?.certificateUrl,
         },
         company: {

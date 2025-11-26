@@ -1,5 +1,7 @@
-import { IsString, IsNotEmpty, Matches, MinLength, MaxLength } from "class-validator";
+import { IsString, IsNotEmpty, Matches, MinLength, MaxLength, IsOptional, IsIn } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
+
+const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
 
 export class RegisterManagerDto {
   @ApiProperty({
@@ -21,6 +23,17 @@ export class RegisterManagerDto {
     message: "올바른 휴대폰 번호 형식이 아닙니다 (010XXXXXXXX)",
   })
   phoneNumber!: string;
+
+  @ApiProperty({
+    example: "대리",
+    description: "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장",
+    required: false,
+    enum: JOB_TITLES,
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(JOB_TITLES, { message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" })
+  position?: string;
 
   @ApiProperty({
     example: "/uploads/supplier/certificate/image.jpg",

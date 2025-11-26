@@ -19,5 +19,14 @@ export class SearchSupplierDto {
   @IsString()
   @IsOptional()
   phoneNumber?: string;
+
+  @ApiProperty({
+    description: "담당자 이름 (Manager name) - Optional",
+    required: false,
+    example: "홍길동",
+  })
+  @IsString()
+  @IsOptional()
+  managerName?: string;
 }
 

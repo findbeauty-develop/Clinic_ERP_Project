@@ -8,13 +8,14 @@ export class SupplierService {
 
   async searchSuppliers(dto: SearchSupplierDto) {
     // Validate that at least one search parameter is provided
-    if (!dto.companyName && !dto.phoneNumber) {
-      throw new Error("회사명 또는 담당자 핸드폰 번호 중 하나는 필수입니다");
+    if (!dto.companyName && !dto.phoneNumber && !dto.managerName) {
+      throw new Error("회사명, 담당자 핸드폰 번호 또는 담당자 이름 중 하나는 필수입니다");
     }
 
     const suppliers = await this.repository.searchSuppliers(
       dto.companyName,
-      dto.phoneNumber
+      dto.phoneNumber,
+      dto.managerName
     );
 
     // Format response

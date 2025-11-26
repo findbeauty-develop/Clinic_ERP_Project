@@ -1,6 +1,9 @@
-import { IsString, IsNotEmpty, IsOptional, IsObject, ValidateNested } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsObject, ValidateNested, IsIn } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty } from "@nestjs/swagger";
+
+export const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
+export type JobTitle = typeof JOB_TITLES[number];
 
 class ManagerDataDto {
   @ApiProperty()
@@ -17,6 +20,17 @@ class ManagerDataDto {
   @IsString()
   @IsOptional()
   certificateImageUrl?: string;
+
+  @ApiProperty({
+    enum: JOB_TITLES,
+    description: "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장",
+    required: false,
+    example: "대리",
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(JOB_TITLES, { message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" })
+  position?: JobTitle;
 }
 
 class CompanyDataDto {

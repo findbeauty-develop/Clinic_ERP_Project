@@ -266,6 +266,7 @@ export class ManagerService {
           email2: dto.contact.email2 || null,
           responsible_regions: uniqueRegions,
           responsible_products: uniqueProducts,
+          position: dto.manager.position || null,
           status: "pending",
         },
       });
