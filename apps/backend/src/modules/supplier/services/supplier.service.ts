@@ -161,15 +161,25 @@ export class SupplierService {
       throw new Error("핸드폰 번호는 필수입니다");
     }
 
+    this.logger.log(`Searching suppliers by phone: ${phoneNumber}`);
     const suppliers = await this.repository.searchSuppliersByPhone(phoneNumber);
+    this.logger.log(`Found ${suppliers.length} suppliers by phone`);
 
     // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
     return suppliers.map((supplier: any) => {
       // Get the first manager (prioritize SupplierManager over ClinicSupplierManager)
+      // IMPORTANT: For phone search, we want the manager that matches the phone number
       const manager = supplier.managers?.[0] || supplier.clinicManagers?.[0];
 
       // Check if supplier is registered on platform (has ACTIVE SupplierManager)
       const isRegisteredOnPlatform = supplier.managers?.some((m: any) => m.status === "ACTIVE") || false;
+
+      // Get the SupplierManager ID (not manager_id, but the actual database ID)
+      // This is needed for creating ClinicSupplierLink
+      const supplierManagerId = supplier.managers?.[0]?.id || null;
+
+      // Debug logging
+      this.logger.log(`Supplier: ${supplier.company_name}, isRegisteredOnPlatform: ${isRegisteredOnPlatform}, supplierManagerId: ${supplierManagerId}, managerId: ${manager?.manager_id}`);
 
       return {
         id: supplier.id, // Supplier company ID
@@ -184,7 +194,8 @@ export class SupplierService {
         productCategories: supplier.product_categories,
         status: supplier.status,
         isRegisteredOnPlatform, // Flag: supplier platformada ro'yxatdan o'tgan
-        managerId: manager?.manager_id || null,
+        managerId: manager?.manager_id || null, // manager_id (like "회사명0001")
+        supplierManagerId: supplierManagerId, // Database ID of SupplierManager (for creating ClinicSupplierLink)
         managerName: manager?.name || null,
         position: manager?.position || null,
         phoneNumber: manager?.phone_number || null,
@@ -193,7 +204,8 @@ export class SupplierService {
         responsibleProducts: manager?.responsible_products || [],
         managerStatus: manager?.status || null,
         managers: supplier.managers?.map((m: any) => ({
-          managerId: m.manager_id,
+          id: m.id, // Database ID
+          managerId: m.manager_id, // manager_id (like "회사명0001")
           name: m.name,
           position: m.position,
           phoneNumber: m.phone_number,
@@ -306,8 +318,9 @@ export class SupplierService {
           this.logger.log(`Clinic manager created/updated: ${clinicManager.id}`);
         }
 
-      // 3. Create trade link (REQUESTED status) - ONLY if SupplierManager exists
+      // 3. Create trade link - ONLY if SupplierManager exists
       // IMPORTANT: Trade links are now to SupplierManager, not Supplier
+      // If supplier has registered on platform (ACTIVE SupplierManager), create APPROVED link immediately
       // If supplier hasn't registered on platform yet, there's no SupplierManager, so no link
       const supplierManager = await this.prisma.supplierManager.findFirst({
         where: {
@@ -317,9 +330,10 @@ export class SupplierService {
       });
 
       if (supplierManager) {
-        // Supplier has registered on platform, create trade link to SupplierManager
-        await this.repository.createOrGetTradeLink(tenantId, supplierManager.id);
-        this.logger.log(`Trade link created for SupplierManager: ${supplierManager.id}`);
+        // Supplier has registered on platform (ACTIVE status), create APPROVED link immediately
+        // This means supplier has completed registration, so clinic can trade with them right away
+        await this.repository.approveTradeLink(tenantId, supplierManager.id);
+        this.logger.log(`Trade link APPROVED for SupplierManager: ${supplierManager.id} (supplier is registered on platform)`);
       } else {
         // No SupplierManager yet (manual creation only), link will be created when supplier signs up
         this.logger.log(`No SupplierManager found for supplier ${supplier.id}, skipping trade link creation`);
@@ -354,25 +368,63 @@ export class SupplierService {
    * Approve trade relationship with supplier
    * Called when clinic clicks "Yes" after phone search finds registered supplier
    * IMPORTANT: Now works with SupplierManager, not Supplier
-   * Frontend sends supplierId (Supplier company ID), we need to find SupplierManager
+   * Frontend sends supplierId (Supplier company ID) and optionally:
+   * - supplierManagerId: Database ID of SupplierManager (preferred, most accurate)
+   * - managerId: manager_id (like "회사명0001") as fallback
    */
-  async approveTradeLink(tenantId: string, supplierId: string) {
-    this.logger.log(`Approving trade link: tenantId=${tenantId}, supplierId=${supplierId}`);
+  async approveTradeLink(tenantId: string, supplierId: string, managerId?: string, supplierManagerId?: string) {
+    this.logger.log(`Approving trade link: tenantId=${tenantId}, supplierId=${supplierId}, managerId=${managerId}, supplierManagerId=${supplierManagerId}`);
     
     try {
       const prisma = this.prisma as any;
       
       // Find SupplierManager for this supplier
-      // Prefer ACTIVE SupplierManager (registered on platform)
-      const supplierManager = await prisma.supplierManager.findFirst({
-        where: {
-          supplier_id: supplierId,
-          status: "ACTIVE", // Only active managers (registered on platform)
-        },
-        orderBy: {
-          created_at: "asc", // Use first/oldest manager
-        },
-      });
+      // Priority: 1) supplierManagerId (database ID - most accurate), 2) managerId (manager_id), 3) first ACTIVE manager
+      let supplierManager;
+      
+      // First, try to find by supplierManagerId (database ID) - most accurate
+      if (supplierManagerId) {
+        supplierManager = await prisma.supplierManager.findFirst({
+          where: {
+            id: supplierManagerId,
+            supplier_id: supplierId, // Verify it belongs to the correct supplier
+            status: "ACTIVE",
+          },
+        });
+        if (supplierManager) {
+          this.logger.log(`Found SupplierManager by supplierManagerId: ${supplierManagerId}`);
+        }
+      }
+      
+      // If not found by supplierManagerId, try managerId (manager_id)
+      if (!supplierManager && managerId) {
+        supplierManager = await prisma.supplierManager.findFirst({
+          where: {
+            supplier_id: supplierId,
+            manager_id: managerId,
+            status: "ACTIVE",
+          },
+        });
+        if (supplierManager) {
+          this.logger.log(`Found SupplierManager by managerId: ${managerId}`);
+        }
+      }
+      
+      // If still not found, find first ACTIVE manager for this supplier
+      if (!supplierManager) {
+        supplierManager = await prisma.supplierManager.findFirst({
+          where: {
+            supplier_id: supplierId,
+            status: "ACTIVE", // Only active managers (registered on platform)
+          },
+          orderBy: {
+            created_at: "asc", // Use first/oldest manager
+          },
+        });
+        if (supplierManager) {
+          this.logger.log(`Found SupplierManager by first ACTIVE: ${supplierManager.id}`);
+        }
+      }
 
       if (!supplierManager) {
         throw new BadRequestException(
@@ -380,8 +432,12 @@ export class SupplierService {
         );
       }
 
+      this.logger.log(`Found SupplierManager: ${supplierManager.id} (manager_id: ${supplierManager.manager_id})`);
+
       // Approve link using SupplierManager ID
       const link = await this.repository.approveTradeLink(tenantId, supplierManager.id);
+      
+      this.logger.log(`Trade link approved: ${link.id} for SupplierManager ${supplierManager.id}`);
       
       return {
         message: "거래 관계가 승인되었습니다",

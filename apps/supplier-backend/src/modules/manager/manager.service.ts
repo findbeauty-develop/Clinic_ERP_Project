@@ -161,56 +161,61 @@ export class ManagerService {
   }
 
   async registerComplete(dto: RegisterCompleteDto) {
+    // Use transaction to ensure all-or-nothing: if validation fails, nothing is saved
+    // Wrap in executeWithRetry for connection error handling
     return await this.prisma.executeWithRetry(async () => {
-      // 1. Hash password
-      const passwordHash = await hash(dto.contact.password, 10);
+      return await this.prisma.$transaction(async (tx: any) => {
+        // STEP 1: ALL VALIDATIONS FIRST - before any database writes
+        
+        // 1. Hash password
+        const passwordHash = await hash(dto.contact.password, 10);
 
-      // 2. Check for existing supplier by business_number
-      const existingSupplier = await this.prisma.supplier.findUnique({
-        where: { business_number: dto.company.businessNumber },
-      });
-
-      // 3. Check for existing SupplierManager by phone_number (global, login uchun)
-      const existingManager = await this.prisma.supplierManager.findUnique({
-        where: { phone_number: dto.manager.phoneNumber },
-      });
-
-      // 4. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
-      // Matching: business_number + phone_number + name
-      const existingClinicManager = existingSupplier
-        ? await this.prisma.clinicSupplierManager.findFirst({
-            where: {
-              supplier_id: existingSupplier.id,
-              phone_number: dto.manager.phoneNumber,
-              name: dto.manager.name, // Name ham mos kelishi kerak
-            },
-          })
-        : null;
-
-      // 5. Check for duplicate email1 in SupplierManager (only if not updating existing manager)
-      if (!existingManager || existingManager.email1 !== dto.contact.email1) {
-        const existingEmail = await this.prisma.supplierManager.findFirst({
-          where: { email1: dto.contact.email1 },
+        // 2. Check for existing supplier by business_number
+        const existingSupplier = await tx.supplier.findUnique({
+          where: { business_number: dto.company.businessNumber },
         });
 
-        if (existingEmail && existingEmail.id !== existingManager?.id) {
-          throw new ConflictException("이미 등록된 이메일 주소입니다");
-        }
-      }
+        // 3. Check for existing SupplierManager by phone_number (global, login uchun)
+        // CRITICAL: This validation MUST happen before any writes
+        const existingManager = await tx.supplierManager.findUnique({
+          where: { phone_number: dto.manager.phoneNumber },
+        });
 
-      // 6. Agar SupplierManager mavjud bo'lsa va password_hash mavjud bo'lsa (allaqachon ro'yxatdan o'tgan)
-      if (existingManager) {
-        if (existingManager.password_hash) {
+        // 4. Validate: If SupplierManager exists with password_hash, registration is not allowed
+        if (existingManager && existingManager.password_hash) {
           throw new ConflictException("이미 등록된 휴대폰 번호입니다");
         }
-        // Agar password_hash null bo'lsa, update qilamiz (bu holat endi bo'lmaydi, chunki SupplierManager faqat supplier yaratadi)
-      }
 
-      // 7. Supplier upsert (business_number bo'yicha) - CLAIM existing company if exists
-      // If company exists (created by clinic manually), claim it and set to ACTIVE
-      // Supplier signup data takes precedence, but preserve manual fields if missing
-      const supplier = existingSupplier
-        ? await this.prisma.supplier.update({
+        // 5. Check for duplicate email1 in SupplierManager
+        if (!existingManager || existingManager.email1 !== dto.contact.email1) {
+          const existingEmail = await tx.supplierManager.findFirst({
+            where: { email1: dto.contact.email1 },
+          });
+
+          if (existingEmail && existingEmail.id !== existingManager?.id) {
+            throw new ConflictException("이미 등록된 이메일 주소입니다");
+          }
+        }
+
+        // 6. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
+        // Matching: business_number + phone_number + name
+        const existingClinicManager = existingSupplier
+          ? await tx.clinicSupplierManager.findFirst({
+              where: {
+                supplier_id: existingSupplier.id,
+                phone_number: dto.manager.phoneNumber,
+                name: dto.manager.name, // Name ham mos kelishi kerak
+              },
+            })
+          : null;
+
+        // STEP 2: All validations passed, now proceed with database writes
+
+        // 7. Supplier upsert (business_number bo'yicha) - CLAIM existing company if exists
+        // If company exists (created by clinic manually), claim it and set to ACTIVE
+        // Supplier signup data takes precedence, but preserve manual fields if missing
+        const supplier = existingSupplier
+          ? await tx.supplier.update({
             where: { id: existingSupplier.id },
             data: {
               // Supplier signup data takes precedence
@@ -230,7 +235,7 @@ export class ManagerService {
               updated_at: new Date(),
             },
           })
-        : await this.prisma.supplier.create({
+        : await tx.supplier.create({
             data: {
               company_name: dto.company.companyName,
               business_number: dto.company.businessNumber,
@@ -245,169 +250,168 @@ export class ManagerService {
             },
           });
 
-      // 8. Remove duplicates from regions and products
-      const uniqueRegions = Array.from(
-        new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
-      );
-      const uniqueProducts = Array.from(
-        new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
-      );
+        // 8. Remove duplicates from regions and products
+        const uniqueRegions = Array.from(
+          new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
+        );
+        const uniqueProducts = Array.from(
+          new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
+        );
 
-      // 9. Agar ClinicSupplierManager topilsa, uning ma'lumotlaridan foydalanish
-      const finalRegions = existingClinicManager && existingClinicManager.responsible_regions.length > 0
-        ? existingClinicManager.responsible_regions
-        : uniqueRegions;
-      const finalProducts = existingClinicManager && existingClinicManager.responsible_products.length > 0
-        ? existingClinicManager.responsible_products
-        : uniqueProducts;
+        // 9. Agar ClinicSupplierManager topilsa, uning ma'lumotlaridan foydalanish
+        const finalRegions = existingClinicManager && existingClinicManager.responsible_regions.length > 0
+          ? existingClinicManager.responsible_regions
+          : uniqueRegions;
+        const finalProducts = existingClinicManager && existingClinicManager.responsible_products.length > 0
+          ? existingClinicManager.responsible_products
+          : uniqueProducts;
 
-      // 10. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
-      let managerId = dto.managerId || existingManager?.manager_id;
-      if (!managerId) {
-        const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
-        // Generate random 4-digit number (1000-9999)
-        let randomNumber = Math.floor(1000 + Math.random() * 9000);
-        managerId = `${formattedCompanyName}${randomNumber}`;
-        
-        // Check for duplicate managerId and regenerate if needed
-        let existingId = await this.prisma.supplierManager.findUnique({
-          where: { manager_id: managerId },
-        });
-        
-        let attempts = 0;
-        while (existingId && attempts < 10) {
-          randomNumber = Math.floor(1000 + Math.random() * 9000);
+        // 10. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
+        let managerId = dto.managerId || existingManager?.manager_id;
+        if (!managerId) {
+          const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
+          // Generate random 4-digit number (1000-9999)
+          let randomNumber = Math.floor(1000 + Math.random() * 9000);
           managerId = `${formattedCompanyName}${randomNumber}`;
-          existingId = await this.prisma.supplierManager.findUnique({
+          
+          // Check for duplicate managerId and regenerate if needed
+          let existingId = await tx.supplierManager.findUnique({
             where: { manager_id: managerId },
           });
-          attempts++;
+          
+          let attempts = 0;
+          while (existingId && attempts < 10) {
+            randomNumber = Math.floor(1000 + Math.random() * 9000);
+            managerId = `${formattedCompanyName}${randomNumber}`;
+            existingId = await tx.supplierManager.findUnique({
+              where: { manager_id: managerId },
+            });
+            attempts++;
+          }
+          
+          if (existingId) {
+            throw new BadRequestException("담당자 ID 생성에 실패했습니다. 다시 시도해주세요.");
+          }
+        } else if (dto.managerId && dto.managerId !== existingManager?.manager_id) {
+          // Check if provided managerId is unique (only if different from existing)
+          const existingId = await tx.supplierManager.findUnique({
+            where: { manager_id: managerId },
+          });
+          
+          if (existingId) {
+            throw new ConflictException("이미 사용 중인 담당자 ID입니다");
+          }
         }
-        
-        if (existingId) {
-          throw new BadRequestException("담당자 ID 생성에 실패했습니다. 다시 시도해주세요.");
-        }
-      } else if (dto.managerId && dto.managerId !== existingManager?.manager_id) {
-        // Check if provided managerId is unique (only if different from existing)
-        const existingId = await this.prisma.supplierManager.findUnique({
-          where: { manager_id: managerId },
-        });
-        
-        if (existingId) {
-          throw new ConflictException("이미 사용 중인 담당자 ID입니다");
-        }
-      }
 
-      // 11. SupplierManager yaratish (phone_number UNIQUE, shuning uchun create yoki error)
-      // Agar existingManager mavjud bo'lsa va password_hash null bo'lsa, bu holat endi bo'lmaydi
-      // Chunki SupplierManager faqat supplier ro'yxatdan o'tganda yaratiladi
-      if (existingManager) {
-        throw new ConflictException("이미 등록된 휴대폰 번호입니다");
-      }
-
-      // Yangi SupplierManager yaratish
-      const manager = await this.prisma.supplierManager.create({
-        data: {
-          supplier_id: supplier.id,
-          clinic_manager_id: existingClinicManager?.id || null, // ClinicSupplierManager bilan link
-          manager_id: managerId,
-          name: dto.manager.name,
-          phone_number: dto.manager.phoneNumber,
-          certificate_image_url: dto.manager.certificateImageUrl || existingClinicManager?.certificate_image_url || null,
-          password_hash: passwordHash,
-          email1: dto.contact.email1,
-          email2: dto.contact.email2 || null,
-          responsible_regions: finalRegions,
-          responsible_products: finalProducts,
-          position: dto.manager.position || existingClinicManager?.position || null,
-          status: "ACTIVE", // Immediately ACTIVE after signup (no approval needed)
-        },
-      });
-
-      // 12. Agar ClinicSupplierManager topilsa, unga link qo'shish
-      if (existingClinicManager) {
-        await this.prisma.clinicSupplierManager.update({
-          where: { id: existingClinicManager.id },
+        // 11. SupplierManager yaratish (phone_number UNIQUE, shuning uchun create yoki error)
+        // Validation already done above - if we reach here, existingManager check passed
+        // Yangi SupplierManager yaratish
+        const manager = await tx.supplierManager.create({
           data: {
-            // linkedManager relation orqali avtomatik link qilinadi
-          },
-        });
-
-        // 12a. Create APPROVED trade link for all clinics that have this ClinicSupplierManager
-        // Find all ClinicSupplierManagers for this supplier
-        const allClinicManagers = await this.prisma.clinicSupplierManager.findMany({
-          where: {
             supplier_id: supplier.id,
-          },
-          select: {
-            tenant_id: true,
+            clinic_manager_id: existingClinicManager?.id || null, // ClinicSupplierManager bilan link
+            manager_id: managerId,
+            name: dto.manager.name,
+            phone_number: dto.manager.phoneNumber,
+            certificate_image_url: dto.manager.certificateImageUrl || existingClinicManager?.certificate_image_url || null,
+            password_hash: passwordHash,
+            email1: dto.contact.email1,
+            email2: dto.contact.email2 || null,
+            responsible_regions: finalRegions,
+            responsible_products: finalProducts,
+            position: dto.manager.position || existingClinicManager?.position || null,
+            status: "ACTIVE", // Immediately ACTIVE after signup (no approval needed)
           },
         });
 
-        // Create APPROVED trade links for all clinics
-        const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
-        for (const tenantId of uniqueTenantIds) {
-          await this.prisma.clinicSupplierLink.upsert({
-            where: {
-              tenant_id_supplier_id: {
-                tenant_id: tenantId,
-                supplier_id: supplier.id,
-              },
-            },
-            update: {
-              status: "APPROVED", // Auto-approve if clinic already has manager
-              approved_at: new Date(),
-              updated_at: new Date(),
-            },
-            create: {
-              tenant_id: tenantId,
-              supplier_id: supplier.id,
-              status: "APPROVED",
-              approved_at: new Date(),
+        // 12. Agar ClinicSupplierManager topilsa, unga link qo'shish
+        if (existingClinicManager) {
+          await tx.clinicSupplierManager.update({
+            where: { id: existingClinicManager.id },
+            data: {
+              // linkedManager relation orqali avtomatik link qilinadi
             },
           });
+
+          // 12a. Create APPROVED trade link for all clinics that have this ClinicSupplierManager
+          // Find all ClinicSupplierManagers for this supplier
+          const allClinicManagers = await tx.clinicSupplierManager.findMany({
+            where: {
+              supplier_id: supplier.id,
+            },
+            select: {
+              tenant_id: true,
+            },
+          });
+
+          // Create APPROVED trade links for all clinics
+          // IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
+          const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
+          for (const tenantId of uniqueTenantIds) {
+            await tx.clinicSupplierLink.upsert({
+              where: {
+                tenant_id_supplier_manager_id: {
+                  tenant_id: tenantId,
+                  supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
+                },
+              },
+              update: {
+                status: "APPROVED", // Auto-approve if clinic already has manager
+                approved_at: new Date(),
+                updated_at: new Date(),
+              },
+              create: {
+                tenant_id: tenantId,
+                supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
+                status: "APPROVED",
+                approved_at: new Date(),
+              },
+            });
+          }
         }
-      }
 
-      // 13. Create region tags
-      for (const region of finalRegions) {
-        await this.prisma.supplierRegionTag.upsert({
-          where: { name: region },
-          update: {},
-          create: { name: region },
-        });
-      }
+        // 13. Create region tags
+        // TODO: Create SupplierRegionTag model in Prisma schema
+        // for (const region of finalRegions) {
+        //   await tx.supplierRegionTag.upsert({
+        //     where: { name: region },
+        //     update: {},
+        //     create: { name: region },
+        //   });
+        // }
 
-      // 14. Create product tags
-      for (const product of finalProducts) {
-        await this.prisma.supplierProductTag.upsert({
-          where: { name: product },
-          update: {},
-          create: { name: product },
-        });
-      }
+        // 14. Create product tags
+        // TODO: Create SupplierProductTag model in Prisma schema
+        // for (const product of finalProducts) {
+        //   await tx.supplierProductTag.upsert({
+        //     where: { name: product },
+        //     update: {},
+        //     create: { name: product },
+        //   });
+        // }
 
-      return {
-        message: "회원가입이 완료되었습니다. 로그인해주세요.",
-        managerId: managerId,
-        data: {
-          supplier: {
-            id: supplier.id,
-            companyName: supplier.company_name,
-            businessNumber: supplier.business_number,
-            status: supplier.status,
+        return {
+          message: "회원가입이 완료되었습니다. 로그인해주세요.",
+          managerId: managerId,
+          data: {
+            supplier: {
+              id: supplier.id,
+              companyName: supplier.company_name,
+              businessNumber: supplier.business_number,
+              status: supplier.status,
+            },
+            manager: {
+              id: manager.id,
+              managerId: manager.manager_id,
+              name: manager.name,
+              phoneNumber: manager.phone_number,
+              email1: manager.email1,
+              status: manager.status,
+            },
           },
-          manager: {
-            id: manager.id,
-            managerId: manager.manager_id,
-            name: manager.name,
-            phoneNumber: manager.phone_number,
-            email1: manager.email1,
-            status: manager.status,
-          },
-        },
-      };
-    });
+        };
+      }); // End of transaction
+    }); // End of executeWithRetry
   }
 }
 

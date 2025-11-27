@@ -115,13 +115,15 @@ export class SupplierController {
   })
   async approveTradeLink(
     @Body("supplierId") supplierId: string,
+    @Body("managerId") managerId: string | undefined,
+    @Body("supplierManagerId") supplierManagerId: string | undefined,
     @Tenant() tenantId: string
   ) {
     if (!supplierId) {
       throw new BadRequestException("공급업체 ID는 필수입니다");
     }
 
-    return this.supplierService.approveTradeLink(tenantId, supplierId);
+    return this.supplierService.approveTradeLink(tenantId, supplierId, managerId, supplierManagerId);
   }
 }
 

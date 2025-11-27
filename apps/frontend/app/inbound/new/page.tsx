@@ -77,7 +77,8 @@ export default function InboundNewPage() {
     businessNumber: string;
     companyPhone: string | null;
     companyEmail: string;
-    managerId: string;
+    managerId: string; // manager_id (like "회사명0001")
+    supplierManagerId?: string; // Database ID of SupplierManager (for creating ClinicSupplierLink)
     managerName: string;
     position: string | null;
     phoneNumber: string;
@@ -255,6 +256,14 @@ export default function InboundNewPage() {
       return;
     }
 
+    // Clean phone number: remove spaces, dashes, and other formatting
+    const cleanPhoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, "").trim();
+    
+    if (!cleanPhoneNumber) {
+      setSupplierSearchResults([]);
+      return;
+    }
+
     setSupplierSearchLoading(true);
     setSupplierSearchFallback(false);
     try {
@@ -262,7 +271,9 @@ export default function InboundNewPage() {
       const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
       const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
 
-      const response = await fetch(`${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(phoneNumber)}`, {
+      console.log("Searching suppliers by phone:", cleanPhoneNumber); // Debug log
+
+      const response = await fetch(`${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(cleanPhoneNumber)}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -273,38 +284,64 @@ export default function InboundNewPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const results = data.map((item: any) => ({
-          companyName: item.companyName || "",
-          companyAddress: item.companyAddress || null,
-          businessNumber: item.businessNumber || "",
-          companyPhone: item.companyPhone || null,
-          companyEmail: item.companyEmail || "",
-          managerId: item.managerId || "",
-          managerName: item.managerName || "",
-          position: item.position || null,
-          phoneNumber: item.phoneNumber || "",
-          email1: item.email1 || null,
-          email2: item.email2 || null,
-          responsibleProducts: item.responsibleProducts || [],
-          isRegisteredOnPlatform: item.isRegisteredOnPlatform || false,
-          supplierId: item.supplierId || item.id || null, // Get supplier ID from response
-        }));
+        console.log("Phone search response:", data); // Debug log
+        
+        // Handle both array and single object responses
+        const dataArray = Array.isArray(data) ? data : (data ? [data] : []);
+        
+        const results = dataArray.map((item: any) => {
+          // Get supplierManagerId from multiple possible sources
+          const supplierManagerId = item.supplierManagerId 
+            || item.managers?.[0]?.id 
+            || (item.managers && item.managers.length > 0 ? item.managers[0].id : null)
+            || null;
+          
+          return {
+            companyName: item.companyName || "",
+            companyAddress: item.companyAddress || null,
+            businessNumber: item.businessNumber || "",
+            companyPhone: item.companyPhone || null,
+            companyEmail: item.companyEmail || "",
+            managerId: item.managerId || item.managers?.[0]?.managerId || "", // manager_id (like "회사명0001")
+            supplierManagerId: supplierManagerId, // Database ID of SupplierManager
+            managerName: item.managerName || item.managers?.[0]?.name || "",
+            position: item.position || item.managers?.[0]?.position || null,
+            phoneNumber: item.phoneNumber || item.managers?.[0]?.phoneNumber || "",
+            email1: item.email1 || item.managers?.[0]?.email1 || null,
+            email2: item.email2 || item.managers?.[0]?.email2 || null,
+            responsibleProducts: item.responsibleProducts || item.managers?.[0]?.responsibleProducts || [],
+            isRegisteredOnPlatform: item.isRegisteredOnPlatform === true || item.isRegisteredOnPlatform === "true" || false,
+            supplierId: item.supplierId || item.id || null, // Get supplier ID from response
+          };
+        });
+        
+        console.log("Processed results:", results); // Debug log
+        console.log("First result:", results[0]); // Debug log
+        console.log("First result isRegisteredOnPlatform:", results[0]?.isRegisteredOnPlatform); // Debug log
+        console.log("First result supplierManagerId:", results[0]?.supplierManagerId); // Debug log
+        console.log("First result supplierId:", results[0]?.supplierId); // Debug log
         
         // If results found from fallback search, show confirmation modal
         // Check if supplier is registered on platform (has isRegisteredOnPlatform flag)
         if (results.length > 0) {
           const supplier = results[0];
+          console.log("Supplier found:", supplier); // Debug log
+          
           // Check if supplier is registered on platform
+          // SupplierManager with ACTIVE status means registered on platform
           if (supplier.isRegisteredOnPlatform) {
-            // Supplier is registered on platform - show approval modal
+            console.log("Supplier is registered on platform - showing approval modal"); // Debug log
+            // Supplier is registered on platform - show approval modal with supplier info
             setPendingSupplier(supplier); // Show modal for first result
             setShowSupplierConfirmModal(true);
             setSupplierSearchResults([]); // Don't show in table yet
           } else {
+            console.log("Supplier found but not registered on platform"); // Debug log
             // Supplier found but not registered on platform - show in results
             setSupplierSearchResults(results);
           }
         } else {
+          console.log("No supplier found - showing manual entry"); // Debug log
           // No supplier found - show manual entry option
           setPendingSupplierPhone(phoneNumber);
           setShowSupplierConfirmModal(true);
@@ -312,12 +349,17 @@ export default function InboundNewPage() {
         }
       } else {
         // Error or no results - show modal with direct input option
+        const errorText = await response.text();
+        console.error("Phone search error:", response.status, errorText); // Debug log
         setPendingSupplierPhone(phoneNumber);
         setShowSupplierConfirmModal(true);
         setSupplierSearchResults([]);
       }
     } catch (error) {
       console.error("Error searching suppliers by phone:", error);
+      // On error, still show manual entry option with phone number
+      setPendingSupplierPhone(phoneNumber);
+      setShowSupplierConfirmModal(true);
       setSupplierSearchResults([]);
     } finally {
       setSupplierSearchLoading(false);
@@ -385,6 +427,8 @@ export default function InboundNewPage() {
           },
           body: JSON.stringify({
             supplierId: pendingSupplier.supplierId,
+            managerId: pendingSupplier.managerId, // manager_id (like "회사명0001")
+            supplierManagerId: pendingSupplier.supplierManagerId, // Database ID of SupplierManager (preferred)
           }),
         });
 

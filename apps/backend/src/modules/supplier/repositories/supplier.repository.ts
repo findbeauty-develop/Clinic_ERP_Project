@@ -205,14 +205,32 @@ export class SupplierRepository {
       return [];
     }
 
+    // Clean phone number: remove spaces, dashes, parentheses for better matching
+    const cleanPhoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, "").trim();
+    
+    if (!cleanPhoneNumber) {
+      return [];
+    }
+
     // Search in SupplierManager (global, login uchun) - priority
     // These are suppliers registered on the platform
+    // Search with both original and cleaned phone number
     const supplierManagers = await prisma.supplierManager.findMany({
       where: {
-        phone_number: {
-          contains: phoneNumber,
-          mode: "insensitive",
-        },
+        OR: [
+          {
+            phone_number: {
+              contains: phoneNumber,
+              mode: "insensitive",
+            },
+          },
+          {
+            phone_number: {
+              contains: cleanPhoneNumber,
+              mode: "insensitive",
+            },
+          },
+        ],
         status: "ACTIVE", // Only active managers
       },
       include: {
@@ -241,10 +259,20 @@ export class SupplierRepository {
       include: {
         managers: {
           where: {
-            phone_number: {
-              contains: phoneNumber,
-              mode: "insensitive",
-            },
+            OR: [
+              {
+                phone_number: {
+                  contains: phoneNumber,
+                  mode: "insensitive",
+                },
+              },
+              {
+                phone_number: {
+                  contains: cleanPhoneNumber,
+                  mode: "insensitive",
+                },
+              },
+            ],
             status: "ACTIVE",
           },
           select: {
@@ -261,10 +289,20 @@ export class SupplierRepository {
         },
         clinicManagers: {
           where: {
-            phone_number: {
-              contains: phoneNumber,
-              mode: "insensitive",
-            },
+            OR: [
+              {
+                phone_number: {
+                  contains: phoneNumber,
+                  mode: "insensitive",
+                },
+              },
+              {
+                phone_number: {
+                  contains: cleanPhoneNumber,
+                  mode: "insensitive",
+                },
+              },
+            ],
           },
           select: {
             id: true,
