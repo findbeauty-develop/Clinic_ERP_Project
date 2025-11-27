@@ -67,9 +67,11 @@ export class MembersRepository {
     if (tenantId) {
       where.tenant_id = tenantId;
     }
-    // Direct query - Prisma handles connection automatically
-    return await this.prisma.member.findFirst({
-      where,
+    // Use executeWithRetry for connection handling
+    return await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).member.findFirst({
+        where,
+      });
     });
   }
 

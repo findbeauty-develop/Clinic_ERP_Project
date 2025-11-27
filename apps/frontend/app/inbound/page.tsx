@@ -246,6 +246,17 @@ function ProductCard({
   const [batchQuantity, setBatchQuantity] = useState(1);
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [submittingBatch, setSubmittingBatch] = useState(false);
+  
+  // Batch form state
+  const [batchForm, setBatchForm] = useState({
+    inboundManager: "",
+    manufactureDate: "",
+    purchasePrice: "",
+    expiryDate: "",
+    storageLocation: "",
+  });
+  
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -280,6 +291,98 @@ function ProductCard({
 
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+  };
+
+  // Handle batch creation
+  const handleCreateBatch = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Validation
+    if (!batchForm.inboundManager.trim()) {
+      alert("입고 담당자 이름을 입력해주세요.");
+      return;
+    }
+    
+    if (!batchForm.expiryDate) {
+      alert("유효 기간을 입력해주세요.");
+      return;
+    }
+    
+    if (batchQuantity < 1) {
+      alert("입고 수량은 1개 이상이어야 합니다.");
+      return;
+    }
+
+    setSubmittingBatch(true);
+    try {
+      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+
+      if (!token || !tenantId) {
+        alert("로그인이 필요합니다. 다시 로그인해주세요.");
+        return;
+      }
+
+      const payload: any = {
+        qty: batchQuantity,
+        expiry_date: batchForm.expiryDate,
+        inbound_manager: batchForm.inboundManager,
+      };
+
+      // Optional fields
+      if (batchForm.manufactureDate) {
+        payload.manufacture_date = batchForm.manufactureDate;
+      }
+      if (batchForm.purchasePrice) {
+        payload.purchase_price = parseInt(batchForm.purchasePrice);
+      }
+      if (batchForm.storageLocation) {
+        payload.storage = batchForm.storageLocation;
+      }
+
+      const response = await fetch(`${apiUrl}/products/${product.id}/batches`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Tenant-Id": tenantId,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error creating batch:", errorText);
+        throw new Error(`배치 생성에 실패했습니다: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Batch created:", result);
+
+      // Reset form
+      setBatchForm({
+        inboundManager: "",
+        manufactureDate: "",
+        purchasePrice: "",
+        expiryDate: "",
+        storageLocation: "",
+      });
+      setBatchQuantity(1);
+
+      // Refresh batches list
+      const { apiGet } = await import("../../lib/api");
+      const updatedBatches = await apiGet<ProductBatch[]>(
+        `${apiUrl}/products/${product.id}/batches`
+      );
+      setBatches(updatedBatches);
+
+      alert("배치가 성공적으로 추가되었습니다.");
+    } catch (error: any) {
+      console.error("Error creating batch:", error);
+      alert(`배치 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+    } finally {
+      setSubmittingBatch(false);
+    }
   };
 
   return (
@@ -448,14 +551,26 @@ function ProductCard({
             </div>
 
             {/* 입고 담당자 - to'liq width */}
-            <InlineField label="입고 담당자 *" placeholder="입고 담당자 이름" />
+            <InlineField 
+              label="입고 담당자 *" 
+              placeholder="입고 담당자 이름"
+              value={batchForm.inboundManager}
+              onChange={(value) => setBatchForm({ ...batchForm, inboundManager: value })}
+            />
 
             <div className="grid gap-4 md:grid-cols-2">
-              <InlineField label="제조일 (선택)" type="date" />
+              <InlineField 
+                label="제조일 (선택)" 
+                type="date"
+                value={batchForm.manufactureDate}
+                onChange={(value) => setBatchForm({ ...batchForm, manufactureDate: value })}
+              />
               <InlineField
                 label="구매원가 (원)"
                 placeholder="구매원가를 입력하세요"
                 type="number"
+                value={batchForm.purchasePrice}
+                onChange={(value) => setBatchForm({ ...batchForm, purchasePrice: value })}
               />
             </div>
 
@@ -464,21 +579,29 @@ function ProductCard({
                 value={batchQuantity}
                 onChange={setBatchQuantity}
               />
-              <InlineField label="유효 기간 *" type="date" />
+              <InlineField 
+                label="유효 기간 *" 
+                type="date"
+                value={batchForm.expiryDate}
+                onChange={(value) => setBatchForm({ ...batchForm, expiryDate: value })}
+              />
             </div>
 
             {/* 보관 위치 - to'liq width */}
             <InlineField
               label="보관 위치 (선택)"
               placeholder="예: 창고 A-3, 냉장실 1번"
+              value={batchForm.storageLocation}
+              onChange={(value) => setBatchForm({ ...batchForm, storageLocation: value })}
             />
 
             <div className="flex justify-end">
               <button
-                onClick={handleButtonClick}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+                onClick={handleCreateBatch}
+                disabled={submittingBatch}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                + 입고
+                {submittingBatch ? "처리 중..." : "+ 입고"}
               </button>
             </div>
           </div>
@@ -858,10 +981,14 @@ function InlineField({
   label,
   placeholder,
   type = "text",
+  value,
+  onChange,
 }: {
   label: string;
   placeholder?: string;
   type?: string;
+  value?: string;
+  onChange?: (value: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
@@ -871,6 +998,8 @@ function InlineField({
       <input
         type={type}
         placeholder={placeholder}
+        value={value || ""}
+        onChange={(e) => onChange?.(e.target.value)}
         className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700"
       />
     </div>

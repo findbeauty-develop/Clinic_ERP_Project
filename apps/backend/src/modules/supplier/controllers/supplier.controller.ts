@@ -23,21 +23,15 @@ export class SupplierController {
 
   @Get("search")
   @ApiOperation({
-    summary: "공급업체 검색 (Search suppliers)",
+    summary: "공급업체 검색 (Primary search - companyName + managerName)",
     description:
-      "회사명, 담당자 핸드폰 번호 또는 담당자 이름으로 공급업체를 검색합니다. 회사명, 회사주소, 담당자 정보 등을 반환합니다.",
+      "회사명과 담당자 이름으로 공급업체를 검색합니다. 거래 관계가 승인된(APPROVED ClinicSupplierLink) 공급업체만 반환됩니다. 전화번호로 검색하려면 /supplier/search-by-phone 엔드포인트를 사용하세요.",
   })
   @ApiQuery({
     name: "companyName",
     required: false,
     type: String,
     description: "회사명 (Company name)",
-  })
-  @ApiQuery({
-    name: "phoneNumber",
-    required: false,
-    type: String,
-    description: "담당자 핸드폰 번호 (Manager phone number)",
   })
   @ApiQuery({
     name: "managerName",
@@ -49,9 +43,17 @@ export class SupplierController {
     @Query() query: SearchSupplierDto,
     @Tenant() tenantId: string
   ) {
-    if (!query.companyName && !query.phoneNumber && !query.managerName) {
+    // Primary search: ONLY companyName and/or managerName
+    // phoneNumber is NOT allowed - use /supplier/search-by-phone for phone search
+    if (query.phoneNumber) {
       throw new BadRequestException(
-        "회사명, 담당자 핸드폰 번호 또는 담당자 이름 중 하나는 필수입니다"
+        "전화번호로 검색하려면 /supplier/search-by-phone 엔드포인트를 사용하세요."
+      );
+    }
+
+    if (!query.companyName && !query.managerName) {
+      throw new BadRequestException(
+        "회사명 또는 담당자 이름 중 하나는 필수입니다"
       );
     }
 
@@ -102,6 +104,24 @@ export class SupplierController {
     console.log("Supplier created/updated successfully:", result);
     
     return result;
+  }
+
+  @Post("approve-trade-link")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({
+    summary: "공급업체와의 거래 관계 승인 (Approve trade relationship)",
+    description:
+      "Clinic tomonidan supplier bilan trade relationship'ni APPROVED qilish. Phone search natijasidan keyin chaqiriladi.",
+  })
+  async approveTradeLink(
+    @Body("supplierId") supplierId: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!supplierId) {
+      throw new BadRequestException("공급업체 ID는 필수입니다");
+    }
+
+    return this.supplierService.approveTradeLink(tenantId, supplierId);
   }
 }
 

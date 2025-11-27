@@ -365,7 +365,7 @@ model Supplier {
   id                String    @id @default(uuid())
   tenant_id         String?   // Optional - for multi-tenant support
   company_name      String
-  business_number   String    @unique // 사업자 등록번호
+  business_number   String    @unique // 사업자 등록번호 - UNIQUE key for company identity
   company_phone     String?
   company_email     String
   company_address   String?
@@ -373,30 +373,82 @@ model Supplier {
   business_item      String?   // 종목
   product_categories String[]  @default([]) // 취급 제품 카테고리
   share_consent     Boolean   @default(false) // 회사 정보 공유 동의
-  status            String    @default("pending") // pending, approved, rejected
+  status            String    @default("MANUAL_ONLY") // MANUAL_ONLY (clinic yaratgan), ACTIVE (supplier ro'yxatdan o'tgan)
   created_at        DateTime  @default(now())
   updated_at        DateTime?
   
   // Relations
-  managers          SupplierManager[]
-  
+  clinicManagers        ClinicSupplierManager[]
+  managers              SupplierManager[]
   @@index([tenant_id])
   @@index([business_number])
   @@index([status])
 }
 
-// 공급업체 담당자 (Supplier Manager) - Supplier contact person
+// Clinic ↔ Supplier Manager trade relationship
+// Links clinic to specific SupplierManager (not Supplier company)
+// One Supplier can have multiple SupplierManagers, each with separate trade relationships
+model ClinicSupplierLink {
+  id                String    @id @default(uuid())
+  tenant_id         String    // Clinic tenant_id
+  supplier_manager_id String  // SupplierManager ID (NOT Supplier company ID)
+  status            String    @default("REQUESTED") // REQUESTED, APPROVED, BLOCKED
+  requested_at      DateTime  @default(now())
+  approved_at       DateTime?
+  blocked_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime?
+  
+  // Relations
+  supplierManager   SupplierManager  @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+  
+  @@unique([tenant_id, supplier_manager_id]) // One link per clinic-supplier-manager pair
+  @@index([tenant_id])
+  @@index([supplier_manager_id])
+  @@index([status])
+  @@index([tenant_id, status])
+}
+
+// Clinic tomonidan yaratilgan Supplier Manager (Clinic context'da)
+model ClinicSupplierManager {
+  id                    String    @id @default(uuid())
+  supplier_id           String
+  tenant_id             String    // Qaysi clinic yaratgan
+  name                  String
+  phone_number          String    // NOT UNIQUE - faqat clinic context'da
+  email1               String?
+  email2               String?
+  position              String?   // 직함
+  certificate_image_url String?   // 사업자등록증 이미지 URL
+  responsible_regions   String[]  @default([])
+  responsible_products  String[]  @default([])
+  memo                  String?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime?
+  
+  // Relations
+  supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  linkedManager         SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
+  
+  @@index([supplier_id])
+  @@index([tenant_id])
+  @@index([phone_number])
+  @@index([tenant_id, phone_number]) // Composite index for clinic-specific search
+}
+
+// Supplier tomonidan yaratilgan Manager (Global, login uchun)
 model SupplierManager {
   id                    String    @id @default(uuid())
   supplier_id           String
+  clinic_manager_id     String?   @unique // ClinicSupplierManager bilan link (agar clinic yaratgan bo'lsa) - UNIQUE for one-to-one
   manager_id            String    @unique // 담당자 ID (회사이름+4자리 숫자)
   name                  String
-  phone_number          String    @unique
+  phone_number          String    @unique // UNIQUE - global
   certificate_image_url String?   // 사업자등록증 이미지 URL
   
-  // 계정 정보
-  password_hash         String?   // Optional - clinic tomonidan yaratilganda null bo'lishi mumkin
-  email1               String?   // Optional - clinic tomonidan yaratilganda null bo'lishi mumkin
+  // 계정 정보 (required for login)
+  password_hash         String    // Required - supplier ro'yxatdan o'tganda to'ldiriladi
+  email1               String    // Required - supplier ro'yxatdan o'tganda to'ldiriladi
   email2               String?
   
   // 담당 정보
@@ -404,20 +456,19 @@ model SupplierManager {
   responsible_products  String[]  @default([]) // 담당 제품
   position              String?   // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
   
-  // 생성 정보
-  created_by            String?   // "clinic" yoki "supplier" - kim yaratganini belgilash
-  
-  status                String    @default("pending") // pending, approved, rejected, active
+  status                String    @default("ACTIVE") // ACTIVE (immediately after signup, no approval needed)
   created_at            DateTime  @default(now())
   updated_at            DateTime?
   
   // Relations
   supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  clinicManager         ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
+  clinicLinks           ClinicSupplierLink[] // Trade relationships with clinics
   
   @@index([supplier_id])
   @@index([manager_id])
   @@index([phone_number])
   @@index([email1])
   @@index([status])
-  @@index([created_by])
+  @@index([clinic_manager_id])
 }

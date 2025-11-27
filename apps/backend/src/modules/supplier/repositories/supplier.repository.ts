@@ -6,8 +6,17 @@ export class SupplierRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Search suppliers with transaction history filter
-   * Only returns suppliers that have at least one transaction (Order, Return, or SupplierProduct) with the tenant
+   * Primary search: companyName + supplierName (manager name)
+   * STRICT RULE: Only returns suppliers that have APPROVED trade relationship (ClinicSupplierLink) with the tenant
+   * 
+   * Logic:
+   * - If no APPROVED ClinicSupplierLink exists → return empty array (no results)
+   * - If APPROVED link exists → filter suppliers by companyName and managerName
+   * - This ensures suppliers without trade relationship don't appear in primary search
+   * 
+   * IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
+   * - One Supplier can have multiple SupplierManagers
+   * - Each SupplierManager can have separate trade relationships with clinics
    */
   async searchSuppliers(
     tenantId: string,
@@ -17,172 +26,103 @@ export class SupplierRepository {
   ) {
     const prisma = this.prisma as any;
 
-    // Get supplier IDs that have transaction history with this tenant
-    const [orderSupplierIds, returnSupplierIds, supplierProductSupplierIds] = await Promise.all([
-      // Suppliers with Orders
-      prisma.order.findMany({
-        where: {
-          tenant_id: tenantId,
-          supplier_id: { not: null },
-        },
-        select: {
-          supplier_id: true,
-        },
-      }),
-      // Suppliers with Returns
-      prisma.return.findMany({
-        where: {
-          tenant_id: tenantId,
-          supplier_id: { not: null },
-        },
-        select: {
-          supplier_id: true,
-        },
-      }),
-      // Suppliers with SupplierProduct
-      prisma.supplierProduct.findMany({
-        where: {
-          tenant_id: tenantId,
-        },
-        select: {
-          supplier_id: true,
-        },
-      }),
-    ]);
-
-    // Combine all supplier IDs with transaction history (deduplicate using Set)
-    const supplierIdsWithHistory = new Set<string>();
-    orderSupplierIds.forEach((o: any) => {
-      if (o.supplier_id) supplierIdsWithHistory.add(o.supplier_id);
-    });
-    returnSupplierIds.forEach((r: any) => {
-      if (r.supplier_id) supplierIdsWithHistory.add(r.supplier_id);
-    });
-    supplierProductSupplierIds.forEach((sp: any) => {
-      if (sp.supplier_id) supplierIdsWithHistory.add(sp.supplier_id);
+    // STEP 1: Get SupplierManager IDs that have APPROVED trade relationship with this clinic
+    // This is the STRICT filter - if no APPROVED link exists, return empty array
+    const approvedLinks = await prisma.clinicSupplierLink.findMany({
+      where: {
+        tenant_id: tenantId,
+        status: "APPROVED", // ONLY approved trade relationships
+      },
+      select: {
+        supplier_manager_id: true,
+      },
     });
 
-    // If searching by phone number or manager name only, find manager first, then get supplier
-    if ((phoneNumber || managerName) && !companyName) {
-      const managerWhere: any = {};
-      
-      if (phoneNumber) {
-        managerWhere.phone_number = {
-          contains: phoneNumber,
+    const approvedManagerIds = new Set<string>();
+    approvedLinks.forEach((link: any) => {
+      approvedManagerIds.add(link.supplier_manager_id);
+    });
+
+    // STEP 2: If no APPROVED links exist, return empty array immediately
+    // This ensures suppliers without trade relationship don't appear
+    // CRITICAL: This check MUST happen before any query execution
+    if (approvedManagerIds.size === 0) {
+      return [];
+    }
+
+    // STEP 3: Get Supplier IDs from approved SupplierManagers
+    const approvedManagers = await prisma.supplierManager.findMany({
+      where: {
+        id: {
+          in: Array.from(approvedManagerIds),
+        },
+        status: "ACTIVE", // Only active managers
+      },
+      select: {
+        supplier_id: true,
+      },
+    });
+
+    const approvedSupplierIds = new Set<string>();
+    approvedManagers.forEach((m: any) => {
+      approvedSupplierIds.add(m.supplier_id);
+    });
+
+    if (approvedSupplierIds.size === 0) {
+      return [];
+    }
+
+    // STEP 4: Build where clause - ONLY search within approved suppliers
+    // The id filter is the PRIMARY and MANDATORY filter - MUST be applied
+    const approvedIdsArray = Array.from(approvedSupplierIds);
+    
+    // Build base conditions - id filter is ALWAYS required
+    const baseConditions: any[] = [
+      {
+        id: {
+          in: approvedIdsArray, // CRITICAL: Only approved suppliers - this MUST be applied
+        },
+      },
+    ];
+
+    // Add company name filter (if provided)
+    if (companyName) {
+      baseConditions.push({
+        company_name: {
+          contains: companyName,
           mode: "insensitive",
-        };
-      }
-      
-      if (managerName) {
-        managerWhere.name = {
-          contains: managerName,
-          mode: "insensitive",
-        };
-      }
-
-      const managers = await prisma.supplierManager.findMany({
-        where: managerWhere,
-        include: {
-          supplier: true,
-        },
-      });
-
-      // Get unique suppliers from managers that have transaction history
-      const supplierIds = [...new Set(managers.map((m: any) => m.supplier_id))]
-        .filter((id: any): id is string => typeof id === 'string' && supplierIdsWithHistory.has(id));
-
-      if (supplierIds.length === 0) {
-        return [];
-      }
-
-      return prisma.supplier.findMany({
-        where: {
-          id: {
-            in: supplierIds,
-          },
-        },
-        include: {
-          managers: {
-            where: (() => {
-              const where: any = {};
-              if (phoneNumber) {
-                where.phone_number = {
-                  contains: phoneNumber,
-                  mode: "insensitive",
-                };
-              }
-              if (managerName) {
-                where.name = {
-                  contains: managerName,
-                  mode: "insensitive",
-                };
-              }
-              return Object.keys(where).length > 0 ? where : undefined;
-            })(),
-            select: {
-              id: true,
-              manager_id: true,
-              name: true,
-              position: true,
-              phone_number: true,
-              email1: true,
-              email2: true,
-              responsible_products: true,
-              status: true,
-            },
-          },
-        },
-        orderBy: {
-          created_at: "desc",
         },
       });
     }
 
-    // Build where clause for company name search
+    // Add manager filters (managerName only - phoneNumber is NOT allowed in primary search)
+    if (managerName) {
+      // Manager name filter: search ONLY in APPROVED SupplierManagers
+      // We need to filter by approvedManagerIds to ensure only approved managers are included
+      baseConditions.push({
+        managers: {
+          some: {
+            id: {
+              in: Array.from(approvedManagerIds), // CRITICAL: Only approved managers
+            },
+            name: {
+              contains: managerName,
+              mode: "insensitive",
+            },
+            status: "ACTIVE",
+          },
+        },
+      });
+    }
+
+    // Final where clause: ALL conditions must be met (AND)
+    // This ensures id filter is ALWAYS applied
     const where: any = {
-      id: {
-        in: Array.from(supplierIdsWithHistory),
-      },
+      AND: baseConditions,
     };
 
-    if (companyName) {
-      where.company_name = {
-        contains: companyName,
-        mode: "insensitive",
-      };
-    }
-
-    // Add manager filters if company name is also provided
-    if ((phoneNumber || managerName) && companyName) {
-      const managerConditions: any[] = [];
-      
-      if (phoneNumber) {
-        managerConditions.push({
-          phone_number: {
-            contains: phoneNumber,
-            mode: "insensitive",
-          },
-        });
-      }
-      
-      if (managerName) {
-        managerConditions.push({
-          name: {
-            contains: managerName,
-            mode: "insensitive",
-          },
-        });
-      }
-
-      where.managers = {
-        some: managerConditions.length === 1 
-          ? managerConditions[0]
-          : {
-              AND: managerConditions,
-            },
-      };
-    }
-
+    // STEP 4: Execute query - suppliers MUST be in approvedSupplierIds set
+    // This query will ONLY return suppliers that have APPROVED ClinicSupplierLink
     return prisma.supplier.findMany({
       where,
       include: {
@@ -215,6 +155,32 @@ export class SupplierRepository {
             status: true,
           },
         },
+        clinicManagers: {
+          where: {
+            tenant_id: tenantId,
+            ...(phoneNumber ? {
+              phone_number: {
+                contains: phoneNumber,
+                mode: "insensitive",
+              },
+            } : {}),
+            ...(managerName ? {
+              name: {
+                contains: managerName,
+                mode: "insensitive",
+              },
+            } : {}),
+          },
+          select: {
+            id: true,
+            name: true,
+            position: true,
+            phone_number: true,
+            email1: true,
+            email2: true,
+            responsible_products: true,
+          },
+        },
       },
       orderBy: {
         created_at: "desc",
@@ -223,30 +189,48 @@ export class SupplierRepository {
   }
 
   /**
-   * Fallback search by phone number without transaction history filter
-   * Used when main search returns no results and we need to find registered suppliers
+   * Fallback search by phone number - finds suppliers registered on platform
+   * Used when primary search (companyName + managerName) returns no results
+   * 
+   * IMPORTANT: This search does NOT require ClinicSupplierLink
+   * - Searches ALL suppliers registered on platform (status = ACTIVE)
+   * - Used to find suppliers that clinic hasn't traded with yet
+   * - When clinic approves, APPROVED ClinicSupplierLink is created
+   * - After approval, supplier will appear in primary search
    */
   async searchSuppliersByPhone(phoneNumber: string) {
     const prisma = this.prisma as any;
 
-    const managers = await prisma.supplierManager.findMany({
+    if (!phoneNumber) {
+      return [];
+    }
+
+    // Search in SupplierManager (global, login uchun) - priority
+    // These are suppliers registered on the platform
+    const supplierManagers = await prisma.supplierManager.findMany({
       where: {
         phone_number: {
           contains: phoneNumber,
           mode: "insensitive",
         },
+        status: "ACTIVE", // Only active managers
       },
       include: {
-        supplier: true,
+        supplier: true, // Include supplier without where clause
       },
     });
 
-    // Get unique suppliers from managers
-    const supplierIds = [...new Set(managers.map((m: any) => m.supplier_id))];
+    // Filter out managers without suppliers or suppliers with wrong status
+    const validManagers = supplierManagers.filter((m: any) => 
+      m.supplier && (m.supplier.status === "ACTIVE" || m.supplier.status === "MANUAL_ONLY")
+    );
 
-    if (supplierIds.length === 0) {
+    if (validManagers.length === 0) {
       return [];
     }
+
+    // Get unique supplier IDs
+    const supplierIds = [...new Set(validManagers.map((m: any) => m.supplier_id))];
 
     return prisma.supplier.findMany({
       where: {
@@ -261,6 +245,7 @@ export class SupplierRepository {
               contains: phoneNumber,
               mode: "insensitive",
             },
+            status: "ACTIVE",
           },
           select: {
             id: true,
@@ -274,9 +259,107 @@ export class SupplierRepository {
             status: true,
           },
         },
+        clinicManagers: {
+          where: {
+            phone_number: {
+              contains: phoneNumber,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+            position: true,
+            phone_number: true,
+            email1: true,
+            email2: true,
+            responsible_products: true,
+          },
+        },
       },
       orderBy: {
         created_at: "desc",
+      },
+    });
+  }
+
+  /**
+   * Create or get ClinicSupplierLink
+   * Creates a REQUESTED link, or returns existing link
+   * IMPORTANT: Now works with SupplierManager ID, not Supplier ID
+   */
+  async createOrGetTradeLink(tenantId: string, supplierManagerId: string) {
+    const prisma = this.prisma as any;
+
+    return prisma.clinicSupplierLink.upsert({
+      where: {
+        tenant_id_supplier_manager_id: {
+          tenant_id: tenantId,
+          supplier_manager_id: supplierManagerId,
+        },
+      },
+      update: {
+        // If link exists but was BLOCKED, reset to REQUESTED
+        status: "REQUESTED",
+        requested_at: new Date(),
+        updated_at: new Date(),
+      },
+      create: {
+        tenant_id: tenantId,
+        supplier_manager_id: supplierManagerId,
+        status: "REQUESTED",
+      },
+    });
+  }
+
+  /**
+   * Approve trade relationship
+   * Creates APPROVED link if it doesn't exist, or updates existing link to APPROVED
+   * IMPORTANT: Now works with SupplierManager ID, not Supplier ID
+   */
+  async approveTradeLink(tenantId: string, supplierManagerId: string) {
+    const prisma = this.prisma as any;
+
+    // Upsert: Create APPROVED link if it doesn't exist, or update existing link to APPROVED
+    return prisma.clinicSupplierLink.upsert({
+      where: {
+        tenant_id_supplier_manager_id: {
+          tenant_id: tenantId,
+          supplier_manager_id: supplierManagerId,
+        },
+      },
+      update: {
+        status: "APPROVED",
+        approved_at: new Date(),
+        updated_at: new Date(),
+      },
+      create: {
+        tenant_id: tenantId,
+        supplier_manager_id: supplierManagerId,
+        status: "APPROVED",
+        approved_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Block trade relationship
+   * IMPORTANT: Now works with SupplierManager ID, not Supplier ID
+   */
+  async blockTradeLink(tenantId: string, supplierManagerId: string) {
+    const prisma = this.prisma as any;
+
+    return prisma.clinicSupplierLink.update({
+      where: {
+        tenant_id_supplier_manager_id: {
+          tenant_id: tenantId,
+          supplier_manager_id: supplierManagerId,
+        },
+      },
+      data: {
+        status: "BLOCKED",
+        blocked_at: new Date(),
+        updated_at: new Date(),
       },
     });
   }

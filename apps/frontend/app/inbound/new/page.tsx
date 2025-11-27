@@ -84,6 +84,8 @@ export default function InboundNewPage() {
     email1: string | null;
     email2: string | null;
     responsibleProducts: string[];
+    isRegisteredOnPlatform?: boolean;
+    supplierId?: string; // Supplier company ID for approval
   } | null>(null);
   const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
@@ -188,8 +190,9 @@ export default function InboundNewPage() {
     setSupplierSearchLoading(true);
     setSupplierSearchFallback(false);
     try {
-      const token = localStorage.getItem("token");
-      const tenantId = localStorage.getItem("tenantId");
+      // Use correct localStorage keys (same as login page)
+      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
       
       const params = new URLSearchParams();
       if (companyName) params.append("companyName", companyName);
@@ -220,6 +223,7 @@ export default function InboundNewPage() {
           email1: item.email1 || null,
           email2: item.email2 || null,
           responsibleProducts: item.responsibleProducts || [],
+          supplierId: item.supplierId || item.id || null, // Supplier company ID
         }));
         setSupplierSearchResults(results);
         
@@ -254,8 +258,9 @@ export default function InboundNewPage() {
     setSupplierSearchLoading(true);
     setSupplierSearchFallback(false);
     try {
-      const token = localStorage.getItem("token");
-      const tenantId = localStorage.getItem("tenantId");
+      // Use correct localStorage keys (same as login page)
+      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
 
       const response = await fetch(`${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(phoneNumber)}`, {
         method: "GET",
@@ -281,15 +286,26 @@ export default function InboundNewPage() {
           email1: item.email1 || null,
           email2: item.email2 || null,
           responsibleProducts: item.responsibleProducts || [],
+          isRegisteredOnPlatform: item.isRegisteredOnPlatform || false,
+          supplierId: item.supplierId || item.id || null, // Get supplier ID from response
         }));
         
         // If results found from fallback search, show confirmation modal
+        // Check if supplier is registered on platform (has isRegisteredOnPlatform flag)
         if (results.length > 0) {
-          setPendingSupplier(results[0]); // Show modal for first result
-          setShowSupplierConfirmModal(true);
-          setSupplierSearchResults([]); // Don't show in table yet
+          const supplier = results[0];
+          // Check if supplier is registered on platform
+          if (supplier.isRegisteredOnPlatform) {
+            // Supplier is registered on platform - show approval modal
+            setPendingSupplier(supplier); // Show modal for first result
+            setShowSupplierConfirmModal(true);
+            setSupplierSearchResults([]); // Don't show in table yet
+          } else {
+            // Supplier found but not registered on platform - show in results
+            setSupplierSearchResults(results);
+          }
         } else {
-          // No supplier found - show modal with direct input option
+          // No supplier found - show manual entry option
           setPendingSupplierPhone(phoneNumber);
           setShowSupplierConfirmModal(true);
           setSupplierSearchResults([]);
@@ -338,17 +354,94 @@ export default function InboundNewPage() {
   };
 
   // Handle confirm supplier from modal (네 button)
-  const handleConfirmSupplier = () => {
-    if (pendingSupplier) {
-      setSelectedSupplierDetails(pendingSupplier);
-      handleInputChange("supplierId", pendingSupplier.managerId);
-      handleInputChange("supplierName", pendingSupplier.companyName);
-      handleInputChange("supplierContactName", pendingSupplier.managerName);
-      handleInputChange("supplierContactPhone", pendingSupplier.phoneNumber);
-      handleInputChange("supplierEmail", pendingSupplier.email1 || "");
-      setShowSupplierConfirmModal(false);
-      setPendingSupplier(null);
+  // If supplier is registered on platform, approve trade link first
+  const handleConfirmSupplier = async () => {
+    if (!pendingSupplier) return;
+
+    // If supplier is registered on platform, approve trade link
+    if (pendingSupplier.isRegisteredOnPlatform && pendingSupplier.supplierId) {
+      try {
+        // Use correct localStorage keys (same as login page)
+        const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+        const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+
+        // Check if token and tenantId exist
+        if (!token) {
+          alert("로그인이 필요합니다. 다시 로그인해주세요.");
+          return;
+        }
+
+        if (!tenantId) {
+          alert("테넌트 정보가 없습니다. 다시 로그인해주세요.");
+          return;
+        }
+
+        const response = await fetch(`${apiUrl}/supplier/approve-trade-link`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Tenant-Id": tenantId,
+          },
+          body: JSON.stringify({
+            supplierId: pendingSupplier.supplierId,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
+          
+          if (response.status === 401) {
+            alert("인증이 만료되었습니다. 다시 로그인해주세요.");
+            // Optionally redirect to login
+            // window.location.href = "/login";
+            return;
+          }
+          
+          throw new Error(`거래 관계 승인에 실패했습니다: ${response.status}`);
+        }
+
+        // Success - trade link approved
+        const result = await response.json();
+        console.log("Trade link approved:", result);
+        
+        // Show success message
+        alert("거래 관계가 승인되었습니다. 담당자 정보가 추가되었습니다.");
+      } catch (error: any) {
+        console.error("Error approving trade link:", error);
+        alert(`거래 관계 승인 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+        return;
+      }
     }
+
+    // Set supplier details - this will show the card with all manager information
+    // Include all fields: companyName, managerName, position, phoneNumber, managerId, etc.
+    setSelectedSupplierDetails({
+      companyName: pendingSupplier.companyName,
+      companyAddress: pendingSupplier.companyAddress,
+      businessNumber: pendingSupplier.businessNumber,
+      companyPhone: pendingSupplier.companyPhone,
+      companyEmail: pendingSupplier.companyEmail,
+      managerId: pendingSupplier.managerId,
+      managerName: pendingSupplier.managerName,
+      position: pendingSupplier.position || null,
+      phoneNumber: pendingSupplier.phoneNumber,
+      email1: pendingSupplier.email1,
+      email2: pendingSupplier.email2,
+      responsibleProducts: pendingSupplier.responsibleProducts || [],
+    });
+    
+    // Also update form fields
+    handleInputChange("supplierId", pendingSupplier.managerId);
+    handleInputChange("supplierName", pendingSupplier.companyName);
+    handleInputChange("supplierContactName", pendingSupplier.managerName);
+    handleInputChange("supplierContactPhone", pendingSupplier.phoneNumber);
+    handleInputChange("supplierEmail", pendingSupplier.email1 || "");
+    
+    // Close modal and clear pending supplier
+    setShowSupplierConfirmModal(false);
+    setPendingSupplier(null);
   };
 
   // Handle direct input (직접 입력 button)
@@ -408,7 +501,8 @@ export default function InboundNewPage() {
     // Upload to server
     setUploadingCertificate(true);
     try {
-      const token = localStorage.getItem("token");
+      // Use correct localStorage keys (same as login page)
+      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
 
@@ -1147,6 +1241,12 @@ export default function InboundNewPage() {
                       <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이름</label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.managerName}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">직함</label>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.position || "-"}
                       </div>
                     </div>
                     <div>

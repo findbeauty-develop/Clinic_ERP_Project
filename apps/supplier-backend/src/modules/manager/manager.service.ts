@@ -170,12 +170,24 @@ export class ManagerService {
         where: { business_number: dto.company.businessNumber },
       });
 
-      // 3. Check for existing manager by phone_number
+      // 3. Check for existing SupplierManager by phone_number (global, login uchun)
       const existingManager = await this.prisma.supplierManager.findUnique({
         where: { phone_number: dto.manager.phoneNumber },
       });
 
-      // 4. Check for duplicate email1 (only if not updating existing manager)
+      // 4. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
+      // Matching: business_number + phone_number + name
+      const existingClinicManager = existingSupplier
+        ? await this.prisma.clinicSupplierManager.findFirst({
+            where: {
+              supplier_id: existingSupplier.id,
+              phone_number: dto.manager.phoneNumber,
+              name: dto.manager.name, // Name ham mos kelishi kerak
+            },
+          })
+        : null;
+
+      // 5. Check for duplicate email1 in SupplierManager (only if not updating existing manager)
       if (!existingManager || existingManager.email1 !== dto.contact.email1) {
         const existingEmail = await this.prisma.supplierManager.findFirst({
           where: { email1: dto.contact.email1 },
@@ -186,28 +198,35 @@ export class ManagerService {
         }
       }
 
-      // 5. Agar manager mavjud bo'lsa va password_hash null bo'lsa (clinic tomonidan yaratilgan)
-      // yoki password_hash mavjud bo'lsa (allaqachon ro'yxatdan o'tgan) - error
+      // 6. Agar SupplierManager mavjud bo'lsa va password_hash mavjud bo'lsa (allaqachon ro'yxatdan o'tgan)
       if (existingManager) {
         if (existingManager.password_hash) {
           throw new ConflictException("이미 등록된 휴대폰 번호입니다");
         }
-        // Agar password_hash null bo'lsa, update qilamiz
+        // Agar password_hash null bo'lsa, update qilamiz (bu holat endi bo'lmaydi, chunki SupplierManager faqat supplier yaratadi)
       }
 
-      // 6. Supplier upsert (business_number bo'yicha)
+      // 7. Supplier upsert (business_number bo'yicha) - CLAIM existing company if exists
+      // If company exists (created by clinic manually), claim it and set to ACTIVE
+      // Supplier signup data takes precedence, but preserve manual fields if missing
       const supplier = existingSupplier
         ? await this.prisma.supplier.update({
             where: { id: existingSupplier.id },
             data: {
+              // Supplier signup data takes precedence
               company_name: dto.company.companyName,
-              company_phone: dto.company.companyPhone || null,
-              company_email: dto.company.companyEmail || "",
-              company_address: dto.company.companyAddress || null,
-              business_type: dto.company.businessType || null,
-              business_item: dto.company.businessItem || null,
-              product_categories: dto.company.productCategories || [],
-              share_consent: dto.company.shareConsent || false,
+              company_phone: dto.company.companyPhone || existingSupplier.company_phone || null,
+              company_email: dto.company.companyEmail || existingSupplier.company_email,
+              company_address: dto.company.companyAddress || existingSupplier.company_address || null,
+              business_type: dto.company.businessType || existingSupplier.business_type || null,
+              business_item: dto.company.businessItem || existingSupplier.business_item || null,
+              product_categories: (dto.company.productCategories && dto.company.productCategories.length > 0)
+                ? dto.company.productCategories 
+                : existingSupplier.product_categories,
+              share_consent: dto.company.shareConsent !== undefined 
+                ? dto.company.shareConsent 
+                : existingSupplier.share_consent,
+              status: "ACTIVE", // Claim existing company - set to ACTIVE
               updated_at: new Date(),
             },
           })
@@ -222,11 +241,27 @@ export class ManagerService {
               business_item: dto.company.businessItem || null,
               product_categories: dto.company.productCategories || [],
               share_consent: dto.company.shareConsent || false,
-              status: "pending",
+              status: "ACTIVE", // New supplier signup - immediately ACTIVE (no approval needed)
             },
           });
 
-      // 7. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
+      // 8. Remove duplicates from regions and products
+      const uniqueRegions = Array.from(
+        new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
+      );
+      const uniqueProducts = Array.from(
+        new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
+      );
+
+      // 9. Agar ClinicSupplierManager topilsa, uning ma'lumotlaridan foydalanish
+      const finalRegions = existingClinicManager && existingClinicManager.responsible_regions.length > 0
+        ? existingClinicManager.responsible_regions
+        : uniqueRegions;
+      const finalProducts = existingClinicManager && existingClinicManager.responsible_products.length > 0
+        ? existingClinicManager.responsible_products
+        : uniqueProducts;
+
+      // 10. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
       let managerId = dto.managerId || existingManager?.manager_id;
       if (!managerId) {
         const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
@@ -263,54 +298,79 @@ export class ManagerService {
         }
       }
 
-      // 8. Remove duplicates from regions and products
-      const uniqueRegions = Array.from(
-        new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
-      );
-      const uniqueProducts = Array.from(
-        new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
-      );
+      // 11. SupplierManager yaratish (phone_number UNIQUE, shuning uchun create yoki error)
+      // Agar existingManager mavjud bo'lsa va password_hash null bo'lsa, bu holat endi bo'lmaydi
+      // Chunki SupplierManager faqat supplier ro'yxatdan o'tganda yaratiladi
+      if (existingManager) {
+        throw new ConflictException("이미 등록된 휴대폰 번호입니다");
+      }
 
-      // 9. SupplierManager upsert (phone_number bo'yicha)
-      const manager = existingManager
-        ? await this.prisma.supplierManager.update({
-            where: { id: existingManager.id },
-            data: {
-              supplier_id: supplier.id,
-              manager_id: managerId,
-              name: dto.manager.name,
-              certificate_image_url: dto.manager.certificateImageUrl || existingManager.certificate_image_url,
-              password_hash: passwordHash, // Update password_hash
-              email1: dto.contact.email1, // Update email1
-              email2: dto.contact.email2 || null,
-              responsible_regions: uniqueRegions,
-              responsible_products: uniqueProducts,
-              position: dto.manager.position || null,
-              created_by: "supplier", // Supplier tomonidan to'ldirilganini belgilash
-              status: "pending",
+      // Yangi SupplierManager yaratish
+      const manager = await this.prisma.supplierManager.create({
+        data: {
+          supplier_id: supplier.id,
+          clinic_manager_id: existingClinicManager?.id || null, // ClinicSupplierManager bilan link
+          manager_id: managerId,
+          name: dto.manager.name,
+          phone_number: dto.manager.phoneNumber,
+          certificate_image_url: dto.manager.certificateImageUrl || existingClinicManager?.certificate_image_url || null,
+          password_hash: passwordHash,
+          email1: dto.contact.email1,
+          email2: dto.contact.email2 || null,
+          responsible_regions: finalRegions,
+          responsible_products: finalProducts,
+          position: dto.manager.position || existingClinicManager?.position || null,
+          status: "ACTIVE", // Immediately ACTIVE after signup (no approval needed)
+        },
+      });
+
+      // 12. Agar ClinicSupplierManager topilsa, unga link qo'shish
+      if (existingClinicManager) {
+        await this.prisma.clinicSupplierManager.update({
+          where: { id: existingClinicManager.id },
+          data: {
+            // linkedManager relation orqali avtomatik link qilinadi
+          },
+        });
+
+        // 12a. Create APPROVED trade link for all clinics that have this ClinicSupplierManager
+        // Find all ClinicSupplierManagers for this supplier
+        const allClinicManagers = await this.prisma.clinicSupplierManager.findMany({
+          where: {
+            supplier_id: supplier.id,
+          },
+          select: {
+            tenant_id: true,
+          },
+        });
+
+        // Create APPROVED trade links for all clinics
+        const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
+        for (const tenantId of uniqueTenantIds) {
+          await this.prisma.clinicSupplierLink.upsert({
+            where: {
+              tenant_id_supplier_id: {
+                tenant_id: tenantId,
+                supplier_id: supplier.id,
+              },
+            },
+            update: {
+              status: "APPROVED", // Auto-approve if clinic already has manager
+              approved_at: new Date(),
               updated_at: new Date(),
             },
-          })
-        : await this.prisma.supplierManager.create({
-            data: {
+            create: {
+              tenant_id: tenantId,
               supplier_id: supplier.id,
-              manager_id: managerId,
-              name: dto.manager.name,
-              phone_number: dto.manager.phoneNumber,
-              certificate_image_url: dto.manager.certificateImageUrl || null,
-              password_hash: passwordHash,
-              email1: dto.contact.email1,
-              email2: dto.contact.email2 || null,
-              responsible_regions: uniqueRegions,
-              responsible_products: uniqueProducts,
-              position: dto.manager.position || null,
-              created_by: "supplier",
-              status: "pending",
+              status: "APPROVED",
+              approved_at: new Date(),
             },
           });
+        }
+      }
 
-      // 10. Create region tags
-      for (const region of uniqueRegions) {
+      // 13. Create region tags
+      for (const region of finalRegions) {
         await this.prisma.supplierRegionTag.upsert({
           where: { name: region },
           update: {},
@@ -318,8 +378,8 @@ export class ManagerService {
         });
       }
 
-      // 11. Create product tags
-      for (const product of uniqueProducts) {
+      // 14. Create product tags
+      for (const product of finalProducts) {
         await this.prisma.supplierProductTag.upsert({
           where: { name: product },
           update: {},

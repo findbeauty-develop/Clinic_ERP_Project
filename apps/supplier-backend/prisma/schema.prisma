@@ -25,25 +25,54 @@ model Supplier {
   updated_at        DateTime?
   
   // Relations
-  managers          SupplierManager[]
+  clinicManagers        ClinicSupplierManager[]
+  managers              SupplierManager[]
   
   @@index([tenant_id])
   @@index([business_number])
   @@index([status])
 }
 
-// 공급업체 담당자 (Supplier Manager) - Supplier contact person
+// Clinic tomonidan yaratilgan Supplier Manager (Clinic context'da)
+model ClinicSupplierManager {
+  id                    String    @id @default(uuid())
+  supplier_id           String
+  tenant_id             String    // Qaysi clinic yaratgan
+  name                  String
+  phone_number          String    // NOT UNIQUE - faqat clinic context'da
+  email1               String?
+  email2               String?
+  position              String?   // 직함
+  certificate_image_url String?   // 사업자등록증 이미지 URL
+  responsible_regions   String[]  @default([])
+  responsible_products  String[]  @default([])
+  memo                  String?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime?
+  
+  // Relations
+  supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  linkedManager         SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
+  
+  @@index([supplier_id])
+  @@index([tenant_id])
+  @@index([phone_number])
+  @@index([tenant_id, phone_number]) // Composite index for clinic-specific search
+}
+
+// Supplier tomonidan yaratilgan Manager (Global, login uchun)
 model SupplierManager {
   id                    String    @id @default(uuid())
   supplier_id           String
+  clinic_manager_id     String?   @unique // ClinicSupplierManager bilan link (agar clinic yaratgan bo'lsa) - UNIQUE for one-to-one
   manager_id            String    @unique // 담당자 ID (회사이름+4자리 숫자)
   name                  String
-  phone_number          String    @unique
+  phone_number          String    @unique // UNIQUE - global
   certificate_image_url String?   // 사업자등록증 이미지 URL
   
-  // 계정 정보
-  password_hash         String?   // Optional - clinic tomonidan yaratilganda null bo'lishi mumkin
-  email1               String?   // Optional - clinic tomonidan yaratilganda null bo'lishi mumkin
+  // 계정 정보 (required for login)
+  password_hash         String    // Required - supplier ro'yxatdan o'tganda to'ldiriladi
+  email1               String    // Required - supplier ro'yxatdan o'tganda to'ldiriladi
   email2               String?
   
   // 담당 정보
@@ -51,22 +80,20 @@ model SupplierManager {
   responsible_products  String[]  @default([]) // 담당 제품
   position              String?   // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
   
-  // 생성 정보
-  created_by            String?   // "clinic" yoki "supplier" - kim yaratganini belgilash
-  
   status                String    @default("pending") // pending, approved, rejected, active
   created_at            DateTime  @default(now())
   updated_at            DateTime?
   
   // Relations
   supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  clinicManager         ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
   
   @@index([supplier_id])
   @@index([manager_id])
   @@index([phone_number])
   @@index([email1])
   @@index([status])
-  @@index([created_by])
+  @@index([clinic_manager_id])
 }
 
 // 공급업체 지역 태그 (Supplier Region Tag) - For search/matching
