@@ -73,7 +73,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleClinicSignup = () => {
+  const handleClinicSignup = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    
     if (typeof window !== "undefined") {
       // Clear all registration-related data from sessionStorage and localStorage
       // to ensure a fresh start for new clinic registration
@@ -91,7 +94,7 @@ export default function LoginPage() {
         localStorage.removeItem(key);
       });
 
-      window.location.href = "/clinic/register";
+      router.push("/clinic/register");
     }
   };
 
@@ -213,15 +216,18 @@ export default function LoginPage() {
               >
                 {loading ? "로그인 중..." : "로그인"}
               </button>
-              <button
-                type="button"
-                onClick={handleClinicSignup}
-                className="w-full rounded-2xl border border-indigo-300 bg-white px-5 py-4 text-base font-semibold text-indigo-600 shadow-sm transition hover:border-indigo-400 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              >
-                클리닉 가입
-              </button>
             </div>
           </form>
+          
+          <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={handleClinicSignup}
+              className="w-full rounded-2xl border border-indigo-300 bg-white px-5 py-4 text-base font-semibold text-indigo-600 shadow-sm transition hover:border-indigo-400 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            >
+              클리닉 가입
+            </button>
+          </div>
 
           <p className="text-center text-sm text-gray-500">
             비밀번호를 잊으셨다면 오너에게 문의하세요.
