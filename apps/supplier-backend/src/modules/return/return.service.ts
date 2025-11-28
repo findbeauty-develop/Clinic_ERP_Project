@@ -69,6 +69,7 @@ export class ReturnService {
       // Format response
       const formattedNotifications = notifications.map((notification: any) => ({
         id: notification.id,
+        returnId: notification.return_id, // Include return_id for grouping
         clinicName: notification.clinic_name,
         returnManagerName: notification.return_manager_name,
         returnDate: notification.return_date,
@@ -87,6 +88,7 @@ export class ReturnService {
         isRead: notification.is_read,
         batchNo: notification.batch_no,
         createdAt: notification.created_at,
+        acceptedAt: notification.accepted_at,
       }));
 
       return {
