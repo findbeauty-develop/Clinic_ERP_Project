@@ -37,7 +37,8 @@ export class AuthService {
       }
 
       // Check if manager is approved
-      if (manager.status !== "active" && manager.status !== "approved") {
+      // Status is "ACTIVE" (uppercase) in the database schema
+      if (manager.status !== "ACTIVE") {
         throw new UnauthorizedException("승인 대기 중인 계정입니다. 승인 후 로그인해주세요.");
       }
 

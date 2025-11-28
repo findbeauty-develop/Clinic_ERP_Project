@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { MobileNav } from "../components/layout/mobile-nav";
+import { Sidebar } from "../components/layout/sidebar";
 
 export const metadata: Metadata = {
   title: "Supplier ERP",
@@ -15,8 +15,10 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="antialiased">
-        {children}
-        <MobileNav />
+        <Sidebar />
+        <main className="lg:pl-64">
+          {children}
+        </main>
       </body>
     </html>
   );

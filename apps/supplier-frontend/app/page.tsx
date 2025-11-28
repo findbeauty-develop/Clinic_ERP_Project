@@ -2,7 +2,7 @@
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
+    <div className="min-h-screen bg-slate-50">
       <div className="bg-white p-4 shadow-sm">
         <h1 className="text-xl font-bold text-slate-900">대시보드</h1>
       </div>

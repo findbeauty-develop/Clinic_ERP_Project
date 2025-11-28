@@ -6,13 +6,15 @@ import {
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../core/prisma.service";
 import { ReturnRepository } from "../repositories/return.repository";
+import { SupplierReturnNotificationService } from "./supplier-return-notification.service";
 import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
 
 @Injectable()
 export class ReturnService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly returnRepository: ReturnRepository
+    private readonly returnRepository: ReturnRepository,
+    private readonly supplierReturnNotificationService: SupplierReturnNotificationService
   ) {}
 
   /**
@@ -313,6 +315,35 @@ export class ReturnService {
           throw new BadRequestException(
             `Failed to process returns: ${errors.join(", ")}`
           );
+        }
+
+        // Transaction commit bo'lgandan keyin notification'larni yaratish
+        // Bu muvaffaqiyatsiz bo'lsa ham return jarayoni to'xtamasligi kerak
+        for (const returnRecord of createdReturns) {
+          // Product'ni qayta olish (transaction tashqarisida)
+          const product = await (this.prisma as any).product.findFirst({
+            where: {
+              id: returnRecord.product_id,
+              tenant_id: tenantId,
+            },
+            include: {
+              supplierProducts: {
+                orderBy: { created_at: "desc" },
+              },
+            },
+          });
+
+          if (product) {
+            this.supplierReturnNotificationService
+              .createNotificationsForReturn(returnRecord, product, tenantId)
+              .catch((error) => {
+                // Log error but don't fail the return process
+                console.error(
+                  `Failed to create supplier notifications for return ${returnRecord.id}:`,
+                  error
+                );
+              });
+          }
         }
 
         return {

@@ -471,4 +471,50 @@ model SupplierManager {
   @@index([email1])
   @@index([status])
   @@index([clinic_manager_id])
+  supplierReturnNotifications SupplierReturnNotification[]
+}
+
+// Supplier Return Notification - Clinic'dan return qilinganda supplier manager'ga yuboriladi
+model SupplierReturnNotification {
+  id                  String    @id @default(uuid())
+  supplier_manager_id String    // Qaysi SupplierManager'ga tegishli
+  return_id           String    // Return ID (reference)
+  clinic_tenant_id    String    // Qaysi clinic'dan return qilingan
+  clinic_name         String?   // Clinic nomi
+  
+  // Product ma'lumotlari
+  product_id          String
+  product_name        String
+  product_brand       String
+  product_code        String?   // Product code/barcode
+  
+  // Return ma'lumotlari
+  return_qty          Int       // 반납 수량
+  refund_amount_per_item Float  // 개당 할인 금액
+  total_refund        Float     // 총 반납 금액
+  return_manager_name String    // Return qilayotgan shaxsning ismi
+  return_date         DateTime  // Return sanasi
+  batch_no            String?   // Batch raqami
+  
+  // Status
+  status              String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  is_read             Boolean   @default(false)
+  
+  // Timestamps
+  created_at          DateTime  @default(now())
+  updated_at          DateTime?
+  accepted_at         DateTime?
+  rejected_at         DateTime?
+  
+  // Relations
+  supplierManager     SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+  
+  @@index([supplier_manager_id])
+  @@index([return_id])
+  @@index([clinic_tenant_id])
+  @@index([status])
+  @@index([is_read])
+  @@index([supplier_manager_id, status])
+  @@index([supplier_manager_id, is_read])
+  @@index([created_at])
 }
