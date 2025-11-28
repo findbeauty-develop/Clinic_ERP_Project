@@ -5,6 +5,7 @@ import { TwilioProvider } from './providers/twilio.provider';
 import { CoolSMSProvider } from './providers/coolsms.provider';
 import { KakaoProvider } from './providers/kakao.provider';
 import { KTCommunisProvider } from './providers/kt-communis.provider';
+import { SolapiProvider } from './providers/solapi.provider';
 
 @Injectable()
 export class MessageService {
@@ -17,9 +18,10 @@ export class MessageService {
     private coolSMSProvider: CoolSMSProvider,
     private kakaoProvider: KakaoProvider,
     private ktCommunisProvider: KTCommunisProvider,
+    private solapiProvider: SolapiProvider,
   ) {
     // Config'dan provider tanlash
-    const providerName = this.configService.get<string>('MESSAGE_PROVIDER') || 'coolsms';
+    const providerName = this.configService.get<string>('MESSAGE_PROVIDER') || 'solapi';
     this.provider = this.getProvider(providerName);
     this.logger.log(`Message provider initialized: ${providerName}`);
   }
@@ -32,10 +34,13 @@ export class MessageService {
         return this.coolSMSProvider;
       case 'kakao':
         return this.kakaoProvider;
-      return this.ktCommunisProvider;
+      case 'ktcommunis':
+        return this.ktCommunisProvider;
+      case 'solapi':
+        return this.solapiProvider;
       default:
-        this.logger.warn(`Unknown provider: ${name}, using CoolSMS`);
-        return this.coolSMSProvider;
+        this.logger.warn(`Unknown provider: ${name}, using Solapi`);
+        return this.solapiProvider;
     }
   }
 

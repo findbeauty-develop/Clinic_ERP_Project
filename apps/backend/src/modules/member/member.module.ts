@@ -15,6 +15,7 @@ import { TwilioProvider } from "./services/providers/twilio.provider";
 import { CoolSMSProvider } from "./services/providers/coolsms.provider";
 import { KakaoProvider } from "./services/providers/kakao.provider";
 import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
+import { SolapiProvider } from "./services/providers/solapi.provider";
 
 @Module({
   controllers: [ClinicsController, MembersController],
@@ -33,6 +34,7 @@ import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
     CoolSMSProvider,
     KakaoProvider,
     KTCommunisProvider,
+    SolapiProvider,
   ],
 })
 export class MemberModule {}

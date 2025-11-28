@@ -19,6 +19,7 @@ type ReturnHistoryItem = {
   supplierName?: string | null;
   outboundDate?: string | null;
   outboundManager?: string | null;
+  supplierStatus?: "PENDING" | "ACCEPTED" | "REJECTED" | null; // Supplier notification status
 };
 
 type GroupedReturnHistory = {
@@ -29,6 +30,7 @@ type GroupedReturnHistory = {
   returnDate: string | null;
   items: ReturnHistoryItem[];
   totalAmount: number;
+  supplierStatus?: "PENDING" | "ACCEPTED" | "REJECTED" | null; // Group status (all items must be ACCEPTED to show 완료)
 };
 
 export default function ReturnHistoryPage() {
@@ -66,21 +68,28 @@ export default function ReturnHistoryPage() {
       }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}`);
 
       // Format history items
-      const formattedItems: ReturnHistoryItem[] = response.items.map((item: any) => ({
-        id: item.id,
-        productId: item.product_id || item.productId,
-        productName: item.product?.name || item.productName || "Unknown",
-        brand: item.product?.brand || item.brand || "",
-        batchNo: item.batch?.batch_no || item.batch_no || "",
-        returnQty: item.return_qty || item.returnQty || 0,
-        refundAmount: item.refund_amount || item.refundAmount || 0,
-        totalRefund: item.total_refund || item.totalRefund || 0,
-        managerName: item.manager_name || item.managerName || "",
-        returnDate: item.return_date || item.returnDate || "",
-        supplierName: item.product?.supplierProducts?.[0]?.supplier_id || item.supplier_id || item.supplier_name || item.supplierName || null,
-        outboundDate: item.outbound?.outbound_date || item.outboundDate || null,
-        outboundManager: item.outbound?.manager_name || item.outboundManager || null,
-      }));
+      const formattedItems: ReturnHistoryItem[] = response.items.map((item: any) => {
+        // Get supplier notification status (latest notification)
+        const latestNotification = item.supplierReturnNotifications?.[0];
+        const supplierStatus = latestNotification?.status || null;
+        
+        return {
+          id: item.id,
+          productId: item.product_id || item.productId,
+          productName: item.product?.name || item.productName || "Unknown",
+          brand: item.product?.brand || item.brand || "",
+          batchNo: item.batch?.batch_no || item.batch_no || "",
+          returnQty: item.return_qty || item.returnQty || 0,
+          refundAmount: item.refund_amount || item.refundAmount || 0,
+          totalRefund: item.total_refund || item.totalRefund || 0,
+          managerName: item.manager_name || item.managerName || "",
+          returnDate: item.return_date || item.returnDate || "",
+          supplierName: item.product?.supplierProducts?.[0]?.supplier_id || item.supplier_id || item.supplier_name || item.supplierName || null,
+          outboundDate: item.outbound?.outbound_date || item.outboundDate || null,
+          outboundManager: item.outbound?.manager_name || item.outboundManager || null,
+          supplierStatus: supplierStatus,
+        };
+      });
 
       setHistoryData(formattedItems);
       setTotalPages(response.totalPages || 1);
@@ -96,17 +105,10 @@ export default function ReturnHistoryPage() {
     const groups: Record<string, GroupedReturnHistory> = {};
 
     historyData.forEach((item) => {
-      // Group by return date (bir vaqtda return qilingan maxsulotlar bitta card'da)
-      // Agar return date bir xil bo'lsa, bitta card'da ko'rsatiladi
-      const returnDateKey = item.returnDate 
-        ? new Date(item.returnDate).toLocaleDateString("ko-KR", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          })
-        : "unknown";
-      
-      const key = `${returnDateKey}-${item.supplierName || "unknown"}-${item.managerName || "unknown"}`;
+      // Group by return ID - har bir return transaction alohida card'da
+      // Agar bir xil return ID bo'lsa, bitta card'da ko'rsatiladi (bir vaqtda return qilingan maxsulotlar)
+      // Har bir yangi return transaction yangi card'da ko'rinadi
+      const key = item.id; // Use return ID as the grouping key
       
       if (!groups[key]) {
         groups[key] = {
@@ -117,10 +119,31 @@ export default function ReturnHistoryPage() {
           returnDate: item.returnDate ?? null,
           items: [],
           totalAmount: 0,
+          supplierStatus: null,
         };
       }
       groups[key].items.push(item);
       groups[key].totalAmount += item.totalRefund;
+      
+      // Update group status: if ANY item is ACCEPTED, show ACCEPTED; otherwise show PENDING if any is PENDING
+      const allStatuses = groups[key].items
+        .map(i => i.supplierStatus)
+        .filter(s => s !== null && s !== undefined);
+      
+      if (allStatuses.length > 0) {
+        const anyAccepted = allStatuses.some(s => s === "ACCEPTED");
+        const anyPending = allStatuses.some(s => s === "PENDING");
+        
+        // Priority: If ANY item is ACCEPTED, show ACCEPTED (완료)
+        // Otherwise, if ANY is PENDING, show PENDING (요청중)
+        if (anyAccepted) {
+          groups[key].supplierStatus = "ACCEPTED";
+        } else if (anyPending) {
+          groups[key].supplierStatus = "PENDING";
+        } else {
+          groups[key].supplierStatus = allStatuses[0] as any;
+        }
+      }
     });
 
     // Sort groups by return date (newest first)
@@ -220,7 +243,7 @@ export default function ReturnHistoryPage() {
                 className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800"
               >
                 {/* Sana va 출고 담당자 - yonma-yon */}
-                <div className="mb-4 flex items-center gap-3">
+                <div className="mb-0.1 flex items-center gap-3">
                   {group.returnDate && (
                     <div className="text-sm font-semibold text-slate-900 dark:text-white">
                       {new Date(group.returnDate).toLocaleDateString("ko-KR", {
@@ -242,8 +265,25 @@ export default function ReturnHistoryPage() {
                   <div>
                     공급처: {group.supplierName || "공급처 없음"} {group.managerName || ""}
                   </div>
-                  <div>
-                    총 반납 금액: {group.totalAmount.toLocaleString()}원
+                  <div className="flex flex-col items-end gap-4">
+                    {/* Status Button - tepada */}
+                    {group.supplierStatus && (
+                      <div>
+                        {group.supplierStatus === "ACCEPTED" ? (
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium dark:bg-green-900/30 dark:text-green-400">
+                            완료
+                          </span>
+                        ) : group.supplierStatus === "PENDING" ? (
+                          <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium dark:bg-yellow-900/30 dark:text-yellow-400">
+                            요청중
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    {/* 총 반납 금액 - pastda */}
+                    <div>
+                      총 반납 금액: {group.totalAmount.toLocaleString()}원
+                    </div>
                   </div>
                 </div>
 

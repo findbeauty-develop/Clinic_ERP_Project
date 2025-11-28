@@ -183,8 +183,63 @@ export class ReturnRepository {
       (this.prisma as any).return.count({ where }),
     ]);
 
+    // Fetch supplier return notifications for each return
+    const returnIds = returns.map((r: any) => r.id);
+    const notifications = returnIds.length > 0
+      ? await (this.prisma as any).supplierReturnNotification.findMany({
+          where: {
+            return_id: { in: returnIds },
+          },
+          select: {
+            return_id: true,
+            status: true,
+            accepted_at: true,
+            created_at: true,
+          },
+          orderBy: { created_at: "desc" },
+        })
+      : [];
+
+    // Group notifications by return_id and get the best status for each return
+    // Priority: ACCEPTED > PENDING > REJECTED
+    const notificationsByReturnId: Record<string, any> = {};
+    notifications.forEach((notif: any) => {
+      const existing = notificationsByReturnId[notif.return_id];
+      
+      if (!existing) {
+        notificationsByReturnId[notif.return_id] = notif;
+      } else {
+        // Priority: ACCEPTED > PENDING > REJECTED
+        const statusPriority: Record<string, number> = {
+          ACCEPTED: 3,
+          PENDING: 2,
+          REJECTED: 1,
+        };
+        
+        const existingPriority = statusPriority[existing.status] || 0;
+        const newPriority = statusPriority[notif.status] || 0;
+        
+        // If new notification has higher priority, use it
+        // If same priority, use the latest one
+        if (newPriority > existingPriority) {
+          notificationsByReturnId[notif.return_id] = notif;
+        } else if (newPriority === existingPriority && 
+                   new Date(notif.created_at) > new Date(existing.created_at)) {
+          notificationsByReturnId[notif.return_id] = notif;
+        }
+      }
+    });
+
+    // Attach notification status to each return
+    const returnsWithStatus = returns.map((returnItem: any) => ({
+      ...returnItem,
+      supplierReturnNotifications: notificationsByReturnId[returnItem.id] 
+        ? [notificationsByReturnId[returnItem.id]]
+        : [],
+    }));
+
     return {
-      items: returns,
+      items: returnsWithStatus,
       total,
       page,
       limit,
