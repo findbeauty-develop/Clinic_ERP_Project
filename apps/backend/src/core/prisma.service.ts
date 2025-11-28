@@ -19,6 +19,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
           console.warn(`Invalid database protocol: ${url.protocol}. Expected postgresql:// or postgres://`);
         }
+        
+        // Check if using port 5432 and suggest port 6543 for pgbouncer
+        if (url.port === "5432" && url.hostname.includes("pooler.supabase.com")) {
+          console.warn(
+            "⚠️  Using port 5432 with Supabase pooler. Consider using port 6543 with ?pgbouncer=true for better connection pooling."
+          );
+        }
       } catch (error) {
         if (error instanceof TypeError) {
           // Invalid URL format
@@ -34,8 +41,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         },
       },
       log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-      // Connection pool configuration for better reliability
-      // These settings help with connection timeouts and retries
+      // Connection pool configuration
+      // Prisma uses connection pooling automatically
+      // For Supabase, use port 6543 with ?pgbouncer=true in DATABASE_URL
     });
   }
 
@@ -82,8 +90,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    */
   async executeWithRetry<T>(
     operation: () => Promise<T>,
-    retries = 1, // Reduced default retries
-    delay = 2000 // Increased initial delay
+    retries = 2, // Increased retries for connection issues
+    delay = 2000 // Initial delay
   ): Promise<T> {
     let lastError: Error | unknown;
     
@@ -103,23 +111,34 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           errorMessage.includes("connect") ||
           errorMessage.includes("timeout") ||
           errorMessage.includes("Connection timeout") ||
-          error?.code === "P1001";
+          errorMessage.includes("ECONNREFUSED") ||
+          errorMessage.includes("ENOTFOUND") ||
+          error?.code === "P1001" ||
+          error?.code === "ECONNREFUSED";
 
         if (isConnectionError && attempt < retries) {
           this.logger.warn(
             `Database connection error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay / 1000}s...`
           );
           this.isConnected = false; // Mark as disconnected
+          
+          // Exponential backoff with jitter
           await new Promise(resolve => setTimeout(resolve, delay));
-          delay = Math.min(delay * 2, 5000); // Exponential backoff, max 5 seconds
+          delay = Math.min(delay * 1.5, 10000); // Exponential backoff, max 10 seconds
           continue;
         }
         
         // If not a connection error or max retries reached, throw
-        throw error;
+        if (!isConnectionError) {
+          throw error;
+        }
       }
     }
     
+    // If we get here, all retries failed
+    this.logger.error(
+      `Database operation failed after ${retries + 1} attempts. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`
+    );
     throw lastError;
   }
 
@@ -220,14 +239,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       this.logger.error("Please check the following:");
       this.logger.error("1. DATABASE_URL in .env file is correct");
       this.logger.error("2. Format: postgresql://user:password@host:port/database?schema=public");
-      this.logger.error("3. Database server is running and accessible");
-      this.logger.error("4. Network connectivity to database server");
-      this.logger.error("5. Firewall rules allow connection");
+      this.logger.error("3. For Supabase, try using port 6543 with pgbouncer:");
+      this.logger.error("   postgresql://user:password@host:6543/database?pgbouncer=true");
+      this.logger.error("4. Database server is running and accessible");
+      this.logger.error("5. Network connectivity to database server");
+      this.logger.error("6. Firewall rules allow connection");
       this.logger.error("=".repeat(60));
 
       if (process.env.DATABASE_URL) {
-        const url = new URL(process.env.DATABASE_URL);
-        this.logger.error(`Attempting to connect to: ${url.hostname}:${url.port || 5432}`);
+        try {
+          const url = new URL(process.env.DATABASE_URL);
+          this.logger.error(`Attempting to connect to: ${url.hostname}:${url.port || 5432}`);
+          if (url.port === "5432" && url.hostname.includes("supabase")) {
+            this.logger.error("💡 Tip: Try changing port to 6543 and add ?pgbouncer=true");
+          }
+        } catch (e) {
+          // URL parsing failed
+        }
       }
 
       this.isConnected = false;

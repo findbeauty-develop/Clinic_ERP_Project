@@ -22,7 +22,6 @@ interface ReturnNotification {
   items: ReturnNotificationItem[];
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   isRead: boolean;
-  batchNo?: string;
   createdAt: string;
   acceptedAt?: string;
 }
@@ -48,9 +47,13 @@ export default function ReturnsPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(10); // Items per page
 
   // Fetch notifications
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (page: number = currentPage) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -62,16 +65,22 @@ export default function ReturnsPage() {
         params.append("status", "ACCEPTED");
       }
       
-      params.append("page", "1");
-      params.append("limit", "100");
+      params.append("page", page.toString());
+      params.append("limit", limit.toString());
 
       const response = await apiGet<{
         notifications: ReturnNotification[];
         total: number;
         unreadCount: number;
+        page: number;
+        limit: number;
+        totalPages: number;
       }>(`/supplier/returns?${params.toString()}`);
 
       setNotifications(response.notifications);
+      setTotal(response.total);
+      setTotalPages(response.totalPages || Math.ceil(response.total / limit));
+      setCurrentPage(response.page || page);
     } catch (error: any) {
       console.error("Error fetching notifications:", error);
       alert("반납 목록을 불러오는데 실패했습니다: " + error.message);
@@ -128,8 +137,19 @@ export default function ReturnsPage() {
   }, [notifications]);
 
   useEffect(() => {
-    fetchNotifications();
+    setCurrentPage(1); // Reset to first page when tab changes
+    fetchNotifications(1);
   }, [activeTab]);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      fetchNotifications(page);
+      // Scroll to top when page changes
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   // Accept return
   const handleAcceptReturn = async () => {
@@ -228,7 +248,7 @@ export default function ReturnsPage() {
                 placeholder="클리닉 명"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 pl-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 pl-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black placeholder:text-slate-400"
               />
               <svg
                 className="absolute left-3 top-2.5 h-5 w-5 text-slate-400"
@@ -276,10 +296,10 @@ export default function ReturnsPage() {
                 {/* Header */}
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-black">
                       {formatDate(notification.returnDate)}
                     </p>
-                    <p className="text-lg font-semibold text-slate-900 mt-1">
+                    <p className="text-lg font-semibold text-black mt-1">
                       {notification.clinicName} {notification.returnManagerName}님
                     </p>
                   </div>
@@ -290,18 +310,11 @@ export default function ReturnsPage() {
                   )}
                 </div>
 
-                {/* Total Refund */}
-                <div className="mb-4">
-                  <p className="text-lg font-bold text-slate-900">
-                    반납금 {formatCurrency(notification.totalRefund)} 원
-                  </p>
-                </div>
-
                 {/* Product List */}
                 <div className="mb-4 border-t border-slate-200 pt-4">
                   <table className="w-full">
                     <thead>
-                      <tr className="text-left text-sm text-slate-600 border-b border-slate-200">
+                      <tr className="text-left text-sm text-black border-b border-slate-200">
                         <th className="pb-2">제품</th>
                         <th className="pb-2 text-right">수량</th>
                         <th className="pb-2 text-right">단가</th>
@@ -311,16 +324,16 @@ export default function ReturnsPage() {
                     <tbody>
                       {notification.items.map((item, index) => (
                         <tr key={index} className="border-b border-slate-100">
-                          <td className="py-2">
+                          <td className="py-2 text-black">
                             <span className="font-medium">
-                              {item.productCode} {item.productName}
+                              {item.productName}
                             </span>
                           </td>
-                          <td className="py-2 text-right">{item.qty}개</td>
-                          <td className="py-2 text-right">
+                          <td className="py-2 text-right text-black">{item.qty}개</td>
+                          <td className="py-2 text-right text-black">
                             {formatCurrency(item.unitPrice)}
                           </td>
-                          <td className="py-2 text-right font-medium">
+                          <td className="py-2 text-right font-medium text-black">
                             {formatCurrency(item.totalPrice)}
                           </td>
                         </tr>
@@ -329,9 +342,12 @@ export default function ReturnsPage() {
                   </table>
                 </div>
 
-                {/* Action Button */}
-                {notification.status === "PENDING" && activeTab === "list" && (
-                  <div className="flex justify-end">
+                {/* Total Refund and Action Button */}
+                {notification.status === "PENDING" && activeTab === "list" ? (
+                  <div className="flex justify-between items-center">
+                    <p className="text-lg font-bold text-black">
+                      반납금 {formatCurrency(notification.totalRefund)} 원
+                    </p>
                     <button
                       onClick={() => {
                         setSelectedNotification(notification);
@@ -342,18 +358,92 @@ export default function ReturnsPage() {
                       반납 접수
                     </button>
                   </div>
-                )}
-
-                {/* Recovery Date (for completed returns) */}
-                {notification.status === "ACCEPTED" && notification.acceptedAt && (
-                  <div className="mt-4 pt-4 border-t border-slate-200">
-                    <p className="text-sm text-slate-600">
+                ) : notification.status === "ACCEPTED" && notification.acceptedAt ? (
+                  <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
+                    <p className="text-lg font-bold text-black">
+                      반납금 {formatCurrency(notification.totalRefund)} 원
+                    </p>
+                    <p className="text-sm text-black">
                       회수일: {formatDate(notification.acceptedAt)}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mb-4">
+                    <p className="text-lg font-bold text-black">
+                      반납금 {formatCurrency(notification.totalRefund)} 원
                     </p>
                   </div>
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && filteredNotifications.length > 0 && totalPages > 1 && (
+          <div className="mt-6 flex justify-center items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentPage === 1
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
+              }`}
+            >
+              이전
+            </button>
+
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  if (page === 1 || page === totalPages) return true;
+                  if (Math.abs(page - currentPage) <= 1) return true;
+                  return false;
+                })
+                .map((page, index, array) => {
+                  // Add ellipsis if there's a gap
+                  const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
+                  
+                  return (
+                    <div key={page} className="flex items-center gap-1">
+                      {showEllipsisBefore && (
+                        <span className="px-2 text-slate-500">...</span>
+                      )}
+                      <button
+                        onClick={() => handlePageChange(page)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                          currentPage === page
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentPage === totalPages
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
+              }`}
+            >
+              다음
+            </button>
+          </div>
+        )}
+
+        {/* Pagination Info */}
+        {!loading && filteredNotifications.length > 0 && (
+          <div className="mt-4 text-center text-sm text-slate-600">
+            {total}개 중 {((currentPage - 1) * limit) + 1}-{Math.min(currentPage * limit, total)}개 표시
           </div>
         )}
       </div>
@@ -362,25 +452,27 @@ export default function ReturnsPage() {
       {showConfirmModal && selectedNotification && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">
-              반납 제품 받아셨습니까?
-            </h2>
+          
 
-            <div className="space-y-3 mb-6">
-              <p className="text-sm text-slate-500">
-                {formatDate(selectedNotification.returnDate)}
-              </p>
-              <p className="text-lg font-semibold text-slate-900">
-                {selectedNotification.clinicName}
-              </p>
-              <p className="text-lg font-bold text-slate-900">
-                반납금 {formatCurrency(selectedNotification.totalRefund)} 원
-              </p>
+              <div className="space-y-3 mb-6">
+                <p className="text-sm text-slate-500">
+                  {formatDate(selectedNotification.returnDate)}
+                </p>
+                <div className="flex justify-between items-center w-full">
+                  <p className="text-lg font-semibold text-slate-900">
+                    {selectedNotification.clinicName}
+                  </p>
+                  <p className="text-lg font-bold text-slate-900">
+                    반납금 {formatCurrency(selectedNotification.totalRefund)} 원
+                  </p>
+                </div>
+              
 
               <div className="mt-4 space-y-2">
                 {selectedNotification.items.map((item, index) => (
-                  <div key={index} className="text-sm text-slate-700">
-                    {item.productCode} {item.productName}: {item.qty}개
+                  <div key={index} className="flex justify-between items-center text-sm text-slate-700">
+                    <span>{item.productName}</span>
+                    <span>{item.qty}개</span>
                   </div>
                 ))}
               </div>
@@ -395,14 +487,14 @@ export default function ReturnsPage() {
                 className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                 disabled={processing}
               >
-                아니요
+                취소
               </button>
               <button
                 onClick={handleAcceptReturn}
                 className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
                 disabled={processing}
               >
-                {processing ? "처리 중..." : "네, 받았습니다."}
+                {processing ? "처리 중..." : "확인"}
               </button>
             </div>
           </div>
