@@ -270,10 +270,10 @@ export default function ReturnsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 dark:bg-slate-900">
-      <div className="mx-auto max-w-7xl">
+    <div className="h-screen bg-slate-50 p-6 dark:bg-slate-900 overflow-hidden">
+      <div className="mx-auto max-w-7xl h-full flex flex-col">
         {/* Header */}
-        <header className="mb-6">
+        <header className="mb-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
@@ -296,7 +296,7 @@ export default function ReturnsPage() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-6 flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="mb-6 flex gap-2 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
           <div className="px-4 py-2 text-sm font-semibold border-b-2 border-sky-500 text-sky-600 dark:text-sky-400">
             반납 처리
           </div>
@@ -308,10 +308,10 @@ export default function ReturnsPage() {
           </Link>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-3 flex-1 min-h-0">
             {/* Left Panel - Product List */}
-            <div className="lg:col-span-2">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="lg:col-span-2 flex flex-col min-h-0">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex-1 flex flex-col min-h-0 overflow-hidden">
                 {/* Information Box */}
                 <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
                   최근 30일 내 출고된 '팁' 카테고리 제품 및 반납 가능으로 설정된 제품들이 자동으로 표시됩니다.
@@ -359,7 +359,7 @@ export default function ReturnsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                     {products.map((product) => {
                       // Calculate total selected quantity for this product
                       const totalSelectedQty = selectedItems
@@ -474,8 +474,8 @@ export default function ReturnsPage() {
             </div>
 
             {/* Right Panel - Return Processing */}
-            <div className="lg:col-span-1">
-              <div className="sticky top-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="lg:col-span-1 flex flex-col min-h-0">
+              <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex-1 flex flex-col min-h-0">
                 <div className="mb-6 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -507,54 +507,51 @@ export default function ReturnsPage() {
 
                 {/* Selected Items - Order Processing */}
                 {selectedItems.length === 0 ? (
-                  <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-800">
+                  <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-800 flex-1 flex items-center justify-center">
                     <div className="text-sm text-slate-500 dark:text-slate-400">
                       반납할 제품을 선택해주세요.
                     </div>
                   </div>
                 ) : (
-                  <div className="mb-6 max-h-[500px] space-y-4 overflow-y-auto pr-2">
+                  <div className="mb-6 flex-1 space-y-4 overflow-y-auto pr-2 min-h-0 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                     <div className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                       주문 처리
                     </div>
                     {groupedItems.map((group, groupIndex) => (
                       <div
                         key={groupIndex}
-                        className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
+                        className="rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800"
                       >
-                        <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
-                          <div className="font-semibold text-slate-900 dark:text-white">
+                        <div className="mb-2 flex items-center justify-between border-b border-slate-200 pb-1.5 dark:border-slate-700">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white truncate flex-1 min-w-0">
                             {group.supplierName || "공급처 없음"} {group.managerName || ""}
                           </div>
-                          <div className="text-base font-bold text-slate-900 dark:text-white underline">
+                          <div className="text-sm font-bold text-slate-900 dark:text-white underline flex-shrink-0 ml-2">
                             총 {group.totalAmount.toLocaleString()}원
                           </div>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {group.items.map((item, itemIndex) => (
                             <div
                               key={itemIndex}
                               className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
                             >
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-slate-900 dark:text-white">
-                                  {item.brand} {item.productName}
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                  {item.returnQty}개
+                              <div className="flex-1 min-w-0 pr-4">
+                                <div className="text-xs font-medium text-slate-900 dark:text-white truncate">
+                                  {item.brand} {item.productName} <span className="text-slate-500 dark:text-slate-400">({item.returnQty}개)</span>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
                                   {item.totalRefund.toLocaleString()}원
                                 </span>
                                 <button
                                   onClick={() =>
                                     removeSelectedItem(item.productId)
                                   }
-                                  className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-red-300 hover:text-red-500 dark:border-slate-600 dark:bg-slate-800"
+                                  className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-red-300 hover:text-red-500 dark:border-slate-600 dark:bg-slate-800 flex-shrink-0"
                                 >
-                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
                                   </svg>
                                 </button>
@@ -568,7 +565,7 @@ export default function ReturnsPage() {
                 )}
 
                 {/* Footer */}
-                <div className="mb-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <div className="border-t border-slate-200 pt-4 dark:border-slate-700 flex-shrink-0">
                   <div className="mb-4 text-sm text-slate-600 dark:text-slate-300">
                     총 {totalItems}항목
                   </div>

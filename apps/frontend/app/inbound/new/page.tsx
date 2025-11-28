@@ -33,6 +33,15 @@ const unitOptions = [
   "set",
   "roll"
 ];
+const positionOptions = [
+  "직함 선택",
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장"
+];
 
 export default function InboundNewPage() {
   const router = useRouter();
@@ -1410,15 +1419,19 @@ export default function InboundNewPage() {
                           placeholder="성함"
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                         />
-                        <input
-                          type="text"
+                        <select
                           value={manualEntryForm.position}
                           onChange={(e) =>
                             setManualEntryForm((prev) => ({ ...prev, position: e.target.value }))
                           }
-                          placeholder="직함"
-                          className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                        />
+                          className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                        >
+                          {positionOptions.map((option) => (
+                            <option key={option} value={option === "직함 선택" ? "" : option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -1515,7 +1528,7 @@ export default function InboundNewPage() {
                         onChange={(e) =>
                           setManualEntryForm((prev) => ({ ...prev, companyAddress: e.target.value }))
                         }
-                        placeholder="XXX XXX XXX XXXXXX"
+                        placeholder="주소를 압력햐주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>
@@ -1560,7 +1573,7 @@ export default function InboundNewPage() {
                         onChange={(e) =>
                           setManualEntryForm((prev) => ({ ...prev, email1: e.target.value }))
                         }
-                        placeholder="XXXXXXXXX@xxx.com"
+                        placeholder="이메일을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>
@@ -1575,7 +1588,7 @@ export default function InboundNewPage() {
                         onChange={(e) =>
                           setManualEntryForm((prev) => ({ ...prev, email2: e.target.value }))
                         }
-                        placeholder="XXXXXXXXX@xxx.com"
+                        placeholder="이메일을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>
@@ -1590,7 +1603,7 @@ export default function InboundNewPage() {
                         onChange={(e) =>
                           setManualEntryForm((prev) => ({ ...prev, responsibleProducts: e.target.value }))
                         }
-                        placeholder="XXXXXX01"
+                        placeholder="제품을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>

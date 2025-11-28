@@ -943,17 +943,157 @@ export class OrderService {
     });
 
     // Format orders for frontend
+    // First, collect all unique supplier IDs
+    const supplierIds = new Set<string>();
+    orders.forEach((order: any) => {
+      if (order.items && order.items.length > 0) {
+        order.items.forEach((item: any) => {
+          if (item.product && item.product.supplierProducts && item.product.supplierProducts.length > 0) {
+            const supplierProduct = item.product.supplierProducts[0];
+            if (supplierProduct.supplier_id) {
+              supplierIds.add(supplierProduct.supplier_id);
+            }
+          }
+        });
+      }
+      if (order.supplier_id) {
+        supplierIds.add(order.supplier_id);
+      }
+    });
+
+    // Fetch all suppliers with their managers
+    const suppliersMap = new Map<string, any>();
+    if (supplierIds.size > 0) {
+      const suppliers = await (this.prisma as any).supplier.findMany({
+        where: {
+          id: {
+            in: Array.from(supplierIds),
+          },
+        },
+        select: {
+          id: true,
+          company_name: true,
+          company_address: true,
+          company_phone: true,
+          company_email: true,
+          business_number: true,
+          managers: {
+            where: {
+              status: "ACTIVE",
+            },
+            take: 1,
+            orderBy: { created_at: "asc" },
+            select: {
+              id: true,
+              name: true,
+              phone_number: true,
+              email1: true,
+              position: true,
+            },
+          },
+        },
+      });
+
+      suppliers.forEach((supplier: any) => {
+        suppliersMap.set(supplier.id, supplier);
+      });
+    }
+
     return orders.map((order: any) => {
-      // Supplier va manager name'ni topish (items'dan)
+      // Supplier va manager ma'lumotlarini topish (items'dan)
       let supplierName = order.supplier_id || "공급업체 없음";
       let managerName = "";
+      let supplierDetails: any = null;
 
-      if (order.items && order.items.length > 0) {
+      // Get supplier ID from order or items
+      let supplierId: string | null = order.supplier_id || null;
+      
+      if (!supplierId && order.items && order.items.length > 0) {
         const firstItem = order.items[0];
         if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
-          const supplierProduct = firstItem.product.supplierProducts[0];
-          supplierName = supplierProduct.supplier_id || supplierName;
-          managerName = supplierProduct.contact_name || "";
+          supplierId = firstItem.product.supplierProducts[0].supplier_id || null;
+        }
+      }
+
+      // Get supplier details from map
+      if (supplierId && suppliersMap.has(supplierId)) {
+        const supplier = suppliersMap.get(supplierId);
+        supplierName = supplier.company_name || supplierName;
+        
+        supplierDetails = {
+          id: supplier.id,
+          companyName: supplier.company_name || "",
+          companyAddress: supplier.company_address || null,
+          companyPhone: supplier.company_phone || null,
+          companyEmail: supplier.company_email || null,
+          businessNumber: supplier.business_number || "",
+        };
+        
+        // Manager ma'lumotlarini topish
+        if (supplier.managers && supplier.managers.length > 0) {
+          const manager = supplier.managers[0];
+          managerName = manager.name || "";
+          supplierDetails.managerName = manager.name || "";
+          supplierDetails.managerPhone = manager.phone_number || manager.phoneNumber || null;
+          supplierDetails.managerEmail = manager.email1 || manager.email || null;
+          supplierDetails.position = manager.position || null;
+        } else if (order.items && order.items.length > 0) {
+          const firstItem = order.items[0];
+          if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
+            managerName = firstItem.product.supplierProducts[0].contact_name || "";
+            supplierDetails.managerName = managerName;
+            supplierDetails.managerPhone = firstItem.product.supplierProducts[0].contact_phone || null;
+            supplierDetails.managerEmail = firstItem.product.supplierProducts[0].contact_email || null;
+          }
+        }
+      } else {
+        // Fallback: try to get from supplierProducts
+        if (order.items && order.items.length > 0) {
+          const firstItem = order.items[0];
+          if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
+            const supplierProduct = firstItem.product.supplierProducts[0];
+            const fallbackSupplierId = supplierProduct.supplier_id;
+            
+            // Try to find supplier by the fallback ID
+            if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
+              const supplier = suppliersMap.get(fallbackSupplierId);
+              supplierName = supplier.company_name || supplierName;
+              supplierDetails = {
+                id: supplier.id,
+                companyName: supplier.company_name || "",
+                companyAddress: supplier.company_address || null,
+                companyPhone: supplier.company_phone || null,
+                companyEmail: supplier.company_email || null,
+                businessNumber: supplier.business_number || "",
+              };
+              
+              if (supplier.managers && supplier.managers.length > 0) {
+                const manager = supplier.managers[0];
+                managerName = manager.name || "";
+                supplierDetails.managerName = manager.name || "";
+                supplierDetails.managerPhone = manager.phone_number || null;
+                supplierDetails.managerEmail = manager.email1 || null;
+                supplierDetails.position = manager.position || null;
+              } else {
+                managerName = supplierProduct.contact_name || "";
+                supplierDetails.managerName = managerName;
+                supplierDetails.managerPhone = supplierProduct.contact_phone || null;
+                supplierDetails.managerEmail = supplierProduct.contact_email || null;
+              }
+            } else {
+              // Last resort: use supplierProduct data
+              supplierName = fallbackSupplierId || supplierName;
+              managerName = supplierProduct.contact_name || "";
+              
+              // Create minimal supplierDetails from supplierProduct
+              supplierDetails = {
+                companyName: supplierName,
+                managerName: managerName,
+                managerPhone: supplierProduct.contact_phone || null,
+                managerEmail: supplierProduct.contact_email || null,
+              };
+            }
+          }
         }
       }
 
@@ -982,6 +1122,7 @@ export class OrderService {
         supplierId: order.supplier_id,
         supplierName: supplierName,
         managerName: managerName,
+        supplierDetails: supplierDetails, // To'liq supplier ma'lumotlari
         status: order.status,
         totalAmount: order.total_amount || totalAmount,
         memo: order.memo,

@@ -122,6 +122,8 @@ export default function OrderPage() {
   const [showOrderFormModal, setShowOrderFormModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [orderFormMemo, setOrderFormMemo] = useState<string>("");
+  const [supplierDetails, setSupplierDetails] = useState<any | null>(null);
+  const [loadingSupplierDetails, setLoadingSupplierDetails] = useState(false);
   const orderFormRef = useRef<HTMLDivElement>(null);
   const [sessionId] = useState(() => {
     if (typeof window !== "undefined") {
@@ -259,6 +261,8 @@ export default function OrderPage() {
       if (!response.ok) throw new Error("Failed to fetch orders");
 
       const data = await response.json();
+      console.log("Fetched orders:", data);
+      console.log("First order supplierDetails:", data[0]?.supplierDetails);
       setOrders(data || []);
     } catch (err) {
       console.error("Failed to load orders", err);
@@ -1185,6 +1189,8 @@ export default function OrderPage() {
                       </button>
                       <button
                         onClick={() => {
+                          console.log("Selected order:", order);
+                          console.log("Supplier details:", order.supplierDetails);
                           setSelectedOrder(order);
                           setOrderFormMemo(order.memo || "");
                           setShowOrderFormModal(true);
@@ -1470,11 +1476,11 @@ export default function OrderPage() {
                       <div className="text-base font-semibold text-slate-900">
                         {dateStr} {timeStr}
                       </div>
+                    <div className="text-base text-slate-900">
+                      {selectedOrder.supplierDetails?.companyName || selectedOrder.supplierName || "A사"}
+                    </div>
                       <div className="text-base text-slate-900">
-                        {selectedOrder.supplierName || "A사"}
-                      </div>
-                      <div className="text-base text-slate-900">
-                        {selectedOrder.managerName || "담당자"}님 출고
+                        {selectedOrder.supplierDetails?.managerName || selectedOrder.managerName || "담당자"}님 출고
                       </div>
                     </>
                   );
@@ -1605,7 +1611,7 @@ export default function OrderPage() {
                   {/* 주문처 (Orderer) */}
                   <div className="border-r border-blue-200 p-4">
                     <div className="text-xl font-bold text-slate-900 mb-3">
-                      {selectedOrder.supplierName || "A사"}
+                      {selectedOrder.supplierDetails?.companyName || selectedOrder.supplierName || "A사"}
                     </div>
                     <div className="text-sm text-slate-700 mb-1">
                       [구매 주문번호] {selectedOrder.orderNo || "-"}
@@ -1633,26 +1639,33 @@ export default function OrderPage() {
                   {/* 공급처 (Supplier) */}
                   <div className="p-4">
                     <div className="text-sm font-semibold text-slate-900 mb-3">
-                      공급처: {selectedOrder.supplierName || "A사"}
+                      공급처: {selectedOrder.supplierDetails?.companyName || selectedOrder.supplierName || "A사"}
                     </div>
                     <div className="text-xs text-slate-600 mb-1">
-                      [회사주소] 자동 작성
+                      [회사주소] {selectedOrder.supplierDetails?.companyAddress || "자동 작성"}
                     </div>
                     <div className="text-xs text-slate-600 mb-1">
-                      [전화번호] 자동 작성
+                      [전화번호] {selectedOrder.supplierDetails?.companyPhone || "자동 작성"}
                     </div>
                     <div className="text-xs text-slate-600 mb-3">
                       [팩스번호] 자동 작성
                     </div>
                     <div className="text-xs text-slate-600 mb-1">
-                      [담당자] {selectedOrder.managerName || "성함"}
+                      [담당자] {selectedOrder.supplierDetails?.managerName || selectedOrder.managerName || "성함"}
+                      {selectedOrder.supplierDetails?.position && ` (${selectedOrder.supplierDetails.position})`}
                     </div>
                     <div className="text-xs text-slate-600 mb-1">
-                      [이메일] 000@000.com
+                      [이메일] {selectedOrder.supplierDetails?.managerEmail || selectedOrder.supplierDetails?.companyEmail || "자동 작성"}
                     </div>
                     <div className="text-xs text-slate-600">
-                      [연락처] 000-0000-0000
+                      [연락처] {selectedOrder.supplierDetails?.managerPhone || "자동 작성"}
                     </div>
+                    {/* Debug info - remove after testing */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="text-xs text-red-500 mt-2">
+                        Debug: {JSON.stringify(selectedOrder.supplierDetails)}
+                      </div>
+                    )}
                   </div>
                 </div>
 
