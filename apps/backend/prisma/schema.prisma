@@ -232,6 +232,31 @@ model PackageItem {
   @@index([product_id])
 }
 
+// Package Stock Reservation - Package yaratilganda batch'lardan reserve qilingan miqdor
+model PackageReservation {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  package_id String   // Qaysi package uchun
+  product_id String   // Qaysi product
+  batch_id   String   // Qaysi batch'dan
+  reserved_qty Int    // Reserve qilingan miqdor
+  created_at DateTime @default(now())
+  updated_at DateTime?
+
+  // Relations (optional - agar kerak bo'lsa)
+  // package Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  // product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  // batch   Batch   @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([package_id])
+  @@index([product_id])
+  @@index([batch_id])
+  @@index([tenant_id, package_id])
+  @@index([tenant_id, product_id])
+  @@index([tenant_id, batch_id])
+}
+
 // 반납 (Return)
 model Return {
   id          String  @id @default(uuid())

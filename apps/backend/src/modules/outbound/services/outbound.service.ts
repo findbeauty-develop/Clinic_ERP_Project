@@ -697,14 +697,15 @@ export class OutboundService {
 
     for (const item of dto.items) {
       const batch = batches.find(
-        (b: { id: string; product_id: string }) =>
+        (b: any) =>
           b.id === item.batchId && b.product_id === item.productId
-      );
+      ) as any;
       if (!batch) {
         failedItems.push(item);
         continue;
       }
       try {
+        // Validate with actual batch qty (no reservation logic)
         this.validateOutbound(batch, item.outboundQty);
         validItems.push(item);
       } catch (error) {
@@ -732,9 +733,9 @@ export class OutboundService {
 
         for (const item of validItems) {
         const batch = batches.find(
-          (b: { id: string; product_id: string }) =>
+          (b: any) =>
             b.id === item.batchId && b.product_id === item.productId
-        );
+        ) as any;
 
         if (!batch) {
           failedItems.push(item);
@@ -805,6 +806,9 @@ export class OutboundService {
           });
         }
       }
+
+      // Package outbound - hech narsa qo'shimcha qilmaslik
+      // Stock to'g'ridan-to'g'ri batch'lardan kamayadi (yuqorida)
 
       // Barcha product'larni bir vaqtda yangilash
       for (const [productId, totalDecrement] of productStockUpdates.entries()) {

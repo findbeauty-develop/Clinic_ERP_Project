@@ -19,7 +19,7 @@ export class PackageService {
   ) {}
 
   /**
-   * 모든 패키지 목록 가져오기
+   * 모든 패키지 목록 가져오기 (barcha package'lar)
    */
   async getAllPackages(tenantId: string) {
     if (!tenantId) {
@@ -27,6 +27,7 @@ export class PackageService {
     }
 
     try {
+      // Barcha package'larni olish (active/inactive farqi yo'q)
       const packages = await this.packageRepository.findAll(tenantId);
 
       return packages.map((pkg: any) => ({
@@ -295,6 +296,9 @@ export class PackageService {
         tx
       );
 
+      // Package yaratish - faqat template, stock kamaytirilmaydi
+      // Stock kamayishi faqat outbound qilinganda bo'ladi
+
       return {
         id: pkg.id,
         name: pkg.name,
@@ -371,26 +375,28 @@ export class PackageService {
       const updateData: any = {};
       if (dto.name) updateData.name = dto.name;
       if (dto.description !== undefined) updateData.description = dto.description;
+      updateData.updated_at = new Date();
+
+      // Add items if provided
+      if (dto.items) {
+        updateData.items = {
+          create: dto.items.map((item, index) => ({
+            tenant_id: tenantId,
+            product_id: item.productId,
+            quantity: item.quantity,
+            order: item.order ?? index,
+          })),
+        };
+      }
 
       const pkg = await this.packageRepository.update(
-        {
-          ...updateData,
-          updated_at: new Date(),
-          ...(dto.items && {
-            items: {
-              create: dto.items.map((item, index) => ({
-                tenant_id: tenantId,
-                product_id: item.productId,
-                quantity: item.quantity,
-                order: item.order ?? index,
-              })),
-            },
-          }),
-        },
-        id,
-        tenantId,
-        tx
+        id,           // ✅ First: id
+        updateData,   // ✅ Second: data
+        tenantId,     // ✅ Third: tenantId
+        tx            // ✅ Fourth: tx
       );
+
+      // Package update - stock kamaytirilmaydi
 
       return {
         id: pkg.id,
@@ -425,7 +431,9 @@ export class PackageService {
       throw new NotFoundException("Package not found");
     }
 
+    // Simply delete package (no reservation to clear)
     await this.packageRepository.delete(id, tenantId);
+    
     return { message: "Package deleted successfully" };
   }
 
@@ -507,20 +515,25 @@ export class PackageService {
         };
       });
 
-      // FEFO sort: 유효기간 임박 제품 상단 우선 노출
+      // FEFO sort: 유효기간 임박 제품 상단 우선 노출 + 미량 재고 우선
       batches.sort((a: any, b: any) => {
         // 1. 유효기간 임박 우선
         if (a.isExpiringSoon && !b.isExpiringSoon) return -1;
         if (!a.isExpiringSoon && b.isExpiringSoon) return 1;
 
         // 2. 유효기간으로 정렬 (오래된 것 먼저)
-        const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0;
-        const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
+        const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
+        const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
         if (dateA !== dateB) {
           return dateA - dateB;
         }
 
-        // 3. 배치번호로 정렬
+        // 3. 미량 재고 우선 (qty 적은 것 먼저) - FEFO + 재고 소진
+        if (a.qty !== b.qty) {
+          return a.qty - b.qty; // 적은 qty가 먼저
+        }
+
+        // 4. 배치번호로 정렬
         return (a.batchNo || "").localeCompare(b.batchNo || "");
       });
 
@@ -537,6 +550,104 @@ export class PackageService {
     });
 
     return items;
+  }
+
+  /**
+   * Package item uchun stock reserve qilish (FEFO + qty kam qolganlardan)
+   * @param packageId - Package ID
+   * @param productId - Product ID
+   * @param requiredQty - Kerakli miqdor
+   * @param tenantId - Tenant ID
+   * @param tx - Transaction client
+   */
+  private async reserveStockForPackageItem(
+    packageId: string,
+    productId: string,
+    requiredQty: number,
+    tenantId: string,
+    tx: Prisma.TransactionClient
+  ): Promise<void> {
+    const prisma = tx as any;
+    
+    // Get all batches for this product, sorted by FEFO + qty
+    const batches = await prisma.batch.findMany({
+      where: {
+        product_id: productId,
+        tenant_id: tenantId,
+        qty: { gt: 0 }, // Faqat stock bor batch'lar
+      },
+      orderBy: [
+        { expiry_date: 'asc' },  // Eng eski birinchi (FEFO)
+        { qty: 'asc' },           // Kam qty birinchi
+        { batch_no: 'asc' },      // Batch number
+      ],
+    });
+
+    let remainingQty = requiredQty;
+    const reservations: any[] = [];
+
+    for (const batch of batches) {
+      if (remainingQty <= 0) break;
+
+      // Check existing reservations for this batch
+      const existingReservations = await prisma.packageReservation.findMany({
+        where: {
+          batch_id: batch.id,
+          tenant_id: tenantId,
+        },
+      });
+
+      const totalReserved = existingReservations.reduce(
+        (sum: number, r: any) => sum + r.reserved_qty,
+        0
+      );
+
+      const availableQty = batch.qty - totalReserved;
+
+      if (availableQty > 0) {
+        const qtyToReserve = Math.min(remainingQty, availableQty);
+        
+        reservations.push({
+          tenant_id: tenantId,
+          package_id: packageId,
+          product_id: productId,
+          batch_id: batch.id,
+          reserved_qty: qtyToReserve,
+        });
+
+        remainingQty -= qtyToReserve;
+      }
+    }
+
+    if (remainingQty > 0) {
+      throw new BadRequestException(
+        `재고가 부족합니다. Product: ${productId}, 부족 수량: ${remainingQty}`
+      );
+    }
+
+    // Create reservations
+    for (const reservation of reservations) {
+      await prisma.packageReservation.create({
+        data: reservation,
+      });
+    }
+  }
+
+  /**
+   * Package reservation'larni o'chirish (package delete qilinganda)
+   */
+  private async clearPackageReservations(
+    packageId: string,
+    tenantId: string,
+    tx: Prisma.TransactionClient
+  ): Promise<void> {
+    const prisma = tx as any;
+    await prisma.packageReservation.deleteMany({
+      where: {
+        package_id: packageId,
+        tenant_id: tenantId,
+      },
+    });
   }
 }
 

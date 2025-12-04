@@ -25,6 +25,8 @@ type ProductForOutbound = {
   unit?: string | null;
   batches: Batch[];
   isLowStock?: boolean;
+  minStock?: number;
+  currentStock?: number;
   supplierName?: string | null;
   storageLocation?: string | null;
 };
@@ -366,12 +368,8 @@ export default function OutboundPage() {
     const existingPackageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
     
     if (existingPackageItems.length > 0) {
-      // Package already exists, just increment count (don't add duplicate items)
-      setPackageCounts((prev) => ({
-        ...prev,
-        [pkg.id]: (prev[pkg.id] || 0) + 1,
-      }));
-      // Don't add more items - just update the count
+      // Package already in cart - 1개만 가능 (패키지는 1개만 생성됨)
+      alert("이미 추가된 패키지입니다. 패키지는 1개만 출고 가능합니다.");
       return;
     }
     
@@ -393,43 +391,84 @@ export default function OutboundPage() {
       // Add items to the beginning of the list (newest first)
       setScheduledItems((prev) => [...optimisticItems, ...prev]);
       
-      // Update package count immediately
+      // Initialize package count to 1
       setPackageCounts((prev) => ({
         ...prev,
-        [pkg.id]: (prev[pkg.id] || 0) + 1,
+        [pkg.id]: 1, // First time adding = 1
       }));
+      
+      console.log("New package added:", pkg.name);
 
       // Fetch batch information in background and update (non-blocking)
       apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
         .then((itemsWithBatches) => {
+          // Track items that couldn't be mapped to batches
+          const unmappedItems: string[] = [];
+          
           // Update scheduled items with real batch information
           setScheduledItems((prev) => {
-            return prev.map((scheduledItem) => {
+            const updated = prev.map((scheduledItem) => {
               // Find matching optimistic item by packageId and productId
               if (scheduledItem.packageId === pkg.id && scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)) {
                 const itemWithBatch = itemsWithBatches.find(
                   (item) => item.productId === scheduledItem.productId
                 );
                 
-                if (itemWithBatch) {
-                  const firstBatch = itemWithBatch.batches[0];
-                  if (firstBatch && firstBatch.qty > 0) {
+                if (itemWithBatch && itemWithBatch.batches && itemWithBatch.batches.length > 0) {
+                  // Backend already sorted by FEFO + qty (kam qolgan birinchi)
+                  // Find first batch with available stock
+                  const availableBatch = itemWithBatch.batches.find((b: any) => b.qty > 0);
+                  
+                  if (availableBatch) {
                     return {
                       ...scheduledItem,
-                      batchId: firstBatch.id,
-                      batchNo: firstBatch.batchNo,
+                      batchId: availableBatch.id,
+                      batchNo: availableBatch.batchNo,
                       quantity: itemWithBatch.packageQuantity, // Use package quantity from API
                     };
+                  } else {
+                    // No available batch - mark for removal
+                    unmappedItems.push(itemWithBatch.productName);
+                    return null; // Will be filtered out
                   }
+                } else {
+                  // No batch data - mark for removal
+                  unmappedItems.push(scheduledItem.productName);
+                  return null; // Will be filtered out
                 }
               }
               return scheduledItem;
-            });
+            }).filter((item): item is ScheduledItem => item !== null); // Remove null items
+            
+            // Check if package has any valid items left
+            const packageItemsLeft = updated.filter((item) => item.packageId === pkg.id);
+            
+            if (packageItemsLeft.length === 0) {
+              // No valid items for this package - remove from cart
+              setPackageCounts((prev) => {
+                const newCounts = { ...prev };
+                delete newCounts[pkg.id];
+                return newCounts;
+              });
+              
+              setTimeout(() => {
+                alert(`패키지 "${pkg.name}"의 모든 제품이 재고 부족으로 출고 불가능합니다.`);
+              }, 500);
+            } else if (unmappedItems.length > 0) {
+              // Show warning if some items couldn't be added
+              setTimeout(() => {
+                alert(`재고가 부족한 제품이 있어 패키지에서 제외되었습니다:\n${unmappedItems.join(", ")}`);
+              }, 500);
+            }
+            
+            return updated;
           });
         })
         .catch((err) => {
           console.error("Failed to load package items with batches", err);
-          // Keep optimistic items, user can still proceed
+          alert("패키지 정보를 불러오는 중 오류가 발생했습니다.");
+          // Remove all items for this package
+          setScheduledItems((prev) => prev.filter((item) => item.packageId !== pkg.id));
         });
     }
   };
@@ -465,19 +504,26 @@ export default function OutboundPage() {
     }
 
     if (newQuantity <= 0) {
-      // Remove from scheduled items
+      // Remove from scheduled items (faqat product items, package items emas!)
       setScheduledItems((prev) =>
         prev.filter(
-          (item) => !(item.productId === productId && item.batchId === batchId)
+          (item) => !(
+            item.productId === productId && 
+            item.batchId === batchId && 
+            !item.isPackageItem  // ✅ Faqat product items o'chiriladi
+          )
         )
       );
       return;
     }
 
-    // Update or add to scheduled items
+    // Update or add to scheduled items (faqat product items)
     setScheduledItems((prev) => {
       const existingIndex = prev.findIndex(
-        (item) => item.productId === productId && item.batchId === batchId
+        (item) => 
+          item.productId === productId && 
+          item.batchId === batchId &&
+          !item.isPackageItem  // ✅ Faqat product items topiladi
       );
       
       if (existingIndex >= 0) {
@@ -495,15 +541,21 @@ export default function OutboundPage() {
           batchNo,
           quantity: newQuantity,
           unit,
+          isPackageItem: false,  // ✅ Product item (not package)
         },
       ];
     });
   };
 
   const removeScheduledItem = (productId: string, batchId: string) => {
+    // Faqat product items o'chiriladi (package items emas!)
     setScheduledItems((prev) =>
       prev.filter(
-        (item) => !(item.productId === productId && item.batchId === batchId)
+        (item) => !(
+          item.productId === productId && 
+          item.batchId === batchId &&
+          !item.isPackageItem  // ✅ Faqat product items
+        )
       )
     );
   };
@@ -516,6 +568,17 @@ export default function OutboundPage() {
 
     if (!managerName.trim()) {
       alert("담당자를 입력해주세요.");
+      return;
+    }
+
+    // Check for temporary batch IDs (package items not fully loaded)
+    const packageItems = scheduledItems.filter((item) => item.isPackageItem);
+    const hasTemporaryBatchIds = packageItems.some((item) => 
+      item.batchId.startsWith("temp-") || item.batchNo === "로딩중..."
+    );
+    
+    if (hasTemporaryBatchIds) {
+      alert("패키지 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
       return;
     }
 
@@ -570,13 +633,13 @@ export default function OutboundPage() {
 
       // 2. Package items 출고 (agar mavjud bo'lsa)
       if (packageItems.length > 0) {
-        // Group items by package to multiply quantity by package count
+        // Package는 1개만 출고 (packageCount는 항상 1)
         const itemsByPackage = packageItems.reduce((acc, item) => {
           const key = `${item.packageId}-${item.productId}-${item.batchId}`;
           if (!acc[key]) {
             acc[key] = {
               ...item,
-              quantity: item.quantity * (packageCounts[item.packageId || ""] || 1),
+              quantity: item.quantity, // Package count = 1 (no multiplication)
             };
           }
           return acc;
@@ -889,7 +952,14 @@ export default function OutboundPage() {
 
       if (allSuccess) {
         setFailedItems([]);
-        setScheduledItems((prev) => prev.filter((i) => !failedItems.some((f) => f.productId === i.productId && f.batchId === i.batchId)));
+        // Failed items'ni scheduled items'dan o'chirish (product/package farqi bilan)
+        setScheduledItems((prev) => prev.filter((i) => 
+          !failedItems.some((f) => 
+            f.productId === i.productId && 
+            f.batchId === i.batchId &&
+            f.isPackageItem === i.isPackageItem  // ✅ Package/Product farqi
+          )
+        ));
         alert("모든 항목 재시도 성공");
       } else {
         setFailedItems(remainingFailed);
@@ -1108,47 +1178,20 @@ export default function OutboundPage() {
                     <>
                       <div className="space-y-4">
                         {paginatedPackages.map((pkg) => {
-                          const packageCount = packageCounts[pkg.id] || 0;
+                          const isInCart = scheduledItems.some((item) => item.packageId === pkg.id);
+                          const packageCount = isInCart ? 1 : 0; // 패키지는 항상 1개만
                           
                           const handleDecreasePackage = () => {
-                            if (packageCount > 0) {
-                              const packageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
-                              if (packageItems.length > 0) {
-                                const itemsToRemove = new Set<string>();
-                                const seen = new Set<string>();
-                                
-                                packageItems.forEach((item) => {
-                                  const key = `${item.productId}-${item.batchId}`;
-                                  if (!seen.has(key)) {
-                                    seen.add(key);
-                                    itemsToRemove.add(key);
-                                  }
-                                });
-                                
-                                setScheduledItems((prev) => {
-                                  const result: ScheduledItem[] = [];
-                                  const removeCount: Record<string, number> = {};
-                                  
-                                  prev.forEach((item) => {
-                                    if (item.packageId === pkg.id && itemsToRemove.has(`${item.productId}-${item.batchId}`)) {
-                                      const key = `${item.productId}-${item.batchId}`;
-                                      removeCount[key] = (removeCount[key] || 0) + 1;
-                                      if (removeCount[key] === 1) {
-                                        return;
-                                      }
-                                    }
-                                    result.push(item);
-                                  });
-                                  
-                                  return result;
-                                });
-                                
-                                setPackageCounts((prev) => ({
-                                  ...prev,
-                                  [pkg.id]: Math.max(0, (prev[pkg.id] || 0) - 1),
-                                }));
-                              }
-                            }
+                            // 패키지는 1개만 가능 - remove only
+                            setScheduledItems((prev) => 
+                              prev.filter((item) => item.packageId !== pkg.id)
+                            );
+                            setPackageCounts((prev) => {
+                              const updated = { ...prev };
+                              delete updated[pkg.id];
+                              return updated;
+                            });
+                            console.log("Package removed from cart:", pkg.name);
                           };
                           
                           return (
@@ -1163,12 +1206,17 @@ export default function OutboundPage() {
                                     <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                                       {pkg.name}
                                     </h3>
-                                    <Link
-                                      href={`/packages/${pkg.id}/edit`}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // Save package ID to sessionStorage for edit mode
+                                        sessionStorage.setItem("editing_package_id", pkg.id);
+                                        window.location.href = "/packages/new";
+                                      }}
                                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                                     >
                                       수정
-                                    </Link>
+                                    </button>
                                   </div>
                                   {pkg.items && pkg.items.length > 0 && (
                                     <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
@@ -1191,22 +1239,23 @@ export default function OutboundPage() {
                                   )}
                                 </div>
                                 <div className="ml-4 flex items-center gap-2">
-                                  <button
-                                    onClick={handleDecreasePackage}
-                                    disabled={packageCount === 0}
-                                    className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="w-12 text-center text-sm font-semibold text-slate-900 dark:text-white">
-                                    {packageCount}
-                                  </span>
-                                  <button
-                                    onClick={() => handleAddPackageToOutbound(pkg)}
-                                    className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                  >
-                                    +
-                                  </button>
+                                  {packageCount === 0 ? (
+                                    <button
+                                      onClick={() => handleAddPackageToOutbound(pkg)}
+                                      className="flex h-8 items-center gap-1 rounded border border-blue-500 bg-blue-50 px-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-400"
+                                    >
+                                      <span>+</span>
+                                      <span>추가</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={handleDecreasePackage}
+                                      className="flex h-8 items-center gap-1 rounded border border-red-500 bg-red-50 px-3 text-sm font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-400 dark:bg-red-500/10 dark:text-red-400"
+                                    >
+                                      <span>✓</span>
+                                      <span>추가됨</span>
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1588,10 +1637,12 @@ export default function OutboundPage() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setScheduledItems((prev) => {
+                                        // Product item va package item alohida (ikkovini ham qo'shish mumkin)
                                         const exists = prev.some(
                                           (i) =>
                                             i.productId === item.productId &&
-                                            i.batchId === item.batchId
+                                            i.batchId === item.batchId &&
+                                            i.isPackageItem === item.isPackageItem  // ✅ Package/Product farqi
                                         );
                                         if (exists) return prev;
                                         return [...prev, item];
@@ -1601,7 +1652,8 @@ export default function OutboundPage() {
                                           (f) =>
                                             !(
                                               f.productId === item.productId &&
-                                              f.batchId === item.batchId
+                                              f.batchId === item.batchId &&
+                                              f.isPackageItem === item.isPackageItem  // ✅ Package/Product farqi
                                             )
                                         )
                                       );
@@ -1616,14 +1668,15 @@ export default function OutboundPage() {
                             <button
                               onClick={() => {
                                 setScheduledItems((prev) => {
+                                  // Product item va package item alohida (unique key'ga isPackageItem qo'shish)
                                   const existingIds = new Set(
                                     prev.map(
-                                      (i) => `${i.productId}-${i.batchId}`
+                                      (i) => `${i.productId}-${i.batchId}-${i.isPackageItem ? 'pkg' : 'prod'}`
                                     )
                                   );
                                   const newItems = failedItems.filter(
                                     (f) =>
-                                      !existingIds.has(`${f.productId}-${f.batchId}`)
+                                      !existingIds.has(`${f.productId}-${f.batchId}-${f.isPackageItem ? 'pkg' : 'prod'}`)
                                   );
                                   return [...prev, ...newItems];
                                 });
@@ -2288,9 +2341,12 @@ function ProductCard({
               return (a.batch_no || "").localeCompare(b.batch_no || "");
             })
             .map((batch) => {
+            // Faqat product items'ni hisobga olish (package items emas!)
             const scheduledItem = scheduledItems.find(
               (item) =>
-                item.productId === product.id && item.batchId === batch.id
+                item.productId === product.id && 
+                item.batchId === batch.id &&
+                !item.isPackageItem  // ✅ Package items exclude
             );
             const quantity = scheduledItem?.quantity || 0;
 
@@ -2308,6 +2364,9 @@ function ProductCard({
                   
                   
               : "00-00-00";
+
+            // Check if THIS batch has low stock (batch.qty <= minStock)
+            const isBatchLowStock = product.minStock ? batch.qty <= product.minStock : false;
 
             return (
               <div
@@ -2329,7 +2388,7 @@ function ProductCard({
                         유효기간 임박
                       </span>
                     )}
-                    {product.isLowStock && (
+                    {isBatchLowStock && (
                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
                         재고부족
                       </span>
@@ -2338,7 +2397,7 @@ function ProductCard({
 
                   {/* Bottom Line - Details */}
                   <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-                    <span className={product.isLowStock ? "font-semibold text-red-600 dark:text-red-400" : ""}>
+                    <span className={isBatchLowStock ? "font-semibold text-red-600 dark:text-red-400" : ""}>
                       재고: {batch.qty.toString().padStart(2, "0")} {product.unit || "단위"}
                     </span>
                     {product.supplierName && (

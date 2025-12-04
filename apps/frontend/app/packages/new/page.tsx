@@ -39,6 +39,49 @@ export default function PackageNewPage() {
   const [packageNameSuggestions, setPackageNameSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  // Load package data if in edit mode
+  useEffect(() => {
+    const loadPackageForEdit = async () => {
+      const packageId = sessionStorage.getItem("editing_package_id");
+      if (packageId) {
+        setEditingPackageId(packageId);
+        setIsEditMode(true);
+        
+        try {
+          // Load package details
+          const packageData = await apiGet<any>(`${apiUrl}/packages/${packageId}`);
+          setPackageName(packageData.name || "");
+          
+          // Load package items
+          const itemsData = await apiGet<any[]>(`${apiUrl}/packages/${packageId}/items`);
+          const formattedItems = itemsData.map((item: any) => ({
+            productId: item.productId || item.product_id,
+            productName: item.productName || item.product?.name || "",
+            brand: item.brand || item.product?.brand || "",
+            unit: item.unit || item.product?.unit || "개",
+            quantity: item.quantity || 0,
+          }));
+          setSelectedItems(formattedItems);
+        } catch (err) {
+          console.error("Failed to load package for edit:", err);
+          alert("패키지 정보를 불러오지 못했습니다.");
+        }
+      }
+    };
+    
+    loadPackageForEdit();
+    
+    // Cleanup: Clear sessionStorage when component unmounts
+    return () => {
+      // Only clear if not redirecting to outbound
+      if (!window.location.pathname.includes("/outbound")) {
+        sessionStorage.removeItem("editing_package_id");
+      }
+    };
+  }, [apiUrl]);
 
   useEffect(() => {
     fetchProducts();
@@ -182,41 +225,44 @@ export default function PackageNewPage() {
 
     setSubmitting(true);
     try {
-      // Check for duplicate package name
-      const nameCheck = await apiPost<{
-        exists: boolean;
-        existingPackage?: { id: string; name: string };
-      }>(`${apiUrl}/packages/check-name`, {
-        name: packageName.trim(),
-      });
+      // Skip duplicate checks in edit mode
+      if (!isEditMode) {
+        // Check for duplicate package name
+        const nameCheck = await apiPost<{
+          exists: boolean;
+          existingPackage?: { id: string; name: string };
+        }>(`${apiUrl}/packages/check-name`, {
+          name: packageName.trim(),
+        });
 
-      if (nameCheck.exists) {
-        alert("동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요.");
-        setSubmitting(false);
-        return;
-      }
-
-      // Check for duplicate package composition
-      const duplicateCheck = await apiPost<{
-        isDuplicate: boolean;
-        existingPackage?: { id: string; name: string };
-      }>(`${apiUrl}/packages/check-duplicate`, {
-        name: packageName.trim(),
-        items: selectedItems.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-        })),
-      });
-
-      if (duplicateCheck.isDuplicate) {
-        const confirmMessage = `동일 구성의 패키지가 이미 존재합니다: ${duplicateCheck.existingPackage?.name}\n그래도 등록하시겠습니까?`;
-        if (!confirm(confirmMessage)) {
+        if (nameCheck.exists) {
+          alert("동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요.");
           setSubmitting(false);
           return;
         }
+
+        // Check for duplicate package composition
+        const duplicateCheck = await apiPost<{
+          isDuplicate: boolean;
+          existingPackage?: { id: string; name: string };
+        }>(`${apiUrl}/packages/check-duplicate`, {
+          name: packageName.trim(),
+          items: selectedItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        });
+
+        if (duplicateCheck.isDuplicate) {
+          const confirmMessage = `동일 구성의 패키지가 이미 존재합니다: ${duplicateCheck.existingPackage?.name}\n그래도 등록하시겠습니까?`;
+          if (!confirm(confirmMessage)) {
+            setSubmitting(false);
+            return;
+          }
+        }
       }
 
-      // Create package
+      // Prepare payload
       const payload = {
         name: packageName.trim(),
         description: null,
@@ -226,17 +272,26 @@ export default function PackageNewPage() {
         })),
       };
 
-      const response = await apiPost(`${apiUrl}/packages`, payload);
-
-      alert("패키지가 성공적으로 등록되었습니다.");
+      // Update or create package
+      if (isEditMode && editingPackageId) {
+        const { apiPut } = await import("../../../lib/api");
+        await apiPut(`${apiUrl}/packages/${editingPackageId}`, payload);
+        alert("패키지가 성공적으로 수정되었습니다.");
+      } else {
+        await apiPost(`${apiUrl}/packages`, payload);
+        alert("패키지가 성공적으로 등록되었습니다.");
+      }
+      
+      // Clear sessionStorage
+      sessionStorage.removeItem("editing_package_id");
       
       // Redirect to outbound page with package outbound tab
       router.push("/outbound?type=package");
     } catch (err: any) {
-      console.error("Failed to create package", err);
+      console.error("Failed to save package", err);
       const errorMessage =
-        err.response?.data?.message || err.message || "패키지 등록 중 오류가 발생했습니다.";
-      alert(`패키지 등록 실패: ${errorMessage}`);
+        err.response?.data?.message || err.message || "패키지 저장 중 오류가 발생했습니다.";
+      alert(`패키지 저장 실패: ${errorMessage}`);
     } finally {
       setSubmitting(false);
     }
@@ -280,7 +335,7 @@ export default function PackageNewPage() {
           <div className="space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
               <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
-                새 패키지등록
+                {isEditMode ? "패키지 수정" : "새 패키지등록"}
               </h2>
 
               {/* Search Bar */}
@@ -495,7 +550,10 @@ export default function PackageNewPage() {
                 disabled={submitting || !packageName.trim() || selectedItems.length === 0}
                 className="mt-6 w-full rounded-xl border-2 border-red-500 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-red-500/10"
               >
-                {submitting ? "등록 중..." : "패키지 등록하기"}
+                {submitting 
+                  ? (isEditMode ? "수정 중..." : "등록 중...") 
+                  : (isEditMode ? "패키지 수정하기" : "패키지 등록하기")
+                }
               </button>
             </div>
           </div>

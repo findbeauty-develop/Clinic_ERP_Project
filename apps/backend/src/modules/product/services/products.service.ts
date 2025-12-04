@@ -610,21 +610,26 @@ export class ProductsService {
 
   /**
    * Batch'larni FEFO bo'yicha sortlash
-   * 정렬 우선순위: ① 유효기간 → ② 배치번호
+   * 정렬 우선순위: ① 유효기간 → ② 미량 재고 (qty) → ③ 배치번호
    */
   private sortBatchesByFEFO(batches: any[]): any[] {
     return [...batches].sort((a, b) => {
-      // 1. 유효기간 (expiry_date) bo'yicha sortlash
+      // 1. 유효기간 (expiry_date) bo'yicha sortlash - oldre olan batches birinchi
       if (a.expiry_date && b.expiry_date) {
         const dateDiff = a.expiry_date.getTime() - b.expiry_date.getTime();
-        if (dateDiff !== 0) return dateDiff;
+        if (dateDiff !== 0) return dateDiff; // Eng eski (yaqin expiry) birinchi
       } else if (a.expiry_date && !b.expiry_date) {
         return -1; // a.expiry_date bor, b.expiry_date yo'q → a birinchi
       } else if (!a.expiry_date && b.expiry_date) {
         return 1; // b.expiry_date bor, a.expiry_date yo'q → b birinchi
       }
 
-      // 2. 배치번호 bo'yicha sortlash
+      // 2. 미량 재고 우선 (qty 적은 것 먼저 소진) - kam qty birinchi
+      if (a.qty !== b.qty) {
+        return a.qty - b.qty; // Kam miqdor birinchi
+      }
+
+      // 3. 배치번호 bo'yicha sortlash
       return a.batch_no.localeCompare(b.batch_no);
     });
   }
