@@ -324,7 +324,7 @@ export default function OutboundPage() {
     }
   };
 
-  // Group history by date and manager
+  // Group history by exact timestamp and manager
   const groupedHistory = useMemo(() => {
     const groups: { [key: string]: any[] } = {};
     
@@ -340,13 +340,9 @@ export default function OutboundPage() {
         return;
       }
 
-      const date = outboundDate.toISOString().split("T")[0];
-      const time = outboundDate.toLocaleTimeString("ko-KR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
       const manager = item.managerName || item.manager_name || "Unknown";
-      const groupKey = `${date} ${time} ${manager}님 출고`;
+      // Use full ISO timestamp as groupKey for exact grouping
+      const groupKey = `${outboundDate.toISOString()}|||${manager}`;
       
       if (!groups[groupKey]) {
         groups[groupKey] = [];
@@ -2053,36 +2049,24 @@ export default function OutboundPage() {
             ) : (
               <div className="space-y-6">
                 {groupedHistory.map(([groupKey, items]) => {
-                  const [date, time, managerText] = groupKey.split(" ");
-                  const manager = managerText.replace("님 출고", "");
+                  const [isoTimestamp, manager] = groupKey.split("|||");
                   const firstItem = items[0];
                   const chartNumber = firstItem?.chartNumber || firstItem?.chart_number;
-                  const outboundId = firstItem?.outboundId || firstItem?.outbound_id || firstItem?.id;
+                  const outboundDateValue = firstItem?.outboundDate || firstItem?.outbound_date;
                   
-                  // Date format: YYYY-MM-DD HH:mm
-                  const formatDate = (dateStr: string, timeStr: string) => {
+                  // Format timestamp with manager name first
+                  const formatDisplayText = (timestamp: string, managerName: string) => {
                     try {
-                      const dateObj = new Date(dateStr);
+                      const dateObj = new Date(timestamp);
                       const year = dateObj.getFullYear();
                       const month = String(dateObj.getMonth() + 1).padStart(2, '0');
                       const day = String(dateObj.getDate()).padStart(2, '0');
+                      const hour = String(dateObj.getHours()).padStart(2, '0');
+                      const minute = String(dateObj.getMinutes()).padStart(2, '0');
                       
-                      // Time format: HH:mm (24-hour format)
-                      let formattedTime = timeStr;
-                      if (timeStr.includes('오전') || timeStr.includes('오후')) {
-                        const timeMatch = timeStr.match(/(\d+):(\d+)/);
-                        if (timeMatch) {
-                          const hour = parseInt(timeMatch[1]);
-                          const minute = timeMatch[2];
-                          const isPM = timeStr.includes('오후');
-                          const hour24 = isPM && hour !== 12 ? hour + 12 : (hour === 12 && !isPM ? 0 : hour);
-                          formattedTime = `${String(hour24).padStart(2, '0')}:${minute}`;
-                        }
-                      }
-                      
-                      return `${year}-${month}-${day} ${formattedTime}`;
+                      return `${managerName}님 출고 ${year}-${month}-${day} ${hour}:${minute}`;
                     } catch {
-                      return `${dateStr} ${timeStr}`;
+                      return `${managerName}님 출고 ${timestamp}`;
                     }
                   };
                   
@@ -2096,10 +2080,7 @@ export default function OutboundPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 flex-wrap">
                             <span className="text-base font-semibold text-slate-900 dark:text-white">
-                              {formatDate(date, time)}
-                            </span>
-                            <span className="text-base font-semibold text-slate-900 dark:text-white">
-                              {managerText}
+                              {formatDisplayText(isoTimestamp, manager)}
                             </span>
                             {chartNumber && (
                               <span className="text-base font-semibold text-slate-900 dark:text-white">
@@ -2109,7 +2090,7 @@ export default function OutboundPage() {
                             {/* 패키지 출고와 바코드 출고 구분 표시 */}
                             {(firstItem?.outboundType || firstItem?.outbound_type) === "패키지" && (
                               <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
-                                {firstItem?.packageName || firstItem?.package_name ? `${firstItem.packageName || firstItem.package_name}님 출고` : '패키지 출고'}
+                                {firstItem?.packageName || firstItem?.package_name ? `${firstItem.packageName || firstItem.package_name}` : '패키지 출고'}
                               </span>
                             )}
                             {(firstItem?.outboundType || firstItem?.outbound_type) === "바코드" && (
@@ -2120,18 +2101,46 @@ export default function OutboundPage() {
                           </div>
                           <button
                             onClick={async () => {
-                              if (confirm("출고를 취소하시겠습니까?")) {
+                              // 취소 전에 정보 표시
+                              console.log("=== 출고 취소 시작 ===");
+                              console.log("그룹:", formatDisplayText(isoTimestamp, manager));
+                              console.log("Timestamp (from groupKey):", isoTimestamp);
+                              console.log("Manager:", manager);
+                              console.log("취소될 항목 수:", items.length);
+                              
+                              if (confirm(`이 출고를 취소하시겠습니까?\n\n${formatDisplayText(isoTimestamp, manager)}\n${items.length}개 항목이 취소되고 재고가 복원됩니다.`)) {
                                 try {
-                                  // TODO: Implement cancel outbound API call
-                                  // await apiDelete(`${apiUrl}/outbound/${outboundId}`);
-                                  alert("출고 취소 기능은 아직 구현되지 않았습니다.");
-                                } catch (error) {
+                                  const response = await fetch(
+                                    `${apiUrl}/outbound/cancel?outboundTimestamp=${encodeURIComponent(isoTimestamp)}&managerName=${encodeURIComponent(manager)}`,
+                                    {
+                                      method: 'DELETE',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                        Authorization: `Bearer ${localStorage.getItem('erp_access_token')}`,
+                                      },
+                                    }
+                                  );
+
+                                  if (response.ok) {
+                                    const result = await response.json();
+                                    console.log("=== 출고 취소 성공 ===");
+                                    console.log("결과:", result);
+                                    alert(result.message || '출고가 취소되었습니다.');
+                                    // Refresh history
+                                    fetchHistory();
+                                  } else {
+                                    const error = await response.json();
+                                    console.error("=== 출고 취소 실패 ===");
+                                    console.error("Error:", error);
+                                    throw new Error(error.message || '출고 취소에 실패했습니다.');
+                                  }
+                                } catch (error: any) {
                                   console.error("Failed to cancel outbound:", error);
-                                  alert("출고 취소에 실패했습니다.");
+                                  alert(error.message || "출고 취소에 실패했습니다.");
                                 }
                               }
                             }}
-                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 dark:border-red-600 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             출고 취소
                           </button>

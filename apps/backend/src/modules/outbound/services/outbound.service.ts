@@ -885,4 +885,111 @@ export class OutboundService {
       data: { current_stock: totalStock._sum.qty ?? 0 },
     });
   }
+
+  /**
+   * 출고 취소 - 특정 시간의 출고 건들을 취소 및 재고 복원
+   */
+  async cancelOutboundByTimestamp(
+    outboundTimestamp: string,
+    managerName: string,
+    tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    // Parse the timestamp (ISO string)
+    const targetDate = new Date(outboundTimestamp);
+    
+    if (isNaN(targetDate.getTime())) {
+      throw new BadRequestException("Invalid timestamp format");
+    }
+
+    // Create a very narrow time window (±2 seconds for exact match)
+    const startWindow = new Date(targetDate.getTime() - 2000); // -2 seconds
+    const endWindow = new Date(targetDate.getTime() + 2000); // +2 seconds
+
+    console.log("Canceling outbound:", {
+      targetTimestamp: targetDate.toISOString(),
+      managerName,
+      startWindow: startWindow.toISOString(),
+      endWindow: endWindow.toISOString(),
+    });
+
+    // Find all outbound records for this specific time and manager
+    const outbounds = await this.prisma.outbound.findMany({
+      where: {
+        tenant_id: tenantId,
+        manager_name: managerName,
+        outbound_date: {
+          gte: startWindow,
+          lte: endWindow,
+        },
+      },
+      include: {
+        product: true,
+        batch: true,
+      },
+    });
+
+    console.log(`Found ${outbounds.length} outbound records to cancel`);
+
+    if (outbounds.length === 0) {
+      throw new NotFoundException("출고 내역을 찾을 수 없습니다.");
+    }
+
+    // Transaction으로 재고 복원 및 출고 기록 삭제
+    return this.prisma.$transaction(async (tx: any) => {
+      const productStockUpdates = new Map<string, number>();
+
+      // 각 출고 건에 대해 재고 복원
+      for (const outbound of outbounds) {
+        // Batch qty 증가
+        await tx.batch.update({
+          where: { id: outbound.batch_id },
+          data: { qty: { increment: outbound.outbound_qty } },
+        });
+
+        // Product stock 업데이트를 위해 수집
+        const currentIncrement = productStockUpdates.get(outbound.product_id) || 0;
+        productStockUpdates.set(
+          outbound.product_id,
+          currentIncrement + outbound.outbound_qty
+        );
+      }
+
+      // Product current_stock 업데이트
+      for (const [productId, _] of productStockUpdates.entries()) {
+        const totalStock = await tx.batch.aggregate({
+          where: { product_id: productId, tenant_id: tenantId },
+          _sum: { qty: true },
+        });
+
+        await tx.product.update({
+          where: { id: productId },
+          data: { current_stock: totalStock._sum.qty ?? 0 },
+        });
+      }
+
+      // 출고 기록 삭제
+      await tx.outbound.deleteMany({
+        where: {
+          tenant_id: tenantId,
+          manager_name: managerName,
+          outbound_date: {
+            gte: startWindow,
+            lte: endWindow,
+          },
+        },
+      });
+
+      console.log(`Successfully canceled ${outbounds.length} outbound records`);
+
+      return {
+        success: true,
+        canceledCount: outbounds.length,
+        message: `${outbounds.length}개의 출고 건이 취소되었고 재고가 복원되었습니다.`,
+      };
+    });
+  }
 }

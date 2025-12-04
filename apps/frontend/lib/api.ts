@@ -142,3 +142,25 @@ export const apiGet = async <T = any>(
   return response.json();
 };
 
+/**
+ * Make a DELETE request
+ */
+export const apiDelete = async <T = any>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> => {
+  const response = await apiRequest(endpoint, {
+    method: "DELETE",
+    ...options,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof error?.message === "string" ? error.message : "Request failed"
+    );
+  }
+
+  return response.json();
+};
+

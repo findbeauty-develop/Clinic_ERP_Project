@@ -7,6 +7,7 @@ import {
   Get,
   Param,
   Query,
+  Delete,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { CreateOutboundDto, BulkOutboundDto } from "../dto/create-outbound.dto";
@@ -184,6 +185,26 @@ export class OutboundController {
       throw new BadRequestException("Tenant ID is required");
     }
     return this.outboundService.createUnifiedOutbound(dto, tenantId);
+  }
+
+  @Delete("cancel")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "출고 취소 - 특정 시간의 출고 건들을 취소하고 재고 복원",
+    description: "출고 내역을 취소하고 제품 재고를 원래대로 복원합니다. outboundTimestamp와 managerName을 query params로 전달합니다.",
+  })
+  @ApiQuery({ name: "outboundTimestamp", required: true, type: String, description: "출고 시간 (ISO string)" })
+  @ApiQuery({ name: "managerName", required: true, type: String, description: "담당자 이름" })
+  cancelOutbound(
+    @Query("outboundTimestamp") outboundTimestamp: string,
+    @Query("managerName") managerName: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.outboundService.cancelOutboundByTimestamp(outboundTimestamp, managerName, tenantId);
   }
 }
 
