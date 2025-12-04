@@ -173,7 +173,7 @@ export class ProductsService {
       capacityPerProduct: (product as any).capacity_per_product,
       capacityUnit: (product as any).capacity_unit,
       usageCapacity: (product as any).usage_capacity,
-      supplierName: supplier?.supplier_id ?? null,
+      supplierName: null, // Supplier ID removed from schema
       managerName: supplier?.contact_name ?? null,
       contactPhone: supplier?.contact_phone ?? null,
       contactEmail: supplier?.contact_email ?? null,
@@ -246,7 +246,7 @@ export class ProductsService {
         purchasePrice: product.purchase_price,
         salePrice: product.sale_price,
         unit: product.unit,
-        supplierName: supplier?.supplier_id ?? null,
+        supplierName: null, // Supplier ID removed from schema
         managerName: supplier?.contact_name ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,

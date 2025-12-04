@@ -24,10 +24,10 @@ export class MembersService {
   ): Promise<CreatedMemberResult[]> {
     const clinicSlug = this.normalizeClinicName(dto.clinicName);
 
-    // Use clinic ID if provided, otherwise use clinic slug
-    // This ensures unique member IDs even for clinics with the same name
-    const clinicIdentifier = dto.clinicId
-      ? `clinic-${dto.clinicId}`
+    // Use English name if available, otherwise use clinic name
+    // Format: member1@EnglishName or member1@ClinicName
+    const clinicIdentifier = dto.clinicEnglishName
+      ? this.normalizeClinicName(dto.clinicEnglishName)
       : clinicSlug;
 
     const definitions: Array<{

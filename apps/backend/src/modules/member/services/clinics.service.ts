@@ -31,14 +31,13 @@ export class ClinicsService {
     const documentUrls = recognized.documentImageUrls ?? [];
     const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
 
-    return this.repository.create({
+    const clinic = await this.repository.create({
       tenant_id: tenantId,
       name: recognized.name,
       english_name: recognized.englishName,
       category: recognized.category,
       location: recognized.location,
       medical_subjects: recognized.medicalSubjects,
-      description: recognized.description,
       license_type: recognized.licenseType,
       license_number: recognized.licenseNumber,
       document_issue_number: recognized.documentIssueNumber,
@@ -47,6 +46,9 @@ export class ClinicsService {
       doctor_name: recognized.doctorName || null,
       created_by: userId ?? null,
     });
+
+    // Return clinic with tenant_id so frontend can use it
+    return clinic;
   }
 
   getClinics(tenantId: string) {
@@ -90,7 +92,6 @@ export class ClinicsService {
         category: recognized.category,
         location: recognized.location,
         medical_subjects: recognized.medicalSubjects,
-        description: recognized.description,
         license_type: recognized.licenseType,
         license_number: recognized.licenseNumber,
         document_issue_number: recognized.documentIssueNumber,

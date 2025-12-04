@@ -110,7 +110,13 @@ export default function ClinicRegisterSuccessPage() {
         // Fetch clinic from API to get english_name
         if (apiUrl) {
           try {
-            const response = await fetch(`${apiUrl}/iam/members/clinics`);
+            // Get tenant_id from sessionStorage
+            const tenantId = sessionStorage.getItem("erp_tenant_id");
+            const url = tenantId 
+              ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+              : `${apiUrl}/iam/members/clinics`;
+            
+            const response = await fetch(url);
             if (response.ok) {
               const clinics = (await response.json()) as Clinic[];
               // Find the clinic that matches the stored clinic name

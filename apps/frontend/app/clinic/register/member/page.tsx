@@ -54,7 +54,13 @@ export default function ClinicMemberSetupPage() {
       }
       setLoading(true);
       try {
-        const response = await fetch(`${apiUrl}/iam/members/clinics`);
+        // Get tenant_id from sessionStorage (saved during clinic registration)
+        const tenantId = sessionStorage.getItem("erp_tenant_id");
+        const url = tenantId 
+          ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+          : `${apiUrl}/iam/members/clinics`;
+        
+        const response = await fetch(url);
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(

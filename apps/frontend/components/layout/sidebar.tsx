@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const navItems = [
   {
@@ -169,6 +170,37 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userName, setUserName] = useState<string>("");
+  const [clinicName, setClinicName] = useState<string>("");
+
+  useEffect(() => {
+    // localStorage'dan foydalanuvchi ma'lumotlarini olish
+    if (typeof window !== "undefined") {
+      const memberData = localStorage.getItem("erp_member_data");
+      if (memberData) {
+        try {
+          const member = JSON.parse(memberData);
+          setUserName(member.full_name || member.member_id || "Foydalanuvchi");
+          setClinicName(member.clinic_name || "");
+        } catch (error) {
+          console.error("Error parsing member data:", error);
+        }
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      // Barcha localStorage ma'lumotlarini tozalash
+      localStorage.removeItem("erp_access_token");
+      localStorage.removeItem("erp_member_data");
+      localStorage.removeItem("erp_tenant_id");
+      
+      // Login sahifasiga yo'naltirish
+      router.push("/login");
+    }
+  };
 
   return (
     <aside className="sticky top-0 z-40 flex h-screen w-64 flex-col bg-slate-900 px-6 py-8 text-white">
@@ -193,6 +225,50 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Foydalanuvchi ma'lumotlari va Logout */}
+      <div className="mt-6 space-y-3 border-t border-slate-700 pt-6">
+        {userName && (
+          <div className="rounded-lg bg-slate-800 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-sm font-semibold text-white">
+                {userName.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="truncate text-sm font-semibold text-white">
+                  {userName}
+                </p>
+                {clinicName && (
+                  <p className="truncate text-xs text-slate-400">
+                    {clinicName}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-5 w-5"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+            />
+          </svg>
+          <span>로그아웃</span>
+        </button>
+      </div>
     </aside>
   );
 }

@@ -25,10 +25,6 @@ export class RegisterClinicDto {
   @IsString()
   medicalSubjects!: string; // 진료과목
 
-  @IsOptional()
-  @IsString()
-  description?: string; // 설명(법인명)
-
   @IsString()
   licenseType!: string; // 면허종류
 

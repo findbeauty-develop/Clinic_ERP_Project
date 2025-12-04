@@ -130,9 +130,6 @@ export class ReturnService {
             };
         });
 
-        // Supplier ma'lumotlari
-        const supplier = product.supplierProducts?.[0];
-
         // Search filter
         if (search && search.trim()) {
           const searchLower = search.toLowerCase().trim();
@@ -152,8 +149,8 @@ export class ReturnService {
           productName: product.name,
           brand: product.brand,
           unit: product.unit,
-          supplierId: supplier?.supplier_id ?? null,
-          supplierName: supplier?.supplier_id ?? null, // Bu yerda supplier nomini olish kerak (agar Catalog model bo'lsa)
+          supplierId: null, // Supplier ID removed from schema
+          supplierName: null, // Supplier name not available
           storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
           unreturnedQty,
           refundAmount: product.returnPolicy?.refund_amount ?? 0,
@@ -257,9 +254,8 @@ export class ReturnService {
               continue;
             }
 
-            // 6. Supplier ID olish
-            const supplier = product.supplierProducts?.[0];
-            const supplierId = supplier?.supplier_id ?? null;
+            // 6. Supplier ID removed from schema
+            const supplierId = undefined;
 
             // 7. Refund amount olish
             const refundAmount = product.returnPolicy?.refund_amount ?? 0;

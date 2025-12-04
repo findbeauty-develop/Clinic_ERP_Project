@@ -5,7 +5,14 @@
 const getApiUrl = () => {
   // Next.js'da NEXT_PUBLIC_* environment variable'lar build vaqtida o'qiladi
   // va hem client-side'da ham server-side'da mavjud bo'ladi
-  return process.env.NEXT_PUBLIC_API_URL ?? "";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  
+  if (!apiUrl) {
+    console.error("❌ NEXT_PUBLIC_API_URL is not configured in .env.local");
+    throw new Error("API base URL is not configured. Please set NEXT_PUBLIC_API_URL in .env.local file");
+  }
+  
+  return apiUrl;
 };
 
 /**

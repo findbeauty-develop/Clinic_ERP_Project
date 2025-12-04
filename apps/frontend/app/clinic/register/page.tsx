@@ -412,23 +412,29 @@ export default function ClinicRegisterPage() {
         // Clear editing clinic ID
         sessionStorage.removeItem("erp_editing_clinic_id");
         
-        // Update sessionStorage with new clinic data
-        if (isUpdateMode && result) {
-          sessionStorage.setItem(
-            "erp_clinic_summary",
-            JSON.stringify({
-              name: result.name,
-              englishName: result.english_name,
-              category: result.category,
-              location: result.location,
-              medicalSubjects: result.medical_subjects,
-              description: result.description,
-              licenseType: result.license_type,
-              licenseNumber: result.license_number,
-              documentIssueNumber: result.document_issue_number,
-            })
-          );
+        // Save tenant_id for use in complete page and member creation
+        if (result && result.tenant_id) {
+          sessionStorage.setItem("erp_tenant_id", result.tenant_id);
+          console.log("✅ Saved tenant_id:", result.tenant_id);
         }
+        
+        // Update sessionStorage with new clinic data
+        sessionStorage.setItem(
+          "erp_clinic_summary",
+          JSON.stringify({
+            id: result.id,
+            name: result.name,
+            englishName: result.english_name,
+            category: result.category,
+            location: result.location,
+            medicalSubjects: result.medical_subjects,
+            description: result.description,
+            licenseType: result.license_type,
+            licenseNumber: result.license_number,
+            documentIssueNumber: result.document_issue_number,
+            tenantId: result.tenant_id, // Include tenant_id
+          })
+        );
         window.location.href = "/clinic/register/complete";
       }
     } catch (error) {

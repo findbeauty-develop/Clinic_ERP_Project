@@ -54,12 +54,24 @@ export class ClinicsController {
     @Tenant() tenantId: string,
     @ReqUser("id") userId: string
   ) {
-    const resolvedTenantId = tenantId ?? dto.tenantId ?? "self-service-tenant";
+    // Generate unique tenant_id if not provided (new clinic registration)
+    const resolvedTenantId = tenantId ?? dto.tenantId ?? this.generateUniqueTenantId();
     if (!resolvedTenantId) {
       throw new BadRequestException("tenant_id is required");
     }
     const resolvedUserId = userId ?? dto.createdBy ?? "self-service";
     return this.service.clinicRegister(dto, resolvedTenantId, resolvedUserId);
+  }
+
+  /**
+   * Generate unique tenant ID for new clinic
+   * Format: clinic_<timestamp>_<random>
+   * Example: clinic_1704348000000_a3b5c7d9
+   */
+  private generateUniqueTenantId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 10);
+    return `clinic_${timestamp}_${random}`;
   }
 
   @Put(":id")

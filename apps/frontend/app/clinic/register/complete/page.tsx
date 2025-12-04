@@ -33,7 +33,16 @@ export default function ClinicRegisterCompletePage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${apiUrl}/iam/members/clinics`);
+        // Get tenant_id from sessionStorage (saved during registration)
+        const tenantId = sessionStorage.getItem("erp_tenant_id");
+        console.log("📋 Using tenant_id for fetching clinics:", tenantId);
+        
+        // Build URL with tenantId query parameter
+        const url = tenantId 
+          ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+          : `${apiUrl}/iam/members/clinics`;
+        
+        const response = await fetch(url);
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(

@@ -485,7 +485,7 @@ export class OrderService {
       (item: any) => item.id === itemId
     );
 
-    const supplierId = supplier?.supplier_id || null;
+    const supplierId = null; // Supplier ID removed from schema
 
     const newItem = {
       id: itemId,
@@ -668,7 +668,7 @@ export class OrderService {
           ? `${item.productId}-${item.batchId}`
           : item.productId;
 
-        const supplierId = product.supplierProducts?.[0]?.supplier_id || null;
+        const supplierId = null; // Supplier ID removed from schema
 
         return {
           id: itemId,
