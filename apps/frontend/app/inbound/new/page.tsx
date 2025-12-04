@@ -49,43 +49,22 @@ export default function InboundNewPage() {
   
   const [selectedBarcodeMethod, setSelectedBarcodeMethod] = useState<string>("manual");
   const [isReturnable, setIsReturnable] = useState<boolean>(true);
-  const [selectedManager, setSelectedManager] = useState<string>("성함 선택");
+  const [selectedManager, setSelectedManager] = useState<string>(""); // Current logged-in member name
   const [loading, setLoading] = useState(false);
   const [supplierManagers, setSupplierManagers] = useState<Array<{ id: string; name: string; clinicName?: string; fullName?: string; displayName: string }>>([]);
-  const [inboundManagers, setInboundManagers] = useState<Array<{ id: string; member_id: string; role: string; full_name: string | null }>>([]);
   const [inboundDate, setInboundDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0]; // YYYY-MM-DD format
   });
 
-  // Load inbound managers (clinic members)
+  // Initialize manager name from localStorage (current logged-in member)
   useEffect(() => {
-    const loadInboundManagers = async () => {
-      try {
-        const tenantId = localStorage.getItem("erp_tenant_id");
-        const token = localStorage.getItem("erp_access_token");
-        
-        if (!tenantId) {
-          console.warn("No tenant_id found, skipping member load");
-          return;
-        }
-
-        const url = `${apiUrl}/iam/members?tenantId=${encodeURIComponent(tenantId)}`;
-        const response = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-
-        if (response.ok) {
-          const members = await response.json();
-          setInboundManagers(members);
-        }
-      } catch (error) {
-        console.error("Failed to load inbound managers:", error);
-      }
-    };
-
-    loadInboundManagers();
-  }, [apiUrl]);
+    const memberData = localStorage.getItem("erp_member_data");
+    if (memberData) {
+      const member = JSON.parse(memberData);
+      setSelectedManager(member.full_name || member.member_id || "");
+    }
+  }, []);
   
   // Supplier search states
   const [supplierSearchCompanyName, setSupplierSearchCompanyName] = useState("");
@@ -2021,12 +2000,14 @@ export default function InboundNewPage() {
             입고 담당자
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            <ManagerSelectField
-              label="성함 선택"
-              options={inboundManagers}
-              value={selectedManager}
-              onChange={setSelectedManager}
-            />
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                담당자
+              </span>
+              <span className="rounded-lg bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                {selectedManager || "알 수 없음"}
+              </span>
+            </div>
           </div>
         </section>
 

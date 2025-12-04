@@ -13,42 +13,11 @@ import {
   AddOrderDraftItemDto,
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
-import { OrderProductsQueryDto } from "../dto/order-products-query.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
-
-export interface ProductWithRisk {
-  id: string;
-  productName: string;
-  brand: string;
-  supplierId: string | null;
-  supplierName: string | null;
-  managerName: string | null; // 담당자명 (contact_name from supplierProduct)
-  batchNo: string | null;
-  expiryDate: string | null;
-  unitPrice: number | null;
-  currentStock: number;
-  minStock: number;
-  safeStock: number; // minStock bilan bir xil yoki config'dan
-  stockRatio: number; // SR
-  expiryRatio: number; // ER
-  riskScore: number; // R
-  riskLevel: "high" | "medium" | "low";
-  riskColor: string;
-  batches: Array<{
-    id: string;
-    batchNo: string;
-    expiryDate: string | null;
-    qty: number;
-    purchasePrice: number | null;
-  }>;
-}
 
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
-  // Risk score hisoblash uchun koeffitsientlar (config'dan olish mumkin)
-  private readonly ALPHA = parseFloat(process.env.ORDER_RISK_ALPHA || "0.6"); // Stock ratio weight
-  private readonly BETA = parseFloat(process.env.ORDER_RISK_BETA || "0.4"); // Expiry ratio weight
   private readonly DRAFT_EXPIRY_HOURS = 24; // Draft expiration time
 
   constructor(
@@ -57,133 +26,29 @@ export class OrderService {
   ) {}
 
   /**
-   * Mahsulotlar ro'yxatini risk score bilan chiqarish
+   * Mahsulotlar ro'yxatini olish (barcha productlar)
    */
   async getProductsForOrder(
-    tenantId: string,
-    query: OrderProductsQueryDto
-  ): Promise<ProductWithRisk[]> {
+    tenantId: string
+  ): Promise<any[]> {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    // Barcha product'larni olish (batches va supplierProducts bilan)
-    const products = await this.prisma.executeWithRetry(async () => {
-      const where: any = {
+    // Barcha product'larni olish
+    const products = await this.prisma.product.findMany({
+      where: {
         tenant_id: tenantId,
-        is_active: true,
-      };
-
-      // Search filter
-      if (query.search) {
-        where.OR = [
-          { name: { contains: query.search, mode: "insensitive" } },
-          { brand: { contains: query.search, mode: "insensitive" } },
-          {
-            supplierProducts: {
-              some: {
-                supplier_id: { contains: query.search, mode: "insensitive" },
-              },
-            },
-          },
-        ];
-      }
-
-      // Supplier filter
-      if (query.supplierId) {
-        where.supplierProducts = {
-          some: {
-            supplier_id: query.supplierId,
-          },
-        };
-      }
-
-      return this.prisma.product.findMany({
-        where,
-        include: {
-          batches: {
-            where: {
-              qty: { gt: 0 }, // Faqat zaxirasi bor batch'lar
-            },
-            orderBy: [
-              { expiry_date: "asc" }, // FEFO: eng yaqin muddatli batch birinchi
-              { created_at: "asc" },
-            ],
-          },
-          supplierProducts: {
-            orderBy: { created_at: "desc" },
-            take: 1, // Eng so'nggi supplier
-          },
-        },
-        orderBy: { created_at: "desc" },
-      });
+      },
+      include: {
+        batches: true,
+        supplierProducts: true,
+      },
     });
 
-    // Har bir product uchun risk score hisoblash
-    const productsWithRisk: (ProductWithRisk | null)[] = products.map((product: any) => {
-      const latestBatch = product.batches?.[0];
+    // Faqat basic formatting - hamma logic frontend'da
+    return products.map((product: any) => {
       const supplier = product.supplierProducts?.[0];
-
-      // Safe stock = minStock (yoki config'dan olish mumkin)
-      const safeStock = product.min_stock || 0;
-
-      // Stock Ratio (SR) = current_stock / safeStock
-      const stockRatio =
-        safeStock > 0 ? product.current_stock / safeStock : 0;
-
-      // Expiry Ratio (ER) hisoblash
-      let expiryRatio = 1; // Default: muddati uzoq
-      if (latestBatch?.expiry_date) {
-        const now = new Date();
-        const expiryDate = new Date(latestBatch.expiry_date);
-        const totalDays =
-          (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-
-        // Agar batch'ning manufacture_date bo'lsa, umumiy yaroqlilik kunlarini hisoblash
-        if (latestBatch.manufacture_date) {
-          const manufactureDate = new Date(latestBatch.manufacture_date);
-          const totalExpiryDays =
-            (expiryDate.getTime() - manufactureDate.getTime()) /
-            (1000 * 60 * 60 * 24);
-          if (totalExpiryDays > 0) {
-            expiryRatio = Math.max(0, Math.min(1, totalDays / totalExpiryDays));
-          }
-        } else {
-          // Agar manufacture_date yo'q bo'lsa, default 365 kun deb olamiz
-          const defaultTotalDays = 365;
-          expiryRatio = Math.max(0, Math.min(1, totalDays / defaultTotalDays));
-        }
-      }
-
-      // Risk Score (R) = α × (1 - SR) + β × (1 - ER)
-      const riskScore =
-        this.ALPHA * (1 - stockRatio) + this.BETA * (1 - expiryRatio);
-
-      // Risk level va color aniqlash
-      let riskLevel: "high" | "medium" | "low";
-      let riskColor: string;
-
-      if (riskScore >= 0.7) {
-        riskLevel = "high";
-        riskColor = "red"; // Yuqori xavf
-      } else if (riskScore >= 0.4) {
-        riskLevel = "medium";
-        riskColor = "yellow"; // O'rta xavf
-      } else {
-        riskLevel = "low";
-        riskColor = "green"; // Past xavf
-      }
-
-      // Risk score filter
-      if (query.minRiskScore !== undefined && riskScore < query.minRiskScore) {
-        return null;
-      }
-      if (query.maxRiskScore !== undefined && riskScore > query.maxRiskScore) {
-        return null;
-      }
-      if (query.riskLevel && riskLevel !== query.riskLevel) {
-        return null;
-      }
 
       return {
         id: product.id,
@@ -191,38 +56,22 @@ export class OrderService {
         brand: product.brand,
         supplierId: supplier?.supplier_id ?? null,
         supplierName: supplier?.supplier_id ?? null,
-        managerName: supplier?.contact_name ?? null, // 담당자명
-        batchNo: latestBatch?.batch_no ?? null,
-        expiryDate: latestBatch?.expiry_date
-          ? latestBatch.expiry_date.toISOString().split("T")[0]
-          : null,
+        managerName: supplier?.contact_name ?? null,
+        managerPosition: null, // TODO: Get from SupplierManager via ClinicSupplierLink
         unitPrice: supplier?.purchase_price ?? product.purchase_price ?? null,
-        currentStock: product.current_stock,
-        minStock: product.min_stock,
-        safeStock: safeStock,
-        stockRatio: stockRatio,
-        expiryRatio: expiryRatio,
-        riskScore: riskScore,
-        riskLevel: riskLevel,
-        riskColor: riskColor,
-        batches: product.batches.map((batch: any) => ({
+        currentStock: product.current_stock ?? 0,
+        minStock: product.min_stock ?? 0,
+        batches: (product.batches || []).map((batch: any) => ({
           id: batch.id,
-          batchNo: batch.batch_no,
+          batchNo: batch.batch_no ?? "",
           expiryDate: batch.expiry_date
             ? batch.expiry_date.toISOString().split("T")[0]
             : null,
-          qty: batch.qty,
+          qty: batch.qty ?? 0,
           purchasePrice: batch.purchase_price ?? null,
         })),
       };
     });
-
-    // Null'larni olib tashlash va risk score bo'yicha tartiblash
-    const filteredProducts = productsWithRisk
-      .filter((p): p is ProductWithRisk => p !== null)
-      .sort((a, b) => b.riskScore - a.riskScore); // Yuqori risk birinchi
-
-    return filteredProducts;
   }
 
   /**
@@ -373,6 +222,8 @@ export class OrderService {
         brand: product.brand,
         supplierId: supplier?.supplier_id ?? null,
         supplierName: supplier?.supplier_id ?? null,
+        managerName: supplier?.contact_name ?? null,
+        managerPosition: null, // TODO: Get from SupplierManager via ClinicSupplierLink
         unitPrice: supplier?.purchase_price ?? product.purchase_price ?? null,
         totalStock: totalStock,
         unit: product.unit,

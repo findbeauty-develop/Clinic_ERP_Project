@@ -38,26 +38,21 @@ type ProductWithRisk = {
   supplierId: string | null;
   supplierName: string | null;
   managerName: string | null; // 담당자명
+  managerPosition?: string | null; // 담당자 직함
   batchNo: string | null;
   expiryDate: string | null;
   unitPrice: number | null;
   currentStock: number;
   minStock: number;
-  safeStock: number;
-  stockRatio: number;
-  expiryRatio: number;
-  riskScore: number;
-  riskLevel: "high" | "medium" | "low";
-  riskColor: string;
-  isReturnable?: boolean;
-  returnRefundAmount?: number;
-  returnableQuantity?: number;
+  isLowStock: boolean; // 재고 부족 여부
   batches: Array<{
     id: string;
     batchNo: string;
     expiryDate: string | null;
     qty: number;
     purchasePrice: number | null;
+    isExpiringSoon: boolean; // 유효기한 임박 여부
+    daysUntilExpiry: number | null; // 만료까지 남은 일수
   }>;
 };
 
@@ -125,19 +120,29 @@ export default function OrderPage() {
   const [supplierDetails, setSupplierDetails] = useState<any | null>(null);
   const [loadingSupplierDetails, setLoadingSupplierDetails] = useState(false);
   const orderFormRef = useRef<HTMLDivElement>(null);
-  const [sessionId] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("order_session_id") || `session-${Date.now()}`;
-    }
-    return `session-${Date.now()}`;
-  });
+  const [sessionId, setSessionId] = useState<string>("");
+  
+  // Current logged-in member name (read-only)
+  const [orderManagerName, setOrderManagerName] = useState("");
 
-  // Session ID'ni localStorage'ga saqlash
+  // Session ID'ni client-side'da initialize qilish (hydration error'dan qochish uchun)
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("order_session_id", sessionId);
+      const existingSessionId = localStorage.getItem("order_session_id");
+      const newSessionId = existingSessionId || `session-${Date.now()}`;
+      setSessionId(newSessionId);
+      localStorage.setItem("order_session_id", newSessionId);
     }
-  }, [sessionId]);
+  }, []);
+
+  // Initialize manager name from localStorage (current logged-in member)
+  useEffect(() => {
+    const memberData = localStorage.getItem("erp_member_data");
+    if (memberData) {
+      const member = JSON.parse(memberData);
+      setOrderManagerName(member.full_name || member.member_id || "");
+    }
+  }, []);
 
   // Order form modal ochilganda memo'ni yangilash
   useEffect(() => {
@@ -146,22 +151,15 @@ export default function OrderPage() {
     }
   }, [selectedOrder]);
 
-  // Products olish
+  // Products olish - Backend에서 모든 제품 가져오기
   useEffect(() => {
     const fetchProducts = async () => {
       setLoading(true);
       setError(null);
       try {
-        const queryParams = new URLSearchParams();
-        if (filterTab === "low") {
-          queryParams.append("riskLevel", "high");
-        } else if (filterTab === "expiring") {
-          queryParams.append("riskLevel", "high");
-        }
-
-        const data = await apiGet<ProductWithRisk[]>(
-          `${apiUrl}/order/products?${queryParams.toString()}`
-        );
+        // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
+        const data = await apiGet<any[]>(`${apiUrl}/order/products`);
+        console.log("Fetched products:", data.length);
         setProducts(data);
       } catch (err) {
         console.error("Failed to load products", err);
@@ -172,10 +170,12 @@ export default function OrderPage() {
     };
 
     fetchProducts();
-  }, [apiUrl, filterTab]);
+  }, [apiUrl]); // filterTab 제거 - frontend에서 filtering
 
   // Draft olish (loading bilan)
   const fetchDraft = useCallback(async () => {
+    if (!sessionId) return; // SessionId tayyor bo'lmaguncha kutish
+    
     setDraftLoading(true);
     try {
       const token = typeof window !== "undefined" 
@@ -211,6 +211,8 @@ export default function OrderPage() {
 
   // Silent draft fetch (loading ko'rsatmasdan, quantities'ni yangilamaydi)
   const fetchDraftSilent = useCallback(async () => {
+    if (!sessionId) return null; // SessionId tayyor bo'lmaguncha kutish
+    
     try {
       const token = typeof window !== "undefined" 
         ? localStorage.getItem("erp_access_token") 
@@ -235,9 +237,12 @@ export default function OrderPage() {
     }
   }, [apiUrl, sessionId]);
 
+  // Draft'ni faqat sessionId tayyor bo'lganda fetch qilish
   useEffect(() => {
-    fetchDraft();
-  }, [fetchDraft]);
+    if (sessionId) {
+      fetchDraft();
+    }
+  }, [fetchDraft, sessionId]);
 
   // Orders olish (History uchun)
   const fetchOrders = useCallback(async () => {
@@ -308,6 +313,8 @@ export default function OrderPage() {
   // Quantity o'zgartirish (Optimistic update bilan)
   const handleQuantityChange = useCallback(
     async (productId: string, batchId: string | undefined, newQuantity: number) => {
+      if (!sessionId) return; // SessionId tayyor bo'lmaguncha kutish
+      
       // Sanitize quantity - faqat musbat butun son bo'lishi kerak
       const sanitizedQuantity = Math.max(0, Math.floor(newQuantity));
       if (isNaN(sanitizedQuantity) || sanitizedQuantity < 0) return;
@@ -454,44 +461,81 @@ export default function OrderPage() {
         }
       }
     },
-    [apiUrl, sessionId, products]
+    [apiUrl, sessionId, products, quantities]
   );
 
-  // Filter products
+  // Sort and filter products with client-side calculations
   const filteredProducts = useMemo(() => {
-    if (filterTab === "all") return products;
-
-    return products.filter((product) => {
-      if (filterTab === "low") {
-        return product.riskLevel === "high" && product.stockRatio < 1;
-      }
-      if (filterTab === "expiring") {
-        return product.riskLevel === "high" && product.expiryRatio < 0.3;
-      }
-      return true;
+    // Add calculated fields to products
+    const productsWithCalcs = products.map((product: any) => {
+      // Calculate isLowStock
+      const isLowStock = product.currentStock <= (product.minStock || 0);
+      
+      // Calculate batch expiry info
+      const batchesWithExpiry = product.batches?.map((batch: any) => {
+        if (!batch.expiryDate) {
+          return {
+            ...batch,
+            isExpiringSoon: false,
+            daysUntilExpiry: null,
+          };
+        }
+        
+        const daysUntilExpiry = Math.floor(
+          (new Date(batch.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+        );
+        const isExpiringSoon = daysUntilExpiry <= 30;
+        
+        return {
+          ...batch,
+          isExpiringSoon,
+          daysUntilExpiry,
+        };
+      }) || [];
+      
+      return {
+        ...product,
+        isLowStock,
+        batches: batchesWithExpiry,
+      };
     });
+    
+    // Sort products: 재고 부족 먼저, 그 다음 유효기한 임박
+    const sorted = [...productsWithCalcs].sort((a, b) => {
+      // 1순위: 재고 부족 (isLowStock)
+      const aLowStock = a.isLowStock ? 1 : 0;
+      const bLowStock = b.isLowStock ? 1 : 0;
+      if (aLowStock !== bLowStock) {
+        return bLowStock - aLowStock; // 재고 부족이 먼저
+      }
+
+      // 2순위: 유효기한 임박 (가장 빨리 만료되는 batch 기준)
+      const aEarliestExpiry = a.batches?.[0]?.daysUntilExpiry ?? Infinity;
+      const bEarliestExpiry = b.batches?.[0]?.daysUntilExpiry ?? Infinity;
+      if (aEarliestExpiry !== bEarliestExpiry) {
+        return aEarliestExpiry - bEarliestExpiry; // 빨리 만료되는 것이 먼저
+      }
+
+      // 3순위: 제품명 알파벳 순
+      return a.productName.localeCompare(b.productName);
+    });
+
+    // Filter by tab
+    if (filterTab === "all") return sorted;
+    
+    if (filterTab === "low") {
+      return sorted.filter((product) => product.isLowStock);
+    }
+    
+    if (filterTab === "expiring") {
+      return sorted.filter((product) => 
+        product.batches?.some((batch: any) => batch.isExpiringSoon)
+      );
+    }
+
+    return sorted;
   }, [products, filterTab]);
 
-  // Risk color
-  const getRiskColor = (riskLevel: string) => {
-    switch (riskLevel) {
-      case "high":
-        return "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700";
-      case "low":
-        return "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700";
-      default:
-        return "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/30 dark:text-slate-300 dark:border-slate-700";
-    }
-  };
-
-  // Risk tag text
-  const getRiskTag = (product: ProductWithRisk) => {
-    if (product.stockRatio < 1) return "소진";
-    if (product.expiryRatio < 0.3) return "임박";
-    return "";
-  };
 
   return (
     <>
@@ -601,12 +645,24 @@ export default function OrderPage() {
                           key={product.id}
                           className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
                         >
-                          {/* 1-chi qator: Product nomi, quantity input */}
+                          {/* 1-chi qator: Product nomi, badges, quantity input */}
                           <div className="mb-3 flex items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
                               <h3 className="text-lg font-semibold text-slate-900 dark:text-white underline">
                                 {product.productName}
                               </h3>
+                              {/* 재고 부족 Badge */}
+                              {product.isLowStock && (
+                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                                  재고부족
+                                </span>
+                              )}
+                              {/* 유효기한 임박 Badge */}
+                              {product.batches?.[0]?.isExpiringSoon && (
+                                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
+                                  유효기한 임박
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -676,25 +732,42 @@ export default function OrderPage() {
                             </span>
                           </div>
 
+                          {/* 재고 정보 */}
+                          <div className="mb-2 flex items-center gap-3 text-sm">
+                            <span className={`font-semibold ${product.isLowStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}>
+                              현재고: {product.currentStock || 0}개
+                            </span>
+                            <span className="text-slate-600 dark:text-slate-400">
+                              최소재고: {product.minStock || 0}개
+                            </span>
+                          </div>
+
                           {/* Batch'lar ro'yxati */}
                           {product.batches && product.batches.length > 0 && (
                             <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
                               {product.batches.map((batch: any) => (
                                 <div
                                   key={batch.id}
-                                  className="relative flex items-center text-sm"
+                                  className={`relative flex items-center rounded px-2 py-1 text-sm ${
+                                    batch.isExpiringSoon ? "bg-yellow-50 dark:bg-yellow-900/20" : ""
+                                  }`}
                                 >
                                   <span className="font-medium text-slate-900 dark:text-white">
                                     {batch.batchNo}
                                   </span>
-                                  <div className="absolute left-1/2 -translate-x-1/2">
+                                  <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
                                     {batch.expiryDate && (
-                                      <span className="text-orange-600 dark:text-orange-400">
+                                      <span className={batch.isExpiringSoon ? "font-semibold text-yellow-700 dark:text-yellow-400" : "text-orange-600 dark:text-orange-400"}>
                                         유통기간: {batch.expiryDate}
                                       </span>
                                     )}
+                                    {batch.isExpiringSoon && batch.daysUntilExpiry !== null && (
+                                      <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                                        (D-{batch.daysUntilExpiry})
+                                      </span>
+                                    )}
                                   </div>
-                                  <span className="ml-auto font-semibold text-red-600 dark:text-red-400">
+                                  <span className={`ml-auto font-semibold ${batch.qty <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}>
                                     {batch.qty} 개
                                   </span>
                                 </div>
@@ -761,12 +834,24 @@ export default function OrderPage() {
                               key={product.id}
                               className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
                             >
-                              {/* 1-chi qator: Product nomi, quantity input */}
+                              {/* 1-chi qator: Product nomi, badges, quantity input */}
                               <div className="mb-3 flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-3">
                                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white underline">
                                     {product.productName}
                                   </h3>
+                                  {/* 재고 부족 Badge */}
+                                  {product.isLowStock && (
+                                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                                      재고부족
+                                    </span>
+                                  )}
+                                  {/* 유효기한 임박 Badge */}
+                                  {product.batches?.[0]?.isExpiringSoon && (
+                                    <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
+                                      유효기한 임박
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
@@ -828,11 +913,21 @@ export default function OrderPage() {
                                 </span>
                                 <span>
                                   <span className="font-medium">담당자:</span>{" "}
-                                  {product.supplierName || "없음"}
+                                  {product.managerName || "없음"}
                                 </span>
                                 <span>
                                   <span className="font-medium">단가:</span>{" "}
                                   {unitPrice.toLocaleString()}원
+                                </span>
+                              </div>
+
+                              {/* 재고 정보 */}
+                              <div className="mb-2 flex items-center gap-3 text-sm">
+                                <span className={`font-semibold ${product.isLowStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}>
+                                  현재고: {product.currentStock || 0}개
+                                </span>
+                                <span className="text-slate-600 dark:text-slate-400">
+                                  최소재고: {product.minStock || 0}개
                                 </span>
                               </div>
 
@@ -842,19 +937,26 @@ export default function OrderPage() {
                                   {product.batches.map((batch: any) => (
                                     <div
                                       key={batch.id}
-                                      className="relative flex items-center text-sm"
+                                      className={`relative flex items-center rounded px-2 py-1 text-sm ${
+                                        batch.isExpiringSoon ? "bg-yellow-50 dark:bg-yellow-900/20" : ""
+                                      }`}
                                     >
                                       <span className="font-medium text-slate-900 dark:text-white">
                                         {batch.batchNo}
                                       </span>
-                                      <div className="absolute left-1/2 -translate-x-1/2">
+                                      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
                                         {batch.expiryDate && (
-                                          <span className="text-orange-600 dark:text-orange-400">
+                                          <span className={batch.isExpiringSoon ? "font-semibold text-yellow-700 dark:text-yellow-400" : "text-orange-600 dark:text-orange-400"}>
                                             유통기간: {batch.expiryDate}
                                           </span>
                                         )}
+                                        {batch.isExpiringSoon && batch.daysUntilExpiry !== null && (
+                                          <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                                            (D-{batch.daysUntilExpiry})
+                                          </span>
+                                        )}
                                       </div>
-                                      <span className="ml-auto font-semibold text-red-600 dark:text-red-400">
+                                      <span className={`ml-auto font-semibold ${batch.qty <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}>
                                         {batch.qty} 개
                                       </span>
                                     </div>
@@ -879,9 +981,21 @@ export default function OrderPage() {
           {/* Right Panel - Order Summary */}
           <div className="flex w-1/3 flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
             <div className="border-b border-slate-200 bg-white px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <h2 className="font-semibold text-slate-900 dark:text-white">
-                주문 요약
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-slate-900 dark:text-white">
+                  주문 요약
+                </h2>
+                
+                {/* 주문 담당자 (현재 로그인한 사용자) */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    주문 담당자
+                  </label>
+                  <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                    {orderManagerName || "알 수 없음"}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="order-page-scrollbar flex-1 overflow-y-auto p-6">
@@ -1269,14 +1383,49 @@ export default function OrderPage() {
                   const supplierName = firstProduct?.supplierName || group.supplierId || "공급업체 없음";
                   
                   // Manager name'ni topish (product'dan yoki supplier'dan)
-                  // Product'lardan manager name'ni topish
-                  const managerNames = group.items
+                  // Product'lardan supplier manager name + position topish
+                  const managerData = group.items
                     .map((item) => {
                       const product = products.find((p) => p.id === item.productId);
-                      return product?.managerName || null;
+                      if (!product?.managerName) return null;
+                      
+                      return {
+                        name: product.managerName,
+                        position: product.managerPosition || "", // Backend'dan position olish
+                      };
                     })
                     .filter(Boolean);
-                  const managerName = managerNames[0] || ""; // Birinchi manager name'ni olish
+                  
+                  const supplierManager = managerData[0];
+                  const supplierManagerName = supplierManager?.name || "";
+                  const supplierManagerPosition = supplierManager?.position || "";
+
+                  // Get logged-in member info (name + position) - for order creator
+                  const memberData = typeof window !== "undefined" ? localStorage.getItem("erp_member_data") : null;
+                  let memberPosition = "";
+                  let memberFullName = orderManagerName || "알 수 없음";
+                  if (memberData) {
+                    try {
+                      const member = JSON.parse(memberData);
+                      memberPosition = member.role || ""; // Position/role
+                      memberFullName = member.full_name || member.member_id || "알 수 없음";
+                    } catch (e) {
+                      console.error("Failed to parse member data:", e);
+                    }
+                  }
+
+                  // Generate order number: YYYYMMDD000000XXXXXX (20 digits)
+                  const generateOrderNumber = () => {
+                    const now = new Date();
+                    const year = now.getFullYear();
+                    const month = String(now.getMonth() + 1).padStart(2, '0');
+                    const day = String(now.getDate()).padStart(2, '0');
+                    const datePrefix = `${year}${month}${day}`; // YYYYMMDD (8 digits)
+                    
+                    const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0'); // Random 6 digits
+                    return `${datePrefix}${random}`; // Total 20 digits
+                  };
+                  const orderNumber = generateOrderNumber();
 
                   // Subtotal va VAT hisoblash
                   const subtotal = group.totalAmount;
@@ -1305,16 +1454,25 @@ export default function OrderPage() {
                               d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                             />
                           </svg>
-                          <div>
+                          <div className="flex-1">
                             <div className="text-sm font-semibold text-slate-900 dark:text-white">
                               {supplierName}
                             </div>
-                            {managerName && (
+                            {supplierManagerName && (
                               <div className="text-xs text-slate-500 dark:text-slate-400">
-                                [담당자] {managerName}
+                                [담당자] {supplierManagerPosition && <span className="font-medium text-slate-600 dark:text-slate-400">{supplierManagerPosition} </span>}{supplierManagerName}
                               </div>
                             )}
                           </div>
+                        </div>
+                        
+                        {/* Right side: Order info */}
+                        <div className="text-right">
+                          <div className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
+                            주문번호: {orderNumber}
+                          </div>
+                          
+                          
                         </div>
                       </div>
 

@@ -250,12 +250,24 @@ function ProductCard({
   
   // Batch form state
   const [batchForm, setBatchForm] = useState({
-    inboundManager: "",
+    inboundManager: "", // Will be auto-filled from localStorage
     manufactureDate: "",
     purchasePrice: "",
     expiryDate: "",
     storageLocation: "",
   });
+
+  // Initialize inboundManager from localStorage (current logged-in member)
+  useEffect(() => {
+    const memberData = localStorage.getItem("erp_member_data");
+    if (memberData && !batchForm.inboundManager) {
+      const member = JSON.parse(memberData);
+      setBatchForm(prev => ({
+        ...prev,
+        inboundManager: member.full_name || member.member_id || ""
+      }));
+    }
+  }, [batchForm.inboundManager]);
   
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
@@ -556,13 +568,20 @@ function ProductCard({
               </Link>
             </div>
 
-            {/* 입고 담당자 - to'liq width */}
-            <InlineField 
-              label="입고 담당자 *" 
-              placeholder="입고 담당자 이름"
-              value={batchForm.inboundManager}
-              onChange={(value) => setBatchForm({ ...batchForm, inboundManager: value })}
-            />
+            {/* 입고 담당자 - read-only (current logged-in member) */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                입고 담당자 *
+              </label>
+              <div className="flex items-center gap-3">
+                <span className="rounded-lg bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                  {batchForm.inboundManager || "알 수 없음"}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  (현재 로그인한 사용자)
+                </span>
+              </div>
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <InlineField 

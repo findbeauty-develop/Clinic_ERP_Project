@@ -113,10 +113,6 @@ export default function OutboundPage() {
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
-  
-  // Member dropdown state
-  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
-  const [members, setMembers] = useState<Array<{ id: string; name: string; member_id?: string }>>([]);
 
   // History state
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -128,63 +124,14 @@ export default function OutboundPage() {
   const [historyTotalItems, setHistoryTotalItems] = useState(0);
   const historyItemsPerPage = 20;
 
-  // Load members from API
-  useEffect(() => {
-    const loadMembers = async () => {
-      try {
-        const tenantId = localStorage.getItem("erp_tenant_id");
-        const token = localStorage.getItem("erp_access_token");
-        
-        if (!tenantId) {
-          console.warn("No tenant_id found, skipping member load");
-          return;
-        }
-
-        const url = `${apiUrl}/iam/members?tenantId=${encodeURIComponent(tenantId)}`;
-        const response = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-
-        if (response.ok) {
-          const membersData = await response.json();
-          const formattedMembers = membersData.map((m: any) => ({
-            id: m.id,
-            name: m.full_name || m.member_id,
-            member_id: m.member_id,
-          }));
-          setMembers(formattedMembers);
-        }
-      } catch (error) {
-        console.error("Failed to load members:", error);
-      }
-    };
-
-    loadMembers();
-  }, [apiUrl]);
-
+  // Initialize manager name from localStorage (current logged-in member)
   useEffect(() => {
     const memberData = localStorage.getItem("erp_member_data");
     if (memberData) {
       const member = JSON.parse(memberData);
       setManagerName(member.full_name || member.member_id || "");
     }
-    
-    // Close dropdown when clicking outside
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.member-dropdown-container')) {
-        setShowMemberDropdown(false);
-      }
-    };
-    
-    if (showMemberDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showMemberDropdown]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === "processing") {
@@ -1431,76 +1378,14 @@ export default function OutboundPage() {
                     </div>
                     출고 처리
                   </h2>
-                  {/* Manager - Header'da */}
-                  <div className="member-dropdown-container relative">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        출고 담당자
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowMemberDropdown(!showMemberDropdown)}
-                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 min-w-[120px]"
-                      >
-                        <span className={managerName ? "font-semibold text-slate-900 dark:text-white truncate" : "text-slate-600 dark:text-slate-400"}>
-                          {managerName || "성함 선택"}
-                        </span>
-                        <svg
-                          className={`h-3 w-3 flex-shrink-0 transition-transform ${showMemberDropdown ? "rotate-180" : ""}`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </button>
-                      <div className="relative">
-                       
-                        {showMemberDropdown && (
-                          <div className="absolute right-0 z-10 mt-1 w-64 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                            <div className="max-h-60 overflow-y-auto">
-                              {members.length > 0 ? (
-                                members.map((member) => (
-                                  <button
-                                    key={member.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setManagerName(member.member_id || member.name);
-                                      setShowMemberDropdown(false);
-                                    }}
-                                    className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
-                                      managerName === (member.member_id || member.name)
-                                        ? "bg-sky-50 dark:bg-sky-500/10"
-                                        : ""
-                                    }`}
-                                  >
-                                    <div className="flex flex-col gap-0.5">
-                                      <span className="text-sm font-medium text-slate-900 dark:text-white">
-                                        {member.member_id || member.name}
-                                      </span>
-                                      {member.name && member.member_id && member.name !== member.member_id && (
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                                          {member.name}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
-                                  멤버가 없습니다
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  {/* 출고 담당자 (현재 로그인한 사용자) */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                      출고 담당자
+                    </label>
+                    <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                      {managerName || "알 수 없음"}
+                    </span>
                   </div>
                 </div>
 

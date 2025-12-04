@@ -11,14 +11,13 @@ import {
   Req,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
-import { OrderService, ProductWithRisk } from "../services/order.service";
+import { OrderService } from "../services/order.service";
 import { CreateOrderDto } from "../dto/create-order.dto";
 import {
   UpdateOrderDraftDto,
   AddOrderDraftItemDto,
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
-import { OrderProductsQueryDto } from "../dto/order-products-query.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -32,15 +31,14 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   /**
-   * 주문 처리용 제품 목록 (Risk score bilan)
+   * 주문 처리용 제품 목록 (모든 제품 반환, frontend에서 sorting/filtering)
    */
   @Get("products")
-  @ApiOperation({ summary: "Get products for order with risk score calculation" })
+  @ApiOperation({ summary: "Get all products for order - filtering done on frontend" })
   async getProductsForOrder(
-    @Tenant() tenantId: string,
-    @Query() query: OrderProductsQueryDto
-  ): Promise<ProductWithRisk[]> {
-    return this.orderService.getProductsForOrder(tenantId, query);
+    @Tenant() tenantId: string
+  ): Promise<any[]> {
+    return this.orderService.getProductsForOrder(tenantId);
   }
 
   /**
