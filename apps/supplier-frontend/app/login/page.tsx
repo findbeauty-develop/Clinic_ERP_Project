@@ -40,8 +40,24 @@ export default function LoginPage() {
       }
 
       const data = await response.json();
+      
+      // Save token
       localStorage.setItem("supplier_access_token", data.token);
-      router.push("/");
+      
+      // Save manager data for display in sidebar
+      if (data.supplier) {
+        localStorage.setItem("supplier_manager_data", JSON.stringify({
+          manager_id: data.supplier.managerId,
+          name: data.supplier.name,
+          company_name: data.supplier.companyName,
+          email: data.supplier.email,
+        }));
+      }
+      
+      // Use window.location.href for full page reload to update sidebar state
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
+      }
     } catch (err: any) {
       setError(err.message || "로그인에 실패했습니다.");
       setLoading(false);

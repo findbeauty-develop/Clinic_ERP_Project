@@ -114,7 +114,7 @@ export default function OutboundPage() {
   
   // Member dropdown state
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
-  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [members, setMembers] = useState<Array<{ id: string; name: string; member_id?: string }>>([]);
 
   // History state
   const [historyData, setHistoryData] = useState<any[]>([]);
@@ -126,29 +126,45 @@ export default function OutboundPage() {
   const [historyTotalItems, setHistoryTotalItems] = useState(0);
   const historyItemsPerPage = 20;
 
+  // Load members from API
+  useEffect(() => {
+    const loadMembers = async () => {
+      try {
+        const tenantId = localStorage.getItem("erp_tenant_id");
+        const token = localStorage.getItem("erp_access_token");
+        
+        if (!tenantId) {
+          console.warn("No tenant_id found, skipping member load");
+          return;
+        }
+
+        const url = `${apiUrl}/iam/members?tenantId=${encodeURIComponent(tenantId)}`;
+        const response = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (response.ok) {
+          const membersData = await response.json();
+          const formattedMembers = membersData.map((m: any) => ({
+            id: m.id,
+            name: m.full_name || m.member_id,
+            member_id: m.member_id,
+          }));
+          setMembers(formattedMembers);
+        }
+      } catch (error) {
+        console.error("Failed to load members:", error);
+      }
+    };
+
+    loadMembers();
+  }, [apiUrl]);
+
   useEffect(() => {
     const memberData = localStorage.getItem("erp_member_data");
     if (memberData) {
       const member = JSON.parse(memberData);
       setManagerName(member.full_name || member.member_id || "");
-      // Add current member to members list
-      setMembers([{
-        id: member.member_id || "",
-        name: member.full_name || member.member_id || "",
-      }]);
-    }
-    
-    // Load members from localStorage (if stored)
-    const storedMembers = localStorage.getItem("erp_members_list");
-    if (storedMembers) {
-      try {
-        const parsedMembers = JSON.parse(storedMembers);
-        if (Array.isArray(parsedMembers) && parsedMembers.length > 0) {
-          setMembers(parsedMembers);
-        }
-      } catch (e) {
-        console.error("Failed to parse stored members", e);
-      }
     }
     
     // Close dropdown when clicking outside
@@ -194,11 +210,16 @@ export default function OutboundPage() {
       const searchParam = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : "";
       const data = await apiGet<ProductForOutbound[]>(`${apiUrl}/outbound/products${searchParam}`);
       
-      // Format image URLs
-      const formattedProducts = data.map((product) => ({
-        ...product,
-        productImage: formatImageUrl(product.productImage),
-      }));
+      // Format image URLs and filter out products with 0 stock
+      const formattedProducts = data
+        .map((product) => ({
+          ...product,
+          productImage: formatImageUrl(product.productImage),
+          // Filter out batches with 0 quantity
+          batches: product.batches.filter((batch) => batch.qty > 0),
+        }))
+        // Filter out products that have no batches with stock
+        .filter((product) => product.batches.length > 0);
       
       setProducts(formattedProducts);
     } catch (err) {
@@ -631,6 +652,13 @@ export default function OutboundPage() {
         setStatusType(null);
         setChartNumber("");
         setPackageCounts({});
+        
+        // Refresh products and packages list to remove 0-stock items
+        if (isPackageMode) {
+          await fetchPackages();
+        } else {
+          await fetchProducts();
+        }
       } else if (allFailed.length > 0) {
         setFailedItems(allFailed);
         alert(`${successCount}개 항목 출고 완료, ${failedCount}개 항목 실패했습니다. 실패한 항목만 재시도할 수 있습니다.`);
@@ -644,6 +672,13 @@ export default function OutboundPage() {
             (item) => !failedIds.has(`${item.productId}-${item.batchId}`)
           )
         );
+        
+        // Refresh products/packages list even for partial success
+        if (isPackageMode) {
+          await fetchPackages();
+        } else {
+          await fetchProducts();
+        }
       }
       
       // Refresh data
@@ -1360,11 +1395,13 @@ export default function OutboundPage() {
                       <button
                         type="button"
                         onClick={() => setShowMemberDropdown(!showMemberDropdown)}
-                        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 min-w-[120px]"
                       >
-                        성함 선택
+                        <span className={managerName ? "font-semibold text-slate-900 dark:text-white truncate" : "text-slate-600 dark:text-slate-400"}>
+                          {managerName || "성함 선택"}
+                        </span>
                         <svg
-                          className={`h-3 w-3 transition-transform ${showMemberDropdown ? "rotate-180" : ""}`}
+                          className={`h-3 w-3 flex-shrink-0 transition-transform ${showMemberDropdown ? "rotate-180" : ""}`}
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -1380,24 +1417,37 @@ export default function OutboundPage() {
                       <div className="relative">
                        
                         {showMemberDropdown && (
-                          <div className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                            <div className="max-h-48 overflow-y-auto">
+                          <div className="absolute right-0 z-10 mt-1 w-64 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            <div className="max-h-60 overflow-y-auto">
                               {members.length > 0 ? (
                                 members.map((member) => (
                                   <button
                                     key={member.id}
                                     type="button"
                                     onClick={() => {
-                                      setManagerName(member.name);
+                                      setManagerName(member.member_id || member.name);
                                       setShowMemberDropdown(false);
                                     }}
-                                    className="w-full px-4 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
+                                      managerName === (member.member_id || member.name)
+                                        ? "bg-sky-50 dark:bg-sky-500/10"
+                                        : ""
+                                    }`}
                                   >
-                                    {member.name}
+                                    <div className="flex flex-col gap-0.5">
+                                      <span className="text-sm font-medium text-slate-900 dark:text-white">
+                                        {member.member_id || member.name}
+                                      </span>
+                                      {member.name && member.member_id && member.name !== member.member_id && (
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                                          {member.name}
+                                        </span>
+                                      )}
+                                    </div>
                                   </button>
                                 ))
                               ) : (
-                                <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
+                                <div className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                                   멤버가 없습니다
                                 </div>
                               )}
@@ -2252,8 +2302,11 @@ function ProductCard({
                     month: "2-digit",
                     day: "2-digit",
                   })
+                  
                   .replace(/\./g, "-")
                   .replace(/\s/g, "")
+                  
+                  
               : "00-00-00";
 
             return (
@@ -2272,7 +2325,7 @@ function ProductCard({
                       {batch.batch_no}
                     </span>
                     {batch.isExpiringSoon && (
-                      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
+                      <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
                         유효기간 임박
                       </span>
                     )}
@@ -2285,13 +2338,15 @@ function ProductCard({
 
                   {/* Bottom Line - Details */}
                   <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-                    <span>
+                    <span className={product.isLowStock ? "font-semibold text-red-600 dark:text-red-400" : ""}>
                       재고: {batch.qty.toString().padStart(2, "0")} {product.unit || "단위"}
                     </span>
                     {product.supplierName && (
-                      <span>공급처:{product.supplierName}</span>
+                      <span>공급처: {product.supplierName}</span>
                     )}
-                    <span>유효기한:{expiryDateStr}</span>
+                    <span className={batch.isExpiringSoon ? "font-semibold text-yellow-600 dark:text-yellow-400" : ""}>
+                      유효기한: {expiryDateStr}
+                    </span>
                     {batch.storage && <span>위치:{batch.storage}</span>}
                   </div>
                 </div>

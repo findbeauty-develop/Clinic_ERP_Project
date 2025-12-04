@@ -8,8 +8,8 @@ export function Topbar() {
   const [userName, setUserName] = useState<string>("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  useEffect(() => {
-    // localStorage'dan foydalanuvchi ma'lumotlarini olish
+  // Load user info from localStorage
+  const loadUserInfo = () => {
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("erp_access_token");
       const memberData = localStorage.getItem("erp_member_data");
@@ -21,13 +21,39 @@ export function Topbar() {
           setUserName(member.full_name || member.member_id || "");
         } catch (error) {
           console.error("Error parsing member data:", error);
+          setUserName("");
+          setIsLoggedIn(false);
         }
+      } else {
+        setUserName("");
+        setIsLoggedIn(false);
       }
     }
+  };
+
+  useEffect(() => {
+    loadUserInfo();
+    
+    // Listen for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'erp_member_data' || e.key === 'erp_access_token') {
+        loadUserInfo();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
+      // State'ni darhol tozalash
+      setUserName("");
+      setIsLoggedIn(false);
+      
       // Barcha localStorage ma'lumotlarini tozalash
       localStorage.removeItem("erp_access_token");
       localStorage.removeItem("erp_member_data");

@@ -63,7 +63,10 @@ export default function LoginPage() {
       }
 
       // Redirect to dashboard after successful login
-      router.push("/");
+      // Use window.location.href for full page reload to update sidebar state
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
+      }
     } catch (error) {
       window.alert(
         error instanceof Error ? error.message : "ID or Password is incorrect"
@@ -144,7 +147,10 @@ export default function LoginPage() {
       setShowPasswordChangeModal(false);
       
       // Dashboard'ga o'tish
-      router.push("/");
+      // Use window.location.href for full page reload to update sidebar state
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
+      }
     } catch (error: any) {
       console.error("Password change error", error);
       window.alert(error.message || "비밀번호 변경에 실패했습니다.");

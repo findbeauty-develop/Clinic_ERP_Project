@@ -17,6 +17,10 @@ export class MembersService {
 
   constructor(private readonly repository: MembersRepository) {}
 
+  public async getMembers(tenantId: string) {
+    return this.repository.findByTenant(tenantId);
+  }
+
   public async createMembers(
     dto: CreateMembersDto,
     tenantId: string,

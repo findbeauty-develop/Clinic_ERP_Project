@@ -174,8 +174,8 @@ export function Sidebar() {
   const [userName, setUserName] = useState<string>("");
   const [clinicName, setClinicName] = useState<string>("");
 
-  useEffect(() => {
-    // localStorage'dan foydalanuvchi ma'lumotlarini olish
+  // Load user info from localStorage
+  const loadUserInfo = () => {
     if (typeof window !== "undefined") {
       const memberData = localStorage.getItem("erp_member_data");
       if (memberData) {
@@ -185,13 +185,39 @@ export function Sidebar() {
           setClinicName(member.clinic_name || "");
         } catch (error) {
           console.error("Error parsing member data:", error);
+          setUserName("");
+          setClinicName("");
         }
+      } else {
+        setUserName("");
+        setClinicName("");
       }
     }
+  };
+
+  useEffect(() => {
+    loadUserInfo();
+    
+    // Listen for storage changes (e.g., login/logout in another tab)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'erp_member_data') {
+        loadUserInfo();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
+      // State'ni darhol tozalash
+      setUserName("");
+      setClinicName("");
+      
       // Barcha localStorage ma'lumotlarini tozalash
       localStorage.removeItem("erp_access_token");
       localStorage.removeItem("erp_member_data");

@@ -82,8 +82,9 @@ export class CreateBatchDto {
 }
 
 export class LinkSupplierDto {
+  @IsOptional()
   @IsString()
-  supplier_id!: string;
+  supplier_id?: string; // Optional - field removed from database schema
 
   @IsOptional()
   @IsInt()

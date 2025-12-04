@@ -62,16 +62,28 @@ export class MembersRepository {
     );
   }
 
+  async findByTenant(tenantId: string) {
+    return await this.prisma.member.findMany({
+      where: { tenant_id: tenantId },
+      orderBy: { created_at: "asc" },
+      select: {
+        id: true,
+        member_id: true,
+        role: true,
+        full_name: true,
+        clinic_name: true,
+        created_at: true,
+      },
+    });
+  }
+
   async findByMemberId(memberId: string, tenantId?: string) {
     const where: any = { member_id: memberId };
     if (tenantId) {
       where.tenant_id = tenantId;
     }
-    // Use executeWithRetry for connection handling
-    return await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).member.findFirst({
-        where,
-      });
+    return await this.prisma.member.findFirst({
+      where,
     });
   }
 

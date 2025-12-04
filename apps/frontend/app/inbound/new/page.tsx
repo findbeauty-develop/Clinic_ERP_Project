@@ -19,7 +19,7 @@ const barcodeMethods = [
   },
 ];
 
-const inboundManagers = ["성함 선택", "김도훈", "이지은", "한지민"];
+// inboundManagers will be loaded from API
 const statusOptions = ["활성", "재고 부족", "만료", "단종"];
 const unitOptions = [
   "단위 선택",
@@ -49,13 +49,43 @@ export default function InboundNewPage() {
   
   const [selectedBarcodeMethod, setSelectedBarcodeMethod] = useState<string>("manual");
   const [isReturnable, setIsReturnable] = useState<boolean>(true);
-  const [selectedManager, setSelectedManager] = useState<string>(inboundManagers[0]);
+  const [selectedManager, setSelectedManager] = useState<string>("성함 선택");
   const [loading, setLoading] = useState(false);
   const [supplierManagers, setSupplierManagers] = useState<Array<{ id: string; name: string; clinicName?: string; fullName?: string; displayName: string }>>([]);
+  const [inboundManagers, setInboundManagers] = useState<Array<{ id: string; member_id: string; role: string; full_name: string | null }>>([]);
   const [inboundDate, setInboundDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0]; // YYYY-MM-DD format
   });
+
+  // Load inbound managers (clinic members)
+  useEffect(() => {
+    const loadInboundManagers = async () => {
+      try {
+        const tenantId = localStorage.getItem("erp_tenant_id");
+        const token = localStorage.getItem("erp_access_token");
+        
+        if (!tenantId) {
+          console.warn("No tenant_id found, skipping member load");
+          return;
+        }
+
+        const url = `${apiUrl}/iam/members?tenantId=${encodeURIComponent(tenantId)}`;
+        const response = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (response.ok) {
+          const members = await response.json();
+          setInboundManagers(members);
+        }
+      } catch (error) {
+        console.error("Failed to load inbound managers:", error);
+      }
+    };
+
+    loadInboundManagers();
+  }, [apiUrl]);
   
   // Supplier search states
   const [supplierSearchCompanyName, setSupplierSearchCompanyName] = useState("");
@@ -171,6 +201,34 @@ export default function InboundNewPage() {
         newData.minStockUnit = value;
         newData.purchasePriceUnit = value;
         newData.salePriceUnit = value;
+      }
+      
+      // 제조일, 유통기한 기간 변경 시 자동 계산
+      if (field === "manufactureDate" || field === "expiryMonths" || field === "expiryUnit") {
+        const manufactureDate = field === "manufactureDate" ? value : prev.manufactureDate;
+        const expiryMonths = field === "expiryMonths" ? value : prev.expiryMonths;
+        const expiryUnit = field === "expiryUnit" ? value : prev.expiryUnit;
+        
+        if (manufactureDate && expiryMonths) {
+          const mfgDate = new Date(manufactureDate);
+          let calculatedDate = new Date(mfgDate);
+          
+          if (expiryUnit === "months") {
+            calculatedDate.setMonth(calculatedDate.getMonth() + Number(expiryMonths));
+          } else if (expiryUnit === "days") {
+            calculatedDate.setDate(calculatedDate.getDate() + Number(expiryMonths));
+          } else if (expiryUnit === "years") {
+            calculatedDate.setFullYear(calculatedDate.getFullYear() + Number(expiryMonths));
+          }
+          
+          // Format: YYYY-MM-DD
+          newData.expiryDate = calculatedDate.toISOString().split('T')[0];
+        }
+      }
+      
+      // 유통기한 직접 입력 시 자동 계산 무시
+      if (field === "expiryDate") {
+        newData.expiryDate = value;
       }
       
       return newData;
@@ -761,11 +819,11 @@ export default function InboundNewPage() {
         };
       }
 
-      // Add batch if batch info is provided
-      if (formData.batchNo) {
+      // Always add batch if stock is provided (automatically create batch)
+      if (Number(formData.currentStock) > 0) {
         payload.initial_batches = [
           {
-            batch_no: formData.batchNo,
+            batch_no: formData.batchNo || undefined, // Backend will auto-generate in format: 123456789-001
             storage: formData.storage || undefined,
             purchase_price: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
             sale_price: formData.salePrice ? Number(formData.salePrice) : undefined,
@@ -775,6 +833,7 @@ export default function InboundNewPage() {
             expiry_unit: formData.expiryUnit || undefined,
             qty: Number(formData.currentStock) || 0,
             alert_days: formData.alertDays || undefined,
+            inbound_manager: selectedManager !== "성함 선택" ? selectedManager : undefined,
           },
         ];
       }
@@ -1878,8 +1937,12 @@ export default function InboundNewPage() {
                   <input
                     type="text"
                     readOnly
-                    value="제조일을 선택하면 자동 계산됩니다"
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-sky-50 px-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-sky-500/10 dark:text-slate-400"
+                    value={
+                      formData.expiryDate && formData.manufactureDate
+                        ? formData.expiryDate
+                        : "제조일을 선택하면 자동 계산됩니다"
+                    }
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-sky-50 px-4 text-sm font-semibold text-sky-600 dark:border-slate-700 dark:bg-sky-500/10 dark:text-sky-400"
                   />
                 </div>
                 <div>
@@ -2391,11 +2454,21 @@ function ManagerSelectField({
   onChange,
 }: {
   label: string;
-  options: string[];
+  options: Array<{ id: string; member_id: string; role: string; full_name: string | null }>;
   value: string;
   onChange: (value: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Display name: show member_id (and full_name if available)
+  const getDisplayName = (member: { id: string; member_id: string; role: string; full_name: string | null }) => {
+    if (member.full_name) {
+      return `${member.member_id} (${member.full_name})`;
+    }
+    return member.member_id;
+  };
+  
+  const displayValue = value === "성함 선택" ? "성함 선택" : value;
 
   return (
     <div className="relative">
@@ -2408,8 +2481,8 @@ function ManagerSelectField({
           onClick={() => setIsOpen(!isOpen)}
           className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-left text-sm text-slate-700 transition hover:border-slate-300 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
         >
-          <span className={value === options[0] ? "text-slate-400" : ""}>
-            {value}
+          <span className={value === "성함 선택" ? "text-slate-400" : ""}>
+            {displayValue}
           </span>
           <ChevronDownIcon
             className={`h-4 w-4 text-slate-400 transition-transform ${
@@ -2425,22 +2498,37 @@ function ManagerSelectField({
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-            {options.map((option) => (
+          <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("성함 선택");
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-3 text-left text-sm text-slate-400 transition hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              성함 선택
+            </button>
+            {options.map((member) => (
               <button
-                key={option}
+                key={member.id}
                 type="button"
                 onClick={() => {
-                  onChange(option);
+                  onChange(member.member_id);
                   setIsOpen(false);
                 }}
                 className={`w-full px-4 py-3 text-left text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
-                  value === option
+                  value === member.member_id
                     ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
                     : "text-slate-700 dark:text-slate-200"
                 }`}
               >
-                {option}
+                <div className="flex flex-col">
+                  <span className="font-medium">{member.member_id}</span>
+                  {member.full_name && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{member.full_name}</span>
+                  )}
+                </div>
               </button>
             ))}
           </div>

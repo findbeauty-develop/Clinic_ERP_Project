@@ -108,7 +108,7 @@ export class ProductsService {
             data: {
               tenant_id: tenantId,
               product_id: product.id,
-              supplier_id: s.supplier_id,
+              supplier_id: s.supplier_id ?? null, // Optional - legacy field
               purchase_price: s.purchase_price ?? null,
               moq: s.moq ?? null,
               lead_time_days: s.lead_time_days ?? null,
@@ -173,7 +173,7 @@ export class ProductsService {
       capacityPerProduct: (product as any).capacity_per_product,
       capacityUnit: (product as any).capacity_unit,
       usageCapacity: (product as any).usage_capacity,
-      supplierName: null, // Supplier ID removed from schema
+      supplierName: null, // Supplier name not available from SupplierProduct
       managerName: supplier?.contact_name ?? null,
       contactPhone: supplier?.contact_phone ?? null,
       contactEmail: supplier?.contact_email ?? null,
@@ -201,6 +201,7 @@ export class ProductsService {
           },
           supplierProducts: {
             orderBy: { created_at: "desc" },
+            take: 1,
           },
         },
         orderBy: { created_at: "desc" },
@@ -246,7 +247,7 @@ export class ProductsService {
         purchasePrice: product.purchase_price,
         salePrice: product.sale_price,
         unit: product.unit,
-        supplierName: null, // Supplier ID removed from schema
+        supplierName: supplier?.contact_name ?? null, // Use contact_name as supplier name
         managerName: supplier?.contact_name ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,
@@ -351,8 +352,8 @@ export class ProductsService {
         });
 
         for (const supplier of dto.suppliers) {
-          if (!supplier?.supplier_id) {
-            // Skip entries without supplier_id to avoid invalid inserts
+          // Skip entries without required data
+          if (!supplier?.contact_name && !supplier?.contact_phone) {
             continue;
           }
 
@@ -360,7 +361,7 @@ export class ProductsService {
             data: {
               tenant_id: tenantId,
               product_id: id,
-              supplier_id: supplier.supplier_id,
+              supplier_id: supplier.supplier_id ?? null, // Optional - legacy field
               purchase_price: supplier.purchase_price ?? null,
               moq: supplier.moq ?? null,
               lead_time_days: supplier.lead_time_days ?? null,

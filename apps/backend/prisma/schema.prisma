@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -132,6 +133,7 @@ model SupplierProduct {
   id             String    @id @default(uuid())
   tenant_id      String
   product_id     String
+  supplier_id    String?   // Optional - legacy field, kept for database compatibility
   purchase_price Int?
   moq            Int?
   lead_time_days Int?
@@ -146,6 +148,7 @@ model SupplierProduct {
 
   @@index([tenant_id])
   @@index([product_id])
+  @@index([supplier_id])
   @@index([tenant_id, product_id])
 }
 

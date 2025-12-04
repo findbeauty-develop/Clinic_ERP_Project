@@ -149,8 +149,8 @@ export class ReturnService {
           productName: product.name,
           brand: product.brand,
           unit: product.unit,
-          supplierId: null, // Supplier ID removed from schema
-          supplierName: null, // Supplier name not available
+          supplierId: null, // Supplier ID - optional field
+          supplierName: null, // Supplier name not available from SupplierProduct
           storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
           unreturnedQty,
           refundAmount: product.returnPolicy?.refund_amount ?? 0,
@@ -254,7 +254,7 @@ export class ReturnService {
               continue;
             }
 
-            // 6. Supplier ID removed from schema
+            // 6. Supplier ID - optional field, set to undefined if not available
             const supplierId = undefined;
 
             // 7. Refund amount olish

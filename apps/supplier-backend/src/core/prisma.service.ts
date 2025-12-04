@@ -7,6 +7,19 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   [x: string]: any;
+  
+  constructor() {
+    super({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
+      // Supabase connection pooling optimization
+      log: ['error', 'warn'],
+    });
+  }
+  
   async onModuleInit() {
     await this.$connect();
   }

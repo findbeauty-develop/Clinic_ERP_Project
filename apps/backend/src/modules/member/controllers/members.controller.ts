@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { MembersService } from "../services/members.service";
 import { CreateMembersDto } from "../dto/create-members.dto";
@@ -20,6 +20,16 @@ export class MembersController {
     private readonly service: MembersService,
     private readonly messageService: MessageService
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: "Get all members for a tenant" })
+  getMembers(
+    @Tenant() tenantId: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    return this.service.getMembers(resolvedTenantId);
+  }
 
   @Post()
   @ApiOperation({ summary: "Create default members for a clinic (owner, manager, member)" })

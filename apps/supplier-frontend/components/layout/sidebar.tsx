@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 const navItems = [
@@ -109,6 +109,7 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
 
   // Close sidebar when clicking outside on mobile
@@ -134,35 +135,70 @@ export function Sidebar() {
   }, [isOpen]);
 
   // Get user info from localStorage
-  const [userInfo, setUserInfo] = useState<{ userId?: string; point?: number }>({});
+  const [userInfo, setUserInfo] = useState<{ managerId?: string; name?: string; companyName?: string }>({});
   
-  useEffect(() => {
+  // Load user info from localStorage
+  const loadUserInfo = () => {
     if (typeof window !== 'undefined') {
       const managerData = localStorage.getItem('supplier_manager_data');
       if (managerData) {
         try {
           const data = JSON.parse(managerData);
           setUserInfo({
-            userId: data.manager_id || data.name || 'USER ID',
-            point: data.point || 0,
+            managerId: data.manager_id || '',
+            name: data.name || '',
+            companyName: data.company_name || '',
           });
         } catch (e) {
           console.error('Failed to parse user data', e);
+          setUserInfo({});
         }
+      } else {
+        setUserInfo({});
       }
     }
+  };
+  
+  useEffect(() => {
+    loadUserInfo();
+    
+    // Listen for storage changes (e.g., login/logout in another tab)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'supplier_manager_data') {
+        loadUserInfo();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      // State'ni darhol tozalash
+      setUserInfo({});
+      
+      // Barcha localStorage ma'lumotlarini tozalash
+      localStorage.removeItem("supplier_access_token");
+      localStorage.removeItem("supplier_manager_data");
+      
+      // Login sahifasiga yo'naltirish
+      router.push("/login");
+    }
+  };
 
   // Get initials for avatar
   const getInitials = () => {
-    if (userInfo.userId && userInfo.userId !== 'USER ID') {
-      const parts = userInfo.userId.split(' ');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
-      return userInfo.userId.substring(0, 2).toUpperCase();
+    if (userInfo.name) {
+      return userInfo.name.charAt(0).toUpperCase();
     }
-    return 'MK';
+    if (userInfo.managerId) {
+      return userInfo.managerId.charAt(0).toUpperCase();
+    }
+    return 'S';
   };
 
   // Sidebar is now visible on all pages
@@ -209,18 +245,25 @@ export function Sidebar() {
       >
         <div className="flex h-full flex-col">
           {/* User Profile Section */}
-          <div className="bg-slate-200 px-4 py-6">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 px-4 py-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-400 text-sm font-semibold text-white">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-semibold text-white backdrop-blur-sm">
                 {getInitials()}
               </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold uppercase text-slate-900">
-                  {userInfo.userId || 'USER ID'}
+              <div className="flex flex-col overflow-hidden">
+                <span className="truncate text-sm font-bold text-white">
+                  {userInfo.name || userInfo.managerId || 'Supplier'}
                 </span>
-                <span className="text-xs font-semibold uppercase text-slate-900">
-                  POINT
-                </span>
+                {userInfo.companyName && (
+                  <span className="truncate text-xs text-indigo-100">
+                    {userInfo.companyName}
+                  </span>
+                )}
+                {userInfo.managerId && (
+                  <span className="truncate text-xs text-indigo-200">
+                    {userInfo.managerId}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -239,7 +282,7 @@ export function Sidebar() {
                   onClick={() => setIsOpen(false)}
                   className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-slate-300 text-slate-900'
+                      ? 'bg-indigo-500 text-white shadow-lg'
                       : 'text-slate-700 hover:bg-slate-200'
                   }`}
                 >
@@ -249,6 +292,30 @@ export function Sidebar() {
               );
             })}
           </nav>
+
+          {/* Logout Button */}
+          <div className="border-t border-slate-300 bg-slate-100 px-4 py-4">
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="h-5 w-5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+                />
+              </svg>
+              <span>로그아웃</span>
+            </button>
+          </div>
         </div>
       </aside>
     </>
