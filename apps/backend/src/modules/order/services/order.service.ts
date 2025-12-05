@@ -55,7 +55,7 @@ export class OrderService {
         productName: product.name,
         brand: product.brand,
         supplierId: supplier?.supplier_id ?? null,
-        supplierName: supplier?.supplier_id ?? null,
+        supplierName: supplier?.company_name ?? null,
         managerName: supplier?.contact_name ?? null,
         managerPosition: null, // TODO: Get from SupplierManager via ClinicSupplierLink
         unitPrice: supplier?.purchase_price ?? product.purchase_price ?? null,

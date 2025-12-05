@@ -724,7 +724,7 @@ export default function OrderPage() {
                             </span>
                             <span>
                               <span className="font-medium">담당자:</span>{" "}
-                              {product.supplierName || "없음"}
+                              {product.managerName || "없음"}
                             </span>
                             <span>
                               <span className="font-medium">단가:</span>{" "}
@@ -1219,8 +1219,8 @@ export default function OrderPage() {
                 const timeStr = orderDate.toTimeString().split(" ")[0].slice(0, 5); // HH:MM
                 const formattedDate = `${dateStr} ${timeStr}`;
 
-                // Manager name (created_by'dan olish kerak, hozircha bo'sh)
-                const managerName = order.managerName || "담당자";
+                // Manager name (supplierDetails'dan olish)
+                const managerName = order.supplierDetails?.managerName || order.managerName || "담당자";
 
                 return (
                   <div
@@ -1235,7 +1235,7 @@ export default function OrderPage() {
                           {formattedDate} {managerName}님 출고
                         </div>
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          공급처: {order.supplierName} 담당자: {order.managerName || "담당자 없음"}
+                          공급처: {order.supplierDetails?.companyName || order.supplierName || "공급업체 없음"} 담당자: {order.supplierDetails?.managerName || order.managerName || "담당자 없음"}
                         </div>
                       </div>
                       <button

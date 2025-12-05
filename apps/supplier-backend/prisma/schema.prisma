@@ -112,3 +112,51 @@ model SupplierProductTag {
   
   @@index([name])
 }
+
+// Clinic → Supplier order header
+model SupplierOrder {
+  id                 String   @id @default(uuid())
+  supplier_tenant_id String   // Which supplier company
+  supplier_manager_id String? // Target manager (if any)
+  clinic_tenant_id   String?  // Which clinic sent the order
+  clinic_name        String?  // Denormalized clinic name
+  clinic_manager_name String? // Denormalized clinic manager name
+  order_no           String   @unique
+  status             String   @default("pending") // pending, confirmed, rejected, shipped, completed
+  total_amount       Int      @default(0)
+  memo               String?
+  order_date         DateTime @default(now())
+  created_at         DateTime @default(now())
+  updated_at         DateTime?
+
+  items SupplierOrderItem[]
+
+  @@index([supplier_tenant_id])
+  @@index([supplier_manager_id])
+  @@index([clinic_tenant_id])
+  @@index([status])
+  @@index([order_date])
+}
+
+// Clinic → Supplier order items
+model SupplierOrderItem {
+  id          String  @id @default(uuid())
+  order_id    String
+  product_id  String?
+  product_name String
+  brand       String?
+  batch_no    String?
+  quantity    Int
+  unit_price  Int
+  total_price Int
+  memo        String?
+
+  // Timestamps
+  created_at DateTime @default(now())
+  updated_at DateTime?
+
+  order SupplierOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([product_id])
+}

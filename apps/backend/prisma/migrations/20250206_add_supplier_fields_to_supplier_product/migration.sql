@@ -20,3 +20,4 @@ WHERE sp.supplier_id = s.id
 -- we'll leave supplier_tenant_id and company_name as NULL (legacy data)
 
 
+

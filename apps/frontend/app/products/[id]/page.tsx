@@ -16,7 +16,8 @@ type ProductDetail = {
   unit?: string | null;
   purchasePrice?: number | null;
   salePrice?: number | null;
-  supplierName?: string | null;
+  supplierId?: string | null; // Supplier UUID
+  supplierName?: string | null; // Company name
   managerName?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
@@ -89,11 +90,12 @@ export default function ProductDetailPage() {
           status: data.status,
           currentStock: data.currentStock || data.current_stock,
           minStock: data.minStock || data.min_stock,
-          unit: data.unit,
-          purchasePrice: data.purchasePrice || data.purchase_price,
-          salePrice: data.salePrice || data.sale_price,
-          supplierName: data.supplierName,
-          managerName: data.managerName,
+        unit: data.unit,
+        purchasePrice: data.purchasePrice || data.purchase_price,
+        salePrice: data.salePrice || data.sale_price,
+        supplierId: data.supplierId || null,
+        supplierName: data.supplierName,
+        managerName: data.managerName,
           contactPhone: data.contactPhone || data.contact_phone,
           contactEmail: data.contactEmail || data.contact_email,
           expiryDate: data.expiryDate || data.expiry_date,
@@ -268,7 +270,8 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
     minStock: product.minStock?.toString() || "0",
     image: product.productImage || "",
     imageFile: null as File | null,
-    supplierName: product.supplierName || "",
+    supplierId: product.supplierId || "", // Supplier UUID
+    supplierName: product.supplierName || "", // Company name
     managerName: product.managerName || "",
     contactPhone: product.contactPhone || "",
     contactEmail: product.contactEmail || "",
@@ -329,10 +332,10 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
       // payload'ga qo'shmaslik (undefined qoladi, backend eski image'ni saqlaydi)
 
       // Supplier information
-      if (formData.supplierName || formData.managerName || formData.contactPhone || formData.contactEmail) {
+      if (formData.supplierId || formData.supplierName || formData.managerName || formData.contactPhone || formData.contactEmail) {
         payload.suppliers = [
           {
-            supplier_id: formData.supplierName || product.supplierName || undefined,
+            supplier_id: formData.supplierId || product.supplierId || undefined, // ✅ Use Supplier UUID
             contact_name: formData.managerName || undefined,
             contact_phone: formData.contactPhone || undefined,
             contact_email: formData.contactEmail || undefined,
@@ -414,6 +417,7 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
         unit: finalProductResponse.unit || product.unit,
         purchasePrice: finalProductResponse.purchasePrice || finalProductResponse.purchase_price || product.purchasePrice,
         salePrice: finalProductResponse.salePrice || finalProductResponse.sale_price || product.salePrice,
+        supplierId: finalProductResponse.supplierId || product.supplierId,
         supplierName: finalProductResponse.supplierName || product.supplierName,
         managerName: finalProductResponse.managerName || product.managerName,
         contactPhone: finalProductResponse.contactPhone || finalProductResponse.contact_phone || product.contactPhone,
@@ -623,9 +627,10 @@ function ProductEditForm({ product, apiUrl, onCancel, onSuccess }: ProductEditFo
                 <input
                   type="text"
                   value={formData.supplierName}
-                  onChange={(e) => handleInputChange("supplierName", e.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  readOnly
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-600 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                 />
+                <p className="mt-1 text-xs text-slate-500">공급업체 정보는 수정할 수 없습니다</p>
               </div>
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">

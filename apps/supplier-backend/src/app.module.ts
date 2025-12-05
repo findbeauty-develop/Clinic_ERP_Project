@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./modules/auth/auth.module";
 import { ManagerModule } from "./modules/manager/manager.module";
 import { ReturnModule } from "./modules/return/return.module";
+import { OrderModule } from "./modules/order/order.module";
 import { PrismaService } from "./core/prisma.service";
 
 @Module({
@@ -22,6 +23,7 @@ import { PrismaService } from "./core/prisma.service";
     AuthModule,
     ManagerModule,
     ReturnModule,
+    OrderModule,
   ],
   providers: [PrismaService],
   exports: [PrismaService],
