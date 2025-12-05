@@ -71,6 +71,8 @@ export default function InboundNewPage() {
   const [supplierSearchManagerName, setSupplierSearchManagerName] = useState("");
   const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] = useState("");
   const [supplierSearchResults, setSupplierSearchResults] = useState<Array<{
+    id?: string; // Supplier ID (UUID)
+    supplierId?: string; // Supplier ID (alias)
     companyName: string;
     companyAddress: string | null;
     businessNumber: string;
@@ -108,6 +110,8 @@ export default function InboundNewPage() {
   } | null>(null);
   const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
+    id?: string; // Supplier ID (UUID)
+    supplierId?: string; // Supplier ID (alias)
     companyName: string;
     companyAddress: string | null;
     businessNumber: string;
@@ -427,7 +431,7 @@ export default function InboundNewPage() {
     const result = supplierSearchResults[index];
     if (result) {
       setSelectedSupplierDetails(result);
-      handleInputChange("supplierId", result.managerId);
+      handleInputChange("supplierId", result.supplierId || result.id); // ✅ Use Supplier.id (UUID)
       handleInputChange("supplierName", result.companyName);
       handleInputChange("supplierContactName", result.managerName);
       handleInputChange("supplierContactPhone", result.phoneNumber);
@@ -508,6 +512,8 @@ export default function InboundNewPage() {
     // Set supplier details - this will show the card with all manager information
     // Include all fields: companyName, managerName, position, phoneNumber, managerId, etc.
     setSelectedSupplierDetails({
+      id: pendingSupplier.supplierId || "",
+      supplierId: pendingSupplier.supplierId || "",
       companyName: pendingSupplier.companyName,
       companyAddress: pendingSupplier.companyAddress,
       businessNumber: pendingSupplier.businessNumber,
@@ -523,7 +529,7 @@ export default function InboundNewPage() {
     });
     
     // Also update form fields
-    handleInputChange("supplierId", pendingSupplier.managerId);
+    handleInputChange("supplierId", pendingSupplier.supplierId || ""); // ✅ Use Supplier.id
     handleInputChange("supplierName", pendingSupplier.companyName);
     handleInputChange("supplierContactName", pendingSupplier.managerName);
     handleInputChange("supplierContactPhone", pendingSupplier.phoneNumber);
@@ -701,6 +707,7 @@ export default function InboundNewPage() {
       console.log("Supplier created successfully:", result);
 
       // Update form data with supplier info
+      handleInputChange("supplierId", result.supplier?.id || ""); // ✅ Use Supplier.id (UUID)
       handleInputChange("supplierName", manualEntryForm.companyName);
       handleInputChange("supplierContactName", manualEntryForm.managerName);
       handleInputChange("supplierContactPhone", phoneNumber);
@@ -710,12 +717,14 @@ export default function InboundNewPage() {
       // Close manual entry form and show supplier details
       setShowManualEntryForm(false);
       setSelectedSupplierDetails({
+        id: result.supplier?.id || "",
+        supplierId: result.supplier?.id || "",
         companyName: manualEntryForm.companyName || "미입력",
         companyAddress: manualEntryForm.companyAddress || null,
         businessNumber: manualEntryForm.businessNumber || "000-00-00000",
         companyPhone: manualEntryForm.companyPhone || null,
         companyEmail: manualEntryForm.email1 || "",
-        managerId: result.manager?.managerId || "",
+        managerId: result.clinicManager?.id || "", // Manager database ID
         managerName: manualEntryForm.managerName,
         position: manualEntryForm.position || null,
         phoneNumber: phoneNumber,
@@ -818,10 +827,15 @@ export default function InboundNewPage() {
       }
 
       // Add supplier if supplier info is provided
-      if (formData.supplierId || formData.supplierName) {
+      // Use selectedSupplierDetails if available (has Supplier UUID)
+      const supplierUUID = selectedSupplierDetails?.supplierId 
+        || selectedSupplierDetails?.id 
+        || formData.supplierId;
+      
+      if (supplierUUID || formData.supplierName) {
         payload.suppliers = [
           {
-            supplier_id: formData.supplierId || formData.supplierName,
+            supplier_id: supplierUUID || formData.supplierName, // ✅ Use Supplier.id (UUID)
             purchase_price: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
             moq: formData.moq ? Number(formData.moq) : undefined,
             lead_time_days: formData.leadTimeDays ? Number(formData.leadTimeDays) : undefined,
@@ -1346,12 +1360,7 @@ export default function InboundNewPage() {
                         {selectedSupplierDetails.email1 || "-"}
                       </div>
                     </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이메일 2</label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.email2 || "-"}
-                      </div>
-                    </div>
+                    
                   </div>
 
                   {/* Right Column */}
@@ -1618,7 +1627,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일 2
+                        이메일 3
                       </label>
                       <input
                         type="email"

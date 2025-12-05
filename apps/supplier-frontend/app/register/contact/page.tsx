@@ -10,15 +10,13 @@ export default function ContactInfoPage() {
     password: "",
     passwordConfirm: "",
     email1: "",
-    email2: "",
-    responsibleRegions: [] as string[],
+    managerAddress: "", // responsible_regions o'rniga
     responsibleProducts: [] as string[],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
-  const [newRegion, setNewRegion] = useState("");
   const [newProduct, setNewProduct] = useState("");
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
@@ -56,41 +54,6 @@ export default function ContactInfoPage() {
       return "올바른 이메일 형식이 아닙니다";
     }
     return null;
-  };
-
-  const addRegion = () => {
-    const trimmed = newRegion.trim();
-    if (!trimmed) {
-      setErrors((prev) => ({
-        ...prev,
-        newRegion: "지역명을 입력하세요",
-      }));
-      return;
-    }
-    if (formData.responsibleRegions.includes(trimmed)) {
-      setErrors((prev) => ({
-        ...prev,
-        newRegion: "이미 추가된 지역입니다",
-      }));
-      return;
-    }
-    setFormData({
-      ...formData,
-      responsibleRegions: [...formData.responsibleRegions, trimmed],
-    });
-    setNewRegion("");
-    setErrors((prev) => {
-      const newErrors = { ...prev };
-      delete newErrors.newRegion;
-      return newErrors;
-    });
-  };
-
-  const removeRegion = (region: string) => {
-    setFormData({
-      ...formData,
-      responsibleRegions: formData.responsibleRegions.filter((r) => r !== region),
-    });
   };
 
   const addProduct = () => {
@@ -154,19 +117,9 @@ export default function ContactInfoPage() {
       newErrors.email1 = email1Error;
     }
 
-    // Email2 validation (optional but must be valid if provided)
-    if (formData.email2) {
-      const email2Error = validateEmail(formData.email2);
-      if (email2Error) {
-        newErrors.email2 = email2Error;
-      } else if (formData.email1 === formData.email2) {
-        newErrors.email2 = "이메일1과 이메일2는 서로 다르게 입력하세요";
-      }
-    }
-
-    // Regions validation
-    if (formData.responsibleRegions.length === 0) {
-      newErrors.responsibleRegions = "최소 1개 이상의 담당 지역을 추가하세요";
+    // Manager address validation
+    if (!formData.managerAddress || formData.managerAddress.trim().length === 0) {
+      newErrors.managerAddress = "담당자 주소를 입력하세요";
     }
 
     // Products validation
@@ -195,8 +148,7 @@ export default function ContactInfoPage() {
           password: formData.password,
           passwordConfirm: formData.passwordConfirm,
           email1: formData.email1,
-          email2: formData.email2 || undefined,
-          responsibleRegions: formData.responsibleRegions,
+          managerAddress: formData.managerAddress,
           responsibleProducts: formData.responsibleProducts,
           step3Data: step3DataStr ? JSON.parse(step3DataStr) : undefined,
           step2Data: step2DataStr ? JSON.parse(step2DataStr) : undefined,
@@ -451,10 +403,10 @@ export default function ContactInfoPage() {
               )}
             </div>
 
-            {/* Email 1 */}
+            {/* Email */}
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                이메일1 <span className="text-red-500">*</span>
+                이메일 <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
@@ -481,37 +433,7 @@ export default function ContactInfoPage() {
               )}
             </div>
 
-            {/* Email 2 */}
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                이메일2 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                value={formData.email2}
-                onChange={(e) => {
-                  setFormData({ ...formData, email2: e.target.value });
-                  if (errors.email2) {
-                    setErrors((prev) => {
-                      const newErrors = { ...prev };
-                      delete newErrors.email2;
-                      return newErrors;
-                    });
-                  }
-                }}
-                placeholder="추가 검토 또는 내부 공유용 이메일을 입력"
-                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
-                  errors.email2
-                    ? "border-red-300 focus:border-red-500 focus:ring-red-200"
-                    : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
-                }`}
-              />
-              {errors.email2 && (
-                <p className="mt-1 text-xs text-red-600">{errors.email2}</p>
-              )}
-            </div>
-
-            {/* Responsible Regions */}
+            {/* Manager Address */}
             <div>
               <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                 <svg
@@ -533,112 +455,30 @@ export default function ContactInfoPage() {
                     d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                담당 지역
+                담당자 주소 <span className="text-red-500">*</span>
               </label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={newRegion}
-                  onChange={(e) => {
-                    setNewRegion(e.target.value);
-                    if (errors.newRegion) {
-                      setErrors((prev) => {
-                        const newErrors = { ...prev };
-                        delete newErrors.newRegion;
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addRegion();
-                    }
-                  }}
-                  placeholder="예: 서울 강남구, 경기 성남시 분"
-                  className={`flex-1 rounded-lg border py-2 px-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 ${
-                    errors.newRegion
-                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
-                      : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={addRegion}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </button>
-              </div>
-              {/* Hint text */}
-              <div className="mb-2 flex items-start gap-2 text-xs text-slate-500">
-                <svg
-                  className="mt-0.5 h-4 w-4 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-                <span>
-                  상세한 지역을 입력하고 추가 버튼을 누르세요 (예: 서울 강남구, 부산 해운대구)
-                </span>
-              </div>
-              {errors.newRegion && (
-                <p className="mb-2 text-xs text-red-600">{errors.newRegion}</p>
-              )}
-              {errors.responsibleRegions && (
-                <p className="mb-2 text-xs text-red-600">
-                  {errors.responsibleRegions}
-                </p>
-              )}
-              {formData.responsibleRegions.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.responsibleRegions.map((region, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-800"
-                    >
-                      {region}
-                      <button
-                        type="button"
-                        onClick={() => removeRegion(region)}
-                        className="ml-1 text-blue-600 hover:text-blue-800"
-                      >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </span>
-                  ))}
-                </div>
+              <input
+                type="text"
+                value={formData.managerAddress}
+                onChange={(e) => {
+                  setFormData({ ...formData, managerAddress: e.target.value });
+                  if (errors.managerAddress) {
+                    setErrors((prev) => {
+                      const newErrors = { ...prev };
+                      delete newErrors.managerAddress;
+                      return newErrors;
+                    });
+                  }
+                }}
+                placeholder="예: 서울시 강남구 테헤란로 123"
+                className={`w-full rounded-lg border py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 sm:text-base ${
+                  errors.managerAddress
+                    ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                    : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
+                }`}
+              />
+              {errors.managerAddress && (
+                <p className="mt-1 text-xs text-red-600">{errors.managerAddress}</p>
               )}
             </div>
 

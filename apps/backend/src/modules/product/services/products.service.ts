@@ -104,11 +104,38 @@ export class ProductsService {
       // Create supplier products
       if (dto.suppliers?.length) {
         for (const s of dto.suppliers) {
+          // Try to find Supplier by supplier_id to get tenant_id and company_name
+          let supplierTenantId = null;
+          let companyName = null;
+          
+          if (s.supplier_id) {
+            try {
+              // Check if supplier_id is a UUID (Supplier.id)
+              const supplierRecord = await tx.supplier.findUnique({
+                where: { id: s.supplier_id },
+                select: { tenant_id: true, company_name: true },
+              });
+              
+              if (supplierRecord) {
+                supplierTenantId = supplierRecord.tenant_id;
+                companyName = supplierRecord.company_name;
+              } else {
+                // Not a UUID, maybe it's a company name or manager_id (legacy)
+                companyName = s.supplier_id;
+              }
+            } catch (e) {
+              // Invalid UUID format - treat as company name
+              companyName = s.supplier_id;
+            }
+          }
+
           await tx.supplierProduct.create({
             data: {
               tenant_id: tenantId,
               product_id: product.id,
               supplier_id: s.supplier_id ?? null, // Optional - legacy field
+              supplier_tenant_id: supplierTenantId,
+              company_name: companyName,
               purchase_price: s.purchase_price ?? null,
               moq: s.moq ?? null,
               lead_time_days: s.lead_time_days ?? null,
@@ -156,7 +183,7 @@ export class ProductsService {
     }
 
     const latestBatch = product.batches?.[0];
-    const supplier = product.supplierProducts?.[0];
+    const supplierProduct = product.supplierProducts?.[0];
 
     return {
       id: product.id,
@@ -173,13 +200,14 @@ export class ProductsService {
       capacityPerProduct: (product as any).capacity_per_product,
       capacityUnit: (product as any).capacity_unit,
       usageCapacity: (product as any).usage_capacity,
-      supplierName: null, // Supplier name not available from SupplierProduct
-      managerName: supplier?.contact_name ?? null,
-      contactPhone: supplier?.contact_phone ?? null,
-      contactEmail: supplier?.contact_email ?? null,
+      supplierId: supplierProduct?.supplier_id ?? null, // Supplier UUID
+      supplierName: supplierProduct?.company_name ?? null, // Company name (denormalized)
+      managerName: supplierProduct?.contact_name ?? null,
+      contactPhone: supplierProduct?.contact_phone ?? null,
+      contactEmail: supplierProduct?.contact_email ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
       storageLocation: latestBatch?.storage ?? null,
-      memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+      memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
     };
@@ -210,7 +238,10 @@ export class ProductsService {
 
     return products.map((product: (typeof products)[number]) => {
       const latestBatch = product.batches?.[0];
-      const supplier = product.supplierProducts?.[0];
+      const supplierProduct = product.supplierProducts?.[0];
+      
+      // Get company_name directly from SupplierProduct (denormalized field)
+      const companyName = supplierProduct?.company_name ?? null;
 
       // 재고 부족 tag
       const isLowStock = product.current_stock < product.min_stock;
@@ -247,11 +278,11 @@ export class ProductsService {
         purchasePrice: product.purchase_price,
         salePrice: product.sale_price,
         unit: product.unit,
-        supplierName: supplier?.contact_name ?? null, // Use contact_name as supplier name
-        managerName: supplier?.contact_name ?? null,
+        supplierName: companyName, // Company name from Supplier table
+        managerName: supplierProduct?.contact_name ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,
-        memo: supplier?.note ?? product.returnPolicy?.note ?? null,
+        memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
         isLowStock, // ← Qo'shildi (재고 부족 tag)
         batches: batchesWithStatus, // ← FEFO sorted va status bilan
       };
@@ -357,11 +388,38 @@ export class ProductsService {
             continue;
           }
 
+          // Try to find Supplier by supplier_id to get tenant_id and company_name
+          let supplierTenantId = null;
+          let companyName = null;
+          
+          if (supplier.supplier_id) {
+            try {
+              // Check if supplier_id is a UUID (Supplier.id)
+              const supplierRecord = await tx.supplier.findUnique({
+                where: { id: supplier.supplier_id },
+                select: { tenant_id: true, company_name: true },
+              });
+              
+              if (supplierRecord) {
+                supplierTenantId = supplierRecord.tenant_id;
+                companyName = supplierRecord.company_name;
+              } else {
+                // Not a UUID, maybe it's a company name or manager_id (legacy)
+                companyName = supplier.supplier_id;
+              }
+            } catch (e) {
+              // Invalid UUID format - treat as company name
+              companyName = supplier.supplier_id;
+            }
+          }
+
           await tx.supplierProduct.create({
             data: {
               tenant_id: tenantId,
               product_id: id,
               supplier_id: supplier.supplier_id ?? null, // Optional - legacy field
+              supplier_tenant_id: supplierTenantId,
+              company_name: companyName,
               purchase_price: supplier.purchase_price ?? null,
               moq: supplier.moq ?? null,
               lead_time_days: supplier.lead_time_days ?? null,

@@ -60,16 +60,6 @@ class CompanyDataDto {
   companyAddress?: string;
 
   @ApiProperty()
-  @IsString()
-  @IsOptional()
-  businessType?: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsOptional()
-  businessItem?: string;
-
-  @ApiProperty()
   @IsString({ each: true })
   @IsOptional()
   productCategories?: string[];
@@ -92,13 +82,8 @@ class ContactDataDto {
 
   @ApiProperty()
   @IsString()
-  @IsOptional()
-  email2?: string;
-
-  @ApiProperty()
-  @IsString({ each: true })
   @IsNotEmpty()
-  responsibleRegions!: string[];
+  managerAddress!: string;
 
   @ApiProperty()
   @IsString({ each: true })

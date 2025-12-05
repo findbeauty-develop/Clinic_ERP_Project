@@ -324,7 +324,7 @@ export class SupplierService {
       // If supplier hasn't registered on platform yet, there's no SupplierManager, so no link
       const supplierManager = await this.prisma.supplierManager.findFirst({
         where: {
-          supplier_id: supplier.id,
+          supplier_tenant_id: supplier.tenant_id!, // Use tenant_id instead of supplier_id
           status: "ACTIVE",
         },
       });
@@ -378,7 +378,16 @@ export class SupplierService {
     try {
       const prisma = this.prisma as any;
       
-      // Find SupplierManager for this supplier
+      // First, get supplier to get its tenant_id
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: supplierId },
+      });
+      
+      if (!supplier || !supplier.tenant_id) {
+        throw new BadRequestException("Supplier not found or missing tenant_id");
+      }
+      
+      // Find SupplierManager for this supplier (using supplier_tenant_id)
       // Priority: 1) supplierManagerId (database ID - most accurate), 2) managerId (manager_id), 3) first ACTIVE manager
       let supplierManager;
       
@@ -387,7 +396,7 @@ export class SupplierService {
         supplierManager = await prisma.supplierManager.findFirst({
           where: {
             id: supplierManagerId,
-            supplier_id: supplierId, // Verify it belongs to the correct supplier
+            supplier_tenant_id: supplier.tenant_id, // Use tenant_id
             status: "ACTIVE",
           },
         });
@@ -400,7 +409,7 @@ export class SupplierService {
       if (!supplierManager && managerId) {
         supplierManager = await prisma.supplierManager.findFirst({
           where: {
-            supplier_id: supplierId,
+            supplier_tenant_id: supplier.tenant_id, // Use tenant_id
             manager_id: managerId,
             status: "ACTIVE",
           },
@@ -414,7 +423,7 @@ export class SupplierService {
       if (!supplierManager) {
         supplierManager = await prisma.supplierManager.findFirst({
           where: {
-            supplier_id: supplierId,
+            supplier_tenant_id: supplier.tenant_id, // Use tenant_id
             status: "ACTIVE", // Only active managers (registered on platform)
           },
           orderBy: {

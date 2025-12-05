@@ -17,15 +17,12 @@ interface RegistrationData {
     companyPhone?: string;
     companyEmail?: string;
     companyAddress?: string;
-    businessType?: string;
-    businessItem?: string;
     productCategories?: string[];
   };
   step4Data?: {
     password?: string;
     email1?: string;
-    email2?: string;
-    responsibleRegions?: string[];
+    managerAddress?: string;
     responsibleProducts?: string[];
   };
 }
@@ -97,15 +94,12 @@ export default function CompletePage() {
           companyPhone: registrationData.step3Data?.companyPhone,
           companyEmail: registrationData.step3Data?.companyEmail,
           companyAddress: registrationData.step3Data?.companyAddress,
-          businessType: registrationData.step3Data?.businessType,
-          businessItem: registrationData.step3Data?.businessItem,
           productCategories: registrationData.step3Data?.productCategories,
         },
         contact: {
           password: registrationData.step4Data?.password,
           email1: registrationData.step4Data?.email1,
-          email2: registrationData.step4Data?.email2,
-          responsibleRegions: registrationData.step4Data?.responsibleRegions,
+          managerAddress: registrationData.step4Data?.managerAddress,
           responsibleProducts: registrationData.step4Data?.responsibleProducts,
         },
         managerId: managerId,
@@ -235,21 +229,15 @@ export default function CompletePage() {
               </span>
             </div>
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-slate-700">이메일 1</span>
+              <span className="text-sm font-medium text-slate-700">이메일</span>
               <span className="text-sm text-slate-900 text-right">
                 {registrationData.step4Data?.email1 || "-"}
               </span>
             </div>
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-slate-700">이메일 2</span>
-              <span className="text-sm text-slate-900 text-right">
-                {registrationData.step4Data?.email2 || "-"}
-              </span>
-            </div>
-            <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-slate-700">담당 지역</span>
+              <span className="text-sm font-medium text-slate-700">담당자 주소</span>
               <span className="text-sm text-slate-900 text-right max-w-[60%]">
-                {registrationData.step4Data?.responsibleRegions?.join(", ") || "-"}
+                {registrationData.step4Data?.managerAddress || "-"}
               </span>
             </div>
             <div className="flex justify-between items-start">

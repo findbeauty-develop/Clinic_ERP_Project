@@ -61,7 +61,7 @@ export class AuthService {
           sub: manager.id,
           managerId: manager.manager_id,
           email: manager.email1,
-          supplierId: manager.supplier_id,
+          supplierTenantId: manager.supplier_tenant_id, // Supplier'ning tenant_id'si
           type: "supplier",
         },
         secret,

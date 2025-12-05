@@ -94,18 +94,13 @@ export class ManagerService {
       throw new BadRequestException("비밀번호가 일치하지 않습니다");
     }
 
-    // 2. Email duplication check (if email2 is provided)
-    if (dto.email2 && dto.email1 === dto.email2) {
-      throw new BadRequestException("이메일1과 이메일2는 서로 다르게 입력하세요");
+    // 2. Manager address validation
+    if (!dto.managerAddress || dto.managerAddress.trim().length === 0) {
+      throw new BadRequestException("담당자 주소를 입력하세요");
     }
 
-    // 3. Remove duplicates from regions and products
-    const uniqueRegions = Array.from(new Set(dto.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0)));
+    // 3. Remove duplicates from products
     const uniqueProducts = Array.from(new Set(dto.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0)));
-
-    if (uniqueRegions.length === 0) {
-      throw new BadRequestException("최소 1개 이상의 담당 지역을 입력하세요");
-    }
 
     if (uniqueProducts.length === 0) {
       throw new BadRequestException("최소 1개 이상의 담당 제품을 입력하세요");
@@ -152,8 +147,7 @@ export class ManagerService {
       message: "담당자 정보가 저장되었습니다. 다음 단계로 진행하세요.",
       contact: {
         email1: dto.email1,
-        email2: dto.email2,
-        responsibleRegions: uniqueRegions,
+        managerAddress: dto.managerAddress,
         responsibleProducts: uniqueProducts,
         status: "pending",
       },
@@ -186,8 +180,8 @@ export class ManagerService {
           throw new ConflictException("이미 등록된 휴대폰 번호입니다");
         }
 
-        // 5. Check for duplicate email1 in SupplierManager
-        if (!existingManager || existingManager.email1 !== dto.contact.email1) {
+        // 5. Check for duplicate email1 in SupplierManager (if email1 is provided)
+        if (dto.contact.email1 && (!existingManager || existingManager.email1 !== dto.contact.email1)) {
           const existingEmail = await tx.supplierManager.findFirst({
             where: { email1: dto.contact.email1 },
           });
@@ -223,8 +217,6 @@ export class ManagerService {
               company_phone: dto.company.companyPhone || existingSupplier.company_phone || null,
               company_email: dto.company.companyEmail || existingSupplier.company_email,
               company_address: dto.company.companyAddress || existingSupplier.company_address || null,
-              business_type: dto.company.businessType || existingSupplier.business_type || null,
-              business_item: dto.company.businessItem || existingSupplier.business_item || null,
               product_categories: (dto.company.productCategories && dto.company.productCategories.length > 0)
                 ? dto.company.productCategories 
                 : existingSupplier.product_categories,
@@ -232,6 +224,7 @@ export class ManagerService {
                 ? dto.company.shareConsent 
                 : existingSupplier.share_consent,
               status: "ACTIVE", // Claim existing company - set to ACTIVE
+              // tenant_id is preserved from existing supplier (same company, same tenant_id)
               updated_at: new Date(),
             },
           })
@@ -242,26 +235,20 @@ export class ManagerService {
               company_phone: dto.company.companyPhone || null,
               company_email: dto.company.companyEmail || "",
               company_address: dto.company.companyAddress || null,
-              business_type: dto.company.businessType || null,
-              business_item: dto.company.businessItem || null,
               product_categories: dto.company.productCategories || [],
               share_consent: dto.company.shareConsent || false,
               status: "ACTIVE", // New supplier signup - immediately ACTIVE (no approval needed)
+              tenant_id: `supplier_${dto.company.businessNumber.replace(/[^0-9]/g, "")}_${Date.now()}`, // Generate unique tenant_id for new company
             },
           });
 
-        // 8. Remove duplicates from regions and products
-        const uniqueRegions = Array.from(
-          new Set(dto.contact.responsibleRegions.map((r) => r.trim()).filter((r) => r.length > 0))
-        );
+        // 8. Remove duplicates from products
         const uniqueProducts = Array.from(
           new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
         );
 
-        // 9. Agar ClinicSupplierManager topilsa, uning ma'lumotlaridan foydalanish
-        const finalRegions = existingClinicManager && existingClinicManager.responsible_regions.length > 0
-          ? existingClinicManager.responsible_regions
-          : uniqueRegions;
+        // 9. Manager address and products
+        const managerAddress = dto.contact.managerAddress?.trim() || null;
         const finalProducts = existingClinicManager && existingClinicManager.responsible_products.length > 0
           ? existingClinicManager.responsible_products
           : uniqueProducts;
@@ -308,7 +295,7 @@ export class ManagerService {
         // Yangi SupplierManager yaratish
         const manager = await tx.supplierManager.create({
           data: {
-            supplier_id: supplier.id,
+            supplier_tenant_id: supplier.tenant_id!, // Supplier'ning tenant_id'si
             clinic_manager_id: existingClinicManager?.id || null, // ClinicSupplierManager bilan link
             manager_id: managerId,
             name: dto.manager.name,
@@ -316,11 +303,11 @@ export class ManagerService {
             certificate_image_url: dto.manager.certificateImageUrl || existingClinicManager?.certificate_image_url || null,
             password_hash: passwordHash,
             email1: dto.contact.email1,
-            email2: dto.contact.email2 || null,
-            responsible_regions: finalRegions,
+            manager_address: managerAddress, // Manager address (bitta string)
             responsible_products: finalProducts,
             position: dto.manager.position || existingClinicManager?.position || null,
             status: "ACTIVE", // Immediately ACTIVE after signup (no approval needed)
+            created_by: "self", // Self-registered manager
           },
         });
 

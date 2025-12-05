@@ -53,24 +53,6 @@ export class RegisterCompanyDto {
   companyAddress?: string;
 
   @ApiProperty({
-    example: "도매 및 소매업",
-    description: "Business type",
-    required: false,
-  })
-  @IsString()
-  @IsOptional()
-  businessType?: string;
-
-  @ApiProperty({
-    example: "의료기기",
-    description: "Business item",
-    required: false,
-  })
-  @IsString()
-  @IsOptional()
-  businessItem?: string;
-
-  @ApiProperty({
     example: ["cosmeceutical", "injection", "medical_device"],
     description: "Product categories",
   })

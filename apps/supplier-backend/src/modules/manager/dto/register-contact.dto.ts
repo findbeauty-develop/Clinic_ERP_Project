@@ -32,8 +32,8 @@ export class RegisterContactDto {
   passwordConfirm!: string;
 
   @ApiProperty({
-    example: "contact1@example.com",
-    description: "Primary email address",
+    example: "contact@example.com",
+    description: "Email address",
   })
   @IsString()
   @IsEmail({}, { message: "올바른 이메일 형식이 아닙니다" })
@@ -41,22 +41,13 @@ export class RegisterContactDto {
   email1!: string;
 
   @ApiProperty({
-    example: "contact2@example.com",
-    description: "Secondary email address (optional)",
+    example: "서울시 강남구 테헤란로 123",
+    description: "Manager address",
     required: false,
   })
-  @ValidateIf((o) => o.email2 && o.email2.length > 0)
-  @IsEmail({}, { message: "올바른 이메일 형식이 아닙니다" })
-  email2?: string;
-
-  @ApiProperty({
-    example: ["서울", "경기", "인천"],
-    description: "Responsible regions list",
-  })
-  @IsArray()
-  @ArrayMinSize(1, { message: "최소 1개 이상의 담당 지역을 선택하세요" })
-  @IsString({ each: true })
-  responsibleRegions!: string[];
+  @IsString()
+  @IsNotEmpty({ message: "담당자 주소를 입력하세요" })
+  managerAddress!: string;
 
   @ApiProperty({
     example: ["의료기기", "주사 재료", "코스메슈티컬"],

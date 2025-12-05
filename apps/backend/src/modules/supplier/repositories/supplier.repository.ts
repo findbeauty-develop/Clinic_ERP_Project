@@ -59,13 +59,18 @@ export class SupplierRepository {
         status: "ACTIVE", // Only active managers
       },
       select: {
-        supplier_id: true,
+        supplier_tenant_id: true,
+        supplier: {
+          select: { id: true },
+        },
       },
     });
 
     const approvedSupplierIds = new Set<string>();
     approvedManagers.forEach((m: any) => {
-      approvedSupplierIds.add(m.supplier_id);
+      if (m.supplier?.id) {
+        approvedSupplierIds.add(m.supplier.id);
+      }
     });
 
     if (approvedSupplierIds.size === 0) {
@@ -150,7 +155,7 @@ export class SupplierRepository {
             position: true,
             phone_number: true,
             email1: true,
-            email2: true,
+            manager_address: true,
             responsible_products: true,
             status: true,
           },
@@ -177,7 +182,6 @@ export class SupplierRepository {
             position: true,
             phone_number: true,
             email1: true,
-            email2: true,
             responsible_products: true,
           },
         },
@@ -247,8 +251,12 @@ export class SupplierRepository {
       return [];
     }
 
-    // Get unique supplier IDs
-    const supplierIds = [...new Set(validManagers.map((m: any) => m.supplier_id))];
+    // Get unique supplier IDs from included supplier relation
+    const supplierIds = [...new Set(validManagers.map((m: any) => m.supplier?.id).filter(Boolean))];
+
+    if (supplierIds.length === 0) {
+      return [];
+    }
 
     return prisma.supplier.findMany({
       where: {
@@ -282,7 +290,7 @@ export class SupplierRepository {
             position: true,
             phone_number: true,
             email1: true,
-            email2: true,
+            manager_address: true,
             responsible_products: true,
             status: true,
           },
@@ -310,7 +318,6 @@ export class SupplierRepository {
             position: true,
             phone_number: true,
             email1: true,
-            email2: true,
             responsible_products: true,
           },
         },

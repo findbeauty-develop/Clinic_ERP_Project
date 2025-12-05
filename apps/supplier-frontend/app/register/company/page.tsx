@@ -26,8 +26,6 @@ export default function CompanyInfoPage() {
     companyPhone: "",
     companyEmail: "",
     companyAddress: "",
-    businessType: "",
-    businessItem: "",
     productCategories: [] as string[],
     shareConsent: false,
   });
@@ -58,9 +56,6 @@ export default function CompanyInfoPage() {
             businessNumber: fields.businessNumber || prev.businessNumber,
             // 사업장 소재지 or 본점소재지 -> 회사 주소
             companyAddress: fields.address || prev.companyAddress,
-            // Optional fields
-            businessType: fields.businessType || prev.businessType,
-            businessItem: fields.businessItem || prev.businessItem,
             // Email OCR'dan kelmasa bo'sh qoldiriladi (user to'ldirishi kerak)
           }));
         }
@@ -369,44 +364,6 @@ export default function CompanyInfoPage() {
                 className="w-full resize-none rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:ring-offset-0 sm:text-base"
               />
             </div>
-
-            {/* Business Type/Item (if from OCR) */}
-            {(formData.businessType || formData.businessItem) && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {formData.businessType && (
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                      업태
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.businessType}
-                      onChange={(e) =>
-                        setFormData({ ...formData, businessType: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
-                      readOnly
-                    />
-                  </div>
-                )}
-                {formData.businessItem && (
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                      종목
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.businessItem}
-                      onChange={(e) =>
-                        setFormData({ ...formData, businessItem: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-slate-300 py-3 px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
-                      readOnly
-                    />
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Product Categories */}
             <div>

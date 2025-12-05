@@ -571,15 +571,13 @@ function ProductCard({
             {/* 입고 담당자 - read-only (current logged-in member) */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                입고 담당자 *
-              </label>
-              <div className="flex items-center gap-3">
-                <span className="rounded-lg bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                입고 담당자: <span className="bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
                   {batchForm.inboundManager || "알 수 없음"}
                 </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  (현재 로그인한 사용자)
-                </span>
+              </label>
+              <div className="flex items-center gap-3">
+                
+               
               </div>
             </div>
 
