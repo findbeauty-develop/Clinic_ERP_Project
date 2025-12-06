@@ -500,8 +500,15 @@ export default function OrderPage() {
       };
     });
     
+    // Filter: faqat low stock YOKI expiring productlar
+    // "재고 부족 제품" section uchun
+    const filtered = productsWithCalcs.filter((product) => {
+      const hasExpiringSoon = product.batches?.some((batch: any) => batch.isExpiringSoon);
+      return product.isLowStock || hasExpiringSoon;
+    });
+    
     // Sort products: 재고 부족 먼저, 그 다음 유효기한 임박
-    const sorted = [...productsWithCalcs].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       // 1순위: 재고 부족 (isLowStock)
       const aLowStock = a.isLowStock ? 1 : 0;
       const bLowStock = b.isLowStock ? 1 : 0;
@@ -520,21 +527,8 @@ export default function OrderPage() {
       return a.productName.localeCompare(b.productName);
     });
 
-    // Filter by tab
-    if (filterTab === "all") return sorted;
-    
-    if (filterTab === "low") {
-      return sorted.filter((product) => product.isLowStock);
-    }
-    
-    if (filterTab === "expiring") {
-      return sorted.filter((product) => 
-        product.batches?.some((batch: any) => batch.isExpiringSoon)
-      );
-    }
-
     return sorted;
-  }, [products, filterTab]);
+  }, [products]);
 
 
   return (

@@ -4,7 +4,6 @@ import {
   NotFoundException,
   Logger,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../core/prisma.service";
 import { OrderRepository } from "../repositories/order.repository";
 import { CreateOrderDto } from "../dto/create-order.dto";
@@ -336,7 +335,8 @@ export class OrderService {
       (item: any) => item.id === itemId
     );
 
-    const supplierId = null; // Supplier ID - optional field
+    // Supplier ID olish
+    const supplierId = supplier?.supplier_id || null;
 
     const newItem = {
       id: itemId,
@@ -702,6 +702,9 @@ export class OrderService {
       });
 
       createdOrders.push(await this.orderRepository.findById(order.id, tenantId));
+      
+      // Send order to supplier-backend (SupplierOrder table)
+      await this.sendOrderToSupplier(order, group, tenantId, createdBy);
     }
 
     // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
@@ -1058,6 +1061,149 @@ export class OrderService {
       updatedAt: draft.updated_at,
       expiresAt: draft.expires_at,
     };
+  }
+
+  /**
+   * Send order to supplier-backend (SupplierOrder table)
+   */
+  private async sendOrderToSupplier(
+    order: any,
+    group: any,
+    tenantId: string,
+    createdBy?: string
+  ): Promise<void> {
+    try {
+      if (!order.supplier_id) {
+        this.logger.warn(`Order ${order.order_no} has no supplier_id, skipping supplier notification`);
+        return;
+      }
+
+      // Get supplier and manager info
+      const supplier = await this.prisma.supplier.findUnique({
+        where: { id: order.supplier_id },
+        include: {
+          managers: {
+            where: { status: "ACTIVE" },
+            orderBy: { created_at: "asc" },
+            take: 1,
+          },
+        },
+      });
+
+      if (!supplier || !supplier.tenant_id) {
+        this.logger.warn(`Supplier ${order.supplier_id} not found or has no tenant_id`);
+        return;
+      }
+
+      const supplierManager = supplier.managers?.[0];
+      if (!supplierManager) {
+        this.logger.warn(`No active manager found for supplier ${order.supplier_id}`);
+        return;
+      }
+
+      // Get clinic info
+      this.logger.log(`Looking for clinic with tenantId: ${tenantId}`);
+      const clinic = await this.prisma.clinic.findFirst({
+        where: { tenant_id: tenantId },
+      });
+      
+      // Get member info (created_by) - also used for clinic name fallback
+      let clinicManagerName = createdBy || "담당자";
+      let clinicNameFallback = null;
+      
+      if (createdBy) {
+        const member = await this.prisma.member.findFirst({
+          where: { 
+            id: createdBy,
+            tenant_id: tenantId 
+          },
+        });
+        if (member) {
+          clinicManagerName = member.full_name || member.member_id;
+          clinicNameFallback = member.clinic_name; // Fallback clinic name from member
+        }
+      }
+      
+      // Use clinic.name or fallback to member.clinic_name
+      const finalClinicName = clinic?.name || clinicNameFallback || "알 수 없음";
+      
+      this.logger.log(`Found clinic: ${finalClinicName} (from ${clinic ? 'Clinic table' : 'Member fallback'})`);
+
+      // Get product details for items
+      const itemsWithDetails = await Promise.all(
+        group.items.map(async (item: any) => {
+          const product = await this.prisma.product.findUnique({
+            where: { id: item.productId },
+            select: { name: true, brand: true },
+          });
+
+          let batchNo = null;
+          if (item.batchId) {
+            const batch = await this.prisma.batch.findUnique({
+              where: { id: item.batchId },
+              select: { batch_no: true },
+            });
+            batchNo = batch?.batch_no || null;
+          }
+
+          return {
+            productId: item.productId,
+            productName: product?.name || "제품",
+            brand: product?.brand || "",
+            batchNo: batchNo,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            memo: item.memo || null,
+          };
+        })
+      );
+
+      // Prepare order data for supplier-backend
+      const supplierOrderData = {
+        orderNo: order.order_no,
+        supplierTenantId: supplier.tenant_id,
+        supplierManagerId: supplierManager.id,
+        clinicTenantId: tenantId,
+        clinicName: finalClinicName,
+        clinicManagerName: clinicManagerName,
+        totalAmount: order.total_amount,
+        memo: order.memo,
+        items: itemsWithDetails,
+      };
+
+      this.logger.log(`Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${clinicManagerName}`);
+
+
+      // Call supplier-backend API
+      const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+      
+      if (!apiKey) {
+        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification');
+        return;
+      }
+      
+      const response = await fetch(`${supplierApiUrl}/supplier/orders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify(supplierOrderData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        this.logger.error(`Failed to send order to supplier-backend: ${response.status} ${errorText}`);
+      } else {
+        const result: any = await response.json();
+        this.logger.log(`Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error sending order to supplier-backend: ${error.message}`, error.stack);
+      // Don't throw - order already created in clinic DB, supplier notification is optional
+    }
   }
 }
 

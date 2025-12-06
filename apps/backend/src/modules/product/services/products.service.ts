@@ -3,7 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../../../../node_modules/.prisma/client-backend";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { CreateBatchDto, CreateProductDto } from "../dto/create-product.dto";

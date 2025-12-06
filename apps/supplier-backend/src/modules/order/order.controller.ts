@@ -9,30 +9,29 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { ApiKeyGuard } from "../../common/guards/api-key.guard";
 import { OrderService } from "./order.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-status.dto";
 
 @ApiTags("supplier-orders")
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller("supplier/orders")
 export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  @ApiOperation({ summary: "Clinic → Supplier order yaratish" })
-  async create(@Body() dto: CreateOrderDto, @Req() req: any) {
-    const supplierManagerId = req.user?.supplierManagerId || dto.supplierManagerId;
-    return this.orderService.createOrder({
-      ...dto,
-      supplierManagerId,
-    });
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Clinic → Supplier order yaratish (API Key auth)" })
+  @ApiHeader({ name: 'x-api-key', description: 'API Key for clinic-to-supplier authentication' })
+  async create(@Body() dto: CreateOrderDto) {
+    return this.orderService.createOrder(dto);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Supplier manager uchun orderlar ro'yxati" })
   async list(
     @Req() req: any,
@@ -49,6 +48,8 @@ export class OrderController {
   }
 
   @Get(":id")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Order detail (supplier manager)" })
   async getById(@Param("id") id: string, @Req() req: any) {
     const supplierManagerId = req.user?.supplierManagerId;
@@ -56,6 +57,8 @@ export class OrderController {
   }
 
   @Put(":id/status")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Order status yangilash (confirm / reject / etc)" })
   async updateStatus(
     @Param("id") id: string,

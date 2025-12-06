@@ -179,7 +179,7 @@ export default function OrdersPage() {
               <div className="text-lg font-semibold text-slate-900">
                 {order.clinic?.name || "클리닉"}{" "}
                 <span className="text-sm text-slate-500">
-                  {order.clinic?.managerName || ""}
+                  {order.clinic?.managerName || ""}님
                 </span>
               </div>
               <div className="text-xs text-slate-500">
@@ -342,7 +342,7 @@ export default function OrdersPage() {
                 <div className="text-lg font-semibold text-slate-900">
                   {detailOrder.clinic?.name || "클리닉"}{" "}
                   <span className="text-sm text-slate-500">
-                    {detailOrder.clinic?.managerName || ""}
+                    {detailOrder.clinic?.managerName || ""}님
                   </span>
                 </div>
                 <div className="text-xs text-slate-500">
