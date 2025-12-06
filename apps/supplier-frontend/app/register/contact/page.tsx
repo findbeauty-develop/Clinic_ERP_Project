@@ -647,7 +647,7 @@ export default function ContactInfoPage() {
             <p className="text-sm text-slate-600">
               이미 계정이 있으신가요?{" "}
               <Link
-                href="/supplier/login"
+                href="/login"
                 className="font-semibold text-purple-600 hover:text-purple-700"
               >
                 로그인하기

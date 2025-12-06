@@ -98,7 +98,7 @@ export class OrderService {
         orderBy: { order_date: "desc" },
         skip,
         take: limit,
-        include: { items: true },
+        include: { SupplierOrderItem: true, },
       }),
     ]);
 

@@ -125,8 +125,11 @@ export default function CompletePage() {
       localStorage.removeItem("supplier_registration_step3");
       localStorage.removeItem("supplier_registration_step4");
 
-      // Redirect to success page or login
-      router.push("/supplier/login?registered=true");
+      // Show success message
+      alert("회원가입이 완료되었습니다! 로그인 페이지로 이동합니다.");
+
+      // Redirect to login page
+      router.push("/login?registered=true");
     } catch (error: any) {
       alert(error.message || "저장에 실패했습니다");
     } finally {
@@ -377,7 +380,7 @@ export default function CompletePage() {
           <p className="text-sm text-slate-600">
             이미 계정이 있으신가요?{" "}
             <Link
-              href="/supplier/login"
+              href="/login"
               className="font-semibold text-purple-600 hover:text-purple-700"
             >
               로그인하기
