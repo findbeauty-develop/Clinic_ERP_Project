@@ -336,6 +336,7 @@ model Supplier {
   created_at         DateTime                @default(now())
   updated_at         DateTime?
   clinicManagers     ClinicSupplierManager[]
+  managers           SupplierManager[] @relation("SupplierToManagers")
 
   @@index([tenant_id])
   @@index([business_number])
@@ -363,7 +364,7 @@ model ClinicSupplierLink {
 
 model ClinicSupplierManager {
   id                    String           @id @default(uuid())
-  supplier_id           String
+  supplier_id           String 
   tenant_id             String
   name                  String
   phone_number          String
@@ -405,6 +406,8 @@ model SupplierManager {
   clinicLinks                 ClinicSupplierLink[]
   clinicManager               ClinicSupplierManager?       @relation(fields: [clinic_manager_id], references: [id])
   supplierReturnNotifications SupplierReturnNotification[]
+
+  supplier    Supplier @relation("SupplierToManagers", fields: [supplier_tenant_id], references: [tenant_id])
 
   @@index([supplier_tenant_id])
   @@index([manager_id])

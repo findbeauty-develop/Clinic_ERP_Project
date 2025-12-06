@@ -187,8 +187,8 @@ export default function LoginPage() {
                 id="memberId"
                 name="memberId"
                 type="text"
-                autoComplete="username"
-                placeholder="예: manager1@SeoulMedicalCenter"
+                autoComplete="new-member-id"
+                placeholder="아이디를 입력하세요"
                 value={memberId}
                 onChange={(event) => setMemberId(event.target.value)}
                 className="w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-base text-gray-900 shadow-sm transition focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200"
@@ -206,8 +206,8 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
+                autoComplete="new-password"
+                placeholder="비밀번호를 입력하세요"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-base text-gray-900 shadow-sm transition focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200"

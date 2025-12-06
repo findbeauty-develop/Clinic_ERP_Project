@@ -1627,7 +1627,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일 3
+                        이메일 2
                       </label>
                       <input
                         type="email"
