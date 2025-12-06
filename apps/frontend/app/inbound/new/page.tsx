@@ -684,6 +684,7 @@ export default function InboundNewPage() {
         managerName: manualEntryForm.managerName,
         phoneNumber: phoneNumber, // Format: 01012345678
         managerEmail: manualEntryForm.email1 || undefined,
+        position: manualEntryForm.position || undefined,
       };
 
       console.log("Creating supplier manually:", supplierData);

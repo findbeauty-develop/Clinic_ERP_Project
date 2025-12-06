@@ -61,6 +61,7 @@ export class SupplierController {
   }
 
   @Get("search-by-phone")
+  @UseGuards(JwtTenantGuard)
   @ApiOperation({
     summary: "공급업체 핸드폰 번호로 검색 (Fallback search by phone)",
     description:
@@ -80,7 +81,7 @@ export class SupplierController {
       throw new BadRequestException("핸드폰 번호는 필수입니다");
     }
 
-    return this.supplierService.searchSuppliersByPhone(phoneNumber);
+    return this.supplierService.searchSuppliersByPhone(phoneNumber, tenantId);
   }
 
   @Post("create-manual")

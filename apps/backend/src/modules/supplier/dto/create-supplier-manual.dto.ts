@@ -1,5 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsOptional, IsEmail, Matches } from "class-validator";
+import { IsString, IsOptional, IsEmail, Matches, IsIn } from "class-validator";
+
+// Job titles enum
+const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
 
 export class CreateSupplierManualDto {
   @ApiProperty({
@@ -75,5 +78,21 @@ export class CreateSupplierManualDto {
   @IsEmail()
   @IsOptional()
   managerEmail?: string;
+
+  @ApiProperty({
+    description: "담당자 직함 (Manager position)",
+    example: "과장",
+    enum: JOB_TITLES,
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(JOB_TITLES, { 
+    message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" 
+  })
+  position?: string;
+
 }
+
+
 

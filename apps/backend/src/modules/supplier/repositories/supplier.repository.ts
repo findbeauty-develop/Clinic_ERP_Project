@@ -193,16 +193,16 @@ export class SupplierRepository {
   }
 
   /**
-   * Fallback search by phone number - finds suppliers registered on platform
+   * Fallback search by phone number - finds suppliers registered on platform OR created by clinic
    * Used when primary search (companyName + managerName) returns no results
    * 
-   * IMPORTANT: This search does NOT require ClinicSupplierLink
-   * - Searches ALL suppliers registered on platform (status = ACTIVE)
-   * - Used to find suppliers that clinic hasn't traded with yet
-   * - When clinic approves, APPROVED ClinicSupplierLink is created
-   * - After approval, supplier will appear in primary search
+   * Searches:
+   * 1. SupplierManager (self-registered suppliers, status = ACTIVE)
+   * 2. ClinicSupplierManager (clinic-created suppliers for this tenant)
+   * 
+   * When clinic finds a supplier and approves, ClinicSupplierLink is created
    */
-  async searchSuppliersByPhone(phoneNumber: string) {
+  async searchSuppliersByPhone(phoneNumber: string, tenantId?: string) {
     const prisma = this.prisma as any;
 
     if (!phoneNumber) {
@@ -216,9 +216,9 @@ export class SupplierRepository {
       return [];
     }
 
-    // Search in SupplierManager (global, login uchun) - priority
-    // These are suppliers registered on the platform
-    // Search with both original and cleaned phone number
+    const supplierIds = new Set<string>();
+
+    // 1. Search in SupplierManager (self-registered suppliers)
     const supplierManagers = await prisma.supplierManager.findMany({
       where: {
         OR: [
@@ -238,30 +238,60 @@ export class SupplierRepository {
         status: "ACTIVE", // Only active managers
       },
       include: {
-        supplier: true, // Include supplier without where clause
+        supplier: true,
       },
     });
 
-    // Filter out managers without suppliers or suppliers with wrong status
-    const validManagers = supplierManagers.filter((m: any) => 
-      m.supplier && (m.supplier.status === "ACTIVE" || m.supplier.status === "MANUAL_ONLY")
-    );
+    // Collect supplier IDs from SupplierManager
+    supplierManagers.forEach((m: any) => {
+      if (m.supplier && (m.supplier.status === "ACTIVE" || m.supplier.status === "MANUAL_ONLY")) {
+        supplierIds.add(m.supplier.id);
+      }
+    });
 
-    if (validManagers.length === 0) {
+    // 2. Search in ClinicSupplierManager (clinic-created suppliers) if tenantId provided
+    if (tenantId) {
+      const clinicManagers = await prisma.clinicSupplierManager.findMany({
+        where: {
+          tenant_id: tenantId, // Only this clinic's managers
+          OR: [
+            {
+              phone_number: {
+                contains: phoneNumber,
+                mode: "insensitive",
+              },
+            },
+            {
+              phone_number: {
+                contains: cleanPhoneNumber,
+                mode: "insensitive",
+              },
+            },
+          ],
+        },
+        include: {
+          supplier: true,
+          linkedManager: true, // Check if linked to SupplierManager
+        },
+      });
+
+      // Collect supplier IDs from ClinicSupplierManager
+      clinicManagers.forEach((cm: any) => {
+        if (cm.supplier) {
+          supplierIds.add(cm.supplier.id);
+        }
+      });
+    }
+
+    if (supplierIds.size === 0) {
       return [];
     }
 
-    // Get unique supplier IDs from included supplier relation
-    const supplierIds = [...new Set(validManagers.map((m: any) => m.supplier?.id).filter(Boolean))];
-
-    if (supplierIds.length === 0) {
-      return [];
-    }
-
+    // Return suppliers with their managers
     return prisma.supplier.findMany({
       where: {
         id: {
-          in: supplierIds,
+          in: Array.from(supplierIds),
         },
       },
       include: {
@@ -295,8 +325,9 @@ export class SupplierRepository {
             status: true,
           },
         },
-        clinicManagers: {
+        clinicManagers: tenantId ? {
           where: {
+            tenant_id: tenantId, // Only this clinic's managers
             OR: [
               {
                 phone_number: {
@@ -320,7 +351,7 @@ export class SupplierRepository {
             email1: true,
             responsible_products: true,
           },
-        },
+        } : undefined,
       },
       orderBy: {
         created_at: "desc",

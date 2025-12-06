@@ -155,14 +155,15 @@ export class SupplierService {
   /**
    * Fallback search by phone number without transaction history filter
    * Used when main search returns no results
+   * Also searches clinic-created suppliers (ClinicSupplierManager)
    */
-  async searchSuppliersByPhone(phoneNumber: string) {
+  async searchSuppliersByPhone(phoneNumber: string, tenantId: string) {
     if (!phoneNumber) {
       throw new Error("핸드폰 번호는 필수입니다");
     }
 
-    this.logger.log(`Searching suppliers by phone: ${phoneNumber}`);
-    const suppliers = await this.repository.searchSuppliersByPhone(phoneNumber);
+    this.logger.log(`Searching suppliers by phone: ${phoneNumber} for tenant: ${tenantId}`);
+    const suppliers = await this.repository.searchSuppliersByPhone(phoneNumber, tenantId);
     this.logger.log(`Found ${suppliers.length} suppliers by phone`);
 
     // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
@@ -293,7 +294,7 @@ export class SupplierService {
                 name: dto.managerName,
                 email1: dto.managerEmail || null,
                 email2: null,
-                position: null,
+                position: dto.position || null,
                 updated_at: new Date(),
               },
             });
@@ -307,7 +308,7 @@ export class SupplierService {
                 phone_number: dto.phoneNumber,
                 email1: dto.managerEmail || null,
                 email2: null,
-                position: null,
+                position: dto.position || null,
                 certificate_image_url: null,
                 responsible_regions: [],
                 responsible_products: [],
