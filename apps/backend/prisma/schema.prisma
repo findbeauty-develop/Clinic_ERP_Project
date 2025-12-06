@@ -1,47 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model Product {
-  id                   String    @id @default(uuid())
+  id                   String            @id @default(uuid())
   tenant_id            String
   name                 String
-  brand                String
   barcode              String?
-  image_url            String?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime?
+  brand                String
   category             String
-  status               String    @default("활성")
-  is_active            Boolean   @default(true)
+  current_stock        Int               @default(0)
+  image_url            String?
+  is_active            Boolean           @default(true)
+  min_stock            Int               @default(0)
+  status               String            @default("활성")
   unit                 String?
   purchase_price       Int?
   sale_price           Int?
-  current_stock        Int       @default(0)
-  min_stock            Int       @default(0)
-  capacity_per_product Int? // 제품당 용량
-  capacity_unit        String? // 용량 단위
-  usage_capacity       Int? // 사용 용량
-  created_at           DateTime  @default(now())
-  updated_at           DateTime?
-
-  returnPolicy     ReturnPolicy?
-  batches          Batch[]
-  supplierProducts SupplierProduct[]
-  outbounds        Outbound[]
-  packageItems     PackageItem[]
-  returns          Return[]
-  orderItems       OrderItem[]
+  capacity_per_product Int?
+  capacity_unit        String?
+  usage_capacity       Int?
+  batches              Batch[]
+  orderItems           OrderItem[]
+  outbounds            Outbound[]
+  packageItems         PackageItem[]
+  returns              Return[]
+  returnPolicy         ReturnPolicy?
+  supplierProducts     SupplierProduct[]
 
   @@index([tenant_id])
 }
 
 model Clinic {
-  id                    String   @id @default(uuid())
+  id                    String    @id @default(uuid())
   tenant_id             String
   name                  String
   english_name          String
@@ -51,16 +50,13 @@ model Clinic {
   license_type          String
   license_number        String
   document_issue_number String
-  document_image_urls   String[] @default([])
-
-  // OCR'dan olingan field'lar (Optional)
-  open_date   DateTime? // 개설신고일자 (Open date from OCR)
-  doctor_name String? // 성명 (Doctor name from OCR)
-
-  created_at DateTime  @default(now())
-  created_by String?
-  updated_at DateTime?
-  updated_by String?
+  document_image_urls   String[]  @default([])
+  created_at            DateTime  @default(now())
+  created_by            String?
+  updated_at            DateTime?
+  updated_by            String?
+  doctor_name           String?
+  open_date             DateTime?
 
   @@index([tenant_id])
 }
@@ -72,15 +68,15 @@ model Member {
   role                 String
   password_hash        String
   clinic_name          String
-  full_name            String?
-  phone_number         String?
-  id_card_number       String?
-  address              String?
-  must_change_password Boolean   @default(false) // Birinchi login'da password o'zgartirish majburiy
   created_at           DateTime  @default(now())
   created_by           String?
   updated_at           DateTime?
   updated_by           String?
+  full_name            String?
+  phone_number         String?
+  id_card_number       String?
+  address              String?
+  must_change_password Boolean   @default(false)
 
   @@index([tenant_id])
 }
@@ -95,14 +91,13 @@ model ReturnPolicy {
   note           String?
   created_at     DateTime  @default(now())
   updated_at     DateTime?
-
-  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  product        Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
 }
 
 model Batch {
-  id               String    @id @default(uuid())
+  id               String      @id @default(uuid())
   tenant_id        String
   product_id       String
   batch_no         String
@@ -112,17 +107,16 @@ model Batch {
   manufacture_date DateTime?
   expiry_date      DateTime?
   expiry_months    Int?
-  expiry_unit      String?
   qty              Int
   alert_days       String?
-  inbound_manager  String? // 입고 담당자 (Inbound manager/responsible person)
-  created_at       DateTime  @default(now())
+  created_at       DateTime    @default(now())
   updated_at       DateTime?
-
-  product    Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  outbounds  Outbound[]
-  returns    Return[]
-  orderItems OrderItem[]
+  expiry_unit      String?
+  inbound_manager  String?
+  product          Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  orderItems       OrderItem[]
+  outbounds        Outbound[]
+  returns          Return[]
 
   @@index([tenant_id])
   @@index([product_id])
@@ -133,21 +127,19 @@ model SupplierProduct {
   id                 String    @id @default(uuid())
   tenant_id          String
   product_id         String
-  supplier_id        String?   // Optional - legacy field, kept for database compatibility
-  supplier_tenant_id String?   // Supplier tenant_id for better linking
-  company_name       String?   // Denormalized company name for performance
+  supplier_id        String?
   purchase_price     Int?
   moq                Int?
   lead_time_days     Int?
   note               String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime?
   contact_name       String?
   contact_phone      String?
   contact_email      String?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime?
-
-  product  Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  supplier_tenant_id String?
+  company_name       String?
+  product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([product_id])
@@ -157,41 +149,27 @@ model SupplierProduct {
 }
 
 model Outbound {
-  id         String @id @default(uuid())
-  tenant_id  String
-  product_id String
-  batch_id   String // Qaysi batch'dan chiqarilgani
-  batch_no   String // Batch raqami (reference uchun)
-
-  // 출고 정보
-  outbound_qty  Int // 출고 수량 (Outbound quantity)
-  outbound_date DateTime @default(now()) // 출고 날짜
-  outbound_type String   @default("제품") // 출고 타입: 제품, 패키지, 바코드
-
-  // 담당자 정보
-  manager_name String // 담당자 (Responsible person)
-
-  // 환자 정보 (선택)
-  patient_name String? // 환자 이름 (Patient name - optional)
-  chart_number String? // 차트번호 (Chart number - optional)
-
-  // 상태 정보
-  is_damaged   Boolean @default(false) // 파손 (Damaged)
-  is_defective Boolean @default(false) // 불량 (Defective)
-
-  // 기타
-  memo       String? // 메모 (Memo - optional)
-  package_id String? // 패키지 ID (패키지 출고인 경우)
-
-  // Timestamps
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-  created_by String? // 출고한 사용자
-
-  // Relations
-  product Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  batch   Batch    @relation(fields: [batch_id], references: [id], onDelete: Cascade)
-  returns Return[] // 반납 기록
+  id            String    @id @default(uuid())
+  tenant_id     String
+  product_id    String
+  batch_id      String
+  batch_no      String
+  outbound_qty  Int
+  outbound_date DateTime  @default(now())
+  manager_name  String
+  patient_name  String?
+  chart_number  String?
+  memo          String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
+  created_by    String?
+  is_damaged    Boolean   @default(false)
+  is_defective  Boolean   @default(false)
+  outbound_type String    @default("제품")
+  package_id    String?
+  batch         Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  returns       Return[]
 
   @@index([tenant_id])
   @@index([product_id])
@@ -202,33 +180,30 @@ model Outbound {
 }
 
 model Package {
-  id          String    @id @default(uuid())
+  id          String        @id @default(uuid())
   tenant_id   String
   name        String
   description String?
-  is_active   Boolean   @default(true)
-  created_at  DateTime  @default(now())
+  is_active   Boolean       @default(true)
+  created_at  DateTime      @default(now())
   updated_at  DateTime?
   created_by  String?
   updated_by  String?
-
-  items PackageItem[]
+  items       PackageItem[]
 
   @@index([tenant_id])
   @@index([tenant_id, is_active])
 }
 
-// Paket
 model PackageItem {
-  id         String @id @default(uuid())
+  id         String  @id @default(uuid())
   tenant_id  String
   package_id String
   product_id String
-  quantity   Int    @default(1)
-  order      Int    @default(0)
-
-  package Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  quantity   Int     @default(1)
+  order      Int     @default(0)
+  package    Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([package_id, product_id])
   @@index([tenant_id])
@@ -236,21 +211,15 @@ model PackageItem {
   @@index([product_id])
 }
 
-// Package Stock Reservation - Package yaratilganda batch'lardan reserve qilingan miqdor
 model PackageReservation {
-  id         String   @id @default(uuid())
-  tenant_id  String
-  package_id String   // Qaysi package uchun
-  product_id String   // Qaysi product
-  batch_id   String   // Qaysi batch'dan
-  reserved_qty Int    // Reserve qilingan miqdor
-  created_at DateTime @default(now())
-  updated_at DateTime?
-
-  // Relations (optional - agar kerak bo'lsa)
-  // package Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
-  // product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  // batch   Batch   @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  tenant_id    String
+  package_id   String
+  product_id   String
+  batch_id     String
+  reserved_qty Int
+  created_at   DateTime  @default(now())
+  updated_at   DateTime?
 
   @@index([tenant_id])
   @@index([package_id])
@@ -261,37 +230,26 @@ model PackageReservation {
   @@index([tenant_id, batch_id])
 }
 
-// 반납 (Return)
 model Return {
-  id          String  @id @default(uuid())
-  tenant_id   String
-  product_id  String
-  batch_id    String // Qaysi batch'dan qaytarilgani
-  outbound_id String? // Qaysi outbound'dan qaytarilgani (reference)
-  batch_no    String // Batch raqami (reference uchun)
-  supplier_id String? // 공급업체 ID (SupplierProduct'dan olinadi)
-
-  // 반납 정보
-  return_qty    Int // 반납 수량 (Return quantity)
-  return_date   DateTime @default(now()) // 반납 날짜
-  refund_amount Float    @default(0) // 개당 할인 금액 (ReturnPolicy'dan olinadi)
-  total_refund  Float    @default(0) // 총 반납 금액 (return_qty * refund_amount)
-
-  // 담당자 정보
-  manager_name String // 반납 담당자 (Return manager)
-
-  // 기타
-  memo String? // 메모 (Memo - optional)
-
-  // Timestamps
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-  created_by String? // 반납한 사용자
-
-  // Relations
-  product  Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  batch    Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
-  outbound Outbound? @relation(fields: [outbound_id], references: [id], onDelete: SetNull)
+  id            String    @id @default(uuid())
+  tenant_id     String
+  product_id    String
+  batch_id      String
+  outbound_id   String?
+  batch_no      String
+  supplier_id   String?
+  return_qty    Int
+  return_date   DateTime  @default(now())
+  refund_amount Float     @default(0)
+  total_refund  Float     @default(0)
+  manager_name  String
+  memo          String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
+  created_by    String?
+  batch         Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  outbound      Outbound? @relation(fields: [outbound_id], references: [id])
+  product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([product_id])
@@ -301,32 +259,21 @@ model Return {
   @@index([tenant_id, return_date])
 }
 
-// 주문 (Order) - Buyurtma
 model Order {
-  id          String  @id @default(uuid())
-  tenant_id   String
-  order_no    String  @unique // 주문서 번호 (Order number)
-  status      String  @default("draft") // draft, pending, confirmed, completed, cancelled
-  supplier_id String? // 공급업체 ID (Supplier ID)
-
-  // 주문 정보
-  total_amount           Float     @default(0) // 총 주문 금액
-  order_date             DateTime  @default(now()) // 주문 날짜
-  expected_delivery_date DateTime? // 예상 배송일
-
-  // 담당자 정보
-  created_by  String? // 주문 생성자
-  approved_by String? // 승인자
-
-  // 기타
-  memo String? // 메모
-
-  // Timestamps
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-
-  // Relations
-  items OrderItem[]
+  id                     String      @id @default(uuid())
+  tenant_id              String
+  order_no               String      @unique
+  status                 String      @default("draft")
+  supplier_id            String?
+  total_amount           Float       @default(0)
+  order_date             DateTime    @default(now())
+  expected_delivery_date DateTime?
+  created_by             String?
+  approved_by            String?
+  memo                   String?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime?
+  items                  OrderItem[]
 
   @@index([tenant_id])
   @@index([supplier_id])
@@ -336,30 +283,21 @@ model Order {
   @@index([tenant_id, order_date])
 }
 
-// 주문 항목 (Order Item)
 model OrderItem {
-  id         String  @id @default(uuid())
-  tenant_id  String
-  order_id   String
-  product_id String
-  batch_id   String? // Batch ID (agar batch bo'yicha buyurtma bo'lsa)
-
-  // 주문 정보
-  quantity    Int // 주문 수량
-  unit_price  Int // 개당 가격 (purchase price)
-  total_price Int // 총 가격 (quantity * unit_price)
-
-  // 기타
-  memo String? // 메모
-
-  // Timestamps
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-
-  // Relations
-  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  batch   Batch?  @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  id          String    @id @default(uuid())
+  tenant_id   String
+  order_id    String
+  product_id  String
+  batch_id    String?
+  quantity    Int
+  unit_price  Int
+  total_price Int
+  memo        String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime?
+  batch       Batch?    @relation(fields: [batch_id], references: [id])
+  order       Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([order_id])
@@ -368,20 +306,15 @@ model OrderItem {
   @@index([tenant_id, order_id])
 }
 
-// 주문 초안 (Order Draft) - Session-based temporary order
 model OrderDraft {
-  id         String @id @default(uuid())
-  tenant_id  String
-  session_id String // Frontend session ID yoki user ID
-
-  // 초안 정보
-  items        Json // OrderItem[] formatida JSON
-  total_amount Float @default(0)
-
-  // Timestamps
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now())
-  expires_at DateTime // Session expiration time
+  id           String   @id @default(uuid())
+  tenant_id    String
+  session_id   String
+  items        Json
+  total_amount Float    @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+  expires_at   DateTime
 
   @@unique([tenant_id, session_id])
   @@index([tenant_id])
@@ -389,111 +322,90 @@ model OrderDraft {
   @@index([expires_at])
 }
 
-// 공급업체 (Supplier) - Supplier company information
 model Supplier {
-  id                String    @id @default(uuid())
-  tenant_id         String?   @unique // Unique - used as foreign key by SupplierManager
-  company_name      String
-  business_number   String    @unique // 사업자 등록번호 - UNIQUE key for company identity
-  company_phone     String?
-  company_email     String
-  company_address   String?
-  product_categories String[]  @default([]) // 취급 제품 카테고리
-  share_consent     Boolean   @default(false) // 회사 정보 공유 동의
-  status            String    @default("MANUAL_ONLY") // MANUAL_ONLY (clinic yaratgan), ACTIVE (supplier ro'yxatdan o'tgan)
-  created_at        DateTime  @default(now())
-  updated_at        DateTime?
-  
-  // Relations
-  clinicManagers    ClinicSupplierManager[]
-  managers          SupplierManager[]
-  supplierProducts  SupplierProduct[]
-  
+  id                 String                  @id @default(uuid())
+  tenant_id          String                  @unique
+  company_name       String
+  business_number    String                  @unique
+  company_phone      String?
+  company_email      String
+  company_address    String?
+  product_categories String[]                @default([])
+  share_consent      Boolean                 @default(false)
+  status             String                  @default("MANUAL_ONLY")
+  created_at         DateTime                @default(now())
+  updated_at         DateTime?
+  clinicManagers     ClinicSupplierManager[]
+
   @@index([tenant_id])
   @@index([business_number])
   @@index([status])
 }
 
-// Clinic ↔ Supplier Manager trade relationship
-// Links clinic to specific SupplierManager (not Supplier company)
-// One Supplier can have multiple SupplierManagers, each with separate trade relationships
 model ClinicSupplierLink {
-  id                String    @id @default(uuid())
-  tenant_id         String    // Clinic tenant_id
-  supplier_manager_id String  // SupplierManager ID (NOT Supplier company ID)
-  status            String    @default("REQUESTED") // REQUESTED, APPROVED, BLOCKED
-  requested_at      DateTime  @default(now())
-  approved_at       DateTime?
-  blocked_at        DateTime?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime?
-  
-  // Relations
-  supplierManager   SupplierManager  @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
-  
-  @@unique([tenant_id, supplier_manager_id]) // One link per clinic-supplier-manager pair
+  id                  String          @id @default(uuid())
+  tenant_id           String
+  status              String          @default("REQUESTED")
+  requested_at        DateTime        @default(now())
+  approved_at         DateTime?
+  blocked_at          DateTime?
+  created_at          DateTime        @default(now())
+  updated_at          DateTime?
+  supplier_manager_id String
+  supplierManager     SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, supplier_manager_id])
   @@index([tenant_id])
   @@index([supplier_manager_id])
   @@index([status])
   @@index([tenant_id, status])
 }
 
-// Clinic tomonidan yaratilgan Supplier Manager (Clinic context'da)
 model ClinicSupplierManager {
-  id                    String    @id @default(uuid())
+  id                    String           @id @default(uuid())
   supplier_id           String
-  tenant_id             String    // Qaysi clinic yaratgan
+  tenant_id             String
   name                  String
-  phone_number          String    // NOT UNIQUE - faqat clinic context'da
-  email1               String?
-  email2               String?
-  position              String?   // 직함
-  certificate_image_url String?   // 사업자등록증 이미지 URL
-  responsible_regions   String[]  @default([])
-  responsible_products  String[]  @default([])
+  phone_number          String
+  email1                String?
+  email2                String?
+  position              String?
+  certificate_image_url String?
+  responsible_regions   String[]         @default([])
+  responsible_products  String[]         @default([])
   memo                  String?
-  created_at            DateTime  @default(now())
+  created_at            DateTime         @default(now())
   updated_at            DateTime?
-  
-  // Relations
-  supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
-  linkedManager         SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
-  
+  supplier              Supplier         @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  linkedManager         SupplierManager?
+
   @@index([supplier_id])
   @@index([tenant_id])
   @@index([phone_number])
-  @@index([tenant_id, phone_number]) // Composite index for clinic-specific search
+  @@index([tenant_id, phone_number])
 }
 
-// Supplier tomonidan yaratilgan Manager (Global, login uchun)
 model SupplierManager {
-  id                    String    @id @default(uuid())
-  supplier_tenant_id    String    // Supplier'ning tenant_id'si (supplier_id o'rniga)
-  clinic_manager_id     String?   @unique // ClinicSupplierManager bilan link (agar clinic yaratgan bo'lsa) - UNIQUE for one-to-one
-  manager_id            String    @unique // 담당자 ID (회사이름+4자리 숫자)
-  name                  String
-  phone_number          String    @unique // UNIQUE - global
-  certificate_image_url String?   // 사업자등록증 이미지 URL
-  
-  // 계정 정보 (required for login)
-  password_hash         String?   // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
-  email1               String?   // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
-  
-  // 담당 정보
-  manager_address       String?   // 담당자 주소 (responsible_regions o'rniga)
-  responsible_products  String[]  @default([]) // 담당 제품
-  position              String?   // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
-  
-  status                String    @default("ACTIVE") // ACTIVE (immediately after signup, no approval needed)
-  created_at            DateTime  @default(now())
-  updated_at            DateTime?
-  created_by            String?   // Who created this manager (clinic or self-registered)
-  
-  // Relations
-  supplier              Supplier  @relation(fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)
-  clinicManager         ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
-  clinicLinks           ClinicSupplierLink[] // Trade relationships with clinics
-  
+  id                          String                       @id @default(uuid())
+  manager_id                  String                       @unique
+  name                        String
+  phone_number                String                       @unique
+  certificate_image_url       String?
+  password_hash               String?
+  email1                      String?
+  responsible_products        String[]                     @default([])
+  status                      String                       @default("ACTIVE")
+  created_at                  DateTime                     @default(now())
+  updated_at                  DateTime?
+  position                    String?
+  clinic_manager_id           String?                      @unique
+  supplier_tenant_id          String
+  manager_address             String?
+  created_by                  String?
+  clinicLinks                 ClinicSupplierLink[]
+  clinicManager               ClinicSupplierManager?       @relation(fields: [clinic_manager_id], references: [id])
+  supplierReturnNotifications SupplierReturnNotification[]
+
   @@index([supplier_tenant_id])
   @@index([manager_id])
   @@index([phone_number])
@@ -501,44 +413,32 @@ model SupplierManager {
   @@index([status])
   @@index([clinic_manager_id])
   @@index([created_by])
-  supplierReturnNotifications SupplierReturnNotification[]
 }
 
-// Supplier Return Notification - Clinic'dan return qilinganda supplier manager'ga yuboriladi
 model SupplierReturnNotification {
-  id                  String    @id @default(uuid())
-  supplier_manager_id String    // Qaysi SupplierManager'ga tegishli
-  return_id           String    // Return ID (reference)
-  clinic_tenant_id    String    // Qaysi clinic'dan return qilingan
-  clinic_name         String?   // Clinic nomi
-  
-  // Product ma'lumotlari
-  product_id          String
-  product_name        String
-  product_brand       String
-  product_code        String?   // Product code/barcode
-  
-  // Return ma'lumotlari
-  return_qty          Int       // 반납 수량
-  refund_amount_per_item Float  // 개당 할인 금액
-  total_refund        Float     // 총 반납 금액
-  return_manager_name String    // Return qilayotgan shaxsning ismi
-  return_date         DateTime  // Return sanasi
-  batch_no            String?   // Batch raqami
-  
-  // Status
-  status              String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
-  is_read             Boolean   @default(false)
-  
-  // Timestamps
-  created_at          DateTime  @default(now())
-  updated_at          DateTime?
-  accepted_at         DateTime?
-  rejected_at         DateTime?
-  
-  // Relations
-  supplierManager     SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
-  
+  id                     String          @id @default(uuid())
+  supplier_manager_id    String
+  return_id              String
+  clinic_tenant_id       String
+  clinic_name            String?
+  product_id             String
+  product_name           String
+  product_brand          String
+  product_code           String?
+  return_qty             Int
+  refund_amount_per_item Float
+  total_refund           Float
+  return_manager_name    String
+  return_date            DateTime
+  batch_no               String?
+  status                 String          @default("PENDING")
+  is_read                Boolean         @default(false)
+  created_at             DateTime        @default(now())
+  updated_at             DateTime?
+  accepted_at            DateTime?
+  rejected_at            DateTime?
+  supplierManager        SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+
   @@index([supplier_manager_id])
   @@index([return_id])
   @@index([clinic_tenant_id])
@@ -547,4 +447,46 @@ model SupplierReturnNotification {
   @@index([supplier_manager_id, status])
   @@index([supplier_manager_id, is_read])
   @@index([created_at])
+}
+
+model SupplierOrder {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supplier_tenant_id  String
+  supplier_manager_id String?
+  clinic_tenant_id    String?
+  clinic_name         String?
+  clinic_manager_name String?
+  order_no            String              @unique
+  status              String              @default("pending")
+  total_amount        Int                 @default(0)
+  memo                String?
+  order_date          DateTime            @default(now()) @db.Timestamptz(6)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?           @db.Timestamptz(6)
+  SupplierOrderItem   SupplierOrderItem[]
+
+  @@index([clinic_tenant_id], map: "SupplierOrder_clinic_tenant_idx")
+  @@index([order_date])
+  @@index([status])
+  @@index([supplier_manager_id], map: "SupplierOrder_supplier_manager_idx")
+  @@index([supplier_tenant_id], map: "SupplierOrder_supplier_tenant_idx")
+}
+
+model SupplierOrderItem {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id      String        @db.Uuid
+  product_id    String?
+  product_name  String
+  brand         String?
+  batch_no      String?
+  quantity      Int
+  unit_price    Int
+  total_price   Int
+  memo          String?
+  created_at    DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime?     @db.Timestamptz(6)
+  SupplierOrder SupplierOrder @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id])
+  @@index([product_id])
 }

@@ -1,6 +1,6 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -9,23 +9,23 @@ generator client {
 
 // 공급업체 (Supplier) - Supplier company information
 model Supplier {
-  id                String    @id @default(uuid())
-  tenant_id         String?   @unique // Unique - used as foreign key by SupplierManager
-  company_name      String
-  business_number   String    @unique // 사업자 등록번호
-  company_phone     String?
-  company_email     String
-  company_address   String?
+  id                 String    @id @default(uuid())
+  tenant_id          String?   @unique // Unique - used as foreign key by SupplierManager
+  company_name       String
+  business_number    String    @unique // 사업자 등록번호
+  company_phone      String?
+  company_email      String
+  company_address    String?
   product_categories String[]  @default([]) // 취급 제품 카테고리
-  share_consent     Boolean   @default(false) // 회사 정보 공유 동의
-  status            String    @default("pending") // pending, approved, rejected
-  created_at        DateTime  @default(now())
-  updated_at        DateTime?
-  
+  share_consent      Boolean   @default(false) // 회사 정보 공유 동의
+  status             String    @default("pending") // pending, approved, rejected
+  created_at         DateTime  @default(now())
+  updated_at         DateTime?
+
   // Relations
-  clinicManagers        ClinicSupplierManager[]
-  managers              SupplierManager[]
-  
+  clinicManagers ClinicSupplierManager[]
+  managers       SupplierManager[]
+
   @@index([tenant_id])
   @@index([business_number])
   @@index([status])
@@ -35,23 +35,23 @@ model Supplier {
 model ClinicSupplierManager {
   id                    String    @id @default(uuid())
   supplier_id           String
-  tenant_id             String    // Qaysi clinic yaratgan
+  tenant_id             String // Qaysi clinic yaratgan
   name                  String
-  phone_number          String    // NOT UNIQUE - faqat clinic context'da
-  email1               String?
-  email2               String?
-  position              String?   // 직함
-  certificate_image_url String?   // 사업자등록증 이미지 URL
+  phone_number          String // NOT UNIQUE - faqat clinic context'da
+  email1                String?
+  email2                String?
+  position              String? // 직함
+  certificate_image_url String? // 사업자등록증 이미지 URL
   responsible_regions   String[]  @default([])
   responsible_products  String[]  @default([])
   memo                  String?
   created_at            DateTime  @default(now())
   updated_at            DateTime?
-  
+
   // Relations
-  supplier              Supplier  @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
-  linkedManager         SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
-  
+  supplier      Supplier         @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  linkedManager SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
+
   @@index([supplier_id])
   @@index([tenant_id])
   @@index([phone_number])
@@ -60,32 +60,32 @@ model ClinicSupplierManager {
 
 // Supplier tomonidan yaratilgan Manager (Global, login uchun)
 model SupplierManager {
-  id                    String    @id @default(uuid())
-  supplier_tenant_id    String    // Supplier'ning tenant_id'si (supplier_id o'rniga)
-  clinic_manager_id     String?   @unique // ClinicSupplierManager bilan link (agar clinic yaratgan bo'lsa) - UNIQUE for one-to-one
-  manager_id            String    @unique // 담당자 ID (회사이름+4자리 숫자)
+  id                    String  @id @default(uuid())
+  supplier_tenant_id    String // Supplier'ning tenant_id'si (supplier_id o'rniga)
+  clinic_manager_id     String? @unique // ClinicSupplierManager bilan link (agar clinic yaratgan bo'lsa) - UNIQUE for one-to-one
+  manager_id            String  @unique // 담당자 ID (회사이름+4자리 숫자)
   name                  String
-  phone_number          String    @unique // UNIQUE - global
-  certificate_image_url String?   // 사업자등록증 이미지 URL
-  
+  phone_number          String  @unique // UNIQUE - global
+  certificate_image_url String? // 사업자등록증 이미지 URL
+
   // 계정 정보 (required for login)
-  password_hash         String?   // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
-  email1               String?   // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
-  
+  password_hash String? // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
+  email1        String? // Optional - supplier ro'yxatdan o'tganda to'ldiriladi
+
   // 담당 정보
-  manager_address       String?   // 담당자 주소 (responsible_regions o'rniga)
-  responsible_products  String[]  @default([]) // 담당 제품
-  position              String?   // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
-  
-  status                String    @default("pending") // pending, approved, rejected, active
-  created_at            DateTime  @default(now())
-  updated_at            DateTime?
-  created_by            String?   // Who created this manager (clinic or self-registered)
-  
+  manager_address      String? // 담당자 주소 (responsible_regions o'rniga)
+  responsible_products String[] @default([]) // 담당 제품
+  position             String? // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
+
+  status     String    @default("pending") // pending, approved, rejected, active
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+  created_by String? // Who created this manager (clinic or self-registered)
+
   // Relations
-  supplier              Supplier  @relation(fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)
-  clinicManager         ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
-  
+  supplier      Supplier               @relation(fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)
+  clinicManager ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
+
   @@index([supplier_tenant_id])
   @@index([manager_id])
   @@index([phone_number])
@@ -97,37 +97,37 @@ model SupplierManager {
 
 // 공급업체 지역 태그 (Supplier Region Tag) - For search/matching
 model SupplierRegionTag {
-  id        String   @id @default(uuid())
-  name      String   @unique
+  id         String   @id @default(uuid())
+  name       String   @unique
   created_at DateTime @default(now())
-  
+
   @@index([name])
 }
 
 // 공급업체 제품 태그 (Supplier Product Tag) - For search/matching
 model SupplierProductTag {
-  id        String   @id @default(uuid())
-  name      String   @unique
+  id         String   @id @default(uuid())
+  name       String   @unique
   created_at DateTime @default(now())
-  
+
   @@index([name])
 }
 
 // Clinic → Supplier order header
 model SupplierOrder {
-  id                 String   @id @default(uuid())
-  supplier_tenant_id String   // Which supplier company
+  id                  String    @id @default(uuid())
+  supplier_tenant_id  String // Which supplier company
   supplier_manager_id String? // Target manager (if any)
-  clinic_tenant_id   String?  // Which clinic sent the order
-  clinic_name        String?  // Denormalized clinic name
+  clinic_tenant_id    String? // Which clinic sent the order
+  clinic_name         String? // Denormalized clinic name
   clinic_manager_name String? // Denormalized clinic manager name
-  order_no           String   @unique
-  status             String   @default("pending") // pending, confirmed, rejected, shipped, completed
-  total_amount       Int      @default(0)
-  memo               String?
-  order_date         DateTime @default(now())
-  created_at         DateTime @default(now())
-  updated_at         DateTime?
+  order_no            String    @unique
+  status              String    @default("pending") // pending, confirmed, rejected, shipped, completed
+  total_amount        Int       @default(0)
+  memo                String?
+  order_date          DateTime  @default(now())
+  created_at          DateTime  @default(now())
+  updated_at          DateTime?
 
   items SupplierOrderItem[]
 
@@ -140,19 +140,19 @@ model SupplierOrder {
 
 // Clinic → Supplier order items
 model SupplierOrderItem {
-  id          String  @id @default(uuid())
-  order_id    String
-  product_id  String?
+  id           String  @id @default(uuid())
+  order_id     String
+  product_id   String?
   product_name String
-  brand       String?
-  batch_no    String?
-  quantity    Int
-  unit_price  Int
-  total_price Int
-  memo        String?
+  brand        String?
+  batch_no     String?
+  quantity     Int
+  unit_price   Int
+  total_price  Int
+  memo         String?
 
   // Timestamps
-  created_at DateTime @default(now())
+  created_at DateTime  @default(now())
   updated_at DateTime?
 
   order SupplierOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
