@@ -334,6 +334,35 @@ model OrderDraft {
   @@index([expires_at])
 }
 
+model OrderReturn {
+  id              String   @id @default(uuid())
+  tenant_id       String
+  order_id        String
+  order_no        String
+  batch_no        String
+  product_id      String
+  product_name    String
+  brand           String?
+  return_quantity Int      // 미입고수량 (excess/defective qty)
+  total_quantity  Int      // confirmedQuantity from supplier
+  unit_price      Int
+  return_type     String   // "주문|반품" or "주문|교환"
+  status          String   @default("pending") // "pending", "processing", "completed"
+  memo            String?
+  images          String[] @default([])
+  return_manager  String?  // 반품 담당자
+  supplier_id     String?
+  inbound_date    DateTime @default(now())
+  created_at      DateTime @default(now())
+  updated_at      DateTime?
+
+  @@index([tenant_id])
+  @@index([order_id])
+  @@index([status])
+  @@index([tenant_id, status])
+  @@index([return_type])
+}
+
 model Supplier {
   id                 String                  @id @default(uuid())
   tenant_id          String                  @unique

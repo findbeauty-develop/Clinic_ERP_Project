@@ -7,6 +7,7 @@ import { OutboundModule } from "./modules/outbound/outbound.module";
 import { PackageModule } from "./modules/package/package.module";
 import { ReturnModule } from "./modules/return/return.module";
 import { OrderModule } from "./modules/order/order.module";
+import { OrderReturnModule } from "./modules/order-return/order-return.module";
 import { SupplierModule } from "./modules/supplier/supplier.module";
 import { UploadsModule } from "./uploads/uploads.module";
 
@@ -32,6 +33,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     PackageModule,
     ReturnModule,
     OrderModule,
+    OrderReturnModule,
     SupplierModule,
     UploadsModule,
   ],

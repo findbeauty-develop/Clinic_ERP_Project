@@ -1313,66 +1313,80 @@ function PendingOrdersList({
         }
       }
 
-      // Create batches for each product using edited values
+      // Create batches and returns for each product
+      const returnItems: any[] = [];
+      
       for (const [productId, items] of itemsByProduct.entries()) {
         // Use edited quantity from form
-        const totalQty = items.reduce((sum: number, item: any) => {
+        const inboundQty = items.reduce((sum: number, item: any) => {
           const edited = editedItems[item.id];
           return sum + (edited?.quantity || 0);
         }, 0);
         
-        // Use edited values from first item (in case of grouping)
+        // Use edited values from first item
         const firstItem = items[0];
         const editedFirstItem = editedItems[firstItem.id];
         
-        // Get expiry info from product (Product table'dan!)
+        // Get confirmed quantity from supplier
+        const confirmedQty = firstItem.confirmedQuantity || firstItem.orderedQuantity;
+        
+        // Calculate excess (ortiqcha)
+        const excessQty = confirmedQty - inboundQty;
+        
+        // Get expiry info from product
         const expiryMonths = firstItem.expiryMonths;
         const expiryUnit = firstItem.expiryUnit || "months";
         const alertDays = firstItem.alertDays;
         
-        // Calculate manufacture date from expiry date and product's expiry period
+        // Calculate manufacture date
         let manufactureDate = null;
         if (editedFirstItem?.expiryDate && expiryMonths) {
           const expiryDateObj = new Date(editedFirstItem.expiryDate);
-          
           if (expiryUnit === "days") {
             expiryDateObj.setDate(expiryDateObj.getDate() - expiryMonths);
           } else {
             expiryDateObj.setMonth(expiryDateObj.getMonth() - expiryMonths);
           }
-          
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
         
         const batchPayload: any = {
-          qty: totalQty,
+          qty: inboundQty,
           purchase_price: editedFirstItem?.purchasePrice || 0,
           expiry_date: editedFirstItem?.expiryDate,
           inbound_manager: inboundManager,
         };
 
-        // Add product-level expiry defaults
-        if (manufactureDate) {
-          batchPayload.manufacture_date = manufactureDate;
-        }
-        
-        if (expiryMonths) {
-          batchPayload.expiry_months = expiryMonths;
-        }
-        
-        if (expiryUnit) {
-          batchPayload.expiry_unit = expiryUnit;
-        }
-        
-        if (alertDays) {
-          batchPayload.alert_days = alertDays;
-        }
+        if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
+        if (expiryMonths) batchPayload.expiry_months = expiryMonths;
+        if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
+        if (alertDays) batchPayload.alert_days = alertDays;
+        if (editedFirstItem?.storageLocation) batchPayload.storage = editedFirstItem.storageLocation;
 
-        if (editedFirstItem?.storageLocation) {
-          batchPayload.storage = editedFirstItem.storageLocation;
+        // Create batch
+        const createdBatch = await apiPost<any>(`${apiUrl}/products/${productId}/batches`, batchPayload);
+        
+        // If excess, prepare return item
+        if (excessQty > 0) {
+          returnItems.push({
+            productId: firstItem.productId,
+            productName: firstItem.productName,
+            brand: firstItem.brand || "",
+            batchNo: createdBatch.batch_no || "",
+            returnQuantity: excessQty,
+            totalQuantity: confirmedQty,
+            unitPrice: editedFirstItem?.purchasePrice || 0,
+          });
         }
-
-        await apiPost(`${apiUrl}/products/${productId}/batches`, batchPayload);
+      }
+      
+      // Create returns if any excess
+      if (returnItems.length > 0) {
+        await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
+          orderId: order.orderId,
+          orderNo: order.orderNo,
+          items: returnItems,
+        });
       }
 
       // Update order status to completed
