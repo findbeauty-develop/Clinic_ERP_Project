@@ -177,6 +177,20 @@ export class CreateProductDto {
   @Min(0)
   usageCapacity?: number;
 
+  // Product-level expiry defaults
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  expiryMonths?: number;
+
+  @IsOptional()
+  @IsString()
+  expiryUnit?: string;
+
+  @IsOptional()
+  @IsString()
+  alertDays?: string;
+
   @IsOptional()
   @IsString()
   tenantId?: string;

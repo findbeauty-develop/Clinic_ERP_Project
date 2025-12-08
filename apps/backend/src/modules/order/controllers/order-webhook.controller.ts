@@ -3,7 +3,6 @@ import {
   Post,
   Body,
   UseGuards,
-  Req,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiHeader } from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
@@ -24,9 +23,7 @@ export class OrderWebhookController {
   @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: "Receive supplier order confirmation (from supplier-backend)" })
   @ApiHeader({ name: 'x-api-key', description: 'API Key for supplier-to-clinic authentication' })
-  async receiveSupplierConfirmation(@Body() dto: any, @Req() req: any) {
-    console.log("🎯 Clinic received supplier-confirmed callback!", dto);
-    console.log("🔐 Headers:", req.headers);
+  async receiveSupplierConfirmation(@Body() dto: any) {
     return this.orderService.updateOrderFromSupplier(dto);
   }
 }

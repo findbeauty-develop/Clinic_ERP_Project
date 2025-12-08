@@ -139,8 +139,6 @@ export class OrderService {
     supplierManagerId: string,
     dto: UpdateOrderStatusDto
   ) {
-    this.logger.log(`🔥 updateStatus called: orderId=${id}, status=${dto.status}, adjustments=${dto.adjustments?.length || 0}`);
-    
     if (!id || !supplierManagerId) {
       throw new BadRequestException("Order ID va Supplier manager ID talab qilinadi");
     }
@@ -152,8 +150,6 @@ export class OrderService {
     if (!order) {
       throw new BadRequestException("Order topilmadi");
     }
-    
-    this.logger.log(`✅ Order found: ${order.order_no}`);
 
     // Update order and items in transaction
     const updated = await this.prisma.$transaction(async (tx: any) => {
@@ -234,10 +230,8 @@ export class OrderService {
       const clinicApiUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const apiKey = process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
-      this.logger.log(`🔑 Notifying clinic: URL=${clinicApiUrl}, API_KEY=${apiKey?.substring(0, 20)}...`);
-
       if (!apiKey) {
-        console.warn("API_KEY_SECRET not configured, skipping clinic notification");
+        this.logger.warn("API_KEY_SECRET not configured, skipping clinic notification");
         return;
       }
 
@@ -269,15 +263,12 @@ export class OrderService {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        this.logger.error(`❌ Failed to notify clinic: ${response.status} - ${errorText}`);
-        console.error(`Failed to notify clinic-backend: ${response.status}`);
+        this.logger.error(`Failed to notify clinic-backend: ${response.status} - ${errorText}`);
       } else {
-        this.logger.log(`✅ Notified clinic-backend for order ${order.order_no}`);
-        console.log(`Notified clinic-backend for order ${order.order_no}`);
+        this.logger.log(`Successfully notified clinic-backend for order ${order.order_no}`);
       }
     } catch (error: any) {
-      this.logger.error(`❌ Exception notifying clinic: ${error.message}`, error.stack);
-      console.error(`Error notifying clinic-backend: ${error.message}`);
+      this.logger.error(`Error notifying clinic-backend: ${error.message}`);
       // Don't throw - order is already confirmed in supplier DB
     }
   }

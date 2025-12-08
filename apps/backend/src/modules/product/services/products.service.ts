@@ -54,6 +54,10 @@ export class ProductsService {
           capacity_per_product: dto.capacityPerProduct ?? null,
           capacity_unit: dto.capacityUnit ?? null,
           usage_capacity: dto.usageCapacity ?? null,
+          // Product-level expiry defaults
+          expiry_months: dto.expiryMonths ?? null,
+          expiry_unit: dto.expiryUnit ?? null,
+          alert_days: dto.alertDays ?? null,
           returnPolicy: dto.returnPolicy
             ? {
                 create: {
@@ -524,11 +528,12 @@ export class ProductsService {
       where: { product_id: productId, tenant_id: tenantId },
       orderBy: { created_at: "desc" },
       select: {
-        id: true, // ← Qo'shildi (출고 uchun batch_id kerak)
+        id: true,
         batch_no: true,
         expiry_date: true,
         expiry_months: true,
         expiry_unit: true,
+        alert_days: true,
         storage: true,
         created_at: true,
         qty: true,
@@ -543,20 +548,27 @@ export class ProductsService {
         expiry_date: Date | null;
         expiry_months: number | null;
         expiry_unit: string | null;
+        alert_days: string | null;
         storage: string | null;
         created_at: Date;
         qty: number;
       }) => ({
-        id: batch.id, // ← Qo'shildi
+        id: batch.id,
         batch_no: batch.batch_no,
         유효기간: batch.expiry_date
-          ? batch.expiry_date.toISOString().split("T")[0] // YYYY-MM-DD formatida
+          ? batch.expiry_date.toISOString().split("T")[0]
           : batch.expiry_months && batch.expiry_unit
           ? `${batch.expiry_months} ${batch.expiry_unit}`
           : null,
         보관위치: batch.storage ?? null,
         "입고 수량": batch.qty,
         created_at: batch.created_at,
+        // Raw fields for batch copying (입고 대기 page uchun)
+        expiry_months: batch.expiry_months,
+        expiry_unit: batch.expiry_unit,
+        alert_days: batch.alert_days,
+        storage: batch.storage,
+        qty: batch.qty,
       })
     );
   }

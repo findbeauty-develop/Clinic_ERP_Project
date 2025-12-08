@@ -685,10 +685,6 @@ export default function OrdersPage() {
   <button
     disabled={updating}
     onClick={async () => {
-      console.log("🔥 판매가 확인 후 접수 button clicked!");
-      console.log("📦 Order:", confirmOrder);
-      console.log("📝 Adjustments:", itemAdjustments);
-      
       setUpdating(true);
       try {
         // Prepare adjustments array
@@ -702,23 +698,17 @@ export default function OrdersPage() {
           priceChangeNote: adj.priceChangeNote || null,
         }));
 
-        console.log("🚀 Calling API:", `/supplier/orders/${confirmOrder.id}/status`);
-        console.log("📤 Payload:", { status: "confirmed", adjustments });
-
         // Call API to update status with adjustments
-        const result = await apiPut(`/supplier/orders/${confirmOrder.id}/status`, {
+        await apiPut(`/supplier/orders/${confirmOrder.id}/status`, {
           status: "confirmed",
           adjustments,
         });
-        
-        console.log("✅ API Response:", result);
 
         alert("주문이 접수되었습니다.");
         setConfirmOrder(null);
         setItemAdjustments({});
         await fetchOrders();
       } catch (err: any) {
-        console.error("❌ Error:", err);
         alert(err?.message || "주문 접수에 실패했습니다.");
       } finally {
         setUpdating(false);

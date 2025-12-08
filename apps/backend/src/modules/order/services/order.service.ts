@@ -1272,6 +1272,9 @@ export class OrderService {
                   name: true,
                   brand: true,
                   unit: true,
+                  expiry_months: true,
+                  expiry_unit: true,
+                  alert_days: true,
                 },
               },
             },
@@ -1332,14 +1335,31 @@ export class OrderService {
           confirmedPrice: adjustment?.actualPrice || item.unit_price, // Supplier confirmed
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
+          // Product-level expiry defaults
+          expiryMonths: item.product?.expiry_months || null,
+          expiryUnit: item.product?.expiry_unit || null,
+          alertDays: item.product?.alert_days || null,
         };
       });
+
+      // Get creator member info
+      let createdByName = "알 수 없음";
+      if (order.created_by) {
+        const member = await (this.prisma as any).member.findFirst({
+          where: { id: order.created_by },
+          select: { full_name: true, member_id: true },
+        });
+        if (member) {
+          createdByName = member.full_name || member.member_id;
+        }
+      }
 
       grouped[supplierId].orders.push({
         orderId: order.id,
         orderNo: order.order_no,
         orderDate: order.order_date,
         confirmedAt: order.confirmed_at,
+        createdByName: createdByName,
         items: formattedItems,
         totalAmount: order.total_amount,
       });
