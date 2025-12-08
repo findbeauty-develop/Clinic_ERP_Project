@@ -228,25 +228,23 @@ export default function OrdersPage() {
         key={order.id}
         className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
       >
-        <div className="mb-3 flex items-start justify-between">
-          <div>
-            <div className="text-sm text-slate-500">{dateStr}</div>
-            <div className="text-lg font-semibold text-slate-900">
-              {order.clinic?.name || "클리닉"}{" "}
-              <span className="text-sm text-slate-500">
-                {order.clinic?.managerName || ""}님
-              </span>
-            </div>
-            <div className="text-xs text-slate-500">
-              주문번호 {order.orderNo}
-            </div>
+        {/* Top: Date and Order Number */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm text-slate-500">{dateStr}</div>
+          <div className="text-xs text-slate-500">
+            주문번호 {order.orderNo}
           </div>
-          <div className="flex items-center gap-2">
-            {renderStatusBadge(order.status)}
-            <div className="text-right text-sm font-semibold text-slate-900">
-              금액 {formatNumber(order.totalAmount)} 원
-            </div>
+        </div>
+
+        {/* Clinic Name and Status */}
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-lg font-semibold text-slate-900">
+            {order.clinic?.name || "클리닉"}{" "}
+            <span className="text-sm text-slate-500">
+              {order.clinic?.managerName || ""}님
+            </span>
           </div>
+          {renderStatusBadge(order.status)}
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -271,6 +269,13 @@ export default function OrdersPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Total Amount */}
+        <div className="mt-3 border-t border-slate-200 pt-2">
+          <div className="text-right text-sm font-semibold text-slate-900">
+            총금액 {formatNumber(order.totalAmount)} 원
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -680,7 +685,44 @@ export default function OrdersPage() {
   <button
     disabled={updating}
     onClick={async () => {
-      // ... existing validation logic ...
+      console.log("🔥 판매가 확인 후 접수 button clicked!");
+      console.log("📦 Order:", confirmOrder);
+      console.log("📝 Adjustments:", itemAdjustments);
+      
+      setUpdating(true);
+      try {
+        // Prepare adjustments array
+        const adjustments = Object.values(itemAdjustments).map((adj) => ({
+          itemId: adj.itemId,
+          actualQuantity: adj.actualQuantity,
+          actualPrice: adj.actualPrice,
+          quantityChangeReason: adj.quantityChangeReason || null,
+          quantityChangeNote: adj.quantityChangeNote || null,
+          priceChangeReason: adj.priceChangeReason || null,
+          priceChangeNote: adj.priceChangeNote || null,
+        }));
+
+        console.log("🚀 Calling API:", `/supplier/orders/${confirmOrder.id}/status`);
+        console.log("📤 Payload:", { status: "confirmed", adjustments });
+
+        // Call API to update status with adjustments
+        const result = await apiPut(`/supplier/orders/${confirmOrder.id}/status`, {
+          status: "confirmed",
+          adjustments,
+        });
+        
+        console.log("✅ API Response:", result);
+
+        alert("주문이 접수되었습니다.");
+        setConfirmOrder(null);
+        setItemAdjustments({});
+        await fetchOrders();
+      } catch (err: any) {
+        console.error("❌ Error:", err);
+        alert(err?.message || "주문 접수에 실패했습니다.");
+      } finally {
+        setUpdating(false);
+      }
     }}
     className="rounded-lg bg-emerald-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
   >

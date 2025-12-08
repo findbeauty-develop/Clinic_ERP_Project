@@ -45,14 +45,19 @@ export default function InboundPage() {
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
+  const [activeTab, setActiveTab] = useState<"quick" | "pending">("quick");
   const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 5;
 
+  // Fetch products for "빠른 입고" tab
   useEffect(() => {
+    if (activeTab !== "quick") return;
+
     const fetchProducts = async () => {
       setLoading(true);
       setError(null);
@@ -103,7 +108,42 @@ export default function InboundPage() {
     };
 
     fetchProducts();
-  }, [apiUrl]);
+  }, [apiUrl, activeTab]);
+
+  // Fetch pending orders for "입고 대기" tab
+  useEffect(() => {
+    if (activeTab !== "pending") return;
+
+    const fetchPendingOrders = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { apiGet } = await import("../../lib/api");
+        const groupedData = await apiGet<any[]>(`${apiUrl}/order/pending-inbound`);
+        
+        // Flatten grouped data: each supplier group has an array of orders
+        const flatOrders: any[] = [];
+        groupedData.forEach((supplierGroup: any) => {
+          supplierGroup.orders?.forEach((order: any) => {
+            flatOrders.push({
+              ...order,
+              supplierName: supplierGroup.supplierName,
+              managerName: supplierGroup.managerName,
+            });
+          });
+        });
+        
+        setPendingOrders(flatOrders);
+      } catch (err) {
+        console.error("Failed to load pending orders", err);
+        setError("입고 대기 주문을 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPendingOrders();
+  }, [apiUrl, activeTab]);
 
   // Pagination calculations
   const totalPages = Math.ceil(products.length / itemsPerPage);
@@ -147,87 +187,138 @@ export default function InboundPage() {
           </div>
         </header>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-900/70">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-1 items-center rounded-xl border border-transparent bg-slate-100 px-4 py-3 transition focus-within:border-sky-400 focus-within:bg-white dark:bg-slate-800 dark:focus-within:border-sky-500 dark:focus-within:bg-slate-900">
-              <SearchIcon className="mr-3 h-5 w-5 text-slate-400" />
-              <input
-                aria-label="제품 검색"
-                placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
-                className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
-              />
-            </div>
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto">
-              <FilterChip
-                label="정렬"
-                options={inboundFilters}
-                defaultValue="최근 업데이트순"
-              />
-              <FilterChip
-                label="카테고리"
-                options={categories}
-                defaultValue="전체 카테고리"
-              />
-              <FilterChip
-                label="상태"
-                options={statuses}
-                defaultValue="전체 상태"
-              />
-              <FilterChip
-                label="공급업체"
-                options={suppliers}
-                defaultValue="전체 공급업체"
-              />
-            </div>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+          <button
+            onClick={() => setActiveTab("quick")}
+            className={`px-6 py-3 text-sm font-semibold transition border-b-2 ${
+              activeTab === "quick"
+                ? "border-sky-500 text-sky-600 dark:text-sky-400"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
+            }`}
+          >
+            빠른 입고
+          </button>
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={`px-6 py-3 text-sm font-semibold transition border-b-2 ${
+              activeTab === "pending"
+                ? "border-sky-500 text-sky-600 dark:text-sky-400"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
+            }`}
+          >
+            입고 대기
+            {pendingOrders.length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">
+                {pendingOrders.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              총 {products.length.toLocaleString()}개의 제품
-            </h2>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
-              <FunnelIcon className="h-4 w-4" />
-              필터 저장
-            </button>
-          </div>
-
-          {error && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
-              {error}
+        {activeTab === "quick" && (
+          <>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-900/70">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-1 items-center rounded-xl border border-transparent bg-slate-100 px-4 py-3 transition focus-within:border-sky-400 focus-within:bg-white dark:bg-slate-800 dark:focus-within:border-sky-500 dark:focus-within:bg-slate-900">
+                  <SearchIcon className="mr-3 h-5 w-5 text-slate-400" />
+                  <input
+                    aria-label="제품 검색"
+                    placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
+                    className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
+                  />
+                </div>
+                <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto">
+                  <FilterChip
+                    label="정렬"
+                    options={inboundFilters}
+                    defaultValue="최근 업데이트순"
+                  />
+                  <FilterChip
+                    label="카테고리"
+                    options={categories}
+                    defaultValue="전체 카테고리"
+                  />
+                  <FilterChip
+                    label="상태"
+                    options={statuses}
+                    defaultValue="전체 상태"
+                  />
+                  <FilterChip
+                    label="공급업체"
+                    options={suppliers}
+                    defaultValue="전체 공급업체"
+                  />
+                </div>
+              </div>
             </div>
+          </>
+        )}
+
+        <section className="space-y-4">
+          {activeTab === "quick" && (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                  총 {products.length.toLocaleString()}개의 제품
+                </h2>
+                <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
+                  <FunnelIcon className="h-4 w-4" />
+                  필터 저장
+                </button>
+              </div>
+
+              {error && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {loading ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    불러오는 중...
+                  </div>
+                ) : products.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
+                  </div>
+                ) : (
+                  <>
+                    {currentProducts.map((product) => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        isExpanded={expandedCardId === product.id}
+                        onToggle={() => handleCardToggle(product.id)}
+                      />
+                    ))}
+                    {totalPages > 1 && (
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={handlePageChange}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
 
-          <div className="space-y-3">
-            {loading ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                불러오는 중...
-              </div>
-            ) : products.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
-              </div>
-            ) : (
-              <>
-                {currentProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    isExpanded={expandedCardId === product.id}
-                    onToggle={() => handleCardToggle(product.id)}
-                  />
-                ))}
-                {totalPages > 1 && (
-                  <Pagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={handlePageChange}
-                  />
-                )}
-              </>
-            )}
-          </div>
+          {activeTab === "pending" && (
+            <PendingOrdersList
+              orders={pendingOrders}
+              loading={loading}
+              error={error}
+              apiUrl={apiUrl}
+              onRefresh={() => {
+                // Trigger re-fetch by toggling tab or force refresh
+                setActiveTab("quick");
+                setTimeout(() => setActiveTab("pending"), 10);
+              }}
+            />
+          )}
         </section>
       </section>
     </main>
@@ -1124,5 +1215,232 @@ function PencilIcon({ className }: { className?: string }) {
         d="M19.5 7.125L16.875 4.5"
       />
     </svg>
+  );
+}
+
+// Pending Orders List Component
+function PendingOrdersList({
+  orders,
+  loading,
+  error,
+  apiUrl,
+  onRefresh,
+}: {
+  orders: any[];
+  loading: boolean;
+  error: string | null;
+  apiUrl: string;
+  onRefresh: () => void;
+}) {
+  const [processing, setProcessing] = useState<string | null>(null);
+
+  const handleProcessOrder = async (order: any) => {
+    if (!confirm(`주문번호 ${order.orderNo}를 입고 처리하시겠습니까?`)) {
+      return;
+    }
+
+    setProcessing(order.orderId);
+    try {
+      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+
+      if (!token || !tenantId) {
+        alert("로그인이 필요합니다.");
+        return;
+      }
+
+      // Process each item in the order
+      const { apiPost } = await import("../../lib/api");
+      
+      // Get current member info for inbound_manager
+      const memberData = localStorage.getItem("erp_member_data");
+      const memberInfo = memberData ? JSON.parse(memberData) : {};
+      const inboundManager = memberInfo.full_name || memberInfo.member_id || "자동입고";
+
+      // Group items by productId
+      const itemsByProduct = new Map<string, any[]>();
+      order.items?.forEach((item: any) => {
+        const existing = itemsByProduct.get(item.productId) || [];
+        existing.push(item);
+        itemsByProduct.set(item.productId, existing);
+      });
+
+      // Create batches for each product
+      for (const [productId, items] of itemsByProduct.entries()) {
+        // Use confirmedQuantity (supplier's final quantity)
+        const totalQty = items.reduce((sum: number, item: any) => sum + (item.confirmedQuantity || 0), 0);
+        
+        // Use confirmedPrice (supplier's final price)
+        const avgPrice = items[0]?.confirmedPrice || items[0]?.orderedPrice || 0;
+
+        // Use default expiry date (1 year from now)
+        const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+        const batchPayload = {
+          qty: totalQty,
+          purchase_price: avgPrice,
+          expiry_date: expiryDate,
+          inbound_manager: inboundManager,
+        };
+
+        await apiPost(`${apiUrl}/products/${productId}/batches`, batchPayload);
+      }
+
+      // Update order status to completed
+      await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+
+      alert("입고 처리가 완료되었습니다.");
+      onRefresh();
+    } catch (err: any) {
+      console.error("Failed to process order:", err);
+      alert(`입고 처리 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        불러오는 중...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+        {error}
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        입고 대기 중인 주문이 없습니다.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+          입고 대기 중인 주문 ({orders.length}건)
+        </h2>
+      </div>
+
+      <div className="space-y-4">
+        {orders.map((order) => (
+          <div
+            key={order.orderId}
+            className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+          >
+            {/* Order Header */}
+            <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    주문번호: {order.orderNo}
+                  </h3>
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                    공급업체 확인 완료
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  공급업체: {order.supplierName || "알 수 없음"}
+                  {order.managerName && ` (${order.managerName})`}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  주문일: {new Date(order.orderDate).toLocaleDateString()}
+                  {order.confirmedAt && (
+                    <> | 확인일: {new Date(order.confirmedAt).toLocaleDateString()}</>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => handleProcessOrder(order)}
+                disabled={processing === order.orderId}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+              </button>
+            </div>
+
+            {/* Order Items Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left dark:border-slate-700">
+                    <th className="pb-3 font-semibold text-slate-700 dark:text-slate-300">제품명</th>
+                    <th className="pb-3 text-center font-semibold text-slate-700 dark:text-slate-300">주문 수량</th>
+                    <th className="pb-3 text-center font-semibold text-slate-700 dark:text-slate-300">공급 수량</th>
+                    <th className="pb-3 text-right font-semibold text-slate-700 dark:text-slate-300">단가</th>
+                    <th className="pb-3 text-right font-semibold text-slate-700 dark:text-slate-300">소계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.items?.map((item: any, index: number) => {
+                    const finalQty = item.confirmedQuantity || item.orderedQuantity;
+                    const finalPrice = item.confirmedPrice || item.orderedPrice;
+                    const subtotal = finalQty * finalPrice;
+                    const hasQtyChange = item.confirmedQuantity !== item.orderedQuantity;
+                    const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
+
+                    return (
+                      <tr key={index} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                        <td className="py-3">
+                          <div className="font-medium text-slate-900 dark:text-white">
+                            {item.productName || "알 수 없음"}
+                            {item.brand && <span className="text-slate-500"> - {item.brand}</span>}
+                          </div>
+                          {item.quantityReason && (
+                            <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                              ⚠ {item.quantityReason}
+                            </div>
+                          )}
+                          {item.priceReason && (
+                            <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                              💰 {item.priceReason}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 text-center text-slate-600 dark:text-slate-400">
+                          {item.orderedQuantity}
+                        </td>
+                        <td className="py-3 text-center">
+                          <span className={hasQtyChange ? "font-semibold text-rose-600" : "text-slate-600 dark:text-slate-400"}>
+                            {finalQty}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <span className={hasPriceChange ? "font-semibold text-amber-600" : "text-slate-600 dark:text-slate-400"}>
+                            ₩{finalPrice.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right font-medium text-slate-900 dark:text-white">
+                          ₩{subtotal.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 dark:border-slate-700">
+                    <td colSpan={4} className="pt-3 text-right font-semibold text-slate-700 dark:text-slate-300">
+                      총 금액:
+                    </td>
+                    <td className="pt-3 text-right text-lg font-bold text-slate-900 dark:text-white">
+                      ₩{order.totalAmount?.toLocaleString() || "0"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

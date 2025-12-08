@@ -264,7 +264,7 @@ model Order {
   id                     String      @id @default(uuid())
   tenant_id              String
   order_no               String      @unique
-  status                 String      @default("draft")
+  status                 String      @default("draft") // draft, pending, supplier_confirmed, inbound_completed, cancelled
   supplier_id            String?
   total_amount           Float       @default(0)
   order_date             DateTime    @default(now())
@@ -272,6 +272,11 @@ model Order {
   created_by             String?
   approved_by            String?
   memo                   String?
+  
+  // Supplier confirmation data
+  supplier_adjustments   Json?       // Supplier'ning adjustment ma'lumotlari (qty, price, reasons)
+  confirmed_at           DateTime?   // Supplier qachon confirm qilgan
+  
   created_at             DateTime    @default(now())
   updated_at             DateTime?
   items                  OrderItem[]

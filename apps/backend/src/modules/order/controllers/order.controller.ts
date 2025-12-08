@@ -20,6 +20,7 @@ import {
 } from "../dto/update-order-draft.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReqUser } from "../../../common/decorators/req-user.decorator";
 
@@ -152,6 +153,17 @@ export class OrderController {
   }
 
   /**
+   * Get pending inbound orders (supplier confirmed, ready for inbound)
+   * Must come before :id route to avoid route conflicts
+   */
+  @Get("pending-inbound")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Get orders ready for inbound (supplier confirmed)" })
+  async getPendingInbound(@Tenant() tenantId: string) {
+    return this.orderService.getPendingInboundOrders(tenantId);
+  }
+
+  /**
    * Order'ni olish
    */
   @Get(":id")
@@ -159,6 +171,16 @@ export class OrderController {
   async getOrder(@Tenant() tenantId: string, @Param("id") id: string) {
     // Implementation will be added
     return { message: "Not implemented yet" };
+  }
+
+  /**
+   * Mark order as completed after inbound processing
+   */
+  @Post(":id/complete")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Mark order as completed after inbound processing" })
+  async completeOrder(@Tenant() tenantId: string, @Param("id") id: string) {
+    return this.orderService.completeOrder(id, tenantId);
   }
 }
 

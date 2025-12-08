@@ -1205,5 +1205,184 @@ export class OrderService {
       // Don't throw - order already created in clinic DB, supplier notification is optional
     }
   }
+
+  /**
+   * Update order from supplier confirmation callback
+   */
+  async updateOrderFromSupplier(dto: any) {
+    const { orderNo, clinicTenantId, status, confirmedAt, adjustments, updatedItems, totalAmount } = dto;
+
+    if (!orderNo || !clinicTenantId) {
+      throw new BadRequestException("Order number and clinic tenant ID are required");
+    }
+
+    // Find order by order_no
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findFirst({
+        where: {
+          order_no: orderNo,
+          tenant_id: clinicTenantId,
+        },
+      });
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderNo} not found`);
+    }
+
+    // Update order with supplier confirmation data
+    await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.update({
+        where: { id: order.id },
+        data: {
+          status: status,
+          supplier_adjustments: adjustments,
+          confirmed_at: confirmedAt ? new Date(confirmedAt) : new Date(),
+          total_amount: totalAmount || order.total_amount,
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.logger.log(`Order ${orderNo} updated with supplier confirmation`);
+
+    return { success: true, orderId: order.id };
+  }
+
+  /**
+   * Get pending inbound orders (supplier confirmed)
+   */
+  async getPendingInboundOrders(tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const orders = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findMany({
+        where: {
+          tenant_id: tenantId,
+          status: "supplier_confirmed",
+        },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  brand: true,
+                  unit: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { confirmed_at: "desc" },
+      });
+    });
+
+    // Group by supplier
+    const grouped: Record<string, any> = {};
+
+    for (const order of orders) {
+      const supplierId = order.supplier_id || "unknown";
+      
+      if (!grouped[supplierId]) {
+        // Get supplier info
+        let supplierInfo = { companyName: "알 수 없음", managerName: "" };
+        if (order.supplier_id) {
+          const supplier = await (this.prisma as any).supplier.findUnique({
+            where: { id: order.supplier_id },
+            include: {
+              managers: {
+                where: { status: "ACTIVE" },
+                take: 1,
+              },
+            },
+          });
+          if (supplier) {
+            supplierInfo.companyName = supplier.company_name;
+            supplierInfo.managerName = supplier.managers?.[0]?.name || "";
+          }
+        }
+
+        grouped[supplierId] = {
+          supplierId: supplierId,
+          supplierName: supplierInfo.companyName,
+          managerName: supplierInfo.managerName,
+          orders: [],
+        };
+      }
+
+      // Format order items with adjustments
+      const formattedItems = order.items.map((item: any) => {
+        // Find adjustment for this item
+        const adjustments = order.supplier_adjustments?.adjustments || [];
+        const adjustment = adjustments.find((adj: any) => adj.itemId === item.id);
+
+        return {
+          id: item.id,
+          productId: item.product_id,
+          productName: item.product?.name || "제품",
+          brand: item.product?.brand || "",
+          unit: item.product?.unit || "EA",
+          orderedQuantity: item.quantity, // Original order quantity
+          confirmedQuantity: adjustment?.actualQuantity || item.quantity, // Supplier confirmed
+          orderedPrice: item.unit_price, // Original price
+          confirmedPrice: adjustment?.actualPrice || item.unit_price, // Supplier confirmed
+          quantityReason: adjustment?.quantityChangeReason || null,
+          priceReason: adjustment?.priceChangeReason || null,
+        };
+      });
+
+      grouped[supplierId].orders.push({
+        orderId: order.id,
+        orderNo: order.order_no,
+        orderDate: order.order_date,
+        confirmedAt: order.confirmed_at,
+        items: formattedItems,
+        totalAmount: order.total_amount,
+      });
+    }
+
+    return Object.values(grouped);
+  }
+
+  /**
+   * Mark order as completed after inbound processing
+   */
+  async completeOrder(orderId: string, tenantId: string) {
+    if (!orderId || !tenantId) {
+      throw new BadRequestException("Order ID and Tenant ID are required");
+    }
+
+    // Find order
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findFirst({
+        where: {
+          id: orderId,
+          tenant_id: tenantId,
+        },
+      });
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // Update status to completed
+    await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.update({
+        where: { id: orderId },
+        data: {
+          status: "completed",
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.logger.log(`Order ${order.order_no} marked as completed`);
+    return { success: true, message: "Order completed successfully" };
+  }
 }
 

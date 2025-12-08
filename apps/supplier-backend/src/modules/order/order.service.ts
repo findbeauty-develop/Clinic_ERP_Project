@@ -139,6 +139,8 @@ export class OrderService {
     supplierManagerId: string,
     dto: UpdateOrderStatusDto
   ) {
+    this.logger.log(`🔥 updateStatus called: orderId=${id}, status=${dto.status}, adjustments=${dto.adjustments?.length || 0}`);
+    
     if (!id || !supplierManagerId) {
       throw new BadRequestException("Order ID va Supplier manager ID talab qilinadi");
     }
@@ -150,6 +152,8 @@ export class OrderService {
     if (!order) {
       throw new BadRequestException("Order topilmadi");
     }
+    
+    this.logger.log(`✅ Order found: ${order.order_no}`);
 
     // Update order and items in transaction
     const updated = await this.prisma.$transaction(async (tx: any) => {
@@ -214,7 +218,68 @@ export class OrderService {
       });
     });
 
+    // If status is "confirmed", notify clinic-backend
+    if (dto.status === "confirmed" && dto.adjustments) {
+      await this.notifyClinicBackend(updated, dto.adjustments);
+    }
+
     return this.formatOrder(updated);
+  }
+
+  /**
+   * Notify clinic-backend when order is confirmed
+   */
+  private async notifyClinicBackend(order: any, adjustments: any[]) {
+    try {
+      const clinicApiUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const apiKey = process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+
+      this.logger.log(`🔑 Notifying clinic: URL=${clinicApiUrl}, API_KEY=${apiKey?.substring(0, 20)}...`);
+
+      if (!apiKey) {
+        console.warn("API_KEY_SECRET not configured, skipping clinic notification");
+        return;
+      }
+
+      const response = await fetch(`${clinicApiUrl}/order/supplier-confirmed`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          orderNo: order.order_no,
+          clinicTenantId: order.clinic_tenant_id,
+          status: "supplier_confirmed",
+          confirmedAt: new Date().toISOString(),
+          adjustments: adjustments,
+          updatedItems: order.items.map((item: any) => ({
+            itemId: item.id,
+            productId: item.product_id,
+            productName: item.product_name,
+            brand: item.brand,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            totalPrice: item.total_price,
+            memo: item.memo,
+          })),
+          totalAmount: order.total_amount,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        this.logger.error(`❌ Failed to notify clinic: ${response.status} - ${errorText}`);
+        console.error(`Failed to notify clinic-backend: ${response.status}`);
+      } else {
+        this.logger.log(`✅ Notified clinic-backend for order ${order.order_no}`);
+        console.log(`Notified clinic-backend for order ${order.order_no}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`❌ Exception notifying clinic: ${error.message}`, error.stack);
+      console.error(`Error notifying clinic-backend: ${error.message}`);
+      // Don't throw - order is already confirmed in supplier DB
+    }
   }
 
   private formatOrder = (order: any) => ({
