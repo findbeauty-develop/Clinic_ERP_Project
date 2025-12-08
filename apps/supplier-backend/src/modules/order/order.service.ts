@@ -132,7 +132,7 @@ export class OrderService {
   }
 
   /**
-   * Status yangilash
+   * Status yangilash (with optional item adjustments)
    */
   async updateStatus(
     id: string,
@@ -145,19 +145,73 @@ export class OrderService {
 
     const order = await (this.prisma as any).supplierOrder.findFirst({
       where: { id, supplier_manager_id: supplierManagerId },
+      include: { items: true },
     });
     if (!order) {
       throw new BadRequestException("Order topilmadi");
     }
 
-    const updated = await (this.prisma as any).supplierOrder.update({
-      where: { id },
-      data: {
-        status: dto.status,
-        memo: dto.memo ?? order.memo,
-        updated_at: new Date(),
-      },
-      include: { items: true },
+    // Update order and items in transaction
+    const updated = await this.prisma.$transaction(async (tx: any) => {
+      // Update order status
+      const updatedOrder = await tx.supplierOrder.update({
+        where: { id },
+        data: {
+          status: dto.status,
+          memo: dto.memo ?? order.memo,
+          updated_at: new Date(),
+        },
+      });
+
+      // Update item adjustments if provided
+      if (dto.adjustments && dto.adjustments.length > 0) {
+        for (const adjustment of dto.adjustments) {
+          const item = order.items.find((i: any) => i.id === adjustment.itemId);
+          if (item) {
+            // Build memo with change reasons
+            let itemMemo = item.memo || "";
+            if (adjustment.actualQuantity !== item.quantity) {
+              const reason = adjustment.quantityChangeReason || "미지정";
+              const note = adjustment.quantityChangeNote ? ` (${adjustment.quantityChangeNote})` : "";
+              itemMemo += `\n[수량 변경: ${item.quantity}→${adjustment.actualQuantity}, 사유: ${reason}${note}]`;
+            }
+            if (adjustment.actualPrice !== item.unit_price) {
+              const reason = adjustment.priceChangeReason || "미지정";
+              const note = adjustment.priceChangeNote ? ` (${adjustment.priceChangeNote})` : "";
+              itemMemo += `\n[가격 변경: ${item.unit_price}→${adjustment.actualPrice}, 사유: ${reason}${note}]`;
+            }
+
+            await tx.supplierOrderItem.update({
+              where: { id: adjustment.itemId },
+              data: {
+                quantity: adjustment.actualQuantity,
+                unit_price: adjustment.actualPrice,
+                total_price: adjustment.actualQuantity * adjustment.actualPrice,
+                memo: itemMemo.trim(),
+                updated_at: new Date(),
+              },
+            });
+          }
+        }
+
+        // Recalculate total amount
+        const updatedItems = await tx.supplierOrderItem.findMany({
+          where: { order_id: id },
+        });
+        const newTotalAmount = updatedItems.reduce(
+          (sum: number, item: any) => sum + item.total_price,
+          0
+        );
+        await tx.supplierOrder.update({
+          where: { id },
+          data: { total_amount: newTotalAmount },
+        });
+      }
+
+      return tx.supplierOrder.findUnique({
+        where: { id },
+        include: { items: true },
+      });
     });
 
     return this.formatOrder(updated);

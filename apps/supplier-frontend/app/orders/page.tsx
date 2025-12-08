@@ -55,6 +55,16 @@ const tabs = [
 const formatNumber = (v: number | null | undefined) =>
   (v ?? 0).toLocaleString();
 
+type ItemAdjustment = {
+  itemId: string;
+  actualQuantity: number;
+  actualPrice: number;
+  quantityChangeReason?: string;
+  quantityChangeNote?: string;
+  priceChangeReason?: string;
+  priceChangeNote?: string;
+};
+
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<"pending" | "confirmed" | "all">(
     "pending"
@@ -65,6 +75,8 @@ export default function OrdersPage() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Item ID'lar
   const [detailOrder, setDetailOrder] = useState<SupplierOrder | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [confirmOrder, setConfirmOrder] = useState<SupplierOrder | null>(null);
+  const [itemAdjustments, setItemAdjustments] = useState<Record<string, ItemAdjustment>>({});
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -279,7 +291,19 @@ export default function OrdersPage() {
               </button>
               <button
                 disabled={updating}
-                onClick={() => handleStatusUpdate("confirmed", [order.id])}
+                onClick={() => {
+                  // Initialize adjustments for this order
+                  const initialAdjustments: Record<string, ItemAdjustment> = {};
+                  order.items.forEach((item) => {
+                    initialAdjustments[item.id] = {
+                      itemId: item.id,
+                      actualQuantity: item.quantity,
+                      actualPrice: item.unitPrice,
+                    };
+                  });
+                  setItemAdjustments(initialAdjustments);
+                  setConfirmOrder(order);
+                }}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 주문 접수
@@ -442,6 +466,228 @@ export default function OrdersPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Order Modal */}
+      {confirmOrder && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl sm:rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 bg-white px-4 sm:px-6 py-3 sm:py-4">
+              {/* Header Row */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs sm:text-sm text-slate-900">
+                  {new Date(confirmOrder.orderDate).toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                  }).replace(/\. /g, '-').replace('.', '')}
+                </div>
+                <button
+                  onClick={() => {
+                    setConfirmOrder(null);
+                    setItemAdjustments({});
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Clinic Info - No Avatar */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="text-sm font-semibold text-slate-900">
+                  {confirmOrder.clinic?.name || "클리닉"}
+                </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {confirmOrder.clinic?.managerName || ""}님
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-2">
+              {confirmOrder.items.map((item) => {
+                const adjustment = itemAdjustments[item.id] || {
+                  itemId: item.id,
+                  actualQuantity: item.quantity,
+                  actualPrice: item.unitPrice,
+                };
+                const qtyChanged = adjustment.actualQuantity !== item.quantity;
+                const priceChanged = adjustment.actualPrice !== item.unitPrice;
+
+                return (
+                  <div key={item.id} className="space-y-2">
+                    {/* Product Row - Compact Layout */}
+                    <div className="flex items-center gap-2 text-sm">
+                      {/* Product Name */}
+                      <div className="w-20 font-medium text-slate-900 text-xs">{item.productName}</div>
+
+                      {/* Quantity */}
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max={item.quantity}
+                          value={adjustment.actualQuantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setItemAdjustments((prev) => ({
+                              ...prev,
+                              [item.id]: { ...adjustment, actualQuantity: val },
+                            }));
+                          }}
+                          className="w-14 rounded border border-slate-300 px-1 py-1 text-center text-xs text-slate-900 font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <span className="text-slate-600 text-xs whitespace-nowrap">/ {item.quantity}개</span>
+                      </div>
+
+                      {/* Price */}
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={adjustment.actualPrice}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setItemAdjustments((prev) => ({
+                              ...prev,
+                              [item.id]: { ...adjustment, actualPrice: val },
+                            }));
+                          }}
+                          className="w-20 rounded border border-slate-300 px-1 py-1 text-center text-xs text-slate-900 font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <span className="text-slate-600 text-xs whitespace-nowrap">/ {formatNumber(item.unitPrice)} 원</span>
+                      </div>
+
+                      {/* Total */}
+                      <div className="ml-auto text-right font-semibold text-slate-900 text-xs whitespace-nowrap">
+                        {formatNumber(adjustment.actualQuantity * adjustment.actualPrice)} 원
+                      </div>
+                    </div>
+
+                    {/* Change Reason Dropdowns (Side by side if both changed) */}
+                    {(qtyChanged || priceChanged) && (
+                      <div className="ml-0 space-y-2">
+                        <div className="flex gap-2">
+                          {/* Quantity Change Reason */}
+                          {qtyChanged && (
+                            <div className="flex-1 rounded border border-slate-200 bg-slate-50 p-2">
+                              <select
+                                value={adjustment.quantityChangeReason || ""}
+                                onChange={(e) => {
+                                  setItemAdjustments((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...adjustment, quantityChangeReason: e.target.value },
+                                  }));
+                                }}
+                                className="w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white text-slate-900 font-medium"
+
+                              >
+                                <option value="">수량 변동 사유</option>
+                                <option value="제품단종">제품단종</option>
+                                <option value="재고부족">재고부족</option>
+                                <option value="메모">직접 입력</option>
+                              </select>
+                              {adjustment.quantityChangeReason === '메모' && (
+                                <input
+                                  type="text"
+                                  placeholder="메모"
+                                  value={adjustment.quantityChangeNote || ""}
+                                  onChange={(e) => {
+                                    setItemAdjustments((prev) => ({
+                                      ...prev,
+                                      [item.id]: { ...adjustment, quantityChangeNote: e.target.value },
+                                    }));
+                                  }}
+                                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {/* Price Change Reason */}
+                          {priceChanged && (
+                            <div className="flex-1 rounded border border-slate-200 bg-slate-50 p-2">
+                              <select
+                                value={adjustment.priceChangeReason || ""}
+                                onChange={(e) => {
+                                  setItemAdjustments((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...adjustment, priceChangeReason: e.target.value },
+                                  }));
+                                }}
+                                className="w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white text-slate-900 font-medium"
+
+                              >
+                                <option value="">가격 변동 사유</option>
+                                <option value="환률변동">환률변동</option>
+                                <option value="원자재 가격 변동">원자재 가격 변동</option>
+                                <option value="메모">직접 입력</option>
+                              </select>
+                              {adjustment.priceChangeReason === '메모' && (
+                                <input
+                                  type="text"
+                                  placeholder="메모"
+                                  value={adjustment.priceChangeNote || ""}
+                                  onChange={(e) => {
+                                    setItemAdjustments((prev) => ({
+                                      ...prev,
+                                      [item.id]: { ...adjustment, priceChangeNote: e.target.value },
+                                    }));
+                                  }}
+                                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
+              <div className="text-sm sm:text-base font-bold text-slate-900">
+                총 {formatNumber(
+                  Object.values(itemAdjustments).reduce(
+                    (sum, adj) => sum + adj.actualQuantity * adj.actualPrice,
+                    0
+                  )
+                )}원
+              </div>
+              <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-0.9 py-2">
+  {/* Left: 취소 */}
+  <button
+    onClick={() => {
+      setConfirmOrder(null);
+      setItemAdjustments({});
+    }}
+    className="rounded-lg border border-slate-300 px-4 sm:px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+  >
+    취소
+  </button>
+  
+  {/* Right: 판매가 확인 후 접수 */}
+  <button
+    disabled={updating}
+    onClick={async () => {
+      // ... existing validation logic ...
+    }}
+    className="rounded-lg bg-emerald-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+  >
+    판매가 확인 후 접수
+  </button>
+</div>
+            </div>
           </div>
         </div>
       )}
