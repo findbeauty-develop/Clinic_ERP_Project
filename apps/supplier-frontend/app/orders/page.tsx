@@ -62,7 +62,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Item ID'lar
   const [detailOrder, setDetailOrder] = useState<SupplierOrder | null>(null);
   const [updating, setUpdating] = useState(false);
 
@@ -79,7 +79,7 @@ export default function OrdersPage() {
         `/supplier/orders?status=${statusParam}`
       );
       setOrders(data.orders || []);
-      setSelected(new Set());
+      setSelectedItems(new Set());
     } catch (err: any) {
       setError(err?.message || "주문을 불러오지 못했습니다.");
     } finally {
@@ -91,29 +91,79 @@ export default function OrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
+  const toggleSelectItem = (itemId: string) => {
+    setSelectedItems((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const selectAllItemsInOrder = (order: SupplierOrder) => {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      
+      // Check if all items in this order are already selected
+      const allSelected = order.items.every((item) => prev.has(item.id));
+      
+      if (allSelected) {
+        // Deselect all items in this order
+        order.items.forEach((item) => next.delete(item.id));
+      } else {
+        // Select all items in this order
+        order.items.forEach((item) => next.add(item.id));
+      }
+      
       return next;
     });
   };
 
   const selectAll = () => {
     if (orders.length === 0) return;
-    setSelected(new Set(orders.map((o) => o.id)));
+    const allItemIds = orders.flatMap((o) => o.items.map((item) => item.id));
+    setSelectedItems(new Set(allItemIds));
   };
 
-  const clearSelection = () => setSelected(new Set());
+  const clearSelection = () => setSelectedItems(new Set());
 
-  const handleStatusUpdate = async (status: string, ids?: string[]) => {
-    const targetIds = ids ?? Array.from(selected);
-    if (targetIds.length === 0) return;
+  const handleStatusUpdate = async (status: string, orderIds?: string[]) => {
+    // If orderIds provided, use them directly (from card buttons)
+    if (orderIds && orderIds.length > 0) {
+      setUpdating(true);
+      try {
+        await Promise.all(
+          orderIds.map((id) =>
+            apiPut(`/supplier/orders/${id}/status`, { status })
+          )
+        );
+        await fetchOrders();
+      } catch (err: any) {
+        alert(err?.message || "상태 변경에 실패했습니다.");
+      } finally {
+        setUpdating(false);
+      }
+      return;
+    }
+
+    // Otherwise, find orders that have selected items
+    const orderIdsToUpdate = new Set<string>();
+    orders.forEach((order) => {
+      // If any item in this order is selected, update the entire order
+      if (order.items.some((item) => selectedItems.has(item.id))) {
+        orderIdsToUpdate.add(order.id);
+      }
+    });
+
+    if (orderIdsToUpdate.size === 0) {
+      alert("선택된 항목이 없습니다.");
+      return;
+    }
+
     setUpdating(true);
     try {
       await Promise.all(
-        targetIds.map((id) =>
+        Array.from(orderIdsToUpdate).map((id) =>
           apiPut(`/supplier/orders/${id}/status`, { status })
         )
       );
@@ -167,24 +217,16 @@ export default function OrdersPage() {
         className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
       >
         <div className="mb-3 flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={selected.has(order.id)}
-              onChange={() => toggleSelect(order.id)}
-              className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            <div>
-              <div className="text-sm text-slate-500">{dateStr}</div>
-              <div className="text-lg font-semibold text-slate-900">
-                {order.clinic?.name || "클리닉"}{" "}
-                <span className="text-sm text-slate-500">
-                  {order.clinic?.managerName || ""}님
-                </span>
-              </div>
-              <div className="text-xs text-slate-500">
-                주문번호 {order.orderNo}
-              </div>
+          <div>
+            <div className="text-sm text-slate-500">{dateStr}</div>
+            <div className="text-lg font-semibold text-slate-900">
+              {order.clinic?.name || "클리닉"}{" "}
+              <span className="text-sm text-slate-500">
+                {order.clinic?.managerName || ""}님
+              </span>
+            </div>
+            <div className="text-xs text-slate-500">
+              주문번호 {order.orderNo}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -199,10 +241,16 @@ export default function OrdersPage() {
           {order.items.map((item) => (
             <div
               key={item.id}
-              className="grid grid-cols-5 gap-2 py-2 text-sm text-slate-700"
+              className="grid grid-cols-5 gap-2 py-2 text-sm text-slate-700 items-center"
             >
-              <div className="col-span-2 truncate font-medium">
-                {item.productName}
+              <div className="col-span-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedItems.has(item.id)}
+                  onChange={() => toggleSelectItem(item.id)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="truncate font-medium">{item.productName}</span>
               </div>
               <div className="text-slate-500">{item.brand || "-"}</div>
               <div className="text-right">{item.quantity}개</div>
@@ -215,10 +263,10 @@ export default function OrdersPage() {
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
-            onClick={() => fetchOrderDetail(order.id)}
+            onClick={() => selectAllItemsInOrder(order)}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            상세 보기
+            {order.items.every((item) => selectedItems.has(item.id)) ? "선택 해제" : "전체 선택"}
           </button>
           {order.status === "pending" && (
             <div className="flex gap-2">
@@ -243,10 +291,12 @@ export default function OrdersPage() {
     );
   };
 
-  const selectedCount = selected.size;
-  const hasPendingSelected = orders
-    .filter((o) => selected.has(o.id))
-    .some((o) => o.status === "pending");
+  const selectedCount = selectedItems.size;
+  
+  // Check if any selected items belong to pending orders
+  const hasPendingSelected = orders.some((order) =>
+    order.status === "pending" && order.items.some((item) => selectedItems.has(item.id))
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -276,41 +326,6 @@ export default function OrdersPage() {
       </div>
 
       <div className="px-4 pt-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
-            {selectedCount > 0
-              ? `${selectedCount}건 선택됨`
-              : "선택된 주문 없음"}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={selectAll}
-              className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              전체선택
-            </button>
-            <button
-              onClick={clearSelection}
-              className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              선택 해제
-            </button>
-            <button
-              disabled={updating || selectedCount === 0 || !hasPendingSelected}
-              onClick={() => handleStatusUpdate("rejected")}
-              className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-            >
-              주문 거절
-            </button>
-            <button
-              disabled={updating || selectedCount === 0 || !hasPendingSelected}
-              onClick={() => handleStatusUpdate("confirmed")}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              주문 접수
-            </button>
-          </div>
-        </div>
 
         {loading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm">
