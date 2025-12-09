@@ -111,6 +111,7 @@ export default function OrderPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
   const [orders, setOrders] = useState<any[]>([]);
+  const [rejectedOrders, setRejectedOrders] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const debouncedOrderSearchQuery = useDebounce(orderSearchQuery, 500);
@@ -302,11 +303,65 @@ export default function OrderPage() {
     }
   }, [apiUrl, debouncedOrderSearchQuery]);
 
+  // Fetch rejected orders
+  const fetchRejectedOrders = useCallback(async () => {
+    try {
+      const rejectedData = await apiGet<any[]>(`${apiUrl}/order/rejected-orders`);
+      console.log("Fetched rejected orders:", rejectedData);
+      setRejectedOrders(rejectedData || []);
+    } catch (err) {
+      console.error("Failed to load rejected orders", err);
+      setRejectedOrders([]);
+    }
+  }, [apiUrl]);
+
   useEffect(() => {
     if (activeTab === "history") {
       fetchOrders();
+      fetchRejectedOrders();
     }
-  }, [activeTab, fetchOrders]);
+  }, [activeTab, fetchOrders, fetchRejectedOrders]);
+
+  // Refresh rejected orders when a rejection is confirmed in inbound page
+  useEffect(() => {
+    const handleRejectedOrderConfirmed = () => {
+      console.log("Rejected order confirmed event received, refreshing rejected orders...");
+      // When a rejected order is confirmed in inbound page, refresh rejected orders
+      // Always refresh, even if not on history tab, so data is ready when user switches
+      fetchRejectedOrders();
+    };
+
+    window.addEventListener("rejectedOrderConfirmed", handleRejectedOrderConfirmed);
+
+    return () => {
+      window.removeEventListener("rejectedOrderConfirmed", handleRejectedOrderConfirmed);
+    };
+  }, [fetchRejectedOrders]);
+
+  // Refresh data when page becomes visible (e.g., after confirming rejection in inbound page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && activeTab === "history") {
+        fetchOrders();
+        fetchRejectedOrders();
+      }
+    };
+
+    const handleFocus = () => {
+      if (activeTab === "history") {
+        fetchOrders();
+        fetchRejectedOrders();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [activeTab, fetchOrders, fetchRejectedOrders]);
 
   // Search products
   useEffect(() => {
@@ -1266,13 +1321,14 @@ export default function OrderPage() {
             <div className="text-center text-slate-500 dark:text-slate-400">
               주문 내역을 불러오는 중...
             </div>
-          ) : orders.length === 0 ? (
+          ) : orders.length === 0 && rejectedOrders.length === 0 ? (
             <div className="text-center text-slate-500 dark:text-slate-400">
               주문 내역이 없습니다.
             </div>
           ) : (
             <div className="space-y-4">
-              {orders.map((order) => {
+              {/* Regular orders - filter out rejected orders (they should only appear in rejectedOrders list after confirmation) */}
+              {orders.filter((order) => order.status !== "rejected").map((order) => {
                 // Date format: YYYY-MM-DD HH:MM
                 const orderDate = new Date(order.createdAt);
                 const dateStr = orderDate.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -1495,6 +1551,95 @@ export default function OrderPage() {
                       >
                         주문서 보기
                       </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Rejected Orders */}
+              {rejectedOrders && rejectedOrders.length > 0 && rejectedOrders.map((rejectedOrder) => {
+                if (!rejectedOrder || !rejectedOrder.orderNo) return null;
+                
+                console.log("Rendering rejected order:", rejectedOrder);
+                
+                const confirmedDate = rejectedOrder.confirmedAt ? new Date(rejectedOrder.confirmedAt) : new Date();
+                const dateStr = confirmedDate.toISOString().split("T")[0];
+                const timeStr = confirmedDate.toTimeString().split(" ")[0].slice(0, 5);
+                const formattedDate = `${dateStr} ${timeStr}`;
+
+                return (
+                  <div
+                    key={rejectedOrder.orderNo}
+                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+                  >
+                    {/* Header */}
+                    <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-slate-900 dark:text-white">
+                            {rejectedOrder.companyName || "알 수 없음"}
+                          </div>
+                          {rejectedOrder.managerName && (
+                            <div className="text-sm text-slate-500 dark:text-slate-400">
+                              담당자: {rejectedOrder.managerName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-mono text-slate-600 dark:text-slate-400">
+                            주문번호: {rejectedOrder.orderNo}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                            {formattedDate}
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          주문 거절
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Product Items */}
+                    <div className="mb-4 space-y-2">
+                      {rejectedOrder.items && Array.isArray(rejectedOrder.items) && rejectedOrder.items.length > 0 ? (
+                        rejectedOrder.items.map((item: any, index: number) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/30"
+                          >
+                            <div className="flex-1">
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {item.productBrand || ""}
+                              </div>
+                              <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                {item.productName || "알 수 없음"}
+                              </div>
+                            </div>
+                            <div className="text-sm text-slate-600 dark:text-slate-400">
+                              {item.qty || 0}개
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                          제품 정보가 없습니다.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        확인자: {rejectedOrder.memberName || "알 수 없음"}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                        총금액: 0원
+                      </div>
                     </div>
                   </div>
                 );

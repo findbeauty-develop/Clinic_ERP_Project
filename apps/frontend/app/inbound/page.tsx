@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, ChangeEvent } from "react";
+import { useEffect, useMemo, useState, ChangeEvent, useCallback } from "react";
 import Link from "next/link";
 
 const inboundFilters = [
@@ -112,40 +112,41 @@ export default function InboundPage() {
     fetchProducts();
   }, [apiUrl, activeTab]);
 
-  // Fetch pending orders for "입고 대기" tab
-  useEffect(() => {
+  // Fetch pending orders function
+  const fetchPendingOrders = useCallback(async () => {
     if (activeTab !== "pending") return;
 
-    const fetchPendingOrders = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { apiGet } = await import("../../lib/api");
-        const groupedData = await apiGet<any[]>(`${apiUrl}/order/pending-inbound`);
-        
-        // Flatten grouped data: each supplier group has an array of orders
-        const flatOrders: any[] = [];
-        groupedData.forEach((supplierGroup: any) => {
-          supplierGroup.orders?.forEach((order: any) => {
-            flatOrders.push({
-              ...order,
-              supplierName: supplierGroup.supplierName,
-              managerName: supplierGroup.managerName,
-            });
+    setLoading(true);
+    setError(null);
+    try {
+      const { apiGet } = await import("../../lib/api");
+      const groupedData = await apiGet<any[]>(`${apiUrl}/order/pending-inbound`);
+      
+      // Flatten grouped data: each supplier group has an array of orders
+      const flatOrders: any[] = [];
+      groupedData.forEach((supplierGroup: any) => {
+        supplierGroup.orders?.forEach((order: any) => {
+          flatOrders.push({
+            ...order,
+            supplierName: supplierGroup.supplierName,
+            managerName: supplierGroup.managerName,
           });
         });
-        
-        setPendingOrders(flatOrders);
-      } catch (err) {
-        console.error("Failed to load pending orders", err);
-        setError("입고 대기 주문을 불러오지 못했습니다.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPendingOrders();
+      });
+      
+      setPendingOrders(flatOrders);
+    } catch (err) {
+      console.error("Failed to load pending orders", err);
+      setError("입고 대기 주문을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
   }, [apiUrl, activeTab]);
+
+  // Fetch pending orders for "입고 대기" tab
+  useEffect(() => {
+    fetchPendingOrders();
+  }, [fetchPendingOrders]);
 
   // Pagination calculations
   const totalPages = Math.ceil(products.length / itemsPerPage);
@@ -314,11 +315,7 @@ export default function InboundPage() {
               loading={loading}
               error={error}
               apiUrl={apiUrl}
-              onRefresh={() => {
-                // Trigger re-fetch by toggling tab or force refresh
-                setActiveTab("quick");
-                setTimeout(() => setActiveTab("pending"), 10);
-              }}
+              onRefresh={fetchPendingOrders}
             />
           )}
         </section>
@@ -1504,16 +1501,37 @@ function PendingOrdersList({
           const memberInfo = memberData ? JSON.parse(memberData) : {};
           const inboundManagerName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
 
+          // Determine order status
+          const isPending = order.status === "pending";
+          const isSupplierConfirmed = order.status === "supplier_confirmed";
+          const isRejected = order.status === "rejected";
+
           return (
             <div key={order.orderId} className="space-y-2">
-              {/* 공급업체 확인 완료 Badge - Above Card */}
+              {/* Badge - Above Card */}
               <div className="flex items-start">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  공급업체 확인 완료
-                </span>
+                {isPending ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    주문 요청
+                  </span>
+                ) : isRejected ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    주문 거절
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    주문 진행
+                  </span>
+                )}
               </div>
 
               {/* Card */}
@@ -1546,13 +1564,29 @@ function PendingOrdersList({
                   </div>
                 </div>
 
-                {/* Right: 확인일 + 주문자 */}
+                {/* Right: 확인일/거절일 + 주문자 */}
                 <div className="space-y-2 lg:text-right">
-                  {order.confirmedAt && (
+                  {isSupplierConfirmed && order.confirmedAt && (
                     <div className="flex items-center gap-2 lg:justify-end">
                       <CalendarIcon className="h-4 w-4 text-emerald-400" />
                       <span className="text-sm text-emerald-600 dark:text-emerald-400">
                         확인일: {new Date(order.confirmedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  {isRejected && order.confirmedAt && (
+                    <div className="flex items-center gap-2 lg:justify-end">
+                      <CalendarIcon className="h-4 w-4 text-red-400" />
+                      <span className="text-sm text-red-600 dark:text-red-400">
+                        거절일: {new Date(order.confirmedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  {isPending && order.orderDate && (
+                    <div className="flex items-center gap-2 lg:justify-end">
+                      <CalendarIcon className="h-4 w-4 text-slate-400" />
+                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                        주문일: {new Date(order.orderDate).toLocaleDateString()}
                       </span>
                     </div>
                   )}
@@ -1588,21 +1622,28 @@ function PendingOrdersList({
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {item.quantityReason && (
-                          <span className="text-xs text-rose-600 dark:text-rose-400">
-                            ⚠ 수량 변경: {item.quantityReason}
-                          </span>
-                        )}
-                        {item.priceReason && (
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
-                            💰 가격 변경: {item.priceReason}
-                          </span>
-                        )}
-                      </div>
+                      {(isSupplierConfirmed || isRejected) && (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {item.quantityReason && (
+                            <span className="text-xs text-rose-600 dark:text-rose-400">
+                              ⚠ 수량 변경: {item.quantityReason}
+                            </span>
+                          )}
+                          {item.priceReason && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">
+                              💰 가격 변경: {item.priceReason}
+                            </span>
+                          )}
+                          {isRejected && item.memo && (
+                            <span className="text-xs text-red-600 dark:text-red-400">
+                              ❌ 거절 사유: {item.memo}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Editable Fields */}
+                    {/* Editable Fields - Read-only for pending orders */}
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       {/* 입고수량 (Editable with original qty shown) */}
                       <div>
@@ -1615,14 +1656,15 @@ function PendingOrdersList({
                             min="0"
                             value={edited.quantity || ""}
                             onChange={(e) => updateItemField(item.id, "quantity", parseInt(e.target.value) || 0)}
-                            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            disabled={isPending || isRejected}
+                            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                           />
                           <span className="text-sm text-slate-400">|</span>
                           <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
                             {item.orderedQuantity}개
                           </span>
                         </div>
-                        {hasQtyChange && (
+                        {(isSupplierConfirmed || isRejected) && hasQtyChange && (
                           <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
                             공급업체 조정: {item.confirmedQuantity}개
                           </p>
@@ -1638,7 +1680,8 @@ function PendingOrdersList({
                           type="date"
                           value={edited.expiryDate || ""}
                           onChange={(e) => updateItemField(item.id, "expiryDate", e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          disabled={isPending || isRejected}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                         />
                       </div>
 
@@ -1652,7 +1695,8 @@ function PendingOrdersList({
                           placeholder="창고 A-3, 냉장실 선반 1"
                           value={edited.storageLocation || ""}
                           onChange={(e) => updateItemField(item.id, "storageLocation", e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          disabled={isPending || isRejected}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                         />
                       </div>
 
@@ -1667,9 +1711,10 @@ function PendingOrdersList({
                           placeholder="구매가 입력"
                           value={edited.purchasePrice || ""}
                           onChange={(e) => updateItemField(item.id, "purchasePrice", parseInt(e.target.value) || "")}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          disabled={isPending || isRejected}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                         />
-                        {hasPriceChange && (
+                        {(isSupplierConfirmed || isRejected) && hasPriceChange && (
                           <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                             공급업체 조정: {item.orderedPrice.toLocaleString()}원 → {item.confirmedPrice.toLocaleString()}원
                           </p>
@@ -1681,23 +1726,85 @@ function PendingOrdersList({
               })}
             </div>
 
-                {/* Footer - 입고 담당자 + 입고 처리 Button */}
+                {/* Footer - 입고 담당자 + Button */}
                 <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                      입고 담당자:
-                    </span>
-                    <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                      {inboundManagerName}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleProcessOrder(order)}
-                    disabled={processing === order.orderId}
-                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
-                  </button>
+                  {(isSupplierConfirmed || isRejected) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                        입고 담당자:
+                      </span>
+                      <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                        {inboundManagerName}
+                      </span>
+                    </div>
+                  )}
+                  {isPending ? (
+                    <button
+                      disabled
+                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm cursor-not-allowed dark:bg-slate-600 dark:text-slate-300"
+                    >
+                      요청중
+                    </button>
+                  ) : isRejected ? (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`)) {
+                          return;
+                        }
+
+                        try {
+                          const { apiPost } = await import("../../lib/api");
+                          const memberData = typeof window !== 'undefined' ? localStorage.getItem("erp_member_data") : null;
+                          const memberInfo = memberData ? JSON.parse(memberData) : {};
+                          const memberName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
+
+                          // Prepare items array with product info
+                          const items = order.items?.map((item: any) => ({
+                            productName: item.productName || "알 수 없음",
+                            productBrand: item.brand || null,
+                            qty: item.orderedQuantity || item.confirmedQuantity || 0,
+                          })) || [];
+
+                          const endpoint = `${apiUrl}/order/rejected-order/confirm`;
+                          console.log("Calling endpoint:", endpoint);
+                          await apiPost(endpoint, {
+                            orderId: order.orderId,
+                            orderNo: order.orderNo,
+                            companyName: order.supplierName || "알 수 없음",
+                            managerName: order.managerName || "알 수 없음",
+                            memberName: memberName,
+                            items: items,
+                          });
+
+                          alert("거절 상황이 확인되었습니다.");
+                          // Refresh the orders list to remove the confirmed rejected order
+                          if (onRefresh) {
+                            onRefresh();
+                          }
+                          // Trigger a custom event to notify order page to refresh rejected orders
+                          window.dispatchEvent(new CustomEvent('rejectedOrderConfirmed', { 
+                            detail: { orderNo: order.orderNo } 
+                          }));
+                          // Also trigger a page visibility refresh to ensure data is updated
+                          window.dispatchEvent(new Event('visibilitychange'));
+                        } catch (err: any) {
+                          console.error("Failed to confirm rejection:", err);
+                          alert(`거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
+                        }
+                      }}
+                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
+                    >
+                      상황 확인
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleProcessOrder(order)}
+                      disabled={processing === order.orderId}
+                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

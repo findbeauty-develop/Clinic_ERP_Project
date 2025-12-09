@@ -19,6 +19,7 @@ import {
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
+import { ConfirmRejectedOrderDto } from "../dto/confirm-rejected-order.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -161,6 +162,30 @@ export class OrderController {
   @ApiOperation({ summary: "Get orders ready for inbound (supplier confirmed)" })
   async getPendingInbound(@Tenant() tenantId: string) {
     return this.orderService.getPendingInboundOrders(tenantId);
+  }
+
+  /**
+   * Get rejected orders for order history
+   * NOTE: This route must come BEFORE @Get(":id") to avoid route conflicts
+   */
+  @Get("rejected-orders")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Get rejected orders" })
+  async getRejectedOrders(@Tenant() tenantId: string) {
+    return this.orderService.getRejectedOrders(tenantId);
+  }
+
+  /**
+   * Confirm rejected order - create RejectedOrder records
+   */
+  @Post("rejected-order/confirm")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Confirm rejected order" })
+  async confirmRejectedOrder(
+    @Tenant() tenantId: string,
+    @Body() dto: ConfirmRejectedOrderDto
+  ) {
+    return this.orderService.confirmRejectedOrder(tenantId, dto);
   }
 
   /**

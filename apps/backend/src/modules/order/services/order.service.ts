@@ -827,10 +827,33 @@ export class OrderService {
       });
     });
 
+    // Filter out rejected orders that haven't been confirmed yet (don't have RejectedOrder records)
+    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(async () => {
+      const confirmedRejected = await (this.prisma as any).rejectedOrder.findMany({
+        where: {
+          tenant_id: tenantId,
+        },
+        select: {
+          order_id: true,
+        },
+        distinct: ["order_id"],
+      });
+      return new Set(confirmedRejected.map((ro: any) => ro.order_id));
+    });
+
+    // Filter out rejected orders that haven't been confirmed
+    const filteredOrders = orders.filter((order: any) => {
+      // If order is rejected but not confirmed, exclude it from order history
+      if (order.status === "rejected" && !confirmedRejectedOrderIds.has(order.id)) {
+        return false;
+      }
+      return true;
+    });
+
     // Format orders for frontend
     // First, collect all unique supplier IDs
     const supplierIds = new Set<string>();
-    orders.forEach((order: any) => {
+    filteredOrders.forEach((order: any) => {
       if (order.items && order.items.length > 0) {
         order.items.forEach((item: any) => {
           if (item.product && item.product.supplierProducts && item.product.supplierProducts.length > 0) {
@@ -884,7 +907,7 @@ export class OrderService {
       });
     }
 
-    return orders.map((order: any) => {
+    return filteredOrders.map((order: any) => {
       // Supplier va manager ma'lumotlarini topish (items'dan)
       let supplierName = order.supplier_id || "공급업체 없음";
       let managerName = "";
@@ -1353,7 +1376,9 @@ export class OrderService {
       return await (this.prisma as any).order.findMany({
         where: {
           tenant_id: tenantId,
-          status: "supplier_confirmed",
+          status: {
+            in: ["pending", "supplier_confirmed", "rejected"],
+          },
         },
         include: {
           items: {
@@ -1372,14 +1397,40 @@ export class OrderService {
             },
           },
         },
-        orderBy: { confirmed_at: "desc" },
+        orderBy: [
+          { confirmed_at: "desc" },
+          { order_date: "desc" },
+        ],
       });
     });
+
+    // Filter out rejected orders that have already been confirmed (have RejectedOrder records)
+    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(async () => {
+      const confirmedRejected = await (this.prisma as any).rejectedOrder.findMany({
+        where: {
+          tenant_id: tenantId,
+        },
+        select: {
+          order_id: true,
+        },
+        distinct: ["order_id"],
+      });
+      return new Set(confirmedRejected.map((ro: any) => ro.order_id));
+    });
+
+    // Filter out orders that are rejected and already confirmed
+    const filteredOrders = orders.filter((order: any) => {
+      if (order.status === "rejected" && confirmedRejectedOrderIds.has(order.id)) {
+        return false; // Exclude this rejected order as it's already been confirmed
+      }
+      return true;
+    });
+
 
     // Group by supplier
     const grouped: Record<string, any> = {};
 
-    for (const order of orders) {
+    for (const order of filteredOrders) {
       const supplierId = order.supplier_id || "unknown";
       
       if (!grouped[supplierId]) {
@@ -1461,9 +1512,98 @@ export class OrderService {
         orderNo: order.order_no,
         orderDate: order.order_date,
         confirmedAt: order.confirmed_at,
+        status: order.status, // Add status field: "pending" or "supplier_confirmed"
         createdByName: createdByName,
         items: formattedItems,
         totalAmount: order.total_amount,
+      });
+    }
+
+    return Object.values(grouped);
+  }
+
+  /**
+   * Confirm rejected order - create RejectedOrder records
+   */
+  async confirmRejectedOrder(tenantId: string, dto: any) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const { orderId, orderNo, companyName, managerName, memberName, items } = dto;
+
+    if (!orderId || !orderNo || !companyName || !managerName || !memberName || !items || !Array.isArray(items)) {
+      throw new BadRequestException("All fields are required: orderId, orderNo, companyName, managerName, memberName, items");
+    }
+
+    // Create RejectedOrder records for each item
+    const rejectedOrders = await this.prisma.executeWithRetry(async () => {
+      const createPromises = items.map((item: any) => {
+        return (this.prisma as any).rejectedOrder.create({
+          data: {
+            tenant_id: tenantId,
+            order_id: orderId,
+            order_no: orderNo,
+            company_name: companyName,
+            manager_name: managerName,
+            product_name: item.productName,
+            product_brand: item.productBrand || null,
+            qty: item.qty,
+            member_name: memberName,
+          },
+        });
+      });
+
+      return Promise.all(createPromises);
+    });
+
+    return {
+      message: "Rejected order confirmed successfully",
+      rejectedOrders: rejectedOrders,
+    };
+  }
+
+  /**
+   * Get rejected orders for display in order history
+   */
+  async getRejectedOrders(tenantId: string): Promise<any[]> {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const rejectedOrders = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).rejectedOrder.findMany({
+        where: {
+          tenant_id: tenantId,
+        },
+        orderBy: {
+          created_at: "desc",
+        },
+      });
+    });
+
+    // Group by order_no
+    const grouped: Record<string, any> = {};
+
+    for (const rejectedOrder of rejectedOrders) {
+      const orderNo = rejectedOrder.order_no;
+
+      if (!grouped[orderNo]) {
+        grouped[orderNo] = {
+          orderId: rejectedOrder.order_id,
+          orderNo: rejectedOrder.order_no,
+          companyName: rejectedOrder.company_name,
+          managerName: rejectedOrder.manager_name,
+          memberName: rejectedOrder.member_name,
+          confirmedAt: rejectedOrder.created_at,
+          items: [],
+        };
+      }
+
+      grouped[orderNo].items.push({
+        productName: rejectedOrder.product_name,
+        productBrand: rejectedOrder.product_brand,
+        qty: rejectedOrder.qty,
       });
     }
 

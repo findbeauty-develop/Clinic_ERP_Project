@@ -363,6 +363,26 @@ model OrderReturn {
   @@index([return_type])
 }
 
+model RejectedOrder {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  order_id     String
+  order_no     String
+  company_name String   // Supplier company name
+  manager_name String   // Supplier manager name
+  product_name String
+  product_brand String?
+  qty          Int      // Rejected quantity
+  member_name  String   // Member who checked/confirmed the rejection
+  created_at   DateTime @default(now())
+  updated_at   DateTime?
+
+  @@index([tenant_id])
+  @@index([order_id])
+  @@index([order_no])
+  @@index([tenant_id, order_id])
+}
+
 model Supplier {
   id                 String                  @id @default(uuid())
   tenant_id          String                  @unique
