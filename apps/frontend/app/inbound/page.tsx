@@ -38,6 +38,8 @@ type ProductListItem = {
   expiryDate?: string | null;
   storageLocation?: string | null;
   memo?: string | null;
+  expiryMonths?: number | null;
+  expiryUnit?: string | null;
 };
 
 export default function InboundPage() {
@@ -388,6 +390,30 @@ function ProductCard({
     fetchBatches();
   }, [product.id, isExpanded, apiUrl]);
 
+  // Calculate expiry date when manufacture date changes
+  useEffect(() => {
+    if (batchForm.manufactureDate && product.expiryMonths && product.expiryUnit) {
+      const mfgDate = new Date(batchForm.manufactureDate);
+      let calculatedDate = new Date(mfgDate);
+      
+      if (product.expiryUnit === "months") {
+        calculatedDate.setMonth(calculatedDate.getMonth() + Number(product.expiryMonths));
+      } else if (product.expiryUnit === "days") {
+        calculatedDate.setDate(calculatedDate.getDate() + Number(product.expiryMonths));
+      } else if (product.expiryUnit === "years") {
+        calculatedDate.setFullYear(calculatedDate.getFullYear() + Number(product.expiryMonths));
+      }
+      
+      // Format: YYYY-MM-DD
+      const calculatedExpiryDate = calculatedDate.toISOString().split('T')[0];
+      
+      // Only update if expiry date is empty or was previously calculated
+      if (!batchForm.expiryDate || batchForm.expiryDate === calculatedExpiryDate) {
+        setBatchForm(prev => ({ ...prev, expiryDate: calculatedExpiryDate }));
+      }
+    }
+  }, [batchForm.manufactureDate, product.expiryMonths, product.expiryUnit]);
+
   const handleCardClick = () => {
     onToggle();
   };
@@ -460,7 +486,6 @@ function ProductCard({
       }
 
       const result = await response.json();
-      console.log("Batch created:", result);
 
       // Reset form
       setBatchForm({
@@ -693,12 +718,19 @@ function ProductCard({
                 value={batchQuantity}
                 onChange={setBatchQuantity}
               />
-              <InlineField 
-                label="유효 기간 *" 
-                type="date"
-                value={batchForm.expiryDate}
-                onChange={(value) => setBatchForm({ ...batchForm, expiryDate: value })}
-              />
+              <div>
+                <InlineField 
+                  label="유효 기간 *" 
+                  type="date"
+                  value={batchForm.expiryDate}
+                  onChange={(value) => setBatchForm({ ...batchForm, expiryDate: value })}
+                />
+                {batchForm.manufactureDate && product.expiryMonths && product.expiryUnit && (
+                  <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
+                    계산된 유통기한: {batchForm.expiryDate || "계산 중..."}
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* 보관 위치 - to'liq width */}
@@ -1366,13 +1398,17 @@ function PendingOrdersList({
         // Create batch
         const createdBatch = await apiPost<any>(`${apiUrl}/products/${productId}/batches`, batchPayload);
         
+        // Get batch_no from the created batch
+        // Backend returns batch object directly with batch_no
+        const batchNo = createdBatch.batch_no || "";
+        
         // If excess, prepare return item
         if (excessQty > 0) {
           returnItems.push({
             productId: firstItem.productId,
             productName: firstItem.productName,
             brand: firstItem.brand || "",
-            batchNo: createdBatch.batch_no || "",
+            batchNo: batchNo,
             returnQuantity: excessQty,
             totalQuantity: confirmedQty,
             unitPrice: editedFirstItem?.purchasePrice || 0,
@@ -1382,21 +1418,48 @@ function PendingOrdersList({
       
       // Create returns if any excess
       if (returnItems.length > 0) {
-        await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
-          orderId: order.orderId,
-          orderNo: order.orderNo,
-          items: returnItems,
-        });
+        try {
+          await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
+            orderId: order.orderId,
+            orderNo: order.orderNo,
+            items: returnItems,
+          });
+        } catch (returnError: any) {
+          console.error(`Failed to create returns:`, returnError);
+          // Don't throw - continue with order completion even if returns fail
+          alert(`반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`);
+        }
       }
 
       // Update order status to completed
-      await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+      try {
+        await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+      } catch (completeError: any) {
+        console.error(`Failed to complete order:`, completeError);
+        throw new Error(`주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`);
+      }
 
-      alert("입고 처리가 완료되었습니다.");
+      // Show success message and optionally redirect to order-returns if returns were created
+      if (returnItems.length > 0) {
+        if (confirm(`입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`)) {
+          window.location.href = "/order-returns";
+          return; // Exit early to prevent onRefresh() call
+        }
+      } else {
+        alert("입고 처리가 완료되었습니다.");
+      }
+      
       onRefresh();
     } catch (err: any) {
       console.error("Failed to process order:", err);
-      alert(`입고 처리 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
+      const errorMessage = err.message || "알 수 없는 오류";
+      
+      // Check if it's a network error
+      if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+        alert(`네트워크 오류가 발생했습니다.\n서버에 연결할 수 없습니다.\n\n오류: ${errorMessage}\n\n다시 시도해주세요.`);
+      } else {
+        alert(`입고 처리 중 오류가 발생했습니다: ${errorMessage}`);
+      }
     } finally {
       setProcessing(null);
     }

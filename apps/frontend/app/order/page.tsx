@@ -398,7 +398,11 @@ export default function OrderPage() {
           ? localStorage.getItem("erp_access_token") 
           : null;
 
+        // Check if item already exists in draft
+        const existingItem = draft?.items?.find((item) => item.id === itemId);
+
         if (sanitizedQuantity === 0) {
+          // Delete item
           await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
             method: "PUT",
             headers: {
@@ -408,7 +412,19 @@ export default function OrderPage() {
             },
             body: JSON.stringify({ quantity: 0 }),
           });
+        } else if (existingItem) {
+          // UPDATE existing item (PUT to set absolute quantity)
+          await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
+            method: "PUT",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "x-session-id": sessionId,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ quantity: sanitizedQuantity }),
+          });
         } else {
+          // ADD new item (POST)
           await fetch(`${apiUrl}/order/draft/items`, {
             method: "POST",
             headers: {
@@ -461,7 +477,7 @@ export default function OrderPage() {
         }
       }
     },
-    [apiUrl, sessionId, products, quantities]
+    [apiUrl, sessionId, products, draft]
   );
 
   // Sort and filter products with client-side calculations

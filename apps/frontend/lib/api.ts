@@ -65,11 +65,15 @@ export const apiRequest = async (
 
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
 
-
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    return await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (networkError: any) {
+    // Handle network errors (CORS, connection refused, etc.)
+    throw new Error(`Network error: ${networkError.message || "Failed to fetch"}`);
+  }
 };
 
 /**
@@ -87,10 +91,14 @@ export const apiPost = async <T = any>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      typeof error?.message === "string" ? error.message : "Request failed"
-    );
+    let errorMessage = "Request failed";
+    try {
+      const error = await response.json();
+      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+    } catch {
+      errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -111,10 +119,14 @@ export const apiPut = async <T = any>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      typeof error?.message === "string" ? error.message : "Request failed"
-    );
+    let errorMessage = "Request failed";
+    try {
+      const error = await response.json();
+      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+    } catch {
+      errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -133,10 +145,14 @@ export const apiGet = async <T = any>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      typeof error?.message === "string" ? error.message : "Request failed"
-    );
+    let errorMessage = "Request failed";
+    try {
+      const error = await response.json();
+      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+    } catch {
+      errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -155,10 +171,14 @@ export const apiDelete = async <T = any>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      typeof error?.message === "string" ? error.message : "Request failed"
-    );
+    let errorMessage = "Request failed";
+    try {
+      const error = await response.json();
+      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+    } catch {
+      errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();

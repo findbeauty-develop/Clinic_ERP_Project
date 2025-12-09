@@ -351,18 +351,32 @@ export class OrderService {
 
     if (existingItemIndex >= 0) {
       // Mavjud item'ni yangilash
+      const oldQty = items[existingItemIndex].quantity;
+      const newQty = oldQty + dto.quantity;
+      this.logger.log(`🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Adding: ${dto.quantity}, New: ${newQty}`);
+      
       items[existingItemIndex] = {
         ...items[existingItemIndex],
-        quantity: items[existingItemIndex].quantity + dto.quantity,
-        totalPrice:
-          (items[existingItemIndex].quantity + dto.quantity) * unitPrice,
+        quantity: newQty,
+        totalPrice: newQty * unitPrice,
         // Mavjud item'ni yangilashda highlight flag o'chiriladi
         isNewlyAdded: false,
       };
     } else {
       // Yangi item qo'shish
       items.push(newItem);
+      this.logger.log(`➕ Added NEW item: ${dto.productId} - Qty: ${dto.quantity}`);
     }
+
+    this.logger.log(`📝 Draft now has ${items.length} unique items`);
+    this.logger.log(`📊 Total quantities by product:`);
+    const qtyByProduct: Record<string, number> = {};
+    items.forEach((item: any) => {
+      qtyByProduct[item.productId] = (qtyByProduct[item.productId] || 0) + item.quantity;
+    });
+    Object.entries(qtyByProduct).forEach(([prodId, qty]) => {
+      this.logger.log(`  - ${prodId}: ${qty}개`);
+    });
 
     // Total amount hisoblash
     const totalAmount = items.reduce(
@@ -1173,6 +1187,10 @@ export class OrderService {
       };
 
       this.logger.log(`Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${clinicManagerName}`);
+      this.logger.log(`📦 Order items count: ${itemsWithDetails.length}`);
+      itemsWithDetails.forEach((item, idx) => {
+        this.logger.log(`  Item ${idx + 1}: ${item.productName} - Qty: ${item.quantity}`);
+      });
 
 
       // Call supplier-backend API
@@ -1231,20 +1249,24 @@ export class OrderService {
     }
 
     // Update order with supplier confirmation data
+    // Store adjustments as object with adjustments array for consistency
+    const adjustmentsData = {
+      adjustments: adjustments || [],
+      updatedAt: new Date().toISOString(),
+    };
+    
     await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.update({
         where: { id: order.id },
         data: {
           status: status,
-          supplier_adjustments: adjustments,
+          supplier_adjustments: adjustmentsData,
           confirmed_at: confirmedAt ? new Date(confirmedAt) : new Date(),
           total_amount: totalAmount || order.total_amount,
           updated_at: new Date(),
         },
       });
     });
-
-    this.logger.log(`Order ${orderNo} updated with supplier confirmation`);
 
     return { success: true, orderId: order.id };
   }
@@ -1318,10 +1340,20 @@ export class OrderService {
       }
 
       // Format order items with adjustments
+      // Handle both formats: { adjustments: [...] } or direct array
+      const adjustments = Array.isArray(order.supplier_adjustments)
+        ? order.supplier_adjustments
+        : order.supplier_adjustments?.adjustments || [];
+      
       const formattedItems = order.items.map((item: any) => {
         // Find adjustment for this item
-        const adjustments = order.supplier_adjustments?.adjustments || [];
-        const adjustment = adjustments.find((adj: any) => adj.itemId === item.id);
+        // Try matching by itemId first (if supplier-backend sends clinic ItemId)
+        let adjustment = adjustments.find((adj: any) => adj.itemId === item.id);
+        
+        // If not found, try matching by productId (fallback)
+        if (!adjustment) {
+          adjustment = adjustments.find((adj: any) => adj.productId === item.product_id);
+        }
 
         return {
           id: item.id,

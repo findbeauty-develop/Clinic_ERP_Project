@@ -240,7 +240,7 @@ export class ProductsService {
       });
     });
 
-    return products.map((product: (typeof products)[number]) => {
+    return products.map((product: any) => {
       const latestBatch = product.batches?.[0];
       const supplierProduct = product.supplierProducts?.[0];
       
@@ -254,7 +254,7 @@ export class ProductsService {
       const sortedBatches = this.sortBatchesByFEFO(product.batches || []);
 
       // Batch'larga expiry status qo'shish
-      const batchesWithStatus = sortedBatches.map((batch) => {
+      const batchesWithStatus = sortedBatches.map((batch: any) => {
         const isExpiringSoon = batch.expiry_date
           ? this.calculateExpiringSoon(batch.expiry_date, batch.alert_days)
           : false;
@@ -287,6 +287,8 @@ export class ProductsService {
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? null,
         memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
+        expiryMonths: product.expiry_months ?? null,
+        expiryUnit: product.expiry_unit ?? null,
         isLowStock, // ← Qo'shildi (재고 부족 tag)
         batches: batchesWithStatus, // ← FEFO sorted va status bilan
       };
@@ -635,17 +637,8 @@ export class ProductsService {
         } as any,
       });
 
-      // Product bilan birga qaytarish
-      return tx.product.findUnique({
-        where: { id: productId },
-        include: {
-          returnPolicy: true,
-          batches: {
-            orderBy: { created_at: "desc" },
-          },
-          supplierProducts: true,
-        },
-      });
+      // Return the created batch directly (with batch_no)
+      return batch;
     });
   }
 

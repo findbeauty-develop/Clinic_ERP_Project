@@ -191,6 +191,8 @@ export class OrderService {
                 updated_at: new Date(),
               },
             });
+          } else {
+            this.logger.warn(`⚠️ Item not found for adjustment: itemId=${adjustment.itemId}`);
           }
         }
 
@@ -235,37 +237,46 @@ export class OrderService {
         return;
       }
 
+      // Map adjustments to include productId for matching
+      const adjustmentsWithProductId = adjustments.map((adj: any) => {
+        const item = order.items.find((i: any) => i.id === adj.itemId);
+        return {
+          ...adj,
+          productId: item?.product_id || null, // Add productId for matching
+        };
+      });
+
+      const payload = {
+        orderNo: order.order_no,
+        clinicTenantId: order.clinic_tenant_id,
+        status: "supplier_confirmed",
+        confirmedAt: new Date().toISOString(),
+        adjustments: adjustmentsWithProductId, // Use adjusted array with productId
+        updatedItems: order.items.map((item: any) => ({
+          itemId: item.id,
+          productId: item.product_id,
+          productName: item.product_name,
+          brand: item.brand,
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          totalPrice: item.total_price,
+          memo: item.memo,
+        })),
+        totalAmount: order.total_amount,
+      };
+
       const response = await fetch(`${clinicApiUrl}/order/supplier-confirmed`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
         },
-        body: JSON.stringify({
-          orderNo: order.order_no,
-          clinicTenantId: order.clinic_tenant_id,
-          status: "supplier_confirmed",
-          confirmedAt: new Date().toISOString(),
-          adjustments: adjustments,
-          updatedItems: order.items.map((item: any) => ({
-            itemId: item.id,
-            productId: item.product_id,
-            productName: item.product_name,
-            brand: item.brand,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            totalPrice: item.total_price,
-            memo: item.memo,
-          })),
-          totalAmount: order.total_amount,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         this.logger.error(`Failed to notify clinic-backend: ${response.status} - ${errorText}`);
-      } else {
-        this.logger.log(`Successfully notified clinic-backend for order ${order.order_no}`);
       }
     } catch (error: any) {
       this.logger.error(`Error notifying clinic-backend: ${error.message}`);
