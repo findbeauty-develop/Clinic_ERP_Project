@@ -1434,7 +1434,77 @@ export class OrderService {
     });
 
     this.logger.log(`Order ${order.order_no} marked as completed`);
+
+    // Notify supplier-backend that order is completed
+    if (order.supplier_id) {
+      try {
+        // Get supplier's tenant_id from Supplier table
+        const supplier = await this.prisma.executeWithRetry(async () => {
+          return await (this.prisma as any).supplier.findUnique({
+            where: { id: order.supplier_id },
+            select: { tenant_id: true },
+          });
+        });
+
+        if (supplier && supplier.tenant_id) {
+          this.logger.log(`Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplier.tenant_id}, clinicTenantId=${tenantId}`);
+          await this.notifySupplierOrderCompleted(order.order_no, supplier.tenant_id, tenantId);
+        } else {
+          this.logger.warn(`Supplier ${order.supplier_id} not found or missing tenant_id, skipping notification`);
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to notify supplier-backend of order completion: ${error.message}`);
+        // Don't throw - order is already completed in clinic DB
+      }
+    }
+
     return { success: true, message: "Order completed successfully" };
+  }
+
+  /**
+   * Notify supplier-backend that order has been completed (inbound processed)
+   * @param orderNo - Order number
+   * @param supplierTenantId - Supplier's tenant_id (not supplier.id)
+   * @param clinicTenantId - Clinic's tenant_id
+   */
+  private async notifySupplierOrderCompleted(
+    orderNo: string,
+    supplierTenantId: string,
+    clinicTenantId: string
+  ) {
+    try {
+      const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+
+      if (!apiKey) {
+        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification');
+        return;
+      }
+
+      const response = await fetch(`${supplierApiUrl}/supplier/orders/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          orderNo,
+          supplierTenantId,
+          clinicTenantId,
+          completedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        this.logger.error(`Failed to notify supplier-backend of completion: ${response.status} ${errorText}`);
+      } else {
+        this.logger.log(`Order ${orderNo} completion notified to supplier-backend successfully`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error notifying supplier-backend of completion: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
 

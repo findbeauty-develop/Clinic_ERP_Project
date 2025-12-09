@@ -284,6 +284,53 @@ export class OrderService {
     }
   }
 
+  /**
+   * Mark order as completed when clinic processes inbound
+   */
+  async markOrderCompleted(dto: any) {
+    const { orderNo, supplierTenantId, clinicTenantId, completedAt } = dto;
+
+    if (!orderNo) {
+      throw new BadRequestException("Order number is required");
+    }
+
+    // Find order by order_no
+    const where: any = {
+      order_no: orderNo,
+    };
+    
+    if (supplierTenantId) {
+      where.supplier_tenant_id = supplierTenantId;
+    }
+    
+    if (clinicTenantId) {
+      where.clinic_tenant_id = clinicTenantId;
+    }
+
+    const order = await (this.prisma as any).supplierOrder.findFirst({
+      where,
+    });
+
+    if (!order) {
+      this.logger.error(`Order ${orderNo} not found in supplier-backend. Search params: supplierTenantId=${supplierTenantId}, clinicTenantId=${clinicTenantId}`);
+      throw new BadRequestException(`Order ${orderNo} not found`);
+    }
+
+    this.logger.log(`Found order ${orderNo} (id: ${order.id}), current status: ${order.status}, updating to completed`);
+
+    // Update status to completed
+    const updated = await (this.prisma as any).supplierOrder.update({
+      where: { id: order.id },
+      data: {
+        status: "completed",
+        updated_at: new Date(),
+      },
+    });
+
+    this.logger.log(`Order ${orderNo} marked as completed in supplier-backend`);
+    return { success: true, message: "Order marked as completed", order: this.formatOrder(updated) };
+  }
+
   private formatOrder = (order: any) => ({
     id: order.id,
     orderNo: order.order_no,

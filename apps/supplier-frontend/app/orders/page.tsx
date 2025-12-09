@@ -43,7 +43,7 @@ const statusLabels: Record<string, string> = {
   confirmed: "입고 확인 대기",
   rejected: "거절됨",
   shipped: "출고됨",
-  completed: "완료",
+  completed: "진행 완료",
 };
 
 const tabs = [
@@ -253,7 +253,7 @@ export default function OrdersPage() {
               key={item.id}
               className="grid grid-cols-5 gap-2 py-2 text-sm text-slate-700 items-center"
             >
-              <div className="col-span-2 flex items-center gap-2">
+              <div className="col-span-1 flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={selectedItems.has(item.id)}
@@ -263,8 +263,8 @@ export default function OrdersPage() {
                 <span className="truncate font-medium">{item.productName}</span>
               </div>
               <div className="text-slate-500">{item.brand || "-"}</div>
-              <div className="text-right">{item.quantity}개</div>
-              <div className="text-right font-semibold">
+              <div className="text-slate-500">{item.quantity}개</div>
+              <div className="col-span-2 text-right font-semibold">
                 {formatNumber(item.totalPrice)}원
               </div>
             </div>

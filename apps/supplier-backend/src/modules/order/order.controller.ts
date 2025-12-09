@@ -68,5 +68,13 @@ export class OrderController {
     const supplierManagerId = req.user?.supplierManagerId;
     return this.orderService.updateStatus(id, supplierManagerId, dto);
   }
+
+  @Post("complete")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Receive order completion notification from clinic-backend" })
+  @ApiHeader({ name: 'x-api-key', description: 'API Key for clinic-to-supplier authentication' })
+  async markOrderCompleted(@Body() dto: any) {
+    return this.orderService.markOrderCompleted(dto);
+  }
 }
 
