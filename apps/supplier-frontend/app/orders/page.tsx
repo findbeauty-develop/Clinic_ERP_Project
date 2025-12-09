@@ -77,6 +77,8 @@ export default function OrdersPage() {
   const [updating, setUpdating] = useState(false);
   const [confirmOrder, setConfirmOrder] = useState<SupplierOrder | null>(null);
   const [itemAdjustments, setItemAdjustments] = useState<Record<string, ItemAdjustment>>({});
+  const [rejectOrder, setRejectOrder] = useState<SupplierOrder | null>(null);
+  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -215,6 +217,13 @@ export default function OrdersPage() {
     );
   };
 
+  // Helper function to extract rejection reason from memo
+  const extractRejectionReason = (memo: string | null | undefined): string | null => {
+    if (!memo) return null;
+    const match = memo.match(/\[거절 사유:\s*([^\]]+)\]/);
+    return match ? match[1].trim() : null;
+  };
+
   const renderOrderCard = (order: SupplierOrder) => {
     const date = new Date(order.orderDate);
     const dateStr = `${date.getFullYear()}-${String(
@@ -222,6 +231,8 @@ export default function OrdersPage() {
     ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(
       date.getHours()
     ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+
+    const isRejected = order.status === "rejected";
 
     return (
       <div
@@ -248,48 +259,74 @@ export default function OrdersPage() {
         </div>
 
         <div className="divide-y divide-slate-100">
-          {order.items.map((item) => (
-            <div
-              key={item.id}
-              className="grid grid-cols-5 gap-2 py-2 text-sm text-slate-700 items-center"
-            >
-              <div className="col-span-1 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedItems.has(item.id)}
-                  onChange={() => toggleSelectItem(item.id)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="truncate font-medium">{item.productName}</span>
+          {order.items.map((item) => {
+            const rejectionReason = isRejected ? extractRejectionReason(item.memo) : null;
+            
+            return (
+              <div
+                key={item.id}
+                className={`grid gap-2 py-2 text-sm text-slate-700 items-center ${
+                  isRejected ? "grid-cols-4" : "grid-cols-5"
+                }`}
+              >
+                <div className={`flex items-center gap-2 ${isRejected ? "col-span-1" : "col-span-1"}`}>
+                  {!isRejected && activeTab === "pending" && (
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(item.id)}
+                      onChange={() => toggleSelectItem(item.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  )}
+                  <span className="truncate font-medium">{item.productName}</span>
+                </div>
+                <div className="text-slate-500">{item.brand || "-"}</div>
+                <div className="text-slate-500">{item.quantity}개</div>
+                {isRejected ? (
+                  <div className="text-right text-slate-400 text-xs">
+                    {rejectionReason || "거절 사유 없음"}
+                  </div>
+                ) : (
+                  <div className="col-span-2 text-right font-semibold">
+                    {formatNumber(item.totalPrice)}원
+                  </div>
+                )}
               </div>
-              <div className="text-slate-500">{item.brand || "-"}</div>
-              <div className="text-slate-500">{item.quantity}개</div>
-              <div className="col-span-2 text-right font-semibold">
-                {formatNumber(item.totalPrice)}원
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Total Amount */}
-        <div className="mt-3 border-t border-slate-200 pt-2">
-          <div className="text-right text-sm font-semibold text-slate-900">
-            총금액 {formatNumber(order.totalAmount)} 원
+        {/* Total Amount - Only show if not rejected */}
+        {!isRejected && (
+          <div className="mt-3 border-t border-slate-200 pt-2">
+            <div className="text-right text-sm font-semibold text-slate-900">
+              총금액 {formatNumber(order.totalAmount)} 원
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          <button
-            onClick={() => selectAllItemsInOrder(order)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            {order.items.every((item) => selectedItems.has(item.id)) ? "선택 해제" : "전체 선택"}
-          </button>
-          {order.status === "pending" && (
+          {activeTab === "pending" && (
+            <button
+              onClick={() => selectAllItemsInOrder(order)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {order.items.every((item) => selectedItems.has(item.id)) ? "선택 해제" : "전체 선택"}
+            </button>
+          )}
+          {order.status === "pending" && activeTab === "pending" && (
             <div className="flex gap-2">
               <button
                 disabled={updating}
-                onClick={() => handleStatusUpdate("rejected", [order.id])}
+                onClick={() => {
+                  // Initialize rejection reasons for all items
+                  const initialReasons: Record<string, string> = {};
+                  order.items.forEach((item) => {
+                    initialReasons[item.id] = "";
+                  });
+                  setRejectionReasons(initialReasons);
+                  setRejectOrder(order);
+                }}
                 className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
                 주문 거절
@@ -405,43 +442,69 @@ export default function OrdersPage() {
             </div>
 
             <div className="px-6 py-4">
-              <div className="mb-3 grid grid-cols-6 text-xs font-semibold text-slate-500">
+              <div className={`mb-3 grid text-xs font-semibold text-slate-500 ${
+                detailOrder.status === "rejected" ? "grid-cols-4" : "grid-cols-6"
+              }`}>
                 <div className="col-span-2">제품</div>
                 <div>브랜드</div>
                 <div className="text-right">수량</div>
-                <div className="text-right">단가</div>
-                <div className="text-right">금액</div>
+                {detailOrder.status === "rejected" ? (
+                  <div className="text-right">거절 사유</div>
+                ) : (
+                  <>
+                    <div className="text-right">단가</div>
+                    <div className="text-right">금액</div>
+                  </>
+                )}
               </div>
               <div className="divide-y divide-slate-100">
-                {detailOrder.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid grid-cols-6 py-2 text-sm text-slate-700"
-                  >
-                    <div className="col-span-2 truncate font-medium">
-                      {item.productName}
+                {detailOrder.items.map((item) => {
+                  const rejectionReason = detailOrder.status === "rejected" 
+                    ? extractRejectionReason(item.memo) 
+                    : null;
+                  
+                  return (
+                    <div
+                      key={item.id}
+                      className={`grid py-2 text-sm text-slate-700 ${
+                        detailOrder.status === "rejected" ? "grid-cols-4" : "grid-cols-6"
+                      }`}
+                    >
+                      <div className="col-span-2 truncate font-medium">
+                        {item.productName}
+                      </div>
+                      <div className="truncate text-slate-500">
+                        {item.brand || "-"}
+                      </div>
+                      <div className="text-right">{item.quantity}개</div>
+                      {detailOrder.status === "rejected" ? (
+                        <div className="text-right text-slate-400 text-xs">
+                          {rejectionReason || "거절 사유 없음"}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-right">
+                            {formatNumber(item.unitPrice)}원
+                          </div>
+                          <div className="text-right font-semibold">
+                            {formatNumber(item.totalPrice)}원
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div className="truncate text-slate-500">
-                      {item.brand || "-"}
-                    </div>
-                    <div className="text-right">{item.quantity}개</div>
-                    <div className="text-right">
-                      {formatNumber(item.unitPrice)}원
-                    </div>
-                    <div className="text-right font-semibold">
-                      {formatNumber(item.totalPrice)}원
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
                 <div className="text-sm text-slate-600">
                   메모: {detailOrder.memo || "없음"}
                 </div>
-                <div className="text-lg font-bold text-slate-900">
-                  총 {formatNumber(detailOrder.totalAmount)}원
-                </div>
+                {detailOrder.status !== "rejected" && (
+                  <div className="text-lg font-bold text-slate-900">
+                    총 {formatNumber(detailOrder.totalAmount)}원
+                  </div>
+                )}
               </div>
             </div>
 
@@ -719,6 +782,140 @@ export default function OrdersPage() {
     판매가 확인 후 접수
   </button>
 </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Order Modal */}
+      {rejectOrder && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl sm:rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 bg-white px-4 sm:px-6 py-3 sm:py-4">
+              {/* Header Row */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs sm:text-sm text-slate-900">
+                  {new Date(rejectOrder.orderDate).toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                  }).replace(/\. /g, '-').replace('.', '')}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm sm:text-base font-semibold text-slate-900">
+                    금액: {formatNumber(rejectOrder.totalAmount)} 원
+                  </div>
+                  <button
+                    onClick={() => {
+                      setRejectOrder(null);
+                      setRejectionReasons({});
+                    }}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Clinic Info */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="text-sm font-semibold text-slate-900">
+                  {rejectOrder.clinic?.name || "클리닉"}
+                </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {rejectOrder.clinic?.managerName || ""}님
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
+              {rejectOrder.items.map((item) => (
+                <div key={item.id} className="space-y-2 border-b border-slate-100 pb-4 last:border-b-0">
+                  {/* Product Info Row */}
+                  <div className="flex items-center gap-3 text-sm">
+                    <div className="font-medium text-slate-900">{item.productName}</div>
+                    <div className="text-slate-500">{item.brand || "-"}</div>
+                    <div className="ml-auto flex items-center gap-4">
+                      <div className="text-slate-600">{item.quantity}개</div>
+                      <div className="text-slate-600">{formatNumber(item.unitPrice)}</div>
+                      <div className="font-semibold text-slate-900">
+                        {formatNumber(item.totalPrice)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rejection Reason Input */}
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="거절 사유를 입력해주세요."
+                      value={rejectionReasons[item.id] || ""}
+                      onChange={(e) => {
+                        setRejectionReasons((prev) => ({
+                          ...prev,
+                          [item.id]: e.target.value,
+                        }));
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-50 dark:text-slate-900"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
+              <div className="text-sm sm:text-base font-bold text-slate-900">
+                가격
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setRejectOrder(null);
+                    setRejectionReasons({});
+                  }}
+                  className="rounded-lg border border-slate-300 px-4 sm:px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  취소
+                </button>
+                <button
+                  disabled={updating}
+                  onClick={async () => {
+                    // Validate: at least one rejection reason should be provided
+                    const hasReasons = Object.values(rejectionReasons).some((reason) => reason.trim() !== "");
+                    if (!hasReasons) {
+                      alert("최소 하나의 거절 사유를 입력해주세요.");
+                      return;
+                    }
+
+                    setUpdating(true);
+                    try {
+                      // Call API to update status to rejected with reasons
+                      await apiPut(`/supplier/orders/${rejectOrder.id}/status`, {
+                        status: "rejected",
+                        rejectionReasons: rejectionReasons,
+                      });
+
+                      alert("주문이 거절되었습니다.");
+                      setRejectOrder(null);
+                      setRejectionReasons({});
+                      await fetchOrders();
+                    } catch (err: any) {
+                      alert(err?.message || "주문 거절에 실패했습니다.");
+                    } finally {
+                      setUpdating(false);
+                    }
+                  }}
+                  className="rounded-lg bg-rose-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                >
+                  주문 거절
+                </button>
+              </div>
             </div>
           </div>
         </div>

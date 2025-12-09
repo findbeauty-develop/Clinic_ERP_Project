@@ -44,5 +44,8 @@ export class UpdateOrderStatusDto {
   @ValidateNested({ each: true })
   @Type(() => ItemAdjustmentDto)
   adjustments?: ItemAdjustmentDto[];
+
+  @IsOptional()
+  rejectionReasons?: Record<string, string>; // { itemId: reason }
 }
 

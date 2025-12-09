@@ -163,7 +163,7 @@ export class OrderService {
         },
       });
 
-      // Update item adjustments if provided
+      // Update item adjustments if provided (for confirmed orders)
       if (dto.adjustments && dto.adjustments.length > 0) {
         for (const adjustment of dto.adjustments) {
           const item = order.items.find((i: any) => i.id === adjustment.itemId);
@@ -208,6 +208,25 @@ export class OrderService {
           where: { id },
           data: { total_amount: newTotalAmount },
         });
+      }
+
+      // Update item rejection reasons if provided (for rejected orders)
+      if (dto.status === "rejected" && dto.rejectionReasons) {
+        for (const [itemId, reason] of Object.entries(dto.rejectionReasons)) {
+          if (reason && reason.trim() !== "") {
+            const item = order.items.find((i: any) => i.id === itemId);
+            if (item) {
+              const itemMemo = item.memo ? `${item.memo}\n[거절 사유: ${reason}]` : `[거절 사유: ${reason}]`;
+              await tx.supplierOrderItem.update({
+                where: { id: itemId },
+                data: {
+                  memo: itemMemo.trim(),
+                  updated_at: new Date(),
+                },
+              });
+            }
+          }
+        }
       }
 
       return tx.supplierOrder.findUnique({
