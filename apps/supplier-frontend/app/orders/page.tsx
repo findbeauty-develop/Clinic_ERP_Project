@@ -40,7 +40,7 @@ type OrdersResponse = {
 
 const statusLabels: Record<string, string> = {
   pending: "주문 대기",
-  confirmed: "입고 확인 대기",
+  confirmed: "클리닉 확인중",
   rejected: "거절됨",
   shipped: "출고됨",
   completed: "진행 완료",
@@ -48,7 +48,7 @@ const statusLabels: Record<string, string> = {
 
 const tabs = [
   { key: "pending", label: "주문 목록" },
-  { key: "confirmed", label: "입고 확인 대기" },
+  { key: "confirmed", label: "클리닉 확인중" },
   { key: "all", label: "주문 내역" },
 ];
 

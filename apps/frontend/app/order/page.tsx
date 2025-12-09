@@ -152,25 +152,49 @@ export default function OrderPage() {
   }, [selectedOrder]);
 
   // Products olish - Backend에서 모든 제품 가져오기
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
+      const data = await apiGet<any[]>(`${apiUrl}/order/products`);
+      console.log("Fetched products:", data.length);
+      setProducts(data);
+    } catch (err) {
+      console.error("Failed to load products", err);
+      setError("제품 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl]);
+
+  // Initial fetch
   useEffect(() => {
-    const fetchProducts = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
-        const data = await apiGet<any[]>(`${apiUrl}/order/products`);
-        console.log("Fetched products:", data.length);
-        setProducts(data);
-      } catch (err) {
-        console.error("Failed to load products", err);
-        setError("제품 목록을 불러오지 못했습니다.");
-      } finally {
-        setLoading(false);
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Refresh products when page becomes visible (after inbound processing)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Page became visible, refresh products to get updated stock
+        fetchProducts();
       }
     };
 
-    fetchProducts();
-  }, [apiUrl]); // filterTab 제거 - frontend에서 filtering
+    const handleFocus = () => {
+      // Window gained focus, refresh products
+      fetchProducts();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchProducts]);
 
   // Draft olish (loading bilan)
   const fetchDraft = useCallback(async () => {
@@ -516,11 +540,12 @@ export default function OrderPage() {
       };
     });
     
-    // Filter: faqat low stock YOKI expiring productlar
+    // Filter: faqat low stock productlar (currentStock <= minStock)
     // "재고 부족 제품" section uchun
+    // IMPORTANT: Expiring batch bo'lsa ham, agar currentStock > minStock bo'lsa, ko'rinmaydi
     const filtered = productsWithCalcs.filter((product) => {
-      const hasExpiringSoon = product.batches?.some((batch: any) => batch.isExpiringSoon);
-      return product.isLowStock || hasExpiringSoon;
+      // Faqat currentStock <= minStock bo'lgan productlar ko'rsatiladi
+      return product.isLowStock;
     });
     
     // Sort products: 재고 부족 먼저, 그 다음 유효기한 임박
@@ -584,8 +609,32 @@ export default function OrderPage() {
               재고 부족 및 유효기한 임박 제품을 주문하고 관리하세요
             </p>
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
-            마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => fetchProducts()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              title="제품 목록 새로고침"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+              새로고침
+            </button>
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+            </div>
           </div>
         </div>
 
