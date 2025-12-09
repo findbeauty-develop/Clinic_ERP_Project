@@ -722,16 +722,33 @@ export class OrderService {
     }
 
     // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
-    await this.prisma.$transaction(async (tx: any) => {
-      await (tx as any).orderDraft.delete({
-        where: {
-          tenant_id_session_id: {
-            tenant_id: tenantId,
-            session_id: sessionId,
+    // Check if draft exists before deleting
+    try {
+      await this.prisma.executeWithRetry(async () => {
+        const draft = await (this.prisma as any).orderDraft.findUnique({
+          where: {
+            tenant_id_session_id: {
+              tenant_id: tenantId,
+              session_id: sessionId,
+            },
           },
-        },
+        });
+
+        if (draft) {
+          await (this.prisma as any).orderDraft.delete({
+            where: {
+              tenant_id_session_id: {
+                tenant_id: tenantId,
+                session_id: sessionId,
+              },
+            },
+          });
+        }
       });
-    });
+    } catch (error: any) {
+      // Log error but don't fail the order creation
+      this.logger.warn(`Failed to delete draft: ${error.message}`);
+    }
 
     // Agar bitta order bo'lsa, uni qaytarish, aks holda array qaytarish
     return createdOrders.length === 1 ? createdOrders[0] : createdOrders;
@@ -976,6 +993,7 @@ export class OrderService {
         quantity: item.quantity,
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
+        memo: item.memo || null,
       }));
 
       // Total amount hisoblash
@@ -1228,18 +1246,31 @@ export class OrderService {
    * Update order from supplier confirmation callback
    */
   async updateOrderFromSupplier(dto: any) {
-    const { orderNo, clinicTenantId, status, confirmedAt, adjustments, updatedItems, totalAmount } = dto;
+    const { orderNo, clinicTenantId, status, confirmedAt, adjustments, updatedItems, totalAmount, rejectionReasons } = dto;
 
     if (!orderNo || !clinicTenantId) {
       throw new BadRequestException("Order number and clinic tenant ID are required");
     }
 
-    // Find order by order_no
+    // Find order by order_no with items
     const order = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findFirst({
         where: {
           order_no: orderNo,
           tenant_id: clinicTenantId,
+        },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  brand: true,
+                },
+              },
+            },
+          },
         },
       });
     });
@@ -1256,7 +1287,8 @@ export class OrderService {
     };
     
     await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).order.update({
+      // Update order
+      await (this.prisma as any).order.update({
         where: { id: order.id },
         data: {
           status: status,
@@ -1266,6 +1298,44 @@ export class OrderService {
           updated_at: new Date(),
         },
       });
+
+      // If rejected, update item memos with rejection reasons
+      if (status === "rejected" && updatedItems) {
+        for (const updatedItem of updatedItems) {
+          // Find matching order item by productId, productName, quantity, and unitPrice
+          // This ensures we match the correct item even if productId is null
+          let orderItem = null;
+          
+          if (updatedItem.productId) {
+            // First try to match by productId
+            orderItem = order.items.find((item: any) => 
+              item.product_id === updatedItem.productId
+            );
+          }
+          
+          // If not found by productId, try matching by productName, quantity, and unitPrice
+          if (!orderItem && updatedItem.productName) {
+            orderItem = order.items.find((item: any) => {
+              const product = item.product;
+              return (
+                product?.name === updatedItem.productName &&
+                item.quantity === updatedItem.quantity &&
+                item.unit_price === updatedItem.unitPrice
+              );
+            });
+          }
+
+          if (orderItem && updatedItem.memo) {
+            await (this.prisma as any).orderItem.update({
+              where: { id: orderItem.id },
+              data: {
+                memo: updatedItem.memo,
+                updated_at: new Date(),
+              },
+            });
+          }
+        }
+      }
     });
 
     return { success: true, orderId: order.id };
@@ -1505,6 +1575,38 @@ export class OrderService {
       this.logger.error(`Error notifying supplier-backend of completion: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * Delete order
+   */
+  async deleteOrder(orderId: string, tenantId: string) {
+    if (!orderId || !tenantId) {
+      throw new BadRequestException("Order ID and Tenant ID are required");
+    }
+
+    // Check if order exists and belongs to tenant
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findFirst({
+        where: {
+          id: orderId,
+          tenant_id: tenantId,
+        },
+      });
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // Delete order (cascade will delete items)
+    await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.delete({
+        where: { id: orderId },
+      });
+    });
+
+    return { success: true, message: "Order deleted successfully" };
   }
 }
 

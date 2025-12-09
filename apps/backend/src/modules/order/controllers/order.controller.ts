@@ -182,5 +182,15 @@ export class OrderController {
   async completeOrder(@Tenant() tenantId: string, @Param("id") id: string) {
     return this.orderService.completeOrder(id, tenantId);
   }
+
+  /**
+   * Delete order
+   */
+  @Delete(":id")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Delete order" })
+  async deleteOrder(@Tenant() tenantId: string, @Param("id") id: string) {
+    return this.orderService.deleteOrder(id, tenantId);
+  }
 }
 

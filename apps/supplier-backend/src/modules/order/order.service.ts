@@ -240,6 +240,11 @@ export class OrderService {
       await this.notifyClinicBackend(updated, dto.adjustments);
     }
 
+    // If status is "rejected", notify clinic-backend
+    if (dto.status === "rejected") {
+      await this.notifyClinicBackendRejection(updated, dto.rejectionReasons);
+    }
+
     return this.formatOrder(updated);
   }
 
@@ -300,6 +305,55 @@ export class OrderService {
     } catch (error: any) {
       this.logger.error(`Error notifying clinic-backend: ${error.message}`);
       // Don't throw - order is already confirmed in supplier DB
+    }
+  }
+
+  /**
+   * Notify clinic-backend when order is rejected
+   */
+  private async notifyClinicBackendRejection(order: any, rejectionReasons?: Record<string, string>) {
+    try {
+      const clinicApiUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const apiKey = process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+
+      if (!apiKey) {
+        this.logger.warn("API_KEY_SECRET not configured, skipping clinic notification");
+        return;
+      }
+
+      const payload = {
+        orderNo: order.order_no,
+        clinicTenantId: order.clinic_tenant_id,
+        status: "rejected",
+        rejectionReasons: rejectionReasons || {},
+        updatedItems: order.items.map((item: any) => ({
+          itemId: item.id,
+          productId: item.product_id,
+          productName: item.product_name,
+          brand: item.brand,
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          totalPrice: item.total_price,
+          memo: item.memo,
+        })),
+        totalAmount: order.total_amount,
+      };
+
+      const response = await fetch(`${clinicApiUrl}/order/supplier-confirmed`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        this.logger.error(`Failed to notify clinic-backend of rejection: ${response.status} - ${errorText}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error notifying clinic-backend of rejection: ${error.message}`, error.stack);
     }
   }
 

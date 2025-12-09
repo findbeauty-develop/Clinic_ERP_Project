@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "../../lib/api";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -1281,82 +1281,196 @@ export default function OrderPage() {
                 // Manager name (supplierDetails'dan olish)
                 const managerName = order.supplierDetails?.managerName || order.managerName || "담당자";
 
+                // Badge logic based on order status
+                const isPending = order.status === "pending";
+                const isSupplierConfirmed = order.status === "supplier_confirmed" || order.status === "confirmed";
+                const isRejected = order.status === "rejected" || order.status === "cancelled";
+                
+                // Extract rejection reasons from items
+                const rejectionReasons = order.items
+                  ?.map((item: any) => {
+                    if (item.memo && item.memo.includes("[거절 사유:")) {
+                      const match = item.memo.match(/\[거절 사유:\s*([^\]]+)\]/);
+                      return match ? match[1].trim() : null;
+                    }
+                    return null;
+                  })
+                  .filter((reason: any) => reason !== null) || [];
+                
                 return (
                   <div
                     key={order.id}
-                    className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-4 dark:border-slate-600 dark:bg-slate-800/50"
-                    style={{ borderLeft: 'none', borderRight: 'none' }}
+                    className="rounded-lg border-2 border-dashed border-purple-300 bg-slate-50 p-4 dark:border-purple-600 dark:bg-slate-800/50"
                   >
                     {/* Order Header */}
-                    <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {formattedDate} {managerName}님 출고
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          공급처: {order.supplierDetails?.companyName || order.supplierName || "공급업체 없음"} 담당자: {order.supplierDetails?.managerName || order.managerName || "담당자 없음"}
-                        </div>
+                    <div className="mb-3 flex items-center justify-between border-b border-slate-300 bg-slate-100 px-3 py-2 dark:border-slate-600 dark:bg-slate-700">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-white">
+                        <span>공급처: {order.supplierDetails?.companyName || order.supplierName || "공급업체 없음"} 담당자: {order.supplierDetails?.managerName || order.managerName || "담당자 없음"}
+                        {order.supplierDetails?.position && ` ${order.supplierDetails.position}`}</span>
+                        <span className="text-xs text-slate-600 dark:text-slate-400">
+                          주문번호 {order.orderNo}
+                        </span>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (!confirm("정말 주문을 취소하시겠습니까?")) return;
-                          // TODO: Order cancel API
-                          alert("주문 취소 기능은 곧 추가될 예정입니다.");
-                        }}
-                        className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                      >
-                        오더 취소
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {isPending && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("정말 주문을 취소하시겠습니까?")) return;
+                              // TODO: Order cancel API
+                              alert("주문 취소 기능은 곧 추가될 예정입니다.");
+                            }}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            주문 취소
+                          </button>
+                        )}
+                        {/* Badge */}
+                        {isPending && (
+                          <span className="inline-flex items-center rounded-full border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-400 dark:text-emerald-400">
+                            주문 요청
+                          </span>
+                        )}
+                        {isSupplierConfirmed && (
+                          <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                            주문 진행
+                          </span>
+                        )}
+                        {isRejected && (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            주문 거절
+                          </span>
+                        )}
+                      </div>
                     </div>
 
+                    {/* Rejection Reasons */}
+                    {isRejected && rejectionReasons.length > 0 && (
+                      <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3 dark:bg-red-900/20 dark:border-red-800">
+                        <div className="text-xs font-semibold text-red-700 dark:text-red-400">
+                          거절 사유: {rejectionReasons.map((reason: string, idx: number) => (
+                            <span key={idx}>
+                              {reason}
+                              {idx < rejectionReasons.length - 1 && <span className="mx-2">•</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Product List */}
-                    {/* Product List */}
-<div className="mb-3 space-y-2">
-  {order.items.map((item: any) => (
-    <div
-      key={item.id}
-      className="relative flex items-center justify-between bg-white px-4 py-2 dark:border-blue-500 dark:bg-slate-800/50"
-      style={{ borderLeft: 'none', borderRight: 'none' }}
-    >
-      {/* Dotted border inside */}
-      <div className="absolute inset-x-0 top-0 border-t border-dashed border-blue-200 dark:border-blue-400"></div>
-      <div className="absolute inset-x-0 bottom-0 border-b border-dashed border-blue-200 dark:border-blue-400"></div>
-      
-      <div className="flex-shrink-0 w-32 text-sm font-medium text-slate-900 dark:text-white truncate" title={item.productName}>
-        {item.productName}
-      </div>
-      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400">
-        브랜드: {item.brand}
-      </div>
-      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400 text-right">
-        수량: {item.quantity}개
-      </div>
-      <div className="flex-shrink-0 w-32 text-sm text-slate-600 dark:text-slate-400 text-right">
-        단가 {item.unitPrice.toLocaleString()}
-      </div>
-      <div className="flex-shrink-0 w-36 text-sm font-semibold text-slate-900 dark:text-white text-right">
-        총금액: {item.totalPrice.toLocaleString()}
-      </div>
-    </div>
-  ))}
-</div>
+                    <div className="mb-3 space-y-2">
+                      {order.items.map((item: any) => {
+                        // Extract rejection reason and memo for this item
+                        let itemRejectionReason = null;
+                        let itemRejectionMemo = null;
+                        
+                        if (item.memo) {
+                          const memoText = item.memo.trim();
+                          
+                          // Check if memo contains rejection reason format: [거절 사유: ...]
+                          if (memoText.includes("[거절 사유:")) {
+                            // Extract rejection reason
+                            const reasonMatch = memoText.match(/\[거절 사유:\s*([^\]]+)\]/);
+                            itemRejectionReason = reasonMatch ? reasonMatch[1].trim() : null;
+                            
+                            // Extract memo (everything except [거절 사유: ...])
+                            // Remove all [거절 사유: ...] patterns
+                            let cleanMemo = memoText.replace(/\[거절 사유:[^\]]+\]/g, '').trim();
+                            
+                            // Also remove newlines and extra spaces
+                            cleanMemo = cleanMemo.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+                            
+                            // If there's memo text left, use it; otherwise use full memo
+                            itemRejectionMemo = cleanMemo || memoText;
+                          } else {
+                            // No rejection reason format, show full memo
+                            itemRejectionMemo = memoText;
+                          }
+                        }
+                        
+                        return (
+                          <div key={item.id} className="rounded-lg bg-white shadow-sm dark:bg-slate-800">
+                            <div className="flex items-center justify-between gap-4 px-4 py-3">
+                              <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                {item.productName}
+                              </div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400">
+                                브랜드: {item.brand}
+                              </div>
+                              {!isRejected && (
+                                <>
+                                  <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
+                                    <span>입고수량: {item.quantity}</span>
+                                    <span className="text-slate-400">|</span>
+                                    <span>{item.quantity}개</span>
+                                  </div>
+                                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                                    단가 {item.unitPrice.toLocaleString()}
+                                  </div>
+                                  <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                    총금액: {item.totalPrice.toLocaleString()}
+                                  </div>
+                                </>
+                              )}
+                              {isRejected && (
+                                <>
+                                  <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
+                                    <span>입고수량: {item.quantity}</span>
+                                    <span className="text-slate-400">|</span>
+                                    <span>{item.quantity}개</span>
+                                  </div>
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                                    <span className="text-slate-400">단가:</span>{" "}
+                                    {item.unitPrice.toLocaleString()}원
+                                  </span>
+                                  <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                    총금액: 0
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            {/* Memo field for rejected orders - always show */}
+                           
+                          </div>
+                        );
+                      })}
+                    </div>
 
                     {/* Total */}
-                    <div className="mb-3 border-t border-slate-200 pt-2 dark:border-slate-700">
-                      <div className="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
-                        <span></span>
-                        <span>총 {order.totalAmount.toLocaleString()}원</span>
+                    <div className="mb-3 flex justify-end">
+                      <div className="text-lg font-bold text-slate-900 dark:text-white">
+                        총 {isRejected ? 0 : order.totalAmount.toLocaleString()}
                       </div>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!confirm("정말 이 주문을 삭제하시겠습니까?")) return;
+                          try {
+                            await apiDelete(`/order/${order.id}`);
+                            // Remove from local state
+                            setOrders(orders.filter((o: any) => o.id !== order.id));
+                            alert("주문이 삭제되었습니다.");
+                          } catch (err: any) {
+                            console.error("Failed to delete order", err);
+                            alert(`주문 삭제 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
+                          }
+                        }}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                        title="주문 삭제"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                       <button
                         onClick={async () => {
                           // TODO: Reorder functionality
                           alert("재주문 기능은 곧 추가될 예정입니다.");
                         }}
-                        className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                       >
                         재주문
                       </button>
@@ -1368,7 +1482,7 @@ export default function OrderPage() {
                           setOrderFormMemo(order.memo || "");
                           setShowOrderFormModal(true);
                         }}
-                        className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                       >
                         주문서 보기
                       </button>
