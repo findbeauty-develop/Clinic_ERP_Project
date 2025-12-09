@@ -292,6 +292,7 @@ export default function OrderPage() {
       const data = await response.json();
       console.log("Fetched orders:", data);
       console.log("First order supplierDetails:", data[0]?.supplierDetails);
+      console.log("Order statuses:", data.map((o: any) => ({ orderNo: o.orderNo, status: o.status })));
       setOrders(data || []);
     } catch (err) {
       console.error("Failed to load orders", err);
@@ -1281,10 +1282,11 @@ export default function OrderPage() {
                 // Manager name (supplierDetails'dan olish)
                 const managerName = order.supplierDetails?.managerName || order.managerName || "담당자";
 
-                // Badge logic based on order status
-                const isPending = order.status === "pending";
-                const isSupplierConfirmed = order.status === "supplier_confirmed" || order.status === "confirmed";
-                const isRejected = order.status === "rejected" || order.status === "cancelled";
+                // Badge logic based on order status (priority: completed > rejected > supplier_confirmed > pending)
+                const isCompleted = order.status === "completed" || order.status === "inbound_completed";
+                const isRejected = !isCompleted && (order.status === "rejected" || order.status === "cancelled");
+                const isSupplierConfirmed = !isCompleted && !isRejected && (order.status === "supplier_confirmed" || order.status === "confirmed");
+                const isPending = !isCompleted && !isRejected && !isSupplierConfirmed && order.status === "pending";
                 
                 // Extract rejection reasons from items
                 const rejectionReasons = order.items
@@ -1326,18 +1328,23 @@ export default function OrderPage() {
                         )}
                         {/* Badge */}
                         {isPending && (
-                          <span className="inline-flex items-center rounded-full border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-400 dark:text-emerald-400">
+                          <span className="inline-flex items-center rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
                             주문 요청
                           </span>
                         )}
                         {isSupplierConfirmed && (
-                          <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                          <span className="inline-flex items-center rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
                             주문 진행
                           </span>
                         )}
                         {isRejected && (
-                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                          <span className="inline-flex items-center rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                             주문 거절
+                          </span>
+                        )}
+                        {isCompleted && (
+                          <span className="inline-flex items-center rounded border border-slate-400 bg-slate-500 px-3 py-1 text-xs font-semibold text-white">
+                            주문 완료
                           </span>
                         )}
                       </div>
@@ -1445,26 +1452,28 @@ export default function OrderPage() {
 
                     {/* Action Buttons */}
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={async () => {
-                          if (!confirm("정말 이 주문을 삭제하시겠습니까?")) return;
-                          try {
-                            await apiDelete(`/order/${order.id}`);
-                            // Remove from local state
-                            setOrders(orders.filter((o: any) => o.id !== order.id));
-                            alert("주문이 삭제되었습니다.");
-                          } catch (err: any) {
-                            console.error("Failed to delete order", err);
-                            alert(`주문 삭제 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
-                          }
-                        }}
-                        className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                        title="주문 삭제"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {!isPending && !isSupplierConfirmed && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm("정말 이 주문을 삭제하시겠습니까?")) return;
+                            try {
+                              await apiDelete(`/order/${order.id}`);
+                              // Remove from local state
+                              setOrders(orders.filter((o: any) => o.id !== order.id));
+                              alert("주문이 삭제되었습니다.");
+                            } catch (err: any) {
+                              console.error("Failed to delete order", err);
+                              alert(`주문 삭제 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
+                            }
+                          }}
+                          className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                          title="주문 삭제"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
                       <button
                         onClick={async () => {
                           // TODO: Reorder functionality
