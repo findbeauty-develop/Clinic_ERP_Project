@@ -1374,8 +1374,15 @@ export default function OrderPage() {
                           <button
                             onClick={async () => {
                               if (!confirm("정말 주문을 취소하시겠습니까?")) return;
-                              // TODO: Order cancel API
-                              alert("주문 취소 기능은 곧 추가될 예정입니다.");
+                              try {
+                                await apiPut(`/order/${order.id}/cancel`, {});
+                                // Remove from local state
+                                setOrders(orders.filter((o: any) => o.id !== order.id));
+                                alert("주문이 취소되었습니다.");
+                              } catch (err: any) {
+                                console.error("Failed to cancel order", err);
+                                alert(`주문 취소 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
+                              }
                             }}
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           >
@@ -1531,9 +1538,9 @@ export default function OrderPage() {
                         </button>
                       )}
                       <button
-                        onClick={async () => {
-                          // TODO: Reorder functionality
-                          alert("재주문 기능은 곧 추가될 예정입니다.");
+                        onClick={() => {
+                          // Redirect to 주문 처리 tab
+                          setActiveTab("processing");
                         }}
                         className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                       >
@@ -1561,67 +1568,53 @@ export default function OrderPage() {
                 if (!rejectedOrder || !rejectedOrder.orderNo) return null;
                 
                 console.log("Rendering rejected order:", rejectedOrder);
-                
-                const confirmedDate = rejectedOrder.confirmedAt ? new Date(rejectedOrder.confirmedAt) : new Date();
-                const dateStr = confirmedDate.toISOString().split("T")[0];
-                const timeStr = confirmedDate.toTimeString().split(" ")[0].slice(0, 5);
-                const formattedDate = `${dateStr} ${timeStr}`;
 
                 return (
                   <div
                     key={rejectedOrder.orderNo}
-                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+                    className="rounded-lg border-2 border-dashed border-purple-300 bg-slate-50 p-4 dark:border-purple-600 dark:bg-slate-800/50"
                   >
-                    {/* Header */}
-                    <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-700">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="text-base font-semibold text-slate-900 dark:text-white">
-                            {rejectedOrder.companyName || "알 수 없음"}
-                          </div>
-                          {rejectedOrder.managerName && (
-                            <div className="text-sm text-slate-500 dark:text-slate-400">
-                              담당자: {rejectedOrder.managerName}
-                            </div>
-                          )}
-                        </div>
+                    {/* Order Header */}
+                    <div className="mb-3 flex items-center justify-between border-b border-slate-300 bg-slate-100 px-3 py-2 dark:border-slate-600 dark:bg-slate-700">
+                      <div className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-white">
+                        <span>공급처: {rejectedOrder.companyName || "공급업체 없음"} 담당자: {rejectedOrder.managerName || "담당자 없음"}
+                        {rejectedOrder.managerPosition && ` ${rejectedOrder.managerPosition}`}</span>
+                        <span className="text-xs text-slate-600 dark:text-slate-400">
+                          주문번호 {rejectedOrder.orderNo}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div className="text-sm font-mono text-slate-600 dark:text-slate-400">
-                            주문번호: {rejectedOrder.orderNo}
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {formattedDate}
-                          </div>
-                        </div>
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
+                      <div className="flex items-center gap-2">
+                        {/* Badge */}
+                        <span className="inline-flex items-center rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                           주문 거절
                         </span>
                       </div>
                     </div>
 
-                    {/* Product Items */}
-                    <div className="mb-4 space-y-2">
+                    {/* Product List */}
+                    <div className="mb-3 space-y-2">
                       {rejectedOrder.items && Array.isArray(rejectedOrder.items) && rejectedOrder.items.length > 0 ? (
                         rejectedOrder.items.map((item: any, index: number) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/30"
-                          >
-                            <div className="flex-1">
-                              <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {item.productBrand || ""}
-                              </div>
+                          <div key={index} className="rounded-lg bg-white shadow-sm dark:bg-slate-800">
+                            <div className="flex items-center justify-between gap-4 px-4 py-3">
                               <div className="text-sm font-medium text-slate-900 dark:text-white">
                                 {item.productName || "알 수 없음"}
                               </div>
-                            </div>
-                            <div className="text-sm text-slate-600 dark:text-slate-400">
-                              {item.qty || 0}개
+                              <div className="text-sm text-slate-600 dark:text-slate-400">
+                                브랜드: {item.productBrand || ""}
+                              </div>
+                              <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
+                                <span>입고수량: {item.qty || 0}</span>
+                                <span className="text-slate-400">|</span>
+                                <span>{item.qty || 0}개</span>
+                              </div>
+                              <span className="text-sm text-slate-600 dark:text-slate-400">
+                                <span className="text-slate-400">단가:</span>{" "}
+                                0원
+                              </span>
+                              <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                총금액: 0
+                              </div>
                             </div>
                           </div>
                         ))
@@ -1632,14 +1625,55 @@ export default function OrderPage() {
                       )}
                     </div>
 
-                    {/* Footer */}
-                    <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        확인자: {rejectedOrder.memberName || "알 수 없음"}
+                    {/* Total */}
+                    <div className="mb-3 flex justify-end">
+                      <div className="text-lg font-bold text-slate-900 dark:text-white">
+                        총 0
                       </div>
-                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                        총금액: 0원
-                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!confirm("정말 이 거절 주문을 삭제하시겠습니까?")) return;
+                          try {
+                            // Delete rejected orders by orderId
+                            await apiDelete(`/order/${rejectedOrder.orderId}`);
+                            // Remove from local state
+                            setRejectedOrders(rejectedOrders.filter((ro: any) => ro.orderNo !== rejectedOrder.orderNo));
+                            alert("거절 주문이 삭제되었습니다.");
+                          } catch (err: any) {
+                            console.error("Failed to delete rejected order", err);
+                            alert(`거절 주문 삭제 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
+                          }
+                        }}
+                        className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:bg-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                        title="거절 주문 삭제"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Redirect to 주문 처리 tab
+                          setActiveTab("processing");
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      >
+                        재주문
+                      </button>
+                      <button
+                        onClick={() => {
+                          console.log("Selected rejected order:", rejectedOrder);
+                          // TODO: Show order form modal for rejected order
+                          alert("주문서 보기 기능은 곧 추가될 예정입니다.");
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      >
+                        주문서 보기
+                      </button>
                     </div>
                   </div>
                 );

@@ -199,6 +199,16 @@ export class OrderController {
   }
 
   /**
+   * Cancel order - update status to cancelled
+   */
+  @Put(":id/cancel")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Cancel order (update status to cancelled)" })
+  async cancelOrder(@Tenant() tenantId: string, @Param("id") id: string) {
+    return this.orderService.cancelOrder(id, tenantId);
+  }
+
+  /**
    * Mark order as completed after inbound processing
    */
   @Post(":id/complete")

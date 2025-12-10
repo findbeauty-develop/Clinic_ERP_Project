@@ -1582,6 +1582,66 @@ export class OrderService {
       });
     });
 
+    // Get unique order IDs to fetch supplier details
+    const orderIds = [...new Set(rejectedOrders.map((ro: any) => ro.order_id))];
+    
+    // Fetch orders to get supplier information
+    const orders = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findMany({
+        where: {
+          id: { in: orderIds },
+          tenant_id: tenantId,
+        },
+        select: {
+          id: true,
+          supplier_id: true,
+        },
+      });
+    });
+
+    // Create a map of order_id -> supplier_id
+    const orderSupplierMap = new Map<string, string>();
+    orders.forEach((order: any) => {
+      if (order.supplier_id) {
+        orderSupplierMap.set(order.id, order.supplier_id);
+      }
+    });
+
+    // Get unique supplier IDs
+    const supplierIds = [...new Set(Array.from(orderSupplierMap.values()))];
+
+    // Fetch suppliers with managers to get position
+    const suppliers = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).supplier.findMany({
+        where: {
+          id: { in: supplierIds },
+        },
+        select: {
+          id: true,
+          managers: {
+            where: {
+              status: "ACTIVE",
+            },
+            take: 1,
+            orderBy: { created_at: "asc" },
+            select: {
+              id: true,
+              name: true,
+              position: true,
+            },
+          },
+        },
+      });
+    });
+
+    // Create a map of supplier_id -> manager position
+    const supplierPositionMap = new Map<string, string | null>();
+    suppliers.forEach((supplier: any) => {
+      if (supplier.managers && supplier.managers.length > 0) {
+        supplierPositionMap.set(supplier.id, supplier.managers[0].position || null);
+      }
+    });
+
     // Group by order_no
     const grouped: Record<string, any> = {};
 
@@ -1589,11 +1649,19 @@ export class OrderService {
       const orderNo = rejectedOrder.order_no;
 
       if (!grouped[orderNo]) {
+        // Get position from supplier
+        let managerPosition = null;
+        const supplierId = orderSupplierMap.get(rejectedOrder.order_id);
+        if (supplierId) {
+          managerPosition = supplierPositionMap.get(supplierId) || null;
+        }
+
         grouped[orderNo] = {
           orderId: rejectedOrder.order_id,
           orderNo: rejectedOrder.order_no,
           companyName: rejectedOrder.company_name,
           managerName: rejectedOrder.manager_name,
+          managerPosition: managerPosition,
           memberName: rejectedOrder.member_name,
           confirmedAt: rejectedOrder.created_at,
           items: [],
@@ -1720,6 +1788,49 @@ export class OrderService {
   /**
    * Delete order
    */
+  /**
+   * Cancel order - update status to cancelled
+   */
+  async cancelOrder(orderId: string, tenantId: string) {
+    if (!orderId || !tenantId) {
+      throw new BadRequestException("Order ID and Tenant ID are required");
+    }
+
+    // Find order
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findFirst({
+        where: {
+          id: orderId,
+          tenant_id: tenantId,
+        },
+      });
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // Check if order can be cancelled (only pending orders can be cancelled)
+    if (order.status !== "pending") {
+      throw new BadRequestException(`Order with status "${order.status}" cannot be cancelled. Only pending orders can be cancelled.`);
+    }
+
+    // Update status to cancelled
+    await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.update({
+        where: { id: orderId },
+        data: {
+          status: "cancelled",
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.logger.log(`Order ${order.order_no} cancelled`);
+
+    return { success: true, message: "Order cancelled successfully" };
+  }
+
   async deleteOrder(orderId: string, tenantId: string) {
     if (!orderId || !tenantId) {
       throw new BadRequestException("Order ID and Tenant ID are required");
