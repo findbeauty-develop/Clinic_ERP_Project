@@ -201,19 +201,19 @@ export default function ExchangesPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
-      <div className="bg-white p-4 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">반품 및 교환</h1>
-        <p className="text-sm text-slate-600 mt-1">
+      <div className="bg-white p-3 sm:p-4 shadow-sm">
+        <h1 className="text-lg sm:text-2xl font-bold text-slate-900">반품 및 교환</h1>
+        <p className="text-xs sm:text-sm text-slate-600 mt-1">
           클리닉에서 요청한 반품 및 교환을 처리하세요
         </p>
       </div>
 
       {/* Tabs */}
       <div className="bg-white border-b border-slate-200">
-        <div className="flex">
+        <div className="flex overflow-x-auto">
           <button
             onClick={() => setActiveTab("pending")}
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
               activeTab === "pending"
                 ? "text-blue-600 border-b-2 border-blue-600"
                 : "text-slate-600 hover:text-slate-900"
@@ -223,7 +223,7 @@ export default function ExchangesPage() {
           </button>
           <button
             onClick={() => setActiveTab("processing")}
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
               activeTab === "processing"
                 ? "text-blue-600 border-b-2 border-blue-600"
                 : "text-slate-600 hover:text-slate-900"
@@ -233,7 +233,7 @@ export default function ExchangesPage() {
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
               activeTab === "history"
                 ? "text-blue-600 border-b-2 border-blue-600"
                 : "text-slate-600 hover:text-slate-900"
@@ -245,7 +245,7 @@ export default function ExchangesPage() {
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="p-2 sm:p-4">
         {/* Loading State */}
         {loading && (
           <div className="text-center py-12">
@@ -274,39 +274,39 @@ export default function ExchangesPage() {
               return (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-6 shadow-sm border border-slate-200"
+                  className="bg-white rounded-lg p-3 sm:p-6 shadow-sm border border-slate-200"
                 >
                   {/* Header */}
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
+                  <div className="flex flex-col sm:flex-row justify-between items-start mb-3 sm:mb-4 gap-2">
+                    <div className="flex-1 min-w-0">
                       <p className="text-xs text-slate-500 mb-1">
                         반품번호: {request.returnNo}
                       </p>
-                      <p className="text-sm text-slate-600 mb-1">
+                      <p className="text-xs sm:text-sm text-slate-600 mb-1">
                         {formatDate(request.createdAt)}
                       </p>
-                      <p className="text-lg font-semibold text-slate-900">
+                      <p className="text-sm sm:text-lg font-semibold text-slate-900 break-words">
                         {request.clinicName} - {request.clinicManagerName}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-start sm:items-end gap-2">
                       {request.status === "PENDING" && (
-                        <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium">
+                        <span className="px-2 sm:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                           요청 확인 대기
                         </span>
                       )}
                       {request.status === "PROCESSING" && (
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                        <span className="px-2 sm:px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                           요청 진행
                         </span>
                       )}
                       {request.status === "COMPLETED" && (
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                        <span className="px-2 sm:px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                           {request.items[0]?.returnType?.includes("교환") ? "교환 완료" : "반품 완료"}
                         </span>
                       )}
                       {request.status === "REJECTED" && (
-                        <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
+                        <span className="px-2 sm:px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                           요청 거절
                         </span>
                       )}
@@ -314,103 +314,184 @@ export default function ExchangesPage() {
                   </div>
 
                   {/* Product List */}
-                  <div className="mb-4 border-t border-slate-200 pt-4">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="text-left text-sm text-slate-700 border-b border-slate-200">
-                          <th className="pb-2">제품</th>
-                          <th className="pb-2">유형</th>
-                          <th className="pb-2 text-right">수량</th>
-                          <th className="pb-2 text-right">단가</th>
-                          <th className="pb-2 text-right">합계</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {request.items.map((item, index) => (
-                          <tr key={index} className="border-b border-slate-100">
-                            <td className="py-2">
-                              <div>
-                                <span className="font-medium text-slate-900">
-                                  {item.productName}
-                                </span>
-                                {item.productBrand && (
-                                  <span className="text-sm text-slate-500 ml-2">
-                                    ({item.productBrand})
-                                  </span>
-                                )}
-                              </div>
-                              {item.memo && (
-                                <p className="text-xs text-slate-500 mt-1">{item.memo}</p>
-                              )}
-                              {item.images && item.images.length > 0 && (
-                                <div className="flex gap-2 mt-2">
-                                  {item.images.slice(0, 3).map((img, imgIdx) => (
-                                    <img
-                                      key={imgIdx}
-                                      src={img.startsWith("http") ? img : `http://localhost:3002${img}`}
-                                      alt={`Image ${imgIdx + 1}`}
-                                      className="w-16 h-16 object-cover rounded border border-slate-200"
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-2 text-slate-700">
-                              {formatReturnType(item.returnType)}
-                            </td>
-                            <td className="py-2 text-right text-slate-700">{item.qty}개</td>
-                            <td className="py-2 text-right text-slate-700">
-                              {formatCurrency(item.unitPrice)}
-                            </td>
-                            <td className="py-2 text-right font-medium text-slate-900">
-                              {formatCurrency(item.totalPrice)}
-                            </td>
+                  <div className="mb-3 sm:mb-4 border-t border-slate-200 pt-3 sm:pt-4">
+                    {/* Desktop Table */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="text-left text-xs sm:text-sm text-slate-700 border-b border-slate-200">
+                            <th className="pb-2">제품</th>
+                            <th className="pb-2">유형</th>
+                            <th className="pb-2 text-right">수량</th>
+                            <th className="pb-2 text-right">단가</th>
+                            <th className="pb-2 text-right">합계</th>
+                            {request.status === "PENDING" && activeTab === "pending" && (
+                              <th className="pb-2 text-center">작업</th>
+                            )}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {request.items.map((item, index) => (
+                            <tr key={index} className="border-b border-slate-100">
+                              <td className="py-2">
+                                <div>
+                                  <span className="font-medium text-xs sm:text-sm text-slate-900">
+                                    {item.productName}
+                                  </span>
+                                  {item.productBrand && (
+                                    <span className="text-xs text-slate-500 ml-2">
+                                      ({item.productBrand})
+                                    </span>
+                                  )}
+                                </div>
+                                {item.memo && (
+                                  <p className="text-xs text-slate-500 mt-1">{item.memo}</p>
+                                )}
+                                {item.images && item.images.length > 0 && (
+                                  <div className="flex gap-2 mt-2">
+                                    {item.images.slice(0, 3).map((img, imgIdx) => (
+                                      <img
+                                        key={imgIdx}
+                                        src={img.startsWith("http") ? img : `http://localhost:3002${img}`}
+                                        alt={`Image ${imgIdx + 1}`}
+                                        className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded border border-slate-200"
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 text-xs sm:text-sm text-slate-700">
+                                {formatReturnType(item.returnType)}
+                              </td>
+                              <td className="py-2 text-right text-xs sm:text-sm text-slate-700">{item.qty}개</td>
+                              <td className="py-2 text-right text-xs sm:text-sm text-slate-700">
+                                {formatCurrency(item.unitPrice)}
+                              </td>
+                              <td className="py-2 text-right text-xs sm:text-sm font-medium text-slate-900">
+                                {formatCurrency(item.totalPrice)}
+                              </td>
+                              {request.status === "PENDING" && activeTab === "pending" && (
+                                <td className="py-2">
+                                  <div className="flex gap-1 justify-center">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRequest(request);
+                                        setShowRejectModal(true);
+                                      }}
+                                      className="px-2 sm:px-3 py-1 text-xs bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
+                                    >
+                                      거절
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRequest(request);
+                                        setShowConfirmModal(true);
+                                      }}
+                                      className="px-2 sm:px-3 py-1 text-xs bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                      확인
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="sm:hidden space-y-3">
+                      {request.items.map((item, index) => (
+                        <div key={index} className="border border-slate-200 rounded-lg p-3">
+                          <div className="mb-2">
+                            <span className="font-medium text-sm text-slate-900">
+                              {item.productName}
+                            </span>
+                            {item.productBrand && (
+                              <span className="text-xs text-slate-500 ml-1">
+                                ({item.productBrand})
+                              </span>
+                            )}
+                          </div>
+                          {item.memo && (
+                            <p className="text-xs text-slate-500 mb-2">{item.memo}</p>
+                          )}
+                          {item.images && item.images.length > 0 && (
+                            <div className="flex gap-2 mb-2">
+                              {item.images.slice(0, 3).map((img, imgIdx) => (
+                                <img
+                                  key={imgIdx}
+                                  src={img.startsWith("http") ? img : `http://localhost:3002${img}`}
+                                  alt={`Image ${imgIdx + 1}`}
+                                  className="w-12 h-12 object-cover rounded border border-slate-200"
+                                />
+                              ))}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-slate-500">유형:</span>
+                              <span className="ml-1 text-slate-700">{formatReturnType(item.returnType)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-500">수량:</span>
+                              <span className="ml-1 text-slate-700">{item.qty}개</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500">단가:</span>
+                              <span className="ml-1 text-slate-700">{formatCurrency(item.unitPrice)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-500">합계:</span>
+                              <span className="ml-1 font-medium text-slate-900">{formatCurrency(item.totalPrice)}</span>
+                            </div>
+                          </div>
+                          {request.status === "PENDING" && activeTab === "pending" && (
+                            <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200">
+                              <button
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setShowRejectModal(true);
+                                }}
+                                className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
+                              >
+                                요청 거절
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setShowConfirmModal(true);
+                                }}
+                                className="flex-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors"
+                              >
+                                요청 확인
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Total and Actions */}
-                  <div className="flex justify-between items-center pt-4 border-t border-slate-200">
-                    <p className="text-lg font-bold text-slate-900">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 sm:pt-4 border-t border-slate-200 gap-3">
+                    <p className="text-sm sm:text-lg font-bold text-slate-900">
                       총액: {formatCurrency(totalAmount)} 원
                     </p>
-                    <div className="flex gap-2">
-                      {request.status === "PENDING" && activeTab === "pending" && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelectedRequest(request);
-                              setShowRejectModal(true);
-                            }}
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
-                          >
-                            요청 거절
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedRequest(request);
-                              setShowConfirmModal(true);
-                            }}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                          >
-                            요청 확인
-                          </button>
-                        </>
-                      )}
-                      {request.status === "PROCESSING" && activeTab === "processing" && (
+                    {request.status === "PROCESSING" && activeTab === "processing" && (
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button
                           onClick={() => {
                             setSelectedRequest(request);
                             setShowCompleteModal(true);
                           }}
-                          className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                          className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 transition-colors"
                         >
                           제품 받았음
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -420,11 +501,11 @@ export default function ExchangesPage() {
 
         {/* Pagination */}
         {!loading && requests.length > 0 && totalPages > 1 && (
-          <div className="mt-6 flex justify-center items-center gap-2">
+          <div className="mt-4 sm:mt-6 flex justify-center items-center gap-1 sm:gap-2">
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg font-medium transition-colors ${
                 currentPage === 1
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                   : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
@@ -446,11 +527,11 @@ export default function ExchangesPage() {
                   return (
                     <div key={page} className="flex items-center gap-1">
                       {showEllipsisBefore && (
-                        <span className="px-2 text-slate-500">...</span>
+                        <span className="px-1 sm:px-2 text-xs sm:text-sm text-slate-500">...</span>
                       )}
                       <button
                         onClick={() => handlePageChange(page)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg font-medium transition-colors ${
                           currentPage === page
                             ? "bg-blue-600 text-white"
                             : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
@@ -466,7 +547,7 @@ export default function ExchangesPage() {
             <button
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg font-medium transition-colors ${
                 currentPage === totalPages
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                   : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
@@ -479,7 +560,7 @@ export default function ExchangesPage() {
 
         {/* Pagination Info */}
         {!loading && requests.length > 0 && (
-          <div className="mt-4 text-center text-sm text-slate-600">
+          <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-slate-600">
             {total}개 중 {((currentPage - 1) * limit) + 1}-{Math.min(currentPage * limit, total)}개 표시
           </div>
         )}
@@ -487,26 +568,26 @@ export default function ExchangesPage() {
 
       {/* Confirm Modal (요청 확인) */}
       {showConfirmModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">요청 확인</h3>
-            <p className="text-slate-700 mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">요청 확인</h3>
+            <p className="text-sm sm:text-base text-slate-700 mb-3 sm:mb-4">
               {selectedRequest.clinicName}의 반품/교환 요청을 확인하시겠습니까?
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setShowConfirmModal(false);
                   setSelectedRequest(null);
                 }}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                 disabled={processing}
               >
                 취소
               </button>
               <button
                 onClick={handleAcceptReturn}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
                 disabled={processing}
               >
                 {processing ? "처리 중..." : "확인"}
@@ -518,34 +599,34 @@ export default function ExchangesPage() {
 
       {/* Reject Modal (요청 거절) */}
       {showRejectModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">요청 거절</h3>
-            <p className="text-slate-700 mb-2">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">요청 거절</h3>
+            <p className="text-sm sm:text-base text-slate-700 mb-2">
               {selectedRequest.clinicName}의 반품/교환 요청을 거절하시겠습니까?
             </p>
             <textarea
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               placeholder="거절 사유를 입력해주세요"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder:text-slate-400 mb-4"
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder:text-slate-400 mb-3 sm:mb-4"
               rows={4}
             />
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setShowRejectModal(false);
                   setSelectedRequest(null);
                   setRejectionReason("");
                 }}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                 disabled={processing}
               >
                 취소
               </button>
               <button
                 onClick={handleRejectReturn}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
                 disabled={processing || !rejectionReason.trim()}
               >
                 {processing ? "처리 중..." : "거절"}
@@ -557,26 +638,26 @@ export default function ExchangesPage() {
 
       {/* Complete Modal (제품 받았음) */}
       {showCompleteModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">제품 받았음</h3>
-            <p className="text-slate-700 mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">제품 받았음</h3>
+            <p className="text-sm sm:text-base text-slate-700 mb-3 sm:mb-4">
               {selectedRequest.clinicName}의 반품/교환 제품을 받으셨습니까?
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setShowCompleteModal(false);
                   setSelectedRequest(null);
                 }}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                 disabled={processing}
               >
                 취소
               </button>
               <button
                 onClick={handleMarkAsReceived}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
                 disabled={processing}
               >
                 {processing ? "처리 중..." : "확인"}

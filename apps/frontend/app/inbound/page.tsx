@@ -1315,7 +1315,7 @@ function PendingOrdersList({
       // Get current member info for inbound_manager
       const memberData = localStorage.getItem("erp_member_data");
       const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager = memberInfo.full_name || memberInfo.member_id || "자동입고";
+      const inboundManager = memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -1420,6 +1420,7 @@ function PendingOrdersList({
             orderId: order.orderId,
             orderNo: order.orderNo,
             items: returnItems,
+            inboundManager: inboundManager, // Add inbound manager
           });
         } catch (returnError: any) {
           console.error(`Failed to create returns:`, returnError);

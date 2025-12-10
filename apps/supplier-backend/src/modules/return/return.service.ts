@@ -426,6 +426,50 @@ export class ReturnService {
 
         return this.formatReturnRequest(updatedRequest);
       } else {
+        // Check if return_no already exists (to avoid unique constraint error)
+        const existingByReturnNo = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnRequest.findFirst({
+            where: {
+              return_no: returnNo,
+            },
+            include: {
+              items: true,
+            },
+          });
+        });
+
+        if (existingByReturnNo) {
+          // If return_no exists, add items to existing request
+          const newItems = items.map((item: any) => ({
+            product_name: item.productName,
+            brand: item.brand || null,
+            quantity: item.quantity,
+            return_type: item.returnType,
+            memo: item.memo || null,
+            images: item.images || [],
+            inbound_date: item.inboundDate,
+            total_price: item.totalPrice,
+            order_no: item.orderNo || null,
+            batch_no: item.batchNo || null,
+          }));
+
+          const updatedRequest = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierReturnRequest.update({
+              where: { id: existingByReturnNo.id },
+              data: {
+                items: {
+                  create: newItems,
+                },
+              },
+              include: {
+                items: true,
+              },
+            });
+          });
+
+          return this.formatReturnRequest(updatedRequest);
+        }
+
         // Create new return request
         const newItems = items.map((item: any) => ({
           product_name: item.productName,

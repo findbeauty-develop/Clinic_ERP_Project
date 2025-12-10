@@ -114,6 +114,9 @@ export default function OrderReturnsPage() {
                 returnItem={returnItem}
                 members={members}
                 onRefresh={fetchReturns}
+                onRemove={(id: string) => {
+                  setReturns((prev) => prev.filter((item) => item.id !== id));
+                }}
                 apiUrl={apiUrl}
                 formatReturnType={formatReturnType}
               />
@@ -125,12 +128,14 @@ export default function OrderReturnsPage() {
   );
 }
 
-function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }: any) {
+function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatReturnType }: any) {
   const [processing, setProcessing] = useState(false);
   const [memo, setMemo] = useState(returnItem.memo || "");
-  const [selectedManager, setSelectedManager] = useState(returnItem.return_manager || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
   const [returnType, setReturnType] = useState(returnItem.return_type || "주문|반품");
+
+  // Get return manager name from backend response
+  const managerName = returnItem.returnManagerName || "";
 
   const isOrderReturn = returnType?.includes("주문");
   const isDefectiveReturn = returnType?.includes("불량");
@@ -186,24 +191,24 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
   };
 
   const handleProcessReturn = async () => {
-    if (showReturnTypeDropdown && !selectedManager) {
-      alert("반품 담당자를 선택해주세요.");
-      return;
-    }
-
     setProcessing(true);
     try {
       const { apiPost } = await import("../../lib/api");
       await apiPost(`${apiUrl}/order-returns/${returnItem.id}/process`, {
         memo: memo || null,
-        returnManager: selectedManager || null,
+        returnManager: returnItem.return_manager || null,
         images: images,
         return_type: returnType,
       });
+      // Remove the item from the list immediately
+      if (onRemove) {
+        onRemove(returnItem.id);
+      }
       alert("반품 처리가 완료되었습니다.");
-      onRefresh();
     } catch (err: any) {
       alert(err?.message || "오류가 발생했습니다.");
+      // Only refresh on error to reload data
+      onRefresh();
     } finally {
       setProcessing(false);
     }
@@ -385,18 +390,9 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
               반품 담당자:
             </label>
-            <select
-              value={selectedManager}
-              onChange={(e) => setSelectedManager(e.target.value)}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-            >
-              <option value="">성함 선택</option>
-              {members.map((member: any) => (
-                <option key={member.id} value={member.member_id || member.id}>
-                  {member.full_name || member.member_id}
-                </option>
-              ))}
-            </select>
+            <span className="text-sm text-slate-900 dark:text-slate-200">
+              {managerName || "담당자 없음"}
+            </span>
           </div>
           <button
             onClick={handleProcessReturn}

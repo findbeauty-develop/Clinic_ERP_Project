@@ -25,6 +25,21 @@ export class OrderReturnService {
         returns.map(async (returnItem: any) => {
           let supplierName = "알 수 없음";
           let managerName = "";
+          let returnManagerName = "";
+
+          // Fetch return manager name (clinic member)
+          if (returnItem.return_manager) {
+            const returnManager = await (this.prisma as any).member.findFirst({
+              where: {
+                member_id: returnItem.return_manager,
+                tenant_id: tenantId,
+              },
+              select: {
+                full_name: true,
+              },
+            });
+            returnManagerName = returnManager?.full_name || "";
+          }
 
           if (returnItem.supplier_id) {
             const supplier = await (this.prisma as any).supplier.findUnique({
@@ -102,6 +117,7 @@ export class OrderReturnService {
             ...returnItem,
             supplierName,
             managerName,
+            returnManagerName,
           };
         })
       );
@@ -130,6 +146,25 @@ export class OrderReturnService {
         });
       });
 
+      // Get return manager: try to find member_id from inboundManager
+      let returnManager = dto.returnManager || null;
+      if (!returnManager && dto.inboundManager) {
+        // Try to find member by member_id first, then by full_name
+        const member = await (this.prisma as any).member.findFirst({
+          where: {
+            OR: [
+              { member_id: dto.inboundManager },
+              { full_name: dto.inboundManager },
+            ],
+            tenant_id: tenantId,
+          },
+          select: {
+            member_id: true,
+          },
+        });
+        returnManager = member?.member_id || dto.inboundManager; // Fallback to original value if not found
+      }
+
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
           items.map((item: any) =>
@@ -148,6 +183,7 @@ export class OrderReturnService {
                 return_type: "주문|반품",
                 status: "pending",
                 supplier_id: order?.supplier_id || null,
+                return_manager: returnManager,
               },
             })
           )
@@ -164,19 +200,42 @@ export class OrderReturnService {
   }
 
   /**
-   * Generate return number: B + YYYYMMDD + 6 random digits
+   * Generate unique return number: B + YYYYMMDD + 6 random digits
+   * Checks database to ensure uniqueness
    */
-  private generateReturnNumber(): string {
-    const date = new Date();
-    const year = String(date.getFullYear()); // YYYY
-    const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
-    const day = String(date.getDate()).padStart(2, "0"); // DD
-    const dateStr = `${year}${month}${day}`; // YYYYMMDD
+  private async generateReturnNumber(): Promise<string> {
+    const maxAttempts = 10;
+    let attempts = 0;
     
-    // Random 6 digits
-    const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
+    while (attempts < maxAttempts) {
+      const date = new Date();
+      const year = String(date.getFullYear()); // YYYY
+      const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
+      const day = String(date.getDate()).padStart(2, "0"); // DD
+      const dateStr = `${year}${month}${day}`; // YYYYMMDD
+      
+      // Random 6 digits
+      const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
+      const returnNo = `B${dateStr}${randomDigits}`;
+      
+      // Check if this return_no already exists in OrderReturn table
+      const existing = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { return_no: returnNo },
+          select: { id: true },
+        });
+      });
+      
+      // If not exists, return this number
+      if (!existing) {
+        return returnNo;
+      }
+      
+      attempts++;
+    }
     
-    return `B${dateStr}${randomDigits}`;
+    // If all attempts failed, throw error
+    throw new BadRequestException("Failed to generate unique return number after multiple attempts");
   }
 
   async processReturn(tenantId: string, id: string, dto: any) {
@@ -184,9 +243,6 @@ export class OrderReturnService {
     const returnItem = await this.prisma.executeWithRetry(async () => {
       return (this.prisma as any).orderReturn.findFirst({
         where: { id, tenant_id: tenantId },
-        include: {
-          product: true,
-        },
       });
     });
 
@@ -201,7 +257,7 @@ export class OrderReturnService {
     }
 
     // Generate return number if not exists
-    const returnNo = returnItem.return_no || this.generateReturnNumber();
+    const returnNo = returnItem.return_no || await this.generateReturnNumber();
 
     // Update return with all data
     const updatedReturn = await this.prisma.executeWithRetry(async () => {
@@ -400,6 +456,22 @@ export class OrderReturnService {
         supplierId = outbound.product.supplierProducts[0].supplier_id;
       }
 
+      // Get return manager: try to find member_id from manager_name (full_name)
+      let returnManager = dto.returnManager || null;
+      if (!returnManager && outbound.manager_name) {
+        // Try to find member by full_name
+        const member = await (this.prisma as any).member.findFirst({
+          where: {
+            full_name: outbound.manager_name,
+            tenant_id: tenantId,
+          },
+          select: {
+            member_id: true,
+          },
+        });
+        returnManager = member?.member_id || outbound.manager_name; // Fallback to name if not found
+      }
+
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
           items.map((item: any) =>
@@ -419,6 +491,7 @@ export class OrderReturnService {
                 return_type: "불량|반품",
                 status: "pending",
                 supplier_id: supplierId,
+                return_manager: returnManager,
               },
             })
           )
