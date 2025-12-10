@@ -122,6 +122,7 @@ export default function OrderPage() {
   const [loadingSupplierDetails, setLoadingSupplierDetails] = useState(false);
   const orderFormRef = useRef<HTMLDivElement>(null);
   const [sessionId, setSessionId] = useState<string>("");
+  const [clinicData, setClinicData] = useState<any | null>(null);
   
   // Current logged-in member name (read-only)
   const [orderManagerName, setOrderManagerName] = useState("");
@@ -144,6 +145,41 @@ export default function OrderPage() {
       setOrderManagerName(member.full_name || member.member_id || "");
     }
   }, []);
+
+  // Fetch clinic data
+  useEffect(() => {
+    const fetchClinicData = async () => {
+      try {
+        // Get tenant_id from localStorage
+        const tenantId = typeof window !== "undefined" ? localStorage.getItem("erp_tenant_id") : null;
+        const url = tenantId 
+          ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+          : `${apiUrl}/iam/members/clinics`;
+        
+        console.log("Fetching clinic data from:", url);
+        const clinics = await apiGet<any[]>(url);
+        console.log("Fetched clinics:", clinics);
+        console.log("Number of clinics:", clinics?.length || 0);
+        
+        if (clinics && clinics.length > 0) {
+          // Get the first clinic (or match by tenant_id if available)
+          const clinic = clinics[0];
+          console.log("Selected clinic data:", clinic);
+          console.log("Clinic name:", clinic.name);
+          console.log("Clinic location:", clinic.location);
+          console.log("Clinic phone_number:", clinic.phone_number);
+          console.log("All clinic fields:", Object.keys(clinic));
+          setClinicData(clinic);
+        } else {
+          console.warn("No clinics found. Response:", clinics);
+        }
+      } catch (err: any) {
+        console.error("Failed to load clinic data", err);
+        console.error("Error details:", err.message, err.stack);
+      }
+    };
+    fetchClinicData();
+  }, [apiUrl]);
 
   // Order form modal ochilganda memo'ni yangilash
   useEffect(() => {
@@ -1547,9 +1583,36 @@ export default function OrderPage() {
                         재주문
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           console.log("Selected order:", order);
                           console.log("Supplier details:", order.supplierDetails);
+                          
+                          // Ensure clinic data is loaded before opening modal
+                          if (!clinicData) {
+                            try {
+                              // Get tenant_id from localStorage
+                              const tenantId = typeof window !== "undefined" ? localStorage.getItem("erp_tenant_id") : null;
+                              const url = tenantId 
+                                ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+                                : `${apiUrl}/iam/members/clinics`;
+                              
+                              console.log("Loading clinic data from:", url);
+                              const clinics = await apiGet<any[]>(url);
+                              console.log("Loaded clinics:", clinics);
+                              if (clinics && clinics.length > 0) {
+                                console.log("Loaded clinic data:", clinics[0]);
+                                setClinicData(clinics[0]);
+                              } else {
+                                console.warn("No clinics found when opening modal");
+                              }
+                            } catch (err: any) {
+                              console.error("Failed to load clinic data", err);
+                              console.error("Error details:", err.message);
+                            }
+                          } else {
+                            console.log("Clinic data already loaded:", clinicData);
+                          }
+                          
                           setSelectedOrder(order);
                           setOrderFormMemo(order.memo || "");
                           setShowOrderFormModal(true);
@@ -1995,11 +2058,11 @@ export default function OrderPage() {
                       <div className="text-base font-semibold text-slate-900">
                         {dateStr} {timeStr}
                       </div>
-                    <div className="text-base text-slate-900">
-                      {selectedOrder.supplierDetails?.companyName || selectedOrder.supplierName || "A사"}
-                    </div>
                       <div className="text-base text-slate-900">
-                        {selectedOrder.supplierDetails?.managerName || selectedOrder.managerName || "담당자"}님 출고
+                        {clinicData?.name || "클리닉"}
+                      </div>
+                      <div className="text-base text-slate-900">
+                        {selectedOrder.createdByName || orderManagerName || "담당자"}
                       </div>
                     </>
                   );
@@ -2130,29 +2193,18 @@ export default function OrderPage() {
                   {/* 주문처 (Orderer) */}
                   <div className="border-r border-blue-200 p-4">
                     <div className="text-xl font-bold text-slate-900 mb-3">
-                      {selectedOrder.supplierDetails?.companyName || selectedOrder.supplierName || "A사"}
+                      {clinicData?.name ? clinicData.name : "클리닉"}
                     </div>
                     <div className="text-sm text-slate-700 mb-1">
                       [구매 주문번호] {selectedOrder.orderNo || "-"}
                     </div>
                     <div className="text-sm text-slate-700 mb-3">
-                      주문처: XXXXClinic
+                      주문처: {clinicData?.name ? clinicData.name : "클리닉"}
                     </div>
                     <div className="text-xs text-slate-600 mb-1">
-                      [납품주소] 자동 작성
+                      [담당자] {selectedOrder.createdByName || orderManagerName || "성함"}
                     </div>
-                    <div className="text-xs text-slate-600 mb-1">
-                      [전화번호] 자동 작성
-                    </div>
-                    <div className="text-xs text-slate-600 mb-3">
-                      [팩스번호] 자동 작성
-                    </div>
-                    <div className="text-xs text-slate-600 mb-1">
-                      [담당자] 성함
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      [연락처] 000-0000-0000
-                    </div>
+                    
                   </div>
 
                   {/* 공급처 (Supplier) */}
@@ -2166,9 +2218,7 @@ export default function OrderPage() {
                     <div className="text-xs text-slate-600 mb-1">
                       [전화번호] {selectedOrder.supplierDetails?.companyPhone || "자동 작성"}
                     </div>
-                    <div className="text-xs text-slate-600 mb-3">
-                      [팩스번호] 자동 작성
-                    </div>
+                    
                     <div className="text-xs text-slate-600 mb-1">
                       [담당자] {selectedOrder.supplierDetails?.managerName || selectedOrder.managerName || "성함"}
                       {selectedOrder.supplierDetails?.position && ` (${selectedOrder.supplierDetails.position})`}
@@ -2180,11 +2230,7 @@ export default function OrderPage() {
                       [연락처] {selectedOrder.supplierDetails?.managerPhone || "자동 작성"}
                     </div>
                     {/* Debug info - remove after testing */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <div className="text-xs text-red-500 mt-2">
-                        Debug: {JSON.stringify(selectedOrder.supplierDetails)}
-                      </div>
-                    )}
+                    
                   </div>
                 </div>
 
@@ -2200,7 +2246,7 @@ export default function OrderPage() {
                           제품
                         </th>
                         <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                          상품코드
+                          배치번호
                         </th>
                         <th className="border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-700">
                           수량
@@ -2245,7 +2291,7 @@ export default function OrderPage() {
                               0
                             </td>
                             <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600">
-                              -
+                              {item.memo || "-"}
                             </td>
                           </tr>
                         ))

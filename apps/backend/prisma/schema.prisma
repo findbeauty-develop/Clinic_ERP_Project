@@ -53,6 +53,7 @@ model Clinic {
   english_name          String
   category              String
   location              String
+  phone_number          String?
   medical_subjects      String
   license_type          String
   license_number        String
