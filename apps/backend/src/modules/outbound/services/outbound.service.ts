@@ -2,18 +2,23 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
 import { ProductsService } from "../../product/services/products.service";
 import { CreateOutboundDto, BulkOutboundDto } from "../dto/create-outbound.dto";
 import { PackageOutboundDto } from "../../package/dto/package-outbound.dto";
 import { UnifiedOutboundDto, OutboundType } from "../dto/unified-outbound.dto";
+import { OrderReturnService } from "../../order-return/order-return.service";
 
 @Injectable()
 export class OutboundService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly productsService: ProductsService
+    private readonly productsService: ProductsService,
+    @Inject(forwardRef(() => OrderReturnService))
+    private readonly orderReturnService: OrderReturnService
   ) {}
 
   /**
@@ -85,6 +90,9 @@ export class OutboundService {
         product_id: dto.productId,
         tenant_id: tenantId,
       },
+      include: {
+        product: true,
+      },
     });
 
     if (!batch) {
@@ -127,7 +135,29 @@ export class OutboundService {
       {
         timeout: 30000, // 30 seconds timeout for transaction
       }
-    );
+    ).then(async (outbound: any) => {
+      // If defective, create order return after transaction
+      if (dto.isDefective) {
+        try {
+          await this.orderReturnService.createFromOutbound(tenantId, {
+            outboundId: outbound.id,
+            items: [{
+              batchNo: batch.batch_no,
+              productId: dto.productId,
+              productName: batch.product?.name || "알 수 없음",
+              brand: batch.product?.brand || null,
+              returnQuantity: dto.outboundQty,
+              totalQuantity: dto.outboundQty,
+              unitPrice: batch.product?.sale_price || 0,
+            }],
+          });
+        } catch (error: any) {
+          console.error(`Failed to create return for defective product:`, error);
+          // Don't fail the outbound if return creation fails
+        }
+      }
+      return outbound;
+    });
   }
 
   /**
@@ -152,6 +182,9 @@ export class OutboundService {
         product_id: { in: productIds },
         tenant_id: tenantId,
       },
+      include: {
+        product: true,
+      },
     });
 
     // Validation - har bir item uchun
@@ -171,6 +204,7 @@ export class OutboundService {
     return this.prisma.$transaction(
       async (tx: any) => {
         const createdOutbounds = [];
+        const defectiveItems: any[] = [];
         // Product'larni bir marta yangilash uchun map
         const productStockUpdates = new Map<string, number>();
 
@@ -210,6 +244,21 @@ export class OutboundService {
           productStockUpdates.set(item.productId, currentDecrement + item.outboundQty);
 
           createdOutbounds.push(outbound);
+
+          // If defective, create order return (after transaction)
+          if (item.isDefective) {
+            // Store for later processing after transaction
+            defectiveItems.push({
+              outboundId: outbound.id,
+              batchNo: batch!.batch_no,
+              productId: item.productId,
+              productName: batch!.product?.name || "알 수 없음",
+              brand: batch!.product?.brand || null,
+              returnQuantity: item.outboundQty,
+              totalQuantity: item.outboundQty,
+              unitPrice: batch!.product?.sale_price || 0,
+            });
+          }
         }
 
         // Barcha product'larni bir vaqtda yangilash
@@ -230,12 +279,37 @@ export class OutboundService {
           success: true,
           count: createdOutbounds.length,
           items: createdOutbounds,
+          defectiveItems, // Return defective items for processing
         };
       },
       {
         timeout: 30000, // 30 seconds timeout for transaction
       }
-    );
+    ).then(async (result: any) => {
+      // Process defective items after transaction
+      if (result.defectiveItems && result.defectiveItems.length > 0) {
+        for (const defectiveItem of result.defectiveItems) {
+          try {
+            await this.orderReturnService.createFromOutbound(tenantId, {
+              outboundId: defectiveItem.outboundId,
+              items: [{
+                batchNo: defectiveItem.batchNo,
+                productId: defectiveItem.productId,
+                productName: defectiveItem.productName,
+                brand: defectiveItem.brand,
+                returnQuantity: defectiveItem.returnQuantity,
+                totalQuantity: defectiveItem.totalQuantity,
+                unitPrice: defectiveItem.unitPrice,
+              }],
+            });
+          } catch (error: any) {
+            console.error(`Failed to create return for defective product:`, error);
+            // Don't fail the outbound if return creation fails
+          }
+        }
+      }
+      return result;
+    });
   }
 
   /**

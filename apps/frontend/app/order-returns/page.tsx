@@ -44,7 +44,8 @@ export default function OrderReturnsPage() {
   };
 
   const formatReturnType = (returnType: string) => {
-    if (returnType.includes("불량")) return "불량 | 교환";
+    if (returnType.includes("불량") && returnType.includes("교환")) return "불량 | 교환";
+    if (returnType.includes("불량") && returnType.includes("반품")) return "불량 | 반품";
     if (returnType.includes("주문") && returnType.includes("교환")) return "주문 | 교환";
     if (returnType.includes("주문") && returnType.includes("반품")) return "주문 | 반품";
     return returnType;
@@ -52,7 +53,7 @@ export default function OrderReturnsPage() {
 
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         <header>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
             반품 및 교환
@@ -129,11 +130,63 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
   const [memo, setMemo] = useState(returnItem.memo || "");
   const [selectedManager, setSelectedManager] = useState(returnItem.return_manager || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
+  const [returnType, setReturnType] = useState(returnItem.return_type || "주문|반품");
 
-  const isOrderReturn = returnItem.return_type?.includes("주문") && returnItem.return_type?.includes("반품");
+  const isOrderReturn = returnType?.includes("주문");
+  const isDefectiveReturn = returnType?.includes("불량");
+  const showReturnTypeDropdown = isOrderReturn || isDefectiveReturn;
+
+  const handleImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("이미지 크기는 5MB 이하여야 합니다.");
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith("image/")) {
+        alert("이미지 파일만 업로드 가능합니다.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const newImages = [...images];
+        newImages[index] = base64String;
+        setImages(newImages);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    const newImages = [...images];
+    newImages[index] = "";
+    setImages(newImages.filter((img, idx) => idx !== index || img !== ""));
+  };
+
+  const handleReturnTypeChange = async (newType: string) => {
+    const oldType = returnType;
+    setReturnType(newType);
+    
+    try {
+      const { apiPut } = await import("../../lib/api");
+      await apiPut(`${apiUrl}/order-returns/${returnItem.id}/return-type`, {
+        return_type: newType,
+      });
+    } catch (err: any) {
+      console.error("Failed to update return type:", err);
+      // Revert on error
+      setReturnType(oldType);
+      alert("반품 유형 업데이트에 실패했습니다.");
+    }
+  };
 
   const handleProcessReturn = async () => {
-    if (isOrderReturn && !selectedManager) {
+    if (showReturnTypeDropdown && !selectedManager) {
       alert("반품 담당자를 선택해주세요.");
       return;
     }
@@ -145,6 +198,7 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
         memo: memo || null,
         returnManager: selectedManager || null,
         images: images,
+        return_type: returnType,
       });
       alert("반품 처리가 완료되었습니다.");
       onRefresh();
@@ -183,13 +237,40 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
           공급처: {returnItem.supplierName || "알 수 없음"} {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={returnItem.return_type || ""}
-            className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
-            disabled
-          >
-            <option>{formatReturnType(returnItem.return_type || "")}</option>
-          </select>
+          {showReturnTypeDropdown ? (
+            <div className="relative">
+              <select
+                value={returnType}
+                onChange={(e) => handleReturnTypeChange(e.target.value)}
+                className="rounded border border-slate-300 bg-white px-3 py-1 pr-8 text-sm text-slate-700 appearance-none cursor-pointer hover:border-sky-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              >
+                {isOrderReturn ? (
+                  <>
+                    <option value="주문|교환">주문 | 교환</option>
+                    <option value="주문|반품">주문 | 반품</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="불량|교환">불량 | 교환</option>
+                    <option value="불량|반품">불량 | 반품</option>
+                  </>
+                )}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          ) : (
+            <select
+              value={returnItem.return_type || ""}
+              className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              disabled
+            >
+              <option>{formatReturnType(returnItem.return_type || "")}</option>
+            </select>
+          )}
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {formatDateTime(returnItem.inbound_date || returnItem.created_at)}
           </span>
@@ -197,15 +278,15 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
       </div>
 
       {/* Product Details Row: 배치번호, 입고, 미입고수량, 단가 */}
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+      <div className="mb-3 flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
         {returnItem.batch_no && (
           <div className="flex items-center gap-1">
-            <span className="font-medium">배치번호</span>
+            <span className="font-medium">배치번호:</span>
             <span>{returnItem.batch_no}</span>
           </div>
         )}
         <div className="flex items-center gap-1">
-          <span className="font-medium">입고</span>
+          <span className="font-medium">입고:</span>
           <span>{formatDate(returnItem.inbound_date || returnItem.created_at)}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -220,7 +301,7 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
           )}
         </div>
         <div className="flex items-center gap-1">
-          <span className="font-medium">단가</span>
+          <span className="font-medium">단가:</span>
           <span className="font-semibold text-blue-600 underline dark:text-blue-400">
             {returnItem.unit_price?.toLocaleString() || 0}원
           </span>
@@ -242,30 +323,56 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
             type="text"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            placeholder={isOrderReturn ? "출고의 메모" : "메모"}
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+            placeholder={showReturnTypeDropdown ? "출고의 메모" : "메모"}
+            className="w-full h-12 rounded-lg border-2 border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 hover:border-sky-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
           />
         </div>
 
         {/* Camera Buttons */}
         <div className="flex-shrink-0 flex gap-2">
-          {[1, 2, 3].map((idx) => (
-            <button
-              key={idx}
-              className="flex h-12 w-12 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-xl hover:border-sky-400 dark:border-slate-600 dark:bg-slate-700"
-              onClick={() => {
-                // TODO: Implement image upload
-                alert("이미지 업로드 기능은 곧 추가될 예정입니다.");
-              }}
-            >
-              📷
-            </button>
+          {[0, 1, 2].map((idx) => (
+            <div key={idx} className="relative">
+              {images[idx] ? (
+                <div className="relative h-12 w-12">
+                  <img
+                    src={images[idx]}
+                    alt={`Upload ${idx + 1}`}
+                    className="h-full w-full rounded-lg object-cover border-2 border-slate-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-xs text-white hover:bg-rose-600"
+                  >
+                    ×
+                  </button>
+                  <label className="absolute inset-0 cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleImageUpload(idx, e)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-xl hover:border-sky-400 dark:border-slate-600 dark:bg-slate-700">
+                  📷
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(idx, e)}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Return Manager & Process Button (only for 주문|반품) */}
-      {isOrderReturn && (
+      {/* Return Manager & Process Button (only for 주문 or 불량 returns) */}
+      {showReturnTypeDropdown && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -289,7 +396,7 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
             disabled={processing}
             className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-600"
           >
-            {processing ? "처리 중..." : "반품하기"}
+            {processing ? "처리 중..." : (returnType === "주문|교환" || returnType === "불량|교환") ? "교환하기" : "반품하기"}
           </button>
         </div>
       )}

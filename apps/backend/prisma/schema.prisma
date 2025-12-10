@@ -338,16 +338,17 @@ model OrderDraft {
 model OrderReturn {
   id              String   @id @default(uuid())
   tenant_id       String
-  order_id        String
-  order_no        String
+  order_id        String?  // Optional for defective products from outbound
+  order_no        String?  // Optional for defective products from outbound
+  outbound_id     String?  // For defective products from outbound
   batch_no        String
   product_id      String
   product_name    String
   brand           String?
   return_quantity Int      // 미입고수량 (excess/defective qty)
-  total_quantity  Int      // confirmedQuantity from supplier
+  total_quantity  Int      // confirmedQuantity from supplier (for order returns) or outbound qty (for defective)
   unit_price      Int
-  return_type     String   // "주문|반품" or "주문|교환"
+  return_type     String   // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
   status          String   @default("pending") // "pending", "processing", "completed"
   memo            String?
   images          String[] @default([])
@@ -359,6 +360,7 @@ model OrderReturn {
 
   @@index([tenant_id])
   @@index([order_id])
+  @@index([outbound_id])
   @@index([status])
   @@index([tenant_id, status])
   @@index([return_type])

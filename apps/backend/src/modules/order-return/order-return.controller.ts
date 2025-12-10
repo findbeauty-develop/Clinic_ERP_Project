@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -34,6 +35,12 @@ export class OrderReturnController {
     return this.service.createFromInbound(tenantId, dto);
   }
 
+  @Post("create-from-outbound")
+  @ApiOperation({ summary: "Create returns from outbound defective products" })
+  async createFromOutbound(@Tenant() tenantId: string, @Body() dto: any) {
+    return this.service.createFromOutbound(tenantId, dto);
+  }
+
   @Post(":id/process")
   @ApiOperation({ summary: "Process a return" })
   async processReturn(
@@ -42,6 +49,16 @@ export class OrderReturnController {
     @Body() dto: any
   ) {
     return this.service.processReturn(tenantId, id, dto);
+  }
+
+  @Put(":id/return-type")
+  @ApiOperation({ summary: "Update return type" })
+  async updateReturnType(
+    @Tenant() tenantId: string,
+    @Param("id") id: string,
+    @Body() dto: { return_type: string }
+  ) {
+    return this.service.updateReturnType(tenantId, id, dto.return_type);
   }
 }
 
