@@ -474,14 +474,28 @@ export class OrderReturnService {
 
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
-          items.map((item: any) =>
-            (this.prisma as any).orderReturn.create({
+          items.map((item: any) => {
+            // Get batch_no from multiple sources as fallback
+            const batchNo = item.batchNo || outbound.batch_no || outbound.batch?.batch_no;
+            
+            // Debug log
+            if (!batchNo) {
+              console.log('⚠️ Batch No Debug:', {
+                itemBatchNo: item.batchNo,
+                outboundBatchNo: outbound.batch_no,
+                outboundBatchRelation: outbound.batch?.batch_no,
+                outboundId: outboundId,
+                item: JSON.stringify(item)
+              });
+            }
+            
+            return (this.prisma as any).orderReturn.create({
               data: {
                 tenant_id: tenantId,
                 order_id: null, // No order for defective products
                 order_no: null, // No order number for defective products
                 outbound_id: outboundId,
-                batch_no: item.batchNo || outbound.batch?.batch_no,
+                batch_no: batchNo,
                 product_id: item.productId || outbound.product_id,
                 product_name: item.productName || outbound.product?.name || "알 수 없음",
                 brand: item.brand || outbound.product?.brand || null,
@@ -493,8 +507,8 @@ export class OrderReturnService {
                 supplier_id: supplierId,
                 return_manager: returnManager,
               },
-            })
-          )
+            });
+          })
         );
       });
 

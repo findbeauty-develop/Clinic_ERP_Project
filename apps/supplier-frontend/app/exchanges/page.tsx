@@ -46,6 +46,9 @@ export default function ExchangesPage() {
   const [total, setTotal] = useState(0);
   const [limit] = useState(10);
 
+  // Clinic backend URL for images
+  const clinicBackendUrl = process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "http://localhost:3000";
+
   // Fetch return requests
   const fetchRequests = async (page: number = currentPage) => {
     try {
@@ -198,24 +201,48 @@ export default function ExchangesPage() {
     return items.reduce((sum, item) => sum + item.totalPrice, 0);
   };
 
+  const renderStatusBadge = (status: string, items?: ReturnItem[]) => {
+    const label =
+      status === "PENDING"
+        ? "요청 확인 대기"
+        : status === "PROCESSING"
+        ? "요청 진행"
+        : status === "COMPLETED"
+        ? items?.[0]?.returnType?.includes("교환") ? "교환 완료" : "반품 완료"
+        : "요청 거절";
+    const color =
+      status === "PENDING"
+        ? "bg-amber-100 text-amber-700"
+        : status === "PROCESSING"
+        ? "bg-blue-100 text-blue-700"
+        : status === "COMPLETED"
+        ? "bg-emerald-100 text-emerald-700"
+        : "bg-red-100 text-red-700";
+    return (
+      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${color}`}>
+        {label}
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
-      <div className="bg-white p-3 sm:p-4 shadow-sm">
-        <h1 className="text-lg sm:text-2xl font-bold text-slate-900">반품 및 교환</h1>
-        <p className="text-xs sm:text-sm text-slate-600 mt-1">
+      <div className="bg-white p-4 sm:p-6 shadow-sm">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">반품 및 교환</h1>
+        <p className="text-sm text-slate-600 mt-1">
           클리닉에서 요청한 반품 및 교환을 처리하세요
         </p>
       </div>
 
       {/* Tabs */}
       <div className="bg-white border-b border-slate-200">
-        <div className="flex overflow-x-auto">
+        <div className="flex">
           <button
             onClick={() => setActiveTab("pending")}
-            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
+            className={`px-6 py-3 text-sm font-semibold transition-colors ${
               activeTab === "pending"
-                ? "text-blue-600 border-b-2 border-blue-600"
+                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -223,9 +250,9 @@ export default function ExchangesPage() {
           </button>
           <button
             onClick={() => setActiveTab("processing")}
-            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
+            className={`px-6 py-3 text-sm font-semibold transition-colors ${
               activeTab === "processing"
-                ? "text-blue-600 border-b-2 border-blue-600"
+                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -233,9 +260,9 @@ export default function ExchangesPage() {
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-base font-medium transition-colors whitespace-nowrap ${
+            className={`px-6 py-3 text-sm font-semibold transition-colors ${
               activeTab === "history"
-                ? "text-blue-600 border-b-2 border-blue-600"
+                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -266,235 +293,156 @@ export default function ExchangesPage() {
           </div>
         )}
 
-        {/* Request Cards */}
+        {/* Request Cards - Each item gets its own card */}
         {!loading && requests.length > 0 && (
           <div className="space-y-4">
-            {requests.map((request) => {
-              const totalAmount = calculateTotal(request.items);
-              return (
+            {requests.flatMap((request) => {
+              const date = new Date(request.createdAt);
+              const dateStr = `${date.getFullYear()}-${String(
+                date.getMonth() + 1
+              ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(
+                date.getHours()
+              ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+              
+              return request.items.map((item, itemIndex) => (
                 <div
-                  key={request.id}
-                  className="bg-white rounded-lg p-3 sm:p-6 shadow-sm border border-slate-200"
+                  key={`${request.id}-${itemIndex}`}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
-                  {/* Header */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start mb-3 sm:mb-4 gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-500 mb-1">
-                        반품번호: {request.returnNo}
-                      </p>
-                      <p className="text-xs sm:text-sm text-slate-600 mb-1">
-                        {formatDate(request.createdAt)}
-                      </p>
-                      <p className="text-sm sm:text-lg font-semibold text-slate-900 break-words">
-                        {request.clinicName} - {request.clinicManagerName}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end gap-2">
-                      {request.status === "PENDING" && (
-                        <span className="px-2 sm:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                          요청 확인 대기
-                        </span>
-                      )}
-                      {request.status === "PROCESSING" && (
-                        <span className="px-2 sm:px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                          요청 진행
-                        </span>
-                      )}
-                      {request.status === "COMPLETED" && (
-                        <span className="px-2 sm:px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                          {request.items[0]?.returnType?.includes("교환") ? "교환 완료" : "반품 완료"}
-                        </span>
-                      )}
-                      {request.status === "REJECTED" && (
-                        <span className="px-2 sm:px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                          요청 거절
-                        </span>
-                      )}
+                  {/* Top: Date and Return Number */}
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm text-slate-500">{dateStr}</div>
+                    <div className="text-xs text-slate-500">
+                      반품번호 {request.returnNo}
                     </div>
                   </div>
 
-                  {/* Product List */}
-                  <div className="mb-3 sm:mb-4 border-t border-slate-200 pt-3 sm:pt-4">
-                    {/* Desktop Table */}
-                    <div className="hidden sm:block overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="text-left text-xs sm:text-sm text-slate-700 border-b border-slate-200">
-                            <th className="pb-2">제품</th>
-                            <th className="pb-2">유형</th>
-                            <th className="pb-2 text-right">수량</th>
-                            <th className="pb-2 text-right">단가</th>
-                            <th className="pb-2 text-right">합계</th>
-                            {request.status === "PENDING" && activeTab === "pending" && (
-                              <th className="pb-2 text-center">작업</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {request.items.map((item, index) => (
-                            <tr key={index} className="border-b border-slate-100">
-                              <td className="py-2">
-                                <div>
-                                  <span className="font-medium text-xs sm:text-sm text-slate-900">
-                                    {item.productName}
-                                  </span>
-                                  {item.productBrand && (
-                                    <span className="text-xs text-slate-500 ml-2">
-                                      ({item.productBrand})
-                                    </span>
-                                  )}
-                                </div>
-                                {item.memo && (
-                                  <p className="text-xs text-slate-500 mt-1">{item.memo}</p>
-                                )}
-                                {item.images && item.images.length > 0 && (
-                                  <div className="flex gap-2 mt-2">
-                                    {item.images.slice(0, 3).map((img, imgIdx) => (
-                                      <img
-                                        key={imgIdx}
-                                        src={img.startsWith("http") ? img : `http://localhost:3002${img}`}
-                                        alt={`Image ${imgIdx + 1}`}
-                                        className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded border border-slate-200"
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-2 text-xs sm:text-sm text-slate-700">
-                                {formatReturnType(item.returnType)}
-                              </td>
-                              <td className="py-2 text-right text-xs sm:text-sm text-slate-700">{item.qty}개</td>
-                              <td className="py-2 text-right text-xs sm:text-sm text-slate-700">
-                                {formatCurrency(item.unitPrice)}
-                              </td>
-                              <td className="py-2 text-right text-xs sm:text-sm font-medium text-slate-900">
-                                {formatCurrency(item.totalPrice)}
-                              </td>
-                              {request.status === "PENDING" && activeTab === "pending" && (
-                                <td className="py-2">
-                                  <div className="flex gap-1 justify-center">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedRequest(request);
-                                        setShowRejectModal(true);
-                                      }}
-                                      className="px-2 sm:px-3 py-1 text-xs bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
-                                    >
-                                      거절
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setSelectedRequest(request);
-                                        setShowConfirmModal(true);
-                                      }}
-                                      className="px-2 sm:px-3 py-1 text-xs bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors"
-                                    >
-                                      확인
-                                    </button>
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  {/* Clinic Name and Status */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-lg font-semibold text-slate-900">
+                      {request.clinicName}{" "}
+                      <span className="text-sm text-slate-500">
+                        {request.clinicManagerName}님
+                      </span>
                     </div>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-3">
-                      {request.items.map((item, index) => (
-                        <div key={index} className="border border-slate-200 rounded-lg p-3">
-                          <div className="mb-2">
-                            <span className="font-medium text-sm text-slate-900">
-                              {item.productName}
-                            </span>
-                            {item.productBrand && (
-                              <span className="text-xs text-slate-500 ml-1">
-                                ({item.productBrand})
-                              </span>
-                            )}
-                          </div>
-                          {item.memo && (
-                            <p className="text-xs text-slate-500 mb-2">{item.memo}</p>
-                          )}
-                          {item.images && item.images.length > 0 && (
-                            <div className="flex gap-2 mb-2">
-                              {item.images.slice(0, 3).map((img, imgIdx) => (
-                                <img
-                                  key={imgIdx}
-                                  src={img.startsWith("http") ? img : `http://localhost:3002${img}`}
-                                  alt={`Image ${imgIdx + 1}`}
-                                  className="w-12 h-12 object-cover rounded border border-slate-200"
-                                />
-                              ))}
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <span className="text-slate-500">유형:</span>
-                              <span className="ml-1 text-slate-700">{formatReturnType(item.returnType)}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-slate-500">수량:</span>
-                              <span className="ml-1 text-slate-700">{item.qty}개</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500">단가:</span>
-                              <span className="ml-1 text-slate-700">{formatCurrency(item.unitPrice)}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-slate-500">합계:</span>
-                              <span className="ml-1 font-medium text-slate-900">{formatCurrency(item.totalPrice)}</span>
-                            </div>
-                          </div>
-                          {request.status === "PENDING" && activeTab === "pending" && (
-                            <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200">
-                              <button
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setShowRejectModal(true);
-                                }}
-                                className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
-                              >
-                                요청 거절
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setShowConfirmModal(true);
-                                }}
-                                className="flex-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors"
-                              >
-                                요청 확인
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    {renderStatusBadge(request.status, [item])}
                   </div>
 
-                  {/* Total and Actions */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 sm:pt-4 border-t border-slate-200 gap-3">
-                    <p className="text-sm sm:text-lg font-bold text-slate-900">
-                      총액: {formatCurrency(totalAmount)} 원
-                    </p>
-                    {request.status === "PROCESSING" && activeTab === "processing" && (
-                      <div className="flex gap-2 w-full sm:w-auto">
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(request);
-                            setShowCompleteModal(true);
-                          }}
-                          className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 transition-colors"
-                        >
-                          제품 받았음
-                        </button>
+                  {/* Order Number (if available) */}
+                  {item.orderNo && (
+                    <div className="mb-2 text-xs text-slate-500">
+                      주문번호: {item.orderNo}
+                    </div>
+                  )}
+
+                  {/* Batch Number (if available) */}
+                  {item.batchNo && (
+                    <div className="mb-2 text-xs text-slate-500">
+                      배치번호: {item.batchNo}
+                    </div>
+                  )}
+
+                  {/* Product Details */}
+                  <div className={`grid gap-2 py-2 text-sm text-slate-700 items-center ${
+                    request.status === "REJECTED" ? "grid-cols-4" : "grid-cols-5"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{item.productName}</span>
+                    </div>
+                    <div className="text-slate-500">{item.productBrand || "-"}</div>
+                    <div className="text-slate-500">{item.qty}개</div>
+                    {request.status === "REJECTED" ? (
+                      <div className="text-right text-slate-400 text-xs">
+                        거절됨
+                      </div>
+                    ) : (
+                      <div className="col-span-2 text-right font-semibold">
+                        {formatCurrency(item.totalPrice)}원
                       </div>
                     )}
                   </div>
+
+                  {/* Return Type */}
+                  {item.returnType && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      유형: {formatReturnType(item.returnType)}
+                    </div>
+                  )}
+
+                  {/* Memo */}
+                  {item.memo && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      메모: {item.memo}
+                    </div>
+                  )}
+
+                  {/* Images */}
+                  {item.images && item.images.length > 0 && (
+                    <div className="flex gap-2 mt-3">
+                      {item.images.slice(0, 3).map((img, imgIdx) => (
+                        <img
+                          key={imgIdx}
+                          src={img.startsWith("http") ? img : `${clinicBackendUrl}${img}`}
+                          alt={`Image ${imgIdx + 1}`}
+                          className="w-16 h-16 object-cover rounded border border-slate-200"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  {request.status === "PENDING" && activeTab === "pending" && (
+                    <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 mt-4">
+                      <button
+                        onClick={() => {
+                          // Create a temporary request with only this item
+                          const singleItemRequest = {
+                            ...request,
+                            items: [item]
+                          };
+                          setSelectedRequest(singleItemRequest);
+                          setShowRejectModal(true);
+                        }}
+                        className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                      >
+                        요청 거절
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Create a temporary request with only this item
+                          const singleItemRequest = {
+                            ...request,
+                            items: [item]
+                          };
+                          setSelectedRequest(singleItemRequest);
+                          setShowConfirmModal(true);
+                        }}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        요청 확인
+                      </button>
+                    </div>
+                  )}
+                  {request.status === "PROCESSING" && activeTab === "processing" && (
+                    <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 mt-4">
+                      <button
+                        onClick={() => {
+                          // Create a temporary request with only this item
+                          const singleItemRequest = {
+                            ...request,
+                            items: [item]
+                          };
+                          setSelectedRequest(singleItemRequest);
+                          setShowCompleteModal(true);
+                        }}
+                        className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                      >
+                        제품 받았음
+                      </button>
+                    </div>
+                  )}
                 </div>
-              );
+              ));
             })}
           </div>
         )}
