@@ -233,8 +233,15 @@ function ReturnCard({ returnItem, members, onRefresh, apiUrl, formatReturnType }
     <div className="rounded-lg border border-slate-200 bg-slate-100 p-4 dark:border-slate-700 dark:bg-slate-800">
       {/* Header: Supplier | Return Type | Date */}
       <div className="mb-4 flex items-center justify-between border-b border-slate-300 pb-3 dark:border-slate-600">
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-          공급처: {returnItem.supplierName || "알 수 없음"} {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
+        <div className="flex flex-col gap-1">
+          <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            공급처: {returnItem.supplierName || "알 수 없음"} {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
+          </div>
+          {returnItem.return_no && (
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              반품번호: {returnItem.return_no}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {showReturnTypeDropdown ? (

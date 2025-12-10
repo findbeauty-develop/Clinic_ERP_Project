@@ -8,7 +8,7 @@ export class ReturnService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * SupplierManager uchun return notification'larni olish
+   * SupplierManager uchun return request'larni olish
    */
   async getReturnNotifications(
     supplierManagerId: string,
@@ -23,73 +23,106 @@ export class ReturnService {
       throw new BadRequestException("Supplier Manager ID is required");
     }
 
+    // Get supplier tenant_id from manager
+    const manager = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).supplierManager.findFirst({
+        where: { id: supplierManagerId },
+        select: { supplier_tenant_id: true },
+      });
+    });
+
+    if (!manager) {
+      throw new BadRequestException("Supplier Manager not found");
+    }
+
     const page = filters?.page || 1;
     const limit = filters?.limit || 20;
     const skip = (page - 1) * limit;
 
     const where: any = {
-      supplier_manager_id: supplierManagerId,
+      supplier_tenant_id: manager.supplier_tenant_id,
     };
 
-    // Status filter
+    // Status filter - map old statuses to new ones
     if (filters?.status && filters.status !== "ALL") {
-      where.status = filters.status;
-    }
-
-    // Read filter
-    if (filters?.isRead !== null && filters?.isRead !== undefined) {
-      where.is_read = filters.isRead;
+      const statusMap: Record<string, string> = {
+        PENDING: "pending",
+        ACCEPTED: "processing",
+        REJECTED: "rejected",
+      };
+      where.status = statusMap[filters.status] || filters.status.toLowerCase();
     }
 
     try {
       // Total count
-      const total = await (this.prisma as any).supplierReturnNotification.count({
-        where,
+      const total = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.count({
+          where,
+        });
       });
 
-      // Unread count
-      const unreadCount = await (this.prisma as any).supplierReturnNotification.count({
-        where: {
-          supplier_manager_id: supplierManagerId,
-          is_read: false,
-          status: "PENDING",
-        },
+      // Unread count (pending requests)
+      const unreadCount = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.count({
+          where: {
+            ...where,
+            status: "pending",
+          },
+        });
       });
 
-      // Notifications
-      const notifications = await (this.prisma as any).supplierReturnNotification.findMany({
-        where,
-        orderBy: {
-          created_at: "desc",
-        },
-        skip,
-        take: limit,
+      // Return requests
+      const returnRequests = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.findMany({
+          where,
+          include: {
+            items: true,
+          },
+          orderBy: {
+            created_at: "desc",
+          },
+          skip,
+          take: limit,
+        });
       });
 
       // Format response
-      const formattedNotifications = notifications.map((notification: any) => ({
-        id: notification.id,
-        returnId: notification.return_id, // Include return_id for grouping
-        clinicName: notification.clinic_name,
-        returnManagerName: notification.return_manager_name,
-        returnDate: notification.return_date,
-        totalRefund: notification.total_refund,
-        items: [
-          {
-            productCode: notification.product_code || "",
-            productName: notification.product_name,
-            productBrand: notification.product_brand,
-            qty: notification.return_qty,
-            unitPrice: notification.refund_amount_per_item,
-            totalPrice: notification.total_refund,
-          },
-        ],
-        status: notification.status,
-        isRead: notification.is_read,
-        batchNo: notification.batch_no,
-        createdAt: notification.created_at,
-        acceptedAt: notification.accepted_at,
-      }));
+      const formattedNotifications = returnRequests.map((request: any) => {
+        const totalRefund = request.items?.reduce(
+          (sum: number, item: any) => sum + (item.total_price || 0),
+          0
+        ) || 0;
+
+        return {
+          id: request.id,
+          returnId: request.id,
+          returnNo: request.return_no,
+          clinicName: request.clinic_name,
+          returnManagerName: request.clinic_manager_name,
+          returnDate: request.created_at,
+          totalRefund: totalRefund,
+          items: request.items?.map((item: any) => ({
+            productCode: item.batch_no || item.order_no || "",
+            productName: item.product_name,
+            productBrand: item.brand || "",
+            qty: item.quantity,
+            unitPrice: item.total_price / item.quantity || 0,
+            totalPrice: item.total_price,
+            returnType: item.return_type,
+            memo: item.memo,
+            images: item.images || [],
+            inboundDate: item.inbound_date,
+            orderNo: item.order_no,
+            batchNo: item.batch_no,
+          })) || [],
+          status: request.status.toUpperCase(),
+          isRead: request.status !== "pending", // Consider non-pending as read
+          createdAt: request.created_at,
+          confirmedAt: request.confirmed_at,
+          completedAt: request.completed_at,
+          rejectedAt: request.rejected_at,
+        };
+      });
 
       return {
         notifications: formattedNotifications,
@@ -111,30 +144,44 @@ export class ReturnService {
   }
 
   /**
-   * Notification'ni o'qilgan deb belgilash
+   * Notification'ni o'qilgan deb belgilash (status-based, no-op for now)
    */
   async markAsRead(notificationId: string, supplierManagerId: string) {
     if (!notificationId || !supplierManagerId) {
       throw new BadRequestException("Notification ID and Supplier Manager ID are required");
     }
 
+    // For now, just verify the request exists and belongs to the supplier
     try {
-      const notification = await (this.prisma as any).supplierReturnNotification.update({
-        where: {
-          id: notificationId,
-          supplier_manager_id: supplierManagerId, // Ensure manager owns this notification
-        },
-        data: {
-          is_read: true,
-          updated_at: new Date(),
-        },
+      const manager = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findFirst({
+          where: { id: supplierManagerId },
+          select: { supplier_tenant_id: true },
+        });
       });
+
+      if (!manager) {
+        throw new BadRequestException("Supplier Manager not found");
+      }
+
+      const request = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.findFirst({
+          where: {
+            id: notificationId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+          },
+        });
+      });
+
+      if (!request) {
+        throw new BadRequestException("Return request not found");
+      }
 
       return {
         success: true,
         notification: {
-          id: notification.id,
-          isRead: notification.is_read,
+          id: request.id,
+          isRead: request.status !== "pending",
         },
       };
     } catch (error: any) {
@@ -149,7 +196,7 @@ export class ReturnService {
   }
 
   /**
-   * Barcha notification'larni o'qilgan deb belgilash
+   * Barcha notification'larni o'qilgan deb belgilash (status-based, no-op for now)
    */
   async markAllAsRead(supplierManagerId: string) {
     if (!supplierManagerId) {
@@ -157,20 +204,30 @@ export class ReturnService {
     }
 
     try {
-      const result = await (this.prisma as any).supplierReturnNotification.updateMany({
-        where: {
-          supplier_manager_id: supplierManagerId,
-          is_read: false,
-        },
-        data: {
-          is_read: true,
-          updated_at: new Date(),
-        },
+      const manager = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findFirst({
+          where: { id: supplierManagerId },
+          select: { supplier_tenant_id: true },
+        });
+      });
+
+      if (!manager) {
+        throw new BadRequestException("Supplier Manager not found");
+      }
+
+      // Count pending requests (considered unread)
+      const unreadCount = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.count({
+          where: {
+            supplier_tenant_id: manager.supplier_tenant_id,
+            status: "pending",
+          },
+        });
       });
 
       return {
         success: true,
-        updatedCount: result.count,
+        updatedCount: unreadCount,
       };
     } catch (error: any) {
       this.logger.error(
@@ -184,7 +241,7 @@ export class ReturnService {
   }
 
   /**
-   * Return'ni qabul qilish (반납 접수)
+   * Return'ni qabul qilish (요청 확인) - status: pending → processing
    */
   async acceptReturn(notificationId: string, supplierManagerId: string) {
     if (!notificationId || !supplierManagerId) {
@@ -192,26 +249,39 @@ export class ReturnService {
     }
 
     try {
-      const notification = await (this.prisma as any).supplierReturnNotification.update({
-        where: {
-          id: notificationId,
-          supplier_manager_id: supplierManagerId,
-          status: "PENDING", // Only accept pending returns
-        },
-        data: {
-          status: "ACCEPTED",
-          is_read: true,
-          accepted_at: new Date(),
-          updated_at: new Date(),
-        },
+      const manager = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findFirst({
+          where: { id: supplierManagerId },
+          select: { supplier_tenant_id: true, id: true },
+        });
+      });
+
+      if (!manager) {
+        throw new BadRequestException("Supplier Manager not found");
+      }
+
+      const returnRequest = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.update({
+          where: {
+            id: notificationId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+            status: "pending", // Only accept pending returns
+          },
+          data: {
+            status: "processing",
+            supplier_manager_id: manager.id, // Assign to this manager
+            confirmed_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
       });
 
       return {
         success: true,
         notification: {
-          id: notification.id,
-          status: notification.status,
-          acceptedAt: notification.accepted_at,
+          id: returnRequest.id,
+          status: returnRequest.status.toUpperCase(),
+          confirmedAt: returnRequest.confirmed_at,
         },
       };
     } catch (error: any) {
@@ -226,7 +296,7 @@ export class ReturnService {
   }
 
   /**
-   * Return'ni rad etish (optional)
+   * Return'ni rad etish (요청 거절)
    */
   async rejectReturn(notificationId: string, supplierManagerId: string, reason?: string) {
     if (!notificationId || !supplierManagerId) {
@@ -234,26 +304,40 @@ export class ReturnService {
     }
 
     try {
-      const notification = await (this.prisma as any).supplierReturnNotification.update({
-        where: {
-          id: notificationId,
-          supplier_manager_id: supplierManagerId,
-          status: "PENDING",
-        },
-        data: {
-          status: "REJECTED",
-          is_read: true,
-          rejected_at: new Date(),
-          updated_at: new Date(),
-        },
+      const manager = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findFirst({
+          where: { id: supplierManagerId },
+          select: { supplier_tenant_id: true, id: true },
+        });
+      });
+
+      if (!manager) {
+        throw new BadRequestException("Supplier Manager not found");
+      }
+
+      const returnRequest = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.update({
+          where: {
+            id: notificationId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+            status: "pending",
+          },
+          data: {
+            status: "rejected",
+            supplier_manager_id: manager.id,
+            rejected_reason: reason || null,
+            rejected_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
       });
 
       return {
         success: true,
         notification: {
-          id: notification.id,
-          status: notification.status,
-          rejectedAt: notification.rejected_at,
+          id: returnRequest.id,
+          status: returnRequest.status.toUpperCase(),
+          rejectedAt: returnRequest.rejected_at,
         },
       };
     } catch (error: any) {
@@ -265,6 +349,153 @@ export class ReturnService {
         `Failed to reject return: ${error.message}`
       );
     }
+  }
+
+  /**
+   * Clinic → Supplier return request yaratish
+   * Groups multiple items from same clinic into one request if they arrive within 5 minutes
+   */
+  async createReturnRequest(dto: any) {
+    const {
+      returnNo,
+      supplierTenantId,
+      clinicTenantId,
+      clinicName,
+      clinicManagerName,
+      items,
+      createdAt,
+    } = dto;
+
+    if (!returnNo || !supplierTenantId || !clinicTenantId || !items || items.length === 0) {
+      throw new BadRequestException("returnNo, supplierTenantId, clinicTenantId va items talab qilinadi");
+    }
+
+    // For grouping: Check if there's a recent return request from the same clinic to the same supplier
+    // within 5 minutes that hasn't been confirmed yet
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    
+    try {
+      // Find existing pending request from same clinic to same supplier within time window
+      const existingRequest = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.findFirst({
+          where: {
+            supplier_tenant_id: supplierTenantId,
+            clinic_tenant_id: clinicTenantId,
+            status: "pending",
+            created_at: {
+              gte: fiveMinutesAgo,
+            },
+          },
+          include: {
+            items: true,
+          },
+          orderBy: {
+            created_at: "desc",
+          },
+        });
+      });
+
+      if (existingRequest) {
+        // Add items to existing request
+        const newItems = items.map((item: any) => ({
+          product_name: item.productName,
+          brand: item.brand || null,
+          quantity: item.quantity,
+          return_type: item.returnType,
+          memo: item.memo || null,
+          images: item.images || [],
+          inbound_date: item.inboundDate,
+          total_price: item.totalPrice,
+          order_no: item.orderNo || null,
+          batch_no: item.batchNo || null,
+        }));
+
+        const updatedRequest = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnRequest.update({
+            where: { id: existingRequest.id },
+            data: {
+              items: {
+                create: newItems,
+              },
+            },
+            include: {
+              items: true,
+            },
+          });
+        });
+
+        return this.formatReturnRequest(updatedRequest);
+      } else {
+        // Create new return request
+        const newItems = items.map((item: any) => ({
+          product_name: item.productName,
+          brand: item.brand || null,
+          quantity: item.quantity,
+          return_type: item.returnType,
+          memo: item.memo || null,
+          images: item.images || [],
+          inbound_date: item.inboundDate,
+          total_price: item.totalPrice,
+          order_no: item.orderNo || null,
+          batch_no: item.batchNo || null,
+        }));
+
+        const returnRequest = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnRequest.create({
+            data: {
+              return_no: returnNo,
+              supplier_tenant_id: supplierTenantId,
+              clinic_tenant_id: clinicTenantId,
+              clinic_name: clinicName,
+              clinic_manager_name: clinicManagerName,
+              supplier_manager_id: null, // Will be assigned when supplier manager views it
+              memo: null,
+              status: "pending",
+              items: {
+                create: newItems,
+              },
+            },
+            include: {
+              items: true,
+            },
+          });
+        });
+
+        return this.formatReturnRequest(returnRequest);
+      }
+    } catch (error: any) {
+      this.logger.error(`Return request create failed: ${error.message}`, error.stack);
+      throw new BadRequestException(`Return request create failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Format return request for response
+   */
+  private formatReturnRequest(request: any) {
+    return {
+      id: request.id,
+      returnNo: request.return_no,
+      clinicTenantId: request.clinic_tenant_id,
+      clinicName: request.clinic_name,
+      clinicManagerName: request.clinic_manager_name,
+      status: request.status,
+      items: request.items?.map((item: any) => ({
+        id: item.id,
+        productName: item.product_name,
+        brand: item.brand,
+        quantity: item.quantity,
+        returnType: item.return_type,
+        memo: item.memo,
+        images: item.images,
+        inboundDate: item.inbound_date,
+        totalPrice: item.total_price,
+        orderNo: item.order_no,
+        batchNo: item.batch_no,
+      })) || [],
+      createdAt: request.created_at,
+      updatedAt: request.updated_at,
+    };
   }
 }
 

@@ -341,6 +341,7 @@ model OrderReturn {
   order_id        String?  // Optional for defective products from outbound
   order_no        String?  // Optional for defective products from outbound
   outbound_id     String?  // For defective products from outbound
+  return_no       String?  // 반품번호: B + YYYYMMDD + 6 random digits
   batch_no        String
   product_id      String
   product_name    String
@@ -349,7 +350,7 @@ model OrderReturn {
   total_quantity  Int      // confirmedQuantity from supplier (for order returns) or outbound qty (for defective)
   unit_price      Int
   return_type     String   // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
-  status          String   @default("pending") // "pending", "processing", "completed"
+  status          String   @default("pending") // "pending", "processing", "completed", "rejected"
   memo            String?
   images          String[] @default([])
   return_manager  String?  // 반품 담당자
@@ -361,6 +362,7 @@ model OrderReturn {
   @@index([tenant_id])
   @@index([order_id])
   @@index([outbound_id])
+  @@index([return_no])
   @@index([status])
   @@index([tenant_id, status])
   @@index([return_type])

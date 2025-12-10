@@ -1,8 +1,11 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
+import { saveBase64Images } from "../../common/utils/upload.utils";
 
 @Injectable()
 export class OrderReturnService {
+  private readonly logger = new Logger(OrderReturnService.name);
+  
   constructor(private readonly prisma: PrismaService) {}
 
   async getReturns(tenantId: string, status?: string) {
@@ -160,14 +163,54 @@ export class OrderReturnService {
     }
   }
 
+  /**
+   * Generate return number: B + YYYYMMDD + 6 random digits
+   */
+  private generateReturnNumber(): string {
+    const date = new Date();
+    const year = String(date.getFullYear()); // YYYY
+    const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
+    const day = String(date.getDate()).padStart(2, "0"); // DD
+    const dateStr = `${year}${month}${day}`; // YYYYMMDD
+    
+    // Random 6 digits
+    const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    return `B${dateStr}${randomDigits}`;
+  }
+
   async processReturn(tenantId: string, id: string, dto: any) {
-    // Will implement: update status, add manager, memo, images
-    return this.prisma.executeWithRetry(async () => {
+    // Get return item first to check if it already has return_no
+    const returnItem = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).orderReturn.findFirst({
+        where: { id, tenant_id: tenantId },
+        include: {
+          product: true,
+        },
+      });
+    });
+
+    if (!returnItem) {
+      throw new BadRequestException("Return not found");
+    }
+
+    // Save images if provided
+    let imageUrls: string[] = [];
+    if (dto.images && dto.images.length > 0) {
+      imageUrls = await saveBase64Images("returns", dto.images, tenantId);
+    }
+
+    // Generate return number if not exists
+    const returnNo = returnItem.return_no || this.generateReturnNumber();
+
+    // Update return with all data
+    const updatedReturn = await this.prisma.executeWithRetry(async () => {
       const updateData: any = {
-        status: "completed",
+        return_no: returnNo,
         return_manager: dto.returnManager || null,
         memo: dto.memo || null,
-        images: dto.images || [],
+        images: imageUrls.length > 0 ? imageUrls : (returnItem.images || []),
+        status: "pending", // Keep as pending until supplier confirms
         updated_at: new Date(),
       };
       
@@ -181,6 +224,123 @@ export class OrderReturnService {
         data: updateData,
       });
     });
+
+    // Send to supplier-backend
+    try {
+      await this.sendReturnToSupplier(updatedReturn, tenantId);
+    } catch (error: any) {
+      this.logger.error(`Failed to send return to supplier: ${error.message}`, error.stack);
+      // Don't throw - return is already processed, supplier notification is optional
+    }
+
+    return updatedReturn;
+  }
+
+  /**
+   * Send return request to supplier-backend
+   */
+  private async sendReturnToSupplier(returnItem: any, tenantId: string) {
+    if (!returnItem.supplier_id) {
+      this.logger.warn(`Return ${returnItem.id} has no supplier_id, skipping supplier notification`);
+      return;
+    }
+
+    try {
+      // Get supplier details
+      const supplier = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplier.findUnique({
+          where: { id: returnItem.supplier_id },
+          select: { tenant_id: true },
+        });
+      });
+
+      if (!supplier || !supplier.tenant_id) {
+        this.logger.warn(`Supplier ${returnItem.supplier_id} not found or missing tenant_id`);
+        return;
+      }
+
+      // Get clinic details
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: tenantId },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "알 수 없음";
+
+      // Get clinic manager name (return_manager)
+      let clinicManagerName = returnItem.return_manager || "";
+      if (returnItem.return_manager) {
+        const member = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).member.findFirst({
+            where: { 
+              member_id: returnItem.return_manager,
+              tenant_id: tenantId,
+            },
+            select: { full_name: true },
+          });
+        });
+        if (member?.full_name) {
+          clinicManagerName = member.full_name;
+        }
+      }
+
+      // Prepare return data for supplier
+      const returnData = {
+        returnNo: returnItem.return_no,
+        supplierTenantId: supplier.tenant_id,
+        clinicTenantId: tenantId,
+        clinicName: clinicName,
+        clinicManagerName: clinicManagerName,
+        items: [
+          {
+            productName: returnItem.product_name,
+            brand: returnItem.brand || "",
+            quantity: returnItem.return_quantity,
+            returnType: returnItem.return_type,
+            memo: returnItem.memo || "",
+            images: returnItem.images || [],
+            inboundDate: returnItem.inbound_date 
+              ? new Date(returnItem.inbound_date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            totalPrice: returnItem.unit_price * returnItem.return_quantity,
+            orderNo: returnItem.order_no || null,
+            batchNo: returnItem.batch_no || null,
+          },
+        ],
+        createdAt: returnItem.created_at.toISOString(),
+      };
+
+      // Call supplier-backend API
+      const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+
+      if (!apiKey) {
+        this.logger.warn("SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification");
+        return;
+      }
+
+      const response = await fetch(`${supplierApiUrl}/supplier/returns`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify(returnData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`Failed to send return to supplier-backend: ${response.status} ${errorText}`);
+      } else {
+        const result: any = await response.json();
+        this.logger.log(`Return ${returnItem.return_no} sent to supplier-backend successfully: ${result.id || "OK"}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error sending return to supplier-backend: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   async updateReturnType(tenantId: string, id: string, returnType: string) {

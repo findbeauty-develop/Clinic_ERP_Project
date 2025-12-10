@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Put,
   Param,
   Query,
@@ -8,18 +9,19 @@ import {
   UseGuards,
   Req,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiHeader } from "@nestjs/swagger";
 import { ReturnService } from "./return.service";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { ApiKeyGuard } from "../../common/guards/api-key.guard";
 
 @ApiTags("supplier-returns")
-@ApiBearerAuth()
 @Controller("supplier/returns")
-@UseGuards(JwtAuthGuard)
 export class ReturnController {
   constructor(private readonly returnService: ReturnService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "Get return notifications for supplier manager",
     description: "Supplier manager'ning return notification'larini olish",
@@ -71,6 +73,8 @@ export class ReturnController {
   }
 
   @Put(":id/read")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "Mark notification as read",
     description: "Notification'ni o'qilgan deb belgilash",
@@ -86,6 +90,8 @@ export class ReturnController {
   }
 
   @Put("read-all")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "Mark all notifications as read",
     description: "Barcha notification'larni o'qilgan deb belgilash",
@@ -101,8 +107,10 @@ export class ReturnController {
   }
 
   @Put(":id/accept")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
-    summary: "Accept return (반납 접수)",
+    summary: "Accept return (반품 접수)",
     description: "Return'ni qabul qilish",
   })
   async acceptReturn(@Param("id") id: string, @Req() req: any) {
@@ -116,6 +124,8 @@ export class ReturnController {
   }
 
   @Put(":id/reject")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "Reject return",
     description: "Return'ni rad etish",
@@ -132,6 +142,14 @@ export class ReturnController {
     }
 
     return this.returnService.rejectReturn(id, supplierManagerId, reason);
+  }
+
+  @Post()
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Clinic → Supplier return request yaratish (API Key auth)" })
+  @ApiHeader({ name: 'x-api-key', description: 'API Key for clinic-to-supplier authentication' })
+  async createReturnRequest(@Body() dto: any) {
+    return this.returnService.createReturnRequest(dto);
   }
 }
 

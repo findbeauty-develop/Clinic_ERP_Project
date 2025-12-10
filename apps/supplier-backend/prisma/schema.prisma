@@ -161,3 +161,54 @@ model SupplierOrderItem {
   @@index([order_id])
   @@index([product_id])
 }
+
+// Clinic → Supplier return request
+model SupplierReturnRequest {
+  id                String   @id @default(uuid())
+  supplier_tenant_id String // Which supplier company
+  supplier_manager_id String? // Target manager (if any)
+  clinic_tenant_id    String // Which clinic sent the return
+  clinic_name         String // Denormalized clinic name
+  clinic_manager_name String // Denormalized clinic manager name (담당자)
+  return_no           String  @unique // 반품번호: B + YYYYMMDD + 6 random digits
+  status              String  @default("pending") // pending, processing, completed, rejected
+  memo                String? // General memo for the return request
+  created_at          DateTime @default(now())
+  updated_at          DateTime?
+  confirmed_at        DateTime? // When supplier confirms (요청 확인)
+  completed_at        DateTime? // When supplier marks as received (제품 받았음)
+  rejected_at         DateTime? // When supplier rejects
+  rejected_reason     String? // Rejection reason
+
+  items SupplierReturnItem[]
+
+  @@index([supplier_tenant_id])
+  @@index([supplier_manager_id])
+  @@index([clinic_tenant_id])
+  @@index([return_no])
+  @@index([status])
+  @@index([created_at])
+}
+
+// Clinic → Supplier return request items
+model SupplierReturnItem {
+  id              String   @id @default(uuid())
+  return_request_id String
+  product_name    String
+  brand           String?
+  quantity        Int
+  return_type     String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
+  memo            String? // Item-specific memo
+  images          String[] @default([]) // Image URLs
+  inbound_date    String   // YYYY-MM-DD format
+  total_price     Int
+  order_no        String?  // For 주문 returns
+  batch_no        String?  // For 불량 returns
+
+  created_at DateTime @default(now())
+  updated_at DateTime?
+
+  returnRequest SupplierReturnRequest @relation(fields: [return_request_id], references: [id], onDelete: Cascade)
+
+  @@index([return_request_id])
+}

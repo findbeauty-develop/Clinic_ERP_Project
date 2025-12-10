@@ -11,7 +11,7 @@ export const getSerialForImage = (filename: string) => {
 
 export const getUploadCategory = (category: string) => {
   const normalized = category?.toLowerCase();
-  if (["clinic", "member", "product"].includes(normalized)) {
+  if (["clinic", "member", "product", "returns"].includes(normalized)) {
     return normalized;
   }
   return "misc";
