@@ -230,43 +230,43 @@ export default function ExchangesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Header */}
-      <div className="bg-white p-4 sm:p-6 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">반품 및 교환</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          클리닉에서 요청한 반품 및 교환을 처리하세요
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="flex">
+      {/* Header and Tabs */}
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-slate-900">반품 및 교환</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            클리닉에서 요청한 반품 및 교환을 처리하세요
+          </p>
+        </div>
+  
+        {/* Tabs */}
+        <div className="mt-3 flex gap-2">
           <button
             onClick={() => setActiveTab("pending")}
-            className={`px-6 py-3 text-sm font-semibold transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${
               activeTab === "pending"
-                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-slate-800 text-white"
+                : "bg-white text-slate-700 border border-slate-200"
             }`}
           >
             요청 확인 대기
           </button>
           <button
             onClick={() => setActiveTab("processing")}
-            className={`px-6 py-3 text-sm font-semibold transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${
               activeTab === "processing"
-                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-slate-800 text-white"
+                : "bg-white text-slate-700 border border-slate-200"
             }`}
           >
             요청 진행
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-6 py-3 text-sm font-semibold transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${
               activeTab === "history"
-                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-slate-800 text-white"
+                : "bg-white text-slate-700 border border-slate-200"
             }`}
           >
             반품 내역
@@ -339,75 +339,91 @@ export default function ExchangesPage() {
                     </div>
                     {renderStatusBadge(itemStatus.toUpperCase(), [item])}
                   </div>
+{/* 1-qator: 제품명 / 반환유형 / 수량 */}
+<div className="flex items-center py-2 text-sm font-semibold text-slate-700 gap-4">
+  {/* LEFT – 제품명 */}
+  <div className="flex-1 min-w-0">
+    <span className="truncate">{item.productName}</span>
+  </div>
 
-                  {/* Order Number (if available) */}
-                  {item.orderNo && (
-                    <div className="mb-2 text-xs text-slate-500">
-                      주문번호: {item.orderNo}
-                    </div>
-                  )}
+  {/* CENTER – 반환유형 (입고일 bilan bir xil ustun) */}
+  <div className="w-32">
+    {item.returnType && (
+      <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+        {formatReturnType(item.returnType)}
+      </span>
+    )}
+  </div>
 
-                  {/* Batch Number (if available) */}
-                  {item.batchNo && (
-                    <div className="mb-2 text-xs text-slate-500">
-                      배치번호: {item.batchNo}
-                    </div>
-                  )}
+  {/* RIGHT – 수량 */}
+  <div className="flex-1 flex justify-end text-slate-500 font-semibold whitespace-nowrap">
+    {item.qty}개
+  </div>
+</div>
 
-                  {/* Inbound Date (입고일) */}
-                  {item.inboundDate && (
-                    <div className="mb-2 text-xs text-slate-500">
-                      입고일: {item.inboundDate}
-                    </div>
-                  )}
+{/* 2-qator: 주문번호 / 배치번호 | 입고일 | 금액/거절됨 */}
+<div className="mb-2 flex items-center gap-4 text-xs text-slate-500">
+  {/* LEFT – 주문번호 / 배치번호 */}
+  <div className="flex-1 flex flex-wrap items-center gap-2">
+    {item.orderNo && <span>주문번호: {item.orderNo}</span>}
+    {item.batchNo && item.returnType?.includes("불량") && (
+      <span>배치번호: {item.batchNo}</span>
+    )}
+  </div>
 
-                  {/* Product Details */}
-                  <div className={`grid gap-2 py-2 text-sm text-slate-700 items-center ${
-                    request.status === "REJECTED" ? "grid-cols-4" : "grid-cols-5"
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium">{item.productName}</span>
-                    </div>
-                    <div className="text-slate-500">{item.productBrand || "-"}</div>
-                    <div className="text-slate-500">{item.qty}개</div>
-                    {request.status === "REJECTED" ? (
-                      <div className="text-right text-slate-400 text-xs">
-                        거절됨
-                      </div>
-                    ) : (
-                      <div className="col-span-2 text-right font-semibold">
-                        {formatCurrency(item.totalPrice)}원
-                      </div>
-                    )}
-                  </div>
+  {/* CENTER – 입고일 (yuqoridagi 반환유형 bilan bir xil joydan boshlanadi) */}
+  <div className="w-32">
+    {item.inboundDate && <span>입고일: {item.inboundDate}</span>}
+  </div>
+
+  {/* RIGHT – 금액 yoki 거절됨 */}
+  <div className="flex-1 flex justify-end whitespace-nowrap">
+    {request.status === "REJECTED" ? (
+      <span className="text-slate-400 font-semibold">거절됨</span>
+    ) : (
+      <span className="font-semibold">
+        {formatCurrency(item.totalPrice)}원
+      </span>
+    )}
+  </div>
+</div>
+
+
+                 
+
+                 
 
                   {/* Return Type */}
-                  {item.returnType && (
-                    <div className="mt-2 text-xs text-slate-500">
-                      유형: {formatReturnType(item.returnType)}
-                    </div>
-                  )}
+                  
 
-                  {/* Memo */}
-                  {item.memo && (
-                    <div className="mt-2 text-xs text-slate-500">
-                      메모: {item.memo}
-                    </div>
-                  )}
+                 
+                 
 
-                  {/* Images */}
                   {item.images && item.images.length > 0 && (
-                    <div className="flex gap-2 mt-3">
-                      {item.images.slice(0, 3).map((img, imgIdx) => (
-                        <img
-                          key={imgIdx}
-                          src={img.startsWith("http") ? img : `${clinicBackendUrl}${img}`}
-                          alt={`Image ${imgIdx + 1}`}
-                          className="w-16 h-16 object-cover rounded border border-slate-200"
-                        />
-                      ))}
-                    </div>
-                  )}
+  <div className="mt-3 flex w-full items-center gap-5 overflow-x-auto pb-1">
+    {item.images.slice(0, 5).map((img, imgIdx) => (
+      <img
+        key={imgIdx}
+        src={img.startsWith("http") ? img : `${clinicBackendUrl}${img}`}
+        alt={`Image ${imgIdx + 1}`}
+        className="h-28 w-28 flex-shrink-0 rounded-xl border border-slate-200 object-cover"
+      />
+    ))}
+  </div>
+)}
+
+
+
+
+                   {/* Memo */}
+                   {item.memo && (
+  <div className="mt-2 w-full">
+    <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      <span className="font-semibold text-slate-700">메모: </span>
+      <span className="break-words">{item.memo}</span>
+    </div>
+  </div>
+)}
 
                   {/* Action Buttons */}
                   {itemStatus === "pending" && activeTab === "pending" && (

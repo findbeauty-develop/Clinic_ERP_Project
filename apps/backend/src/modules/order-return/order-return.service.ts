@@ -282,12 +282,14 @@ export class OrderReturnService {
     const returnNo = returnItem.return_no || await this.generateReturnNumber();
 
     // Update return with all data
+    const finalImages = imageUrls.length > 0 ? imageUrls : (returnItem.images || []);
+    
     const updatedReturn = await this.prisma.executeWithRetry(async () => {
       const updateData: any = {
         return_no: returnNo,
         return_manager: dto.returnManager || null,
         memo: dto.memo || null,
-        images: imageUrls.length > 0 ? imageUrls : (returnItem.images || []),
+        images: finalImages,
         status: "pending", // Keep as pending until supplier confirms
         updated_at: new Date(),
       };
@@ -303,9 +305,15 @@ export class OrderReturnService {
       });
     });
 
+    // Ensure images are included in the return object for sending to supplier
+    const returnWithImages = {
+      ...updatedReturn,
+      images: finalImages,
+    };
+
     // Send to supplier-backend
     try {
-      await this.sendReturnToSupplier(updatedReturn, tenantId);
+      await this.sendReturnToSupplier(returnWithImages, tenantId);
     } catch (error: any) {
       this.logger.error(`Failed to send return to supplier: ${error.message}`, error.stack);
       // Don't throw - return is already processed, supplier notification is optional
@@ -365,6 +373,17 @@ export class OrderReturnService {
       }
 
       // Prepare return data for supplier
+      const imagesArray = Array.isArray(returnItem.images) 
+        ? returnItem.images 
+        : (returnItem.images ? [returnItem.images] : []);
+      
+      // Debug log for images
+      if (imagesArray.length > 0) {
+        this.logger.log(`Sending ${imagesArray.length} image(s) to supplier for return ${returnItem.return_no}`);
+      } else {
+        this.logger.warn(`No images found for return ${returnItem.return_no}`);
+      }
+      
       const returnData = {
         returnNo: returnItem.return_no,
         supplierTenantId: supplier.tenant_id,
@@ -378,7 +397,7 @@ export class OrderReturnService {
             quantity: returnItem.return_quantity,
             returnType: returnItem.return_type,
             memo: returnItem.memo || "",
-            images: returnItem.images || [],
+            images: imagesArray,
             inboundDate: returnItem.inbound_date 
               ? new Date(returnItem.inbound_date).toISOString().split("T")[0]
               : new Date().toISOString().split("T")[0],

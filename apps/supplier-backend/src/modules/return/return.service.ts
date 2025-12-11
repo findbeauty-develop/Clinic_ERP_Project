@@ -111,7 +111,7 @@ export class ReturnService {
             totalPrice: item.total_price,
             returnType: item.return_type,
             memo: item.memo,
-            images: item.images || [],
+            images: Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []),
             inboundDate: item.inbound_date,
             orderNo: item.order_no,
             batchNo: item.batch_no,
@@ -476,18 +476,25 @@ export class ReturnService {
 
       if (existingRequest) {
         // Add items to existing request
-        const newItems = items.map((item: any) => ({
-          product_name: item.productName,
-          brand: item.brand || null,
-          quantity: item.quantity,
-          return_type: item.returnType,
-          memo: item.memo || null,
-          images: item.images || [],
-          inbound_date: item.inboundDate,
-          total_price: item.totalPrice,
-          order_no: item.orderNo || null,
-          batch_no: item.batchNo || null,
-        }));
+        const newItems = items.map((item: any) => {
+          // Ensure images is always an array
+          const imagesArray = Array.isArray(item.images) 
+            ? item.images 
+            : (item.images ? [item.images] : []);
+          
+          return {
+            product_name: item.productName,
+            brand: item.brand || null,
+            quantity: item.quantity,
+            return_type: item.returnType,
+            memo: item.memo || null,
+            images: imagesArray,
+            inbound_date: item.inboundDate,
+            total_price: item.totalPrice,
+            order_no: item.orderNo || null,
+            batch_no: item.batchNo || null,
+          };
+        });
 
         const updatedRequest = await this.prisma.executeWithRetry(async () => {
           return (this.prisma as any).supplierReturnRequest.update({
@@ -519,18 +526,25 @@ export class ReturnService {
 
         if (existingByReturnNo) {
           // If return_no exists, add items to existing request
-          const newItems = items.map((item: any) => ({
-            product_name: item.productName,
-            brand: item.brand || null,
-            quantity: item.quantity,
-            return_type: item.returnType,
-            memo: item.memo || null,
-            images: item.images || [],
-            inbound_date: item.inboundDate,
-            total_price: item.totalPrice,
-            order_no: item.orderNo || null,
-            batch_no: item.batchNo || null,
-          }));
+          const newItems = items.map((item: any) => {
+            // Ensure images is always an array
+            const imagesArray = Array.isArray(item.images) 
+              ? item.images 
+              : (item.images ? [item.images] : []);
+            
+            return {
+              product_name: item.productName,
+              brand: item.brand || null,
+              quantity: item.quantity,
+              return_type: item.returnType,
+              memo: item.memo || null,
+              images: imagesArray,
+              inbound_date: item.inboundDate,
+              total_price: item.totalPrice,
+              order_no: item.orderNo || null,
+              batch_no: item.batchNo || null,
+            };
+          });
 
           const updatedRequest = await this.prisma.executeWithRetry(async () => {
             return (this.prisma as any).supplierReturnRequest.update({
@@ -550,18 +564,25 @@ export class ReturnService {
         }
 
         // Create new return request
-        const newItems = items.map((item: any) => ({
-          product_name: item.productName,
-          brand: item.brand || null,
-          quantity: item.quantity,
-          return_type: item.returnType,
-          memo: item.memo || null,
-          images: item.images || [],
-          inbound_date: item.inboundDate,
-          total_price: item.totalPrice,
-          order_no: item.orderNo || null,
-          batch_no: item.batchNo || null,
-        }));
+        const newItems = items.map((item: any) => {
+          // Ensure images is always an array
+          const imagesArray = Array.isArray(item.images) 
+            ? item.images 
+            : (item.images ? [item.images] : []);
+          
+          return {
+            product_name: item.productName,
+            brand: item.brand || null,
+            quantity: item.quantity,
+            return_type: item.returnType,
+            memo: item.memo || null,
+            images: imagesArray,
+            inbound_date: item.inboundDate,
+            total_price: item.totalPrice,
+            order_no: item.orderNo || null,
+            batch_no: item.batchNo || null,
+          };
+        });
 
         const returnRequest = await this.prisma.executeWithRetry(async () => {
           return (this.prisma as any).supplierReturnRequest.create({
