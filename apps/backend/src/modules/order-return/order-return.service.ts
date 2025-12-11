@@ -600,6 +600,8 @@ export class OrderReturnService {
    */
   async handleReturnComplete(dto: { return_no: string; item_id?: string; status: string }) {
     try {
+      this.logger.log(`Received return complete webhook: return_no=${dto.return_no}, item_id=${dto.item_id}`);
+      
       // Find return by return_no
       const returnItem = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).orderReturn.findFirst({
@@ -608,11 +610,13 @@ export class OrderReturnService {
       });
 
       if (!returnItem) {
-        throw new BadRequestException("Return not found");
+        this.logger.warn(`Return not found for return_no: ${dto.return_no}`);
+        // Don't throw error, just log - webhook might be called multiple times
+        return { success: false, message: `Return not found for return_no: ${dto.return_no}` };
       }
 
       // Update status to completed
-      await this.prisma.executeWithRetry(async () => {
+      const updated = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).orderReturn.update({
           where: { id: returnItem.id },
           data: {
@@ -622,10 +626,12 @@ export class OrderReturnService {
         });
       });
 
+      this.logger.log(`Return status updated to completed: id=${returnItem.id}, return_no=${dto.return_no}`);
       return { success: true, message: "Return status updated to completed" };
     } catch (error: any) {
       this.logger.error(`Error handling return complete: ${error.message}`, error.stack);
-      throw new BadRequestException(`Failed to handle return complete: ${error.message}`);
+      // Don't throw error to prevent webhook retries
+      return { success: false, message: `Failed to handle return complete: ${error.message}` };
     }
   }
 

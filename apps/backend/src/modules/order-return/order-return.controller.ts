@@ -16,12 +16,12 @@ import { Tenant } from "../../common/decorators/tenant.decorator";
 
 @ApiTags("order-returns")
 @Controller("order-returns")
-@UseGuards(JwtTenantGuard)
-@ApiBearerAuth()
 export class OrderReturnController {
   constructor(private readonly service: OrderReturnService) {}
 
   @Get()
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Get order returns by status" })
   async getReturns(
     @Tenant() tenantId: string,
@@ -31,18 +31,36 @@ export class OrderReturnController {
   }
 
   @Post("create-from-inbound")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Create returns from inbound excess" })
   async createFromInbound(@Tenant() tenantId: string, @Body() dto: any) {
     return this.service.createFromInbound(tenantId, dto);
   }
 
   @Post("create-from-outbound")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Create returns from outbound defective products" })
   async createFromOutbound(@Tenant() tenantId: string, @Body() dto: any) {
     return this.service.createFromOutbound(tenantId, dto);
   }
 
+  @Post("webhook/complete")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Webhook: Supplier'dan return completion xabari" })
+  async handleReturnComplete(@Body() dto: { return_no: string; item_id?: string; status: string }) {
+    try {
+      return await this.service.handleReturnComplete(dto);
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      throw error;
+    }
+  }
+
   @Post(":id/process")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Process a return" })
   async processReturn(
     @Tenant() tenantId: string,
@@ -53,6 +71,8 @@ export class OrderReturnController {
   }
 
   @Put(":id/return-type")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Update return type" })
   async updateReturnType(
     @Tenant() tenantId: string,
@@ -62,14 +82,9 @@ export class OrderReturnController {
     return this.service.updateReturnType(tenantId, id, dto.return_type);
   }
 
-  @Post("webhook/complete")
-  @UseGuards(ApiKeyGuard)
-  @ApiOperation({ summary: "Webhook: Supplier'dan return completion xabari" })
-  async handleReturnComplete(@Body() dto: { return_no: string; item_id?: string; status: string }) {
-    return this.service.handleReturnComplete(dto);
-  }
-
   @Put(":id/confirm-exchange")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Confirm exchange (교환 확인)" })
   async confirmExchange(
     @Tenant() tenantId: string,

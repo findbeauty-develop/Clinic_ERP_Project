@@ -521,7 +521,14 @@ export class ReturnService {
       // Send webhook to clinic-backend
       try {
         const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
-        const clinicBackendApiKey = process.env.CLINIC_BACKEND_API_KEY || "";
+        // Supplier sends its own API key to clinic-backend for authentication
+        const supplierApiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET || "";
+
+        if (!supplierApiKey) {
+          this.logger.error(`SUPPLIER_BACKEND_API_KEY not configured! Check environment variables.`);
+        } else {
+          this.logger.log(`Using API key for webhook (length: ${supplierApiKey.length})`);
+        }
 
         // Get return items to send to clinic
         const returnItems = itemId 
@@ -529,18 +536,37 @@ export class ReturnService {
           : allItems;
 
         for (const item of returnItems) {
-          await fetch(`${clinicBackendUrl}/order-returns/webhook/complete`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": clinicBackendApiKey,
-            },
-            body: JSON.stringify({
-              return_no: request.return_no,
-              item_id: item.id,
-              status: "completed",
-            }),
-          });
+          try {
+            if (!supplierApiKey) {
+              this.logger.warn(`SUPPLIER_BACKEND_API_KEY not configured, skipping webhook for return_no: ${request.return_no}`);
+              continue;
+            }
+
+            this.logger.log(`Sending webhook to ${clinicBackendUrl}/order-returns/webhook/complete for return_no: ${request.return_no}`);
+
+            const webhookResponse = await fetch(`${clinicBackendUrl}/order-returns/webhook/complete`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": supplierApiKey,
+              },
+              body: JSON.stringify({
+                return_no: request.return_no,
+                item_id: item.id,
+                status: "completed",
+              }),
+            });
+
+            if (!webhookResponse.ok) {
+              const errorText = await webhookResponse.text();
+              this.logger.error(`Webhook failed: ${webhookResponse.status} - ${errorText} for return_no: ${request.return_no}`);
+            } else {
+              const responseData = await webhookResponse.json();
+              this.logger.log(`Webhook sent successfully for return_no: ${request.return_no}, response: ${JSON.stringify(responseData)}`);
+            }
+          } catch (fetchError: any) {
+            this.logger.error(`Webhook fetch error for return_no ${request.return_no}: ${fetchError.message}`);
+          }
         }
       } catch (error: any) {
         this.logger.error(`Failed to send webhook to clinic: ${error.message}`, error.stack);

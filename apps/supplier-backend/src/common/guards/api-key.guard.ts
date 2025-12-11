@@ -11,13 +11,21 @@ export class ApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const apiKey = request.headers['x-api-key'];
     
-    const validApiKey = process.env.API_KEY_SECRET;
+    // Check both SUPPLIER_BACKEND_API_KEY (preferred) and API_KEY_SECRET (backward compatibility)
+    const validApiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
     
     if (!validApiKey) {
+      console.error('API Key not configured on server. Set SUPPLIER_BACKEND_API_KEY or API_KEY_SECRET in supplier-backend .env');
       throw new UnauthorizedException('API Key not configured on server');
     }
     
-    if (!apiKey || apiKey !== validApiKey) {
+    if (!apiKey) {
+      console.error('API Key missing in request headers');
+      throw new UnauthorizedException('Invalid or missing API key');
+    }
+    
+    if (apiKey !== validApiKey) {
+      console.error(`API Key mismatch. Received length: ${apiKey?.length || 0}, Expected length: ${validApiKey.length}`);
       throw new UnauthorizedException('Invalid or missing API key');
     }
     

@@ -54,12 +54,23 @@ export default function OrderReturnsPage() {
   const getStatusBadge = (returnType: string, status: string) => {
     if (status === "completed") {
       if (returnType?.includes("교환")) {
-        return { text: "교환완료", className: "bg-slate-100 text-slate-700 border border-slate-300" };
+        return { 
+          text: "교환완료", 
+          className: "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 border border-slate-200",
+          textClassName: "text-sm font-medium text-green-700"
+        };
       } else if (returnType?.includes("반품")) {
-        return { text: "반품완료", className: "bg-slate-100 text-slate-700 border border-slate-300" };
+        return { 
+          text: "반품완료", 
+          className: "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 border border-slate-200",
+          textClassName: "text-sm font-medium text-green-700"
+        };
       }
     } else if (status === "rejected") {
-      return { text: "요청 거절", className: "bg-slate-100 text-slate-700 border border-slate-300" };
+      return { 
+        text: "요청 거절", 
+        className: "bg-slate-100 text-slate-700 border border-slate-300" 
+      };
     }
     return null;
   };
@@ -149,6 +160,7 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
   const [memo, setMemo] = useState(returnItem.memo || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
   const [returnType, setReturnType] = useState(returnItem.return_type || "주문|반품");
+  const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
 
   // Get return manager name from backend response
   const managerName = returnItem.returnManagerName || "";
@@ -300,36 +312,34 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
           </div>
         </div>
       )}
-
+      {isHistoryTab && statusBadge && (
+        <div className="mb-2 flex items-center gap-2">
+          <div className={statusBadge.className}>
+            <svg className="w-4 h-4 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className={statusBadge.textClassName || "text-sm font-medium text-green-700"}>
+              {statusBadge.text}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         {/* Header: Date/User, Status Badge (for history), Supplier | Return Type | Date */}
-      <div className="mb-4 flex items-center justify-between border-b border-slate-300 pb-3 dark:border-slate-600">
-        <div className="flex flex-col gap-1">
-          {isHistoryTab && (
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {formatDateTime(returnItem.inbound_date || returnItem.created_at)}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {returnItem.created_by || "ZZZ"}님
-              </span>
-              {statusBadge && (
-                <span className={`px-2 py-1 text-xs font-medium rounded ${statusBadge.className}`}>
-                  {statusBadge.text}
-                </span>
-              )}
+        <div className="mb-4 flex items-center justify-between border-b border-slate-300 pb-3 dark:border-slate-600">
+          <div className="flex flex-col gap-1">
+            
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              공급처: {returnItem.supplierName || "알 수 없음"} {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
             </div>
-          )}
-          <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            공급처: {returnItem.supplierName || "알 수 없음"} {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
+            {returnItem.return_no && (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                반품번호: {returnItem.return_no}
+              </div>
+            )}
           </div>
-          {returnItem.return_no && (
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              반품번호: {returnItem.return_no}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+           
           {isProcessingTabWithInputs && showReturnTypeDropdown ? (
             <div className="relative">
               <select
@@ -358,12 +368,22 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
           ) : (
             <select
               value={returnItem.return_type || ""}
-              className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 appearance-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
               disabled
             >
               <option>{formatReturnType(returnItem.return_type || "")}</option>
             </select>
           )}
+           {isHistoryTab && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {formatDateTime(returnItem.inbound_date || returnItem.created_at)}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {returnItem.created_by}
+                </span>
+              </div>
+            )}
           {!isHistoryTab && (
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {formatDateTime(returnItem.inbound_date || returnItem.created_at)}
@@ -398,7 +418,15 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
           <span>{formatDate(returnItem.inbound_date || returnItem.created_at)}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="font-medium">{isHistoryTab ? "교환수량:" : "미입고수량:"}</span>
+          <span className="font-medium">
+            {isHistoryTab 
+              ? "교환수량:" 
+              : isExchange 
+                ? "교환수량:" 
+                : isDefectiveReturn 
+                  ? "불량수량:" 
+                  : "교환수량:"}
+          </span>
           <span className="font-semibold text-rose-600 dark:text-rose-400">
             {returnItem.return_quantity}개
           </span>
@@ -487,13 +515,21 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
                   {managerName || "담당자 없음"}
                 </span>
               </div>
-              <button
-                onClick={handleProcessReturn}
-                disabled={processing}
-                className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-600"
-              >
-                {processing ? "처리 중..." : (returnType === "주문|교환" || returnType === "불량|교환") ? "교환하기" : "반품하기"}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowDetailModal(true)}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                >
+                  상세보기
+                </button>
+                <button
+                  onClick={handleProcessReturn}
+                  disabled={processing}
+                  className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-600"
+                >
+                  {processing ? "처리 중..." : (returnType === "주문|교환" || returnType === "불량|교환") ? "교환하기" : "반품하기"}
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -511,6 +547,12 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowDetailModal(true)}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            >
+              상세보기
+            </button>
             <span className="text-sm text-slate-700 dark:text-slate-300">
               교환 제품 받아셨어요?
             </span>
@@ -533,12 +575,21 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
               반품 담당자:
             </label>
             <span className="text-sm text-slate-900 dark:text-slate-200">
-              {managerName || "담당자 없음"}
+              {managerName || "담당자 없음"}님
             </span>
           </div>
+          <div className="flex items-center gap-3">
           <span className="text-sm text-slate-500 dark:text-slate-400">
-            공급처 확인 대기 중...
-          </span>
+              공급처 확인 대기 중...
+            </span>
+            <button
+              onClick={() => setShowDetailModal(true)}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            >
+              상세보기
+            </button>
+            
+          </div>
         </div>
       )}
 
@@ -550,12 +601,77 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
               반품 담당자:
             </label>
             <span className="text-sm text-slate-900 dark:text-slate-200">
-              {managerName || "담당자 없음"}
+              {managerName || "담당자 없음"}님
             </span>
           </div>
+          <button
+            onClick={() => setShowDetailModal(true)}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+          >
+            상세보기
+          </button>
         </div>
       )}
       </div>
+
+      {/* Add the Detail Modal before the closing </div> tags */}
+      {showDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="relative w-full max-w-md bg-white rounded-lg shadow-xl">
+            {/* Header with Title and Close Button */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h2 className="text-lg font-bold text-slate-900">
+                {formatReturnType(returnType || returnItem.return_type || "")}
+              </h2>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {/* Memo/Description */}
+              <div>
+                <p className="text-sm text-slate-700">
+                  {returnItem.memo || "메모 없음"}
+                </p>
+              </div>
+
+              {/* Images */}
+              <div className="flex gap-2">
+                {[0, 1, 2].map((idx) => {
+                  const imageUrl = returnItem.images?.[idx] || images[idx];
+                  return (
+                    <div key={idx} className="flex-1 aspect-square">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl.startsWith('data:') ? imageUrl : `${apiUrl}${imageUrl}`}
+                          alt={`Image ${idx + 1}`}
+                          className="w-full h-full object-cover rounded-lg border border-slate-200"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center">
+                          <span className="text-xs text-slate-400">이미지 없음</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Sender Information */}
+              <div className="pt-4 border-t border-slate-200">
+                <p className="text-sm text-slate-600">
+                  출고자: {managerName || returnItem.returnManagerName || "담당자 없음"}님
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
