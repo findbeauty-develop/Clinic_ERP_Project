@@ -148,6 +148,27 @@ export class ReturnController {
     return this.returnService.rejectReturn(id, supplierManagerId, reason);
   }
 
+  @Put(":id/complete")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Mark return as completed (제품 받았음)",
+    description: "Return'ni completed deb belgilash va clinic'ga xabar yuborish",
+  })
+  async completeReturn(
+    @Param("id") id: string,
+    @Body() body: { itemId?: string },
+    @Req() req: any
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    
+    if (!supplierManagerId) {
+      throw new Error("Supplier Manager ID not found in token");
+    }
+
+    return this.returnService.completeReturn(id, supplierManagerId, body.itemId);
+  }
+
   @Post()
   @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: "Clinic → Supplier return request yaratish (API Key auth)" })

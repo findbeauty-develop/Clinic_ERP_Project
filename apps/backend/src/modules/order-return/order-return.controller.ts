@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { OrderReturnService } from "./order-return.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
+import { ApiKeyGuard } from "../../common/guards/api-key.guard";
 import { Tenant } from "../../common/decorators/tenant.decorator";
 
 @ApiTags("order-returns")
@@ -59,6 +60,22 @@ export class OrderReturnController {
     @Body() dto: { return_type: string }
   ) {
     return this.service.updateReturnType(tenantId, id, dto.return_type);
+  }
+
+  @Post("webhook/complete")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Webhook: Supplier'dan return completion xabari" })
+  async handleReturnComplete(@Body() dto: { return_no: string; item_id?: string; status: string }) {
+    return this.service.handleReturnComplete(dto);
+  }
+
+  @Put(":id/confirm-exchange")
+  @ApiOperation({ summary: "Confirm exchange (교환 확인)" })
+  async confirmExchange(
+    @Tenant() tenantId: string,
+    @Param("id") id: string
+  ) {
+    return this.service.confirmExchange(tenantId, id);
   }
 }
 

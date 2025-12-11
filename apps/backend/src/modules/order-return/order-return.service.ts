@@ -314,12 +314,25 @@ export class OrderReturnService {
     // Send to supplier-backend
     try {
       await this.sendReturnToSupplier(returnWithImages, tenantId);
+      
+      // After successfully sending to supplier, update status to "processing"
+      const finalReturn = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.update({
+          where: { id, tenant_id: tenantId },
+          data: {
+            status: "processing",
+            updated_at: new Date(),
+          },
+        });
+      });
+      
+      return finalReturn;
     } catch (error: any) {
       this.logger.error(`Failed to send return to supplier: ${error.message}`, error.stack);
       // Don't throw - return is already processed, supplier notification is optional
+      // But still return the updated return with "pending" status
+      return updatedReturn;
     }
-
-    return updatedReturn;
   }
 
   /**
@@ -579,6 +592,85 @@ export class OrderReturnService {
       throw new BadRequestException(
         `Failed to create returns: ${error?.message || "Unknown error"}`
       );
+    }
+  }
+
+  /**
+   * Handle return completion webhook from supplier
+   */
+  async handleReturnComplete(dto: { return_no: string; item_id?: string; status: string }) {
+    try {
+      // Find return by return_no
+      const returnItem = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { return_no: dto.return_no },
+        });
+      });
+
+      if (!returnItem) {
+        throw new BadRequestException("Return not found");
+      }
+
+      // Update status to completed
+      await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.update({
+          where: { id: returnItem.id },
+          data: {
+            status: "completed",
+            updated_at: new Date(),
+          },
+        });
+      });
+
+      return { success: true, message: "Return status updated to completed" };
+    } catch (error: any) {
+      this.logger.error(`Error handling return complete: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to handle return complete: ${error.message}`);
+    }
+  }
+
+  /**
+   * Confirm exchange (교환 확인)
+   * Changes status from "processing" to "completed" for exchange items
+   */
+  async confirmExchange(tenantId: string, id: string) {
+    try {
+      const returnItem = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { id, tenant_id: tenantId },
+        });
+      });
+
+      if (!returnItem) {
+        throw new BadRequestException("Return not found");
+      }
+
+      // Check if it's an exchange type
+      const isExchange = returnItem.return_type?.includes("교환");
+      if (!isExchange) {
+        throw new BadRequestException("This is not an exchange item");
+      }
+
+      // Check if status is "processing"
+      if (returnItem.status !== "processing") {
+        throw new BadRequestException("Return is not in processing status");
+      }
+
+      // Update status to completed
+      const updatedReturn = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.update({
+          where: { id, tenant_id: tenantId },
+          data: {
+            status: "completed",
+            updated_at: new Date(),
+          },
+        });
+      });
+
+      return updatedReturn;
+    } catch (error: any) {
+      this.logger.error(`Error confirming exchange: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to confirm exchange: ${error.message}`);
     }
   }
 }

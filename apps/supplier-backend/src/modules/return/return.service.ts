@@ -431,6 +431,130 @@ export class ReturnService {
   }
 
   /**
+   * Mark return as completed (제품 받았음)
+   * Updates item status and sends webhook to clinic-backend
+   */
+  async completeReturn(returnRequestId: string, supplierManagerId: string, itemId?: string) {
+    try {
+      // Get supplier manager to find tenant_id
+      const manager = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findFirst({
+          where: { id: supplierManagerId },
+          select: { supplier_tenant_id: true },
+        });
+      });
+
+      if (!manager) {
+        throw new BadRequestException("Supplier Manager not found");
+      }
+
+      // Get return request
+      const request = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.findFirst({
+          where: {
+            id: returnRequestId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+          },
+          include: {
+            items: true,
+          },
+        });
+      });
+
+      if (!request) {
+        throw new BadRequestException("Return request not found");
+      }
+
+      // Update item status if itemId provided, otherwise update all items
+      if (itemId) {
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnItem.updateMany({
+            where: {
+              id: itemId,
+              return_request_id: returnRequestId,
+            },
+            data: {
+              status: "completed",
+              updated_at: new Date(),
+            },
+          });
+        });
+      } else {
+        // Update all items
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnItem.updateMany({
+            where: {
+              return_request_id: returnRequestId,
+            },
+            data: {
+              status: "completed",
+              updated_at: new Date(),
+            },
+          });
+        });
+      }
+
+      // Get updated items
+      const allItems = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnItem.findMany({
+          where: { return_request_id: returnRequestId },
+        });
+      });
+
+      // Check if all items are completed
+      const allCompleted = allItems.every((item: any) => item.status === "completed");
+
+      if (allCompleted) {
+        // Update request status
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnRequest.update({
+            where: { id: returnRequestId },
+            data: {
+              status: "completed",
+              completed_at: new Date(),
+              updated_at: new Date(),
+            },
+          });
+        });
+      }
+
+      // Send webhook to clinic-backend
+      try {
+        const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+        const clinicBackendApiKey = process.env.CLINIC_BACKEND_API_KEY || "";
+
+        // Get return items to send to clinic
+        const returnItems = itemId 
+          ? allItems.filter((item: any) => item.id === itemId)
+          : allItems;
+
+        for (const item of returnItems) {
+          await fetch(`${clinicBackendUrl}/order-returns/webhook/complete`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": clinicBackendApiKey,
+            },
+            body: JSON.stringify({
+              return_no: request.return_no,
+              item_id: item.id,
+              status: "completed",
+            }),
+          });
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to send webhook to clinic: ${error.message}`, error.stack);
+        // Don't throw - completion is already processed
+      }
+
+      return { success: true, message: "Return marked as completed" };
+    } catch (error: any) {
+      this.logger.error(`Error completing return: ${error.message}`, error.stack);
+      throw new BadRequestException(`Failed to complete return: ${error.message}`);
+    }
+  }
+
+  /**
    * Clinic → Supplier return request yaratish
    * Groups multiple items from same clinic into one request if they arrive within 5 minutes
    */

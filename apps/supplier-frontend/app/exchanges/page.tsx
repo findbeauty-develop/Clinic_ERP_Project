@@ -168,12 +168,11 @@ export default function ExchangesPage() {
 
     try {
       setProcessing(true);
-      // TODO: Implement this endpoint in backend
-      // await apiPut(`/supplier/returns/${selectedRequest.id}/complete`, {});
-      alert("기능이 곧 추가될 예정입니다.");
+      await apiPut(`/supplier/returns/${selectedRequest.id}/complete`, {});
+      alert("제품 받았음으로 처리되었습니다.");
       setShowCompleteModal(false);
       setSelectedRequest(null);
-      // await fetchRequests();
+      await fetchRequests();
     } catch (error: any) {
       console.error("Error marking as received:", error);
       alert("처리에 실패했습니다: " + error.message);
@@ -427,7 +426,7 @@ export default function ExchangesPage() {
 
                   {/* Action Buttons */}
                   {itemStatus === "pending" && activeTab === "pending" && (
-                    <div className="flex items-center justify-end gap-2 border-t  px-4 py-3 mt-4">
+                    <div className="flex items-center justify-end gap-2 border-t  px-0.9 py-3 mt-4">
                       <button
                         onClick={() => {
                           // Create a temporary request with only this item
@@ -459,7 +458,7 @@ export default function ExchangesPage() {
                     </div>
                   )}
                   {itemStatus === "processing" && activeTab === "processing" && (
-                    <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 mt-4">
+                    <div className="flex items-center justify-end gap-2 px-0.9 py-3 mt-4">
                       <button
                         onClick={() => {
                           // Create a temporary request with only this item
