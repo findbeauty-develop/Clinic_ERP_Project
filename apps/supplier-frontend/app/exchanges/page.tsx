@@ -16,6 +16,7 @@ interface ReturnItem {
   orderNo?: string;
   batchNo?: string;
   unitPrice: number;
+  status?: string;
 }
 
 interface ReturnRequest {
@@ -121,7 +122,9 @@ export default function ExchangesPage() {
 
     try {
       setProcessing(true);
-      await apiPut(`/supplier/returns/${selectedRequest.id}/accept`, {});
+      // Send itemId if it's a single item request
+      const itemId = selectedRequest.items.length === 1 ? selectedRequest.items[0].id : undefined;
+      await apiPut(`/supplier/returns/${selectedRequest.id}/accept`, { itemId });
       setShowConfirmModal(false);
       setSelectedRequest(null);
       await fetchRequests();
@@ -304,16 +307,25 @@ export default function ExchangesPage() {
                 date.getHours()
               ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
               
-              return request.items.map((item, itemIndex) => (
+              return request.items.map((item, itemIndex) => {
+                // Get item status (default to pending if not set)
+                const itemStatus = item.status || "pending";
+                
+                // Filter items based on active tab
+                if (activeTab === "pending" && itemStatus !== "pending") return null;
+                if (activeTab === "processing" && itemStatus !== "processing") return null;
+                if (activeTab === "history" && itemStatus !== "completed" && itemStatus !== "rejected") return null;
+                
+                return (
                 <div
-                  key={`${request.id}-${itemIndex}`}
+                  key={`${request.id}-${item.id || itemIndex}`}
                   className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
                   {/* Top: Date and Return Number */}
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm text-slate-500">{dateStr}</div>
                     <div className="text-xs text-slate-500">
-                      반품번호 {request.returnNo}
+                      반품번호: {request.returnNo}
                     </div>
                   </div>
 
@@ -325,7 +337,7 @@ export default function ExchangesPage() {
                         {request.clinicManagerName}님
                       </span>
                     </div>
-                    {renderStatusBadge(request.status, [item])}
+                    {renderStatusBadge(itemStatus.toUpperCase(), [item])}
                   </div>
 
                   {/* Order Number (if available) */}
@@ -339,6 +351,13 @@ export default function ExchangesPage() {
                   {item.batchNo && (
                     <div className="mb-2 text-xs text-slate-500">
                       배치번호: {item.batchNo}
+                    </div>
+                  )}
+
+                  {/* Inbound Date (입고일) */}
+                  {item.inboundDate && (
+                    <div className="mb-2 text-xs text-slate-500">
+                      입고일: {item.inboundDate}
                     </div>
                   )}
 
@@ -391,8 +410,8 @@ export default function ExchangesPage() {
                   )}
 
                   {/* Action Buttons */}
-                  {request.status === "PENDING" && activeTab === "pending" && (
-                    <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 mt-4">
+                  {itemStatus === "pending" && activeTab === "pending" && (
+                    <div className="flex items-center justify-end gap-2 border-t  px-4 py-3 mt-4">
                       <button
                         onClick={() => {
                           // Create a temporary request with only this item
@@ -423,7 +442,7 @@ export default function ExchangesPage() {
                       </button>
                     </div>
                   )}
-                  {request.status === "PROCESSING" && activeTab === "processing" && (
+                  {itemStatus === "processing" && activeTab === "processing" && (
                     <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 mt-4">
                       <button
                         onClick={() => {
@@ -442,7 +461,8 @@ export default function ExchangesPage() {
                     </div>
                   )}
                 </div>
-              ));
+              );
+              });
             })}
           </div>
         )}

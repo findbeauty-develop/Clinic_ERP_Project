@@ -165,10 +165,31 @@ export class OrderReturnService {
         returnManager = member?.member_id || dto.inboundManager; // Fallback to original value if not found
       }
 
+      // Get batch created_at dates for inbound_date
+      const batchNos = items.map((item: any) => item.batchNo).filter(Boolean);
+      const batches = await this.prisma.executeWithRetry(async () => {
+        if (batchNos.length === 0) return [];
+        return (this.prisma as any).batch.findMany({
+          where: {
+            batch_no: { in: batchNos },
+            tenant_id: tenantId,
+          },
+          select: {
+            batch_no: true,
+            created_at: true,
+          },
+        });
+      });
+
+      const batchDateMap = new Map(
+        batches.map((b: any) => [b.batch_no, b.created_at])
+      );
+
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
-          items.map((item: any) =>
-            (this.prisma as any).orderReturn.create({
+          items.map((item: any) => {
+            const batchCreatedAt = batchDateMap.get(item.batchNo);
+            return (this.prisma as any).orderReturn.create({
               data: {
                 tenant_id: tenantId,
                 order_id: orderId,
@@ -184,9 +205,10 @@ export class OrderReturnService {
                 status: "pending",
                 supplier_id: order?.supplier_id || null,
                 return_manager: returnManager,
+                inbound_date: batchCreatedAt || new Date(),
               },
-            })
-          )
+            });
+          })
         );
       });
 
@@ -472,14 +494,33 @@ export class OrderReturnService {
         returnManager = member?.member_id || outbound.manager_name; // Fallback to name if not found
       }
 
+      // Get batch created_at date for inbound_date
+      const batchNo = outbound.batch_no || outbound.batch?.batch_no;
+      let batchCreatedAt: Date | null = null;
+      
+      if (batchNo) {
+        const batch = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).batch.findFirst({
+            where: {
+              batch_no: batchNo,
+              tenant_id: tenantId,
+            },
+            select: {
+              created_at: true,
+            },
+          });
+        });
+        batchCreatedAt = batch?.created_at || null;
+      }
+
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
           items.map((item: any) => {
             // Get batch_no from multiple sources as fallback
-            const batchNo = item.batchNo || outbound.batch_no || outbound.batch?.batch_no;
+            const itemBatchNo = item.batchNo || outbound.batch_no || outbound.batch?.batch_no;
             
             // Debug log
-            if (!batchNo) {
+            if (!itemBatchNo) {
               console.log('⚠️ Batch No Debug:', {
                 itemBatchNo: item.batchNo,
                 outboundBatchNo: outbound.batch_no,
@@ -495,7 +536,7 @@ export class OrderReturnService {
                 order_id: null, // No order for defective products
                 order_no: null, // No order number for defective products
                 outbound_id: outboundId,
-                batch_no: batchNo,
+                batch_no: itemBatchNo,
                 product_id: item.productId || outbound.product_id,
                 product_name: item.productName || outbound.product?.name || "알 수 없음",
                 brand: item.brand || outbound.product?.brand || null,
@@ -506,6 +547,7 @@ export class OrderReturnService {
                 status: "pending",
                 supplier_id: supplierId,
                 return_manager: returnManager,
+                inbound_date: batchCreatedAt || new Date(),
               },
             });
           })

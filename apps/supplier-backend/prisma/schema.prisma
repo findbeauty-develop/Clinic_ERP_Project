@@ -197,6 +197,7 @@ model SupplierReturnItem {
   product_name    String
   brand           String?
   quantity        Int
+  status          String   @default("pending") // pending, processing, completed, rejected
   return_type     String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
   memo            String? // Item-specific memo
   images          String[] @default([]) // Image URLs

@@ -113,14 +113,18 @@ export class ReturnController {
     summary: "Accept return (반품 접수)",
     description: "Return'ni qabul qilish",
   })
-  async acceptReturn(@Param("id") id: string, @Req() req: any) {
+  async acceptReturn(
+    @Param("id") id: string,
+    @Body() body: { itemId?: string },
+    @Req() req: any
+  ) {
     const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
     
     if (!supplierManagerId) {
       throw new Error("Supplier Manager ID not found in token");
     }
 
-    return this.returnService.acceptReturn(id, supplierManagerId);
+    return this.returnService.acceptReturn(id, supplierManagerId, body.itemId);
   }
 
   @Put(":id/reject")

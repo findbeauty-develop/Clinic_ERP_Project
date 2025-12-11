@@ -102,6 +102,7 @@ export class ReturnService {
           returnDate: request.created_at,
           totalRefund: totalRefund,
           items: request.items?.map((item: any) => ({
+            id: item.id,
             productCode: item.batch_no || item.order_no || "",
             productName: item.product_name,
             productBrand: item.brand || "",
@@ -114,6 +115,7 @@ export class ReturnService {
             inboundDate: item.inbound_date,
             orderNo: item.order_no,
             batchNo: item.batch_no,
+            status: item.status || "pending",
           })) || [],
           status: request.status.toUpperCase(),
           isRead: request.status !== "pending", // Consider non-pending as read
@@ -242,8 +244,9 @@ export class ReturnService {
 
   /**
    * Return'ni qabul qilish (요청 확인) - status: pending → processing
+   * If itemId is provided, only that item is accepted. Otherwise, entire request is accepted.
    */
-  async acceptReturn(notificationId: string, supplierManagerId: string) {
+  async acceptReturn(notificationId: string, supplierManagerId: string, itemId?: string) {
     if (!notificationId || !supplierManagerId) {
       throw new BadRequestException("Notification ID and Supplier Manager ID are required");
     }
@@ -260,30 +263,106 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      const returnRequest = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.update({
-          where: {
-            id: notificationId,
-            supplier_tenant_id: manager.supplier_tenant_id,
-            status: "pending", // Only accept pending returns
-          },
-          data: {
-            status: "processing",
-            supplier_manager_id: manager.id, // Assign to this manager
-            confirmed_at: new Date(),
-            updated_at: new Date(),
-          },
+      // If itemId is provided, accept only that specific item
+      if (itemId) {
+        // Update the specific item status
+        const item = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnItem.update({
+            where: {
+              id: itemId,
+              returnRequest: {
+                id: notificationId,
+                supplier_tenant_id: manager.supplier_tenant_id,
+                status: "pending",
+              },
+            },
+            data: {
+              status: "processing",
+              updated_at: new Date(),
+            },
+            include: {
+              returnRequest: true,
+            },
+          });
         });
-      });
 
-      return {
-        success: true,
-        notification: {
-          id: returnRequest.id,
-          status: returnRequest.status.toUpperCase(),
-          confirmedAt: returnRequest.confirmed_at,
-        },
-      };
+        // Check if all items in the request are now processing or completed
+        const allItems = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnItem.findMany({
+            where: {
+              return_request_id: notificationId,
+            },
+          });
+        });
+
+        const allAccepted = allItems.every((item: any) => 
+          item.status === "processing" || item.status === "completed"
+        );
+
+        // If all items are accepted, update the request status
+        if (allAccepted) {
+          await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierReturnRequest.update({
+              where: { id: notificationId },
+              data: {
+                status: "processing",
+                supplier_manager_id: manager.id,
+                confirmed_at: new Date(),
+                updated_at: new Date(),
+              },
+            });
+          });
+        }
+
+        return {
+          success: true,
+          notification: {
+            id: notificationId,
+            itemId: itemId,
+            status: "PROCESSING",
+          },
+        };
+      } else {
+        // Accept entire request (backward compatibility)
+        const returnRequest = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnRequest.update({
+            where: {
+              id: notificationId,
+              supplier_tenant_id: manager.supplier_tenant_id,
+              status: "pending", // Only accept pending returns
+            },
+            data: {
+              status: "processing",
+              supplier_manager_id: manager.id, // Assign to this manager
+              confirmed_at: new Date(),
+              updated_at: new Date(),
+            },
+          });
+        });
+
+        // Update all items in the request to processing
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierReturnItem.updateMany({
+            where: {
+              return_request_id: notificationId,
+              status: "pending",
+            },
+            data: {
+              status: "processing",
+              updated_at: new Date(),
+            },
+          });
+        });
+
+        return {
+          success: true,
+          notification: {
+            id: returnRequest.id,
+            status: returnRequest.status.toUpperCase(),
+            confirmedAt: returnRequest.confirmed_at,
+          },
+        };
+      }
     } catch (error: any) {
       this.logger.error(
         `Error accepting return: ${error.message}`,
