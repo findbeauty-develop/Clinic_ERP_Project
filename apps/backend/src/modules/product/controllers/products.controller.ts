@@ -80,6 +80,17 @@ export class ProductsController {
     return this.productsService.getAllProducts(tenantId);
   }
 
+  @Get("storages/list")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get distinct storage locations for tenant" })
+  getStorages(@Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.getStorages(tenantId);
+  }
+
   @Get(":id/batches")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()

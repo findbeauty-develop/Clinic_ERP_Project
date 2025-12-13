@@ -7,9 +7,10 @@ import { OutboundService } from "./services/outbound.service";
 import { ProductsService } from "../product/services/products.service";
 import { ProductModule } from "../product/product.module";
 import { OrderReturnModule } from "../order-return/order-return.module";
+import { ReturnModule } from "../return/return.module";
 
 @Module({
-  imports: [ProductModule, forwardRef(() => OrderReturnModule)],
+  imports: [ProductModule, forwardRef(() => OrderReturnModule), ReturnModule],
   controllers: [OutboundController],
   providers: [
     OutboundService,

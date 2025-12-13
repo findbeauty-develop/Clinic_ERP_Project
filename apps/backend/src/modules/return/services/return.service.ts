@@ -35,6 +35,7 @@ export class ReturnService {
           product_id: true,
           outbound_id: true,
           return_qty: true,
+          memo: true, // Empty box return'larini aniqlash uchun
         },
       });
     });
@@ -42,12 +43,20 @@ export class ReturnService {
     // 2. Product ID va Outbound ID bo'yicha guruhlash (Map ishlatish - tezroq)
     const returnedByProduct = new Map<string, number>();
     const returnedByOutbound = new Map<string, number>();
+    // Empty box return'larini alohida hisoblash
+    const emptyBoxReturnsByProduct = new Map<string, number>();
 
     allReturns.forEach((ret: any) => {
       // Product bo'yicha qaytarilgan miqdorni yig'ish
       if (ret.product_id) {
         const productSum = returnedByProduct.get(ret.product_id) || 0;
         returnedByProduct.set(ret.product_id, productSum + (ret.return_qty || 0));
+        
+        // Empty box return'larni alohida hisoblash (memo ichida "자동 반납: 빈 박스" bor bo'lsa)
+        if (ret.memo && ret.memo.includes("자동 반납: 빈 박스")) {
+          const emptyBoxSum = emptyBoxReturnsByProduct.get(ret.product_id) || 0;
+          emptyBoxReturnsByProduct.set(ret.product_id, emptyBoxSum + (ret.return_qty || 0));
+        }
       }
 
       // Outbound bo'yicha qaytarilgan miqdorni yig'ish
@@ -58,25 +67,72 @@ export class ReturnService {
     });
 
     // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
+    console.log(`\n🔍 [getAvailableProducts] Querying products with is_returnable=true...`);
+    console.log(`  tenantId: ${tenantId}`);
+    
+    // Avval barcha product'larni olish (debug uchun)
+    const allProductsCount = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).product.count({
+        where: { tenant_id: tenantId },
+      });
+    });
+    console.log(`  Total products in DB: ${allProductsCount}`);
+    
+    // ReturnPolicy bilan product'larni olish (debug uchun)
+    const productsWithReturnPolicy = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).product.findMany({
+        where: { 
+          tenant_id: tenantId,
+          returnPolicy: { isNot: null }, // returnPolicy mavjud bo'lganlar (Prisma'da isNot camelCase)
+        },
+        select: {
+          id: true,
+          name: true,
+          returnPolicy: {
+            select: {
+              is_returnable: true,
+            },
+          },
+        },
+      });
+    });
+    console.log(`  Products with returnPolicy: ${productsWithReturnPolicy.length}`);
+    productsWithReturnPolicy.forEach((p: any) => {
+      console.log(`    - ${p.name}: is_returnable=${p.returnPolicy?.is_returnable}`);
+    });
+    
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.findMany({
         where: {
           tenant_id: tenantId,
-          returnPolicy: {
-            is_returnable: true,
-          },
+          OR: [
+            { returnPolicy: null }, // returnPolicy null bo'lsa ham qo'shish
+            { returnPolicy: { is_returnable: true } }, // is_returnable = true bo'lsa qo'shish
+          ],
         },
-        include: {
-          returnPolicy: true,
+        select: {
+          id: true,
+          name: true,
+          brand: true,
+          unit: true,
+          usage_capacity: true, // 사용 단위 uchun
+          capacity_per_product: true, // 사용 단위 uchun
+          returnPolicy: {
+            select: {
+              is_returnable: true,
+              refund_amount: true,
+            },
+          },
           supplierProducts: {
-            take: 1, // Birinchi supplier'ni olish
+            take: 1,
             orderBy: { created_at: "desc" },
           },
           batches: {
-            take: 1, // Latest batch for storage location
+            take: 1,
             orderBy: { created_at: "desc" },
             select: {
               storage: true,
+              used_count: true, // 사용 단위 uchun
             },
           },
           outbounds: {
@@ -92,8 +148,11 @@ export class ReturnService {
         },
       });
     });
+    
+    console.log(`  Products found (returnPolicy=null OR is_returnable=true): ${products.length}`);
 
     // 4. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash (Map'lardan foydalanish)
+    console.log(`\n🔍 [getAvailableProducts] Processing ${products.length} products...`);
     const availableProducts = products
       .map((product: any) => {
         // Chiqarilgan jami miqdor
@@ -108,10 +167,33 @@ export class ReturnService {
         // Qaytarilishi mumkin bo'lgan miqdor
         const unreturnedQty = totalOutbound - totalReturned;
 
-        // Agar qaytarilishi mumkin bo'lgan miqdor 0 yoki kichik bo'lsa, o'tkazib yuborish
-        if (unreturnedQty <= 0) {
+        // 사용 단위 mantiqi: used_count va capacity_per_product asosida empty boxes hisoblash (avval hisoblash)
+        let emptyBoxes: number | undefined = undefined;
+        if (product.usage_capacity && product.usage_capacity > 0 && product.capacity_per_product && product.capacity_per_product > 0) {
+          // Latest batch'ning used_count'ini olish
+          const latestBatch = product.batches?.[0];
+          const usedCount = latestBatch?.used_count || 0;
+          
+          // previousEmptyBoxes = Math.floor(used_count / capacity_per_product)
+          const previousEmptyBoxes = Math.floor(usedCount / product.capacity_per_product);
+          
+          // Return qilingan empty box'lar sonini olish (faqat empty box return'lar)
+          const returnedEmptyBoxes = emptyBoxReturnsByProduct.get(product.id) || 0;
+          
+          // Qolgan empty box'lar soni: previousEmptyBoxes - returnedEmptyBoxes
+          emptyBoxes = Math.max(0, previousEmptyBoxes - returnedEmptyBoxes);
+        }
+
+        console.log(`  Product ${product.name}: unreturnedQty=${unreturnedQty}, emptyBoxes=${emptyBoxes !== undefined ? emptyBoxes : 'undefined'}, totalOutbound=${totalOutbound}, totalReturned=${totalReturned}`);
+
+        // Agar qaytarilishi mumkin bo'lgan miqdor 0 yoki kichik bo'lsa VA emptyBoxes ham 0 yoki undefined bo'lsa, o'tkazib yuborish
+        // Lekin agar unreturnedQty > 0 yoki emptyBoxes > 0 bo'lsa, product'ni ko'rsatish
+        if (unreturnedQty <= 0 && (emptyBoxes === undefined || emptyBoxes <= 0)) {
+          console.log(`    ❌ Filtered out: unreturnedQty=${unreturnedQty} <= 0 && emptyBoxes=${emptyBoxes !== undefined ? emptyBoxes : 'undefined'} <= 0 (or undefined)`);
           return null;
         }
+        
+        console.log(`    ✅ Product included: unreturnedQty=${unreturnedQty} > 0 ${emptyBoxes !== undefined ? `OR emptyBoxes=${emptyBoxes} > 0` : '(emptyBoxes undefined, using unreturnedQty only)'}`);
 
         // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
         const batchDetails = (product.outbounds || []).map((outbound: any) => {
@@ -153,6 +235,7 @@ export class ReturnService {
           supplierName: null, // Supplier name not available from SupplierProduct
           storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
           unreturnedQty,
+          emptyBoxes, // 사용 단위 mantiqi: bo'sh box'lar soni (previousEmptyBoxes)
           refundAmount: product.returnPolicy?.refund_amount ?? 0,
           batches: batchDetails.filter((b: any) => b.availableQty > 0),
         };
@@ -160,6 +243,7 @@ export class ReturnService {
       .filter((p: any) => p !== null);
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
+    console.log(`✅ [getAvailableProducts] Returning ${availableProducts.length} available products\n`);
     return availableProducts;
   }
 
@@ -231,6 +315,11 @@ export class ReturnService {
                 tenant_id: tenantId,
                 product_id: item.productId,
               },
+              select: {
+                id: true,
+                batch_no: true,
+                used_count: true, // 사용 단위 uchun
+              },
             });
 
             if (!batch) {
@@ -261,7 +350,48 @@ export class ReturnService {
             const refundAmount = product.returnPolicy?.refund_amount ?? 0;
             const totalRefund = item.returnQty * refundAmount;
 
-            // 8. Return yozuvini yaratish
+            // 8. Empty box return ekanligini tekshirish va memo'ga qo'shish
+            let memo = dto.memo || "";
+            
+            // Product'ning usage_capacity va capacity_per_product ni olish (include bilan kelmaydi, shuning uchun alohida query)
+            const productDetails = await (tx as any).product.findFirst({
+              where: { id: item.productId },
+              select: {
+                usage_capacity: true,
+                capacity_per_product: true,
+              },
+            });
+            
+            // Product'ning usage_capacity va capacity_per_product ni tekshirish
+            if (productDetails?.usage_capacity && productDetails.usage_capacity > 0 && 
+                productDetails?.capacity_per_product && productDetails.capacity_per_product > 0) {
+              
+              // Batch'ning used_count'ini olish (allaqachon olingan, lekin select'da bor)
+              const usedCount = batch.used_count || 0;
+              
+              // Qolgan empty box'lar sonini hisoblash
+              const previousEmptyBoxes = Math.floor(usedCount / productDetails.capacity_per_product);
+              
+              // Return qilingan empty box'lar sonini olish (hozirgi return'dan oldin)
+              const emptyBoxReturns = await (tx as any).return.findMany({
+                where: {
+                  product_id: item.productId,
+                  tenant_id: tenantId,
+                  memo: { contains: "자동 반납: 빈 박스" },
+                },
+                select: { return_qty: true },
+              });
+              
+              const returnedEmptyBoxes = emptyBoxReturns.reduce((sum: number, ret: any) => sum + (ret.return_qty || 0), 0);
+              const availableEmptyBoxes = previousEmptyBoxes - returnedEmptyBoxes;
+              
+              // Agar return qilinayotgan miqdor available empty boxes dan kichik yoki teng bo'lsa, bu empty box return
+              if (availableEmptyBoxes > 0 && item.returnQty <= availableEmptyBoxes) {
+                memo = `자동 반납: 빈 박스`;
+              }
+            }
+
+            // 9. Return yozuvini yaratish
             const returnRecord = await this.returnRepository.create(
               {
                 tenant_id: tenantId,
@@ -274,7 +404,7 @@ export class ReturnService {
                 refund_amount: refundAmount,
                 total_refund: totalRefund,
                 manager_name: dto.managerName,
-                memo: dto.memo,
+                memo: memo,
               },
               tx
             );

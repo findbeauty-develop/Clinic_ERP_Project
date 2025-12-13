@@ -56,6 +56,7 @@ export default function InboundNewPage() {
     const today = new Date();
     return today.toISOString().split('T')[0]; // YYYY-MM-DD format
   });
+  const [storageOptions, setStorageOptions] = useState<string[]>([]);
 
   // Initialize manager name from localStorage (current logged-in member)
   useEffect(() => {
@@ -64,6 +65,27 @@ export default function InboundNewPage() {
       const member = JSON.parse(memberData);
       setSelectedManager(member.full_name || member.member_id || "");
     }
+  }, []);
+
+  // Fetch storage options from backend
+  useEffect(() => {
+    const fetchStorages = async () => {
+      try {
+        const { apiGet } = await import("../../../lib/api");
+        const token = localStorage.getItem("erp_token");
+        if (!token) return;
+
+        const response = await apiGet("/products/storages/list");
+        if (Array.isArray(response)) {
+          setStorageOptions(response);
+        }
+      } catch (error) {
+        console.error("Failed to fetch storage options:", error);
+        // Silently fail - user can still type manually
+      }
+    };
+
+    fetchStorages();
   }, []);
   
   // Supplier search states
@@ -134,6 +156,7 @@ export default function InboundNewPage() {
     barcode: "",
     image: "",
     imageUrl: "",
+    additionalImage: "", // Qo'shimcha image uchun
     category: "",
     status: statusOptions[0],
     isActive: true,
@@ -163,6 +186,7 @@ export default function InboundNewPage() {
     expiryMonths: 12,
     expiryUnit: "months",
     alertDays: "",
+    noExpiryPeriod: false, // 유통기간 없음
     // Supplier info
     supplierId: "",
     supplierName: "",
@@ -233,6 +257,18 @@ export default function InboundNewPage() {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         handleInputChange("image", base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        handleInputChange("additionalImage", base64String);
       };
       reader.readAsDataURL(file);
     }
@@ -801,6 +837,23 @@ export default function InboundNewPage() {
         payload.usageSalePrice = Number(formData.usageSalePrice);
       }
 
+      // Add packaging unit conversion if enabled
+      if (formData.hasDifferentPackagingQuantity) {
+        payload.hasDifferentPackagingQuantity = true;
+        if (formData.packagingFromQuantity && formData.packagingFromQuantity > 0) {
+          payload.packagingFromQuantity = Number(formData.packagingFromQuantity);
+        }
+        if (formData.packagingFromUnit) {
+          payload.packagingFromUnit = formData.packagingFromUnit;
+        }
+        if (formData.packagingToQuantity && formData.packagingToQuantity > 0) {
+          payload.packagingToQuantity = Number(formData.packagingToQuantity);
+        }
+        if (formData.packagingToUnit) {
+          payload.packagingToUnit = formData.packagingToUnit;
+        }
+      }
+
       // Add optional fields
       if (formData.barcode) payload.barcode = formData.barcode;
       if (formData.image) payload.image = formData.image;
@@ -825,9 +878,9 @@ export default function InboundNewPage() {
             purchase_price: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
             sale_price: formData.salePrice ? Number(formData.salePrice) : undefined,
             manufacture_date: formData.manufactureDate || undefined,
-            expiry_date: formData.expiryDate || undefined,
-            expiry_months: formData.expiryMonths || undefined,
-            expiry_unit: formData.expiryUnit || undefined,
+            expiry_date: formData.noExpiryPeriod ? null : (formData.expiryDate || undefined),
+            expiry_months: formData.noExpiryPeriod ? null : (formData.expiryMonths || undefined),
+            expiry_unit: formData.noExpiryPeriod ? null : (formData.expiryUnit || undefined),
             qty: Number(formData.currentStock) || 0,
             alert_days: formData.alertDays || undefined,
             inbound_manager: selectedManager !== "성함 선택" ? selectedManager : undefined,
@@ -926,84 +979,143 @@ export default function InboundNewPage() {
           <div className="rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none">
             <div className="p-6 sm:p-10">
               {/* New Layout: Left side - Image Upload, Right side - Form Fields */}
-              <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
+              <div className="grid gap-6 lg:grid-cols-[250px_1fr]">
                 {/* Left Side - Image Upload */}
                 <div className="flex flex-col gap-3">
                   {/* Large Image Upload */}
-                  <div className="relative flex h-64 flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-6 text-center transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
+                  <div className="relative flex h-96 flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-0 overflow-hidden transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
                     {formData.image ? (
                       <>
-                        <img src={formData.image} alt="Preview" className="h-full w-full object-contain rounded-lg" />
+                        <img src={formData.image} alt="Preview" className="h-full w-full object-cover rounded-xl" />
                         <label className="absolute inset-0 cursor-pointer">
                           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                         </label>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInputChange("image", "");
+                          }}
+                          className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white hover:bg-red-600 transition z-10"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </>
                     ) : (
-                      <>
-                        <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800">
-                          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">사진 첨부</span>
-                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                        </label>
-                      </>
+                      <label className="flex flex-col items-center justify-center gap-2 cursor-pointer w-full h-full p-6">
+                        <svg className="h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">사진 첨부</span>
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                      </label>
                     )}
                   </div>
                   {/* Small Additional Image Placeholder */}
-                  <div className="flex h-20 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
-                    <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                  </div>
+                  
                 </div>
 
-                {/* Right Side - Form Fields in 2 Columns */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  {/* Left Column */}
-                  <div className="flex flex-col gap-6">
-                    <InputField
-                      label="제품명"
-                      placeholder="이름"
-                      value={formData.name}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
-                    />
-                    <InputField
-                      label="카테고리"
-                      placeholder="물광"
-                      value={formData.category}
-                      onChange={(e) => handleInputChange("category", e.target.value)}
-                    />
-                  </div>
+                {/* Right Side - Form Fields + Small Image Placeholder */}
+                <div className="flex flex-col gap-6">
+                  {/* Form Fields in 2 Columns */}
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {/* Left Column */}
+                    <div className="flex flex-col gap-6">
+                      <InputField
+                        label="제품명"
+                        placeholder="이름"
+                        value={formData.name}
+                        onChange={(e) => handleInputChange("name", e.target.value)}
+                      />
+                      <InputField
+                        label="카테고리"
+                        placeholder="물광"
+                        value={formData.category}
+                        onChange={(e) => handleInputChange("category", e.target.value)}
+                      />
+                    </div>
 
-                  {/* Right Column */}
-                  <div className="flex flex-col gap-6">
-                    <InputField
-                      label="브랜드"
-                      placeholder="브랜트"
-                      value={formData.brand}
-                      onChange={(e) => handleInputChange("brand", e.target.value)}
-                    />
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        바코드 번호
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          placeholder="바코드 입력"
-                          value={formData.barcode}
-                          onChange={(e) => handleInputChange("barcode", e.target.value)}
-                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                        />
-                        <button
-                          type="button"
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                          바코드 스캔
-                        </button>
+                    {/* Right Column */}
+                    <div className="flex flex-col gap-6">
+                      <InputField
+                        label="브랜드"
+                        placeholder="브랜트"
+                        value={formData.brand}
+                        onChange={(e) => handleInputChange("brand", e.target.value)}
+                      />
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          바코드 번호
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            placeholder="바코드 입력"
+                            value={formData.barcode}
+                            onChange={(e) => handleInputChange("barcode", e.target.value)}
+                            className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          />
+                          <button
+                            type="button"
+                            className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            바코드 스캔
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Small Additional Image Placeholder */}
+                  <div className="relative flex h-48 w-[200px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 cursor-pointer transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800">
+  {formData.additionalImage ? (
+    <>
+      <img
+        src={formData.additionalImage}
+        alt="Additional Preview"
+        className="h-full w-full object-cover rounded-lg"
+      />
+      <label className="absolute inset-0 cursor-pointer">
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleAdditionalImageUpload}
+          className="hidden"
+        />
+      </label>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleInputChange("additionalImage", "");
+        }}
+        className="absolute top-1 right-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600 transition"
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </>
+  ) : (
+    <label className="flex h-full w-full cursor-pointer items-center justify-center">
+      <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+      </svg>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={handleAdditionalImageUpload}
+        className="hidden"
+      />
+    </label>
+  )}
+</div>
+
                 </div>
               </div>
 
@@ -1094,7 +1206,24 @@ export default function InboundNewPage() {
                   type="checkbox"
                   checked={formData.hasDifferentPackagingQuantity}
                   onChange={(e) => handleInputChange("hasDifferentPackagingQuantity", e.target.checked)}
-                  className="h-5 w-5 rounded border border-slate-300 bg-white checked:bg-sky-500 checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 dark:border-slate-600 dark:bg-white dark:checked:bg-sky-500"
+                  className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-white-300
+        checked:bg-white-500 checked:border-white-500
+        focus:outline-none focus:ring-2 focus:ring-white-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-black
+        after:opacity-0
+        checked:after:opacity-100
+      "
                 />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   포장 단위 내 제품 수량이 다른 경우
@@ -1203,7 +1332,24 @@ export default function InboundNewPage() {
                     type="checkbox"
                     checked={formData.enableUsageCapacity}
                     onChange={(e) => handleInputChange("enableUsageCapacity", e.target.checked)}
-                    className="h-5 w-5 rounded border border-slate-300 bg-white checked:bg-sky-500 checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 dark:border-slate-600 dark:bg-white dark:checked:bg-sky-500"
+                    className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-white-300
+        checked:bg-white-500 checked:border-white-500
+        focus:outline-none focus:ring-2 focus:ring-white-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-black
+        after:opacity-0
+        checked:after:opacity-100
+      "
                   />
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
                     사용 단위
@@ -1375,42 +1521,70 @@ export default function InboundNewPage() {
           </div>
         </section>
         <section className="space-y-6">
-          <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <RefreshIcon className="h-5 w-5 text-amber-500" />
-            반납 관리
-          </h2>
-          <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={isReturnable}
-                onChange={() => setIsReturnable((prev) => !prev)}
-                className="mt-1 h-5 w-5 rounded border-amber-300 text-amber-500 focus:ring-amber-500"
-              />
-              <span className="text-sm text-amber-700 dark:text-amber-200">
-                이 제품은 반납 가능한 제품입니다. 반납 정책을 입력하면 자동으로 시스템에 반영됩니다.
-              </span>
-            </label>
+  <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+    <RefreshIcon className="h-5 w-5 text-amber-500" />
+    반납 관리
+  </h2>
 
-            <div className="mt-6 grid gap-5 lg:grid-cols-2">
-              <InputField
-                label="반납 시 할인 금액 (개당, 원)"
-                placeholder="예: 5000"
-                value={formData.refundAmount}
-                onChange={(e) => handleInputChange("refundAmount", e.target.value)}
-                disabled={!isReturnable}
-              />
-              <InputField
-                label="반납품 보관 위치"
-                placeholder="보관 위치 입력하거나 선택하세요"
-                value={formData.returnStorage}
-                onChange={(e) => handleInputChange("returnStorage", e.target.value)}
-                disabled={!isReturnable}
-              />
-            </div>
-           
-          </div>
-        </section>
+  <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
+  <label className="flex items-center gap-3">
+    <input
+      type="checkbox"
+      checked={isReturnable}
+      onChange={() => {
+        setIsReturnable((prev) => {
+          const next = !prev;
+          if (!next) {
+            handleInputChange("refundAmount", "");
+            handleInputChange("returnStorage", "");
+          }
+          return next;
+        });
+      }}
+      className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-amber-300
+        checked:bg-amber-500 checked:border-amber-500
+        focus:outline-none focus:ring-2 focus:ring-amber-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-white
+        after:opacity-0
+        checked:after:opacity-100
+      "
+    />
+    <span className="text-sm text-amber-700 dark:text-amber-200">
+      이 제품은 반납 가능한 제품입니다. 반납 정책을 입력하면 자동으로 시스템에 반영됩니다.
+    </span>
+  </label>
+
+  {isReturnable && (
+    <div className="mt-6 grid gap-5 lg:grid-cols-2">
+      <InputField
+        label="반납 시 할인 금액 (개당, 원)"
+        placeholder="예: 5000"
+        value={formData.refundAmount}
+        onChange={(e) => handleInputChange("refundAmount", e.target.value)}
+      />
+      <InputField
+        label="반납품 보관 위치"
+        placeholder="보관 위치 입력하거나 선택하세요"
+        value={formData.returnStorage}
+        onChange={(e) => handleInputChange("returnStorage", e.target.value)}
+      />
+    </div>
+  )}
+</div>
+
+</section>
+
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <CalendarIcon className="h-5 w-5 text-emerald-500" />
@@ -1420,67 +1594,60 @@ export default function InboundNewPage() {
             <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">제조일 선택</label>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한</label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.noExpiryPeriod}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          handleInputChange("noExpiryPeriod", isChecked);
+                          if (isChecked) {
+                            // Checkbox bosilganda expiryDate ni tozalash
+                            handleInputChange("expiryDate", "");
+                          }
+                        }}
+                        className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-white-300
+        checked:bg-white-500 checked:border-white-500
+        focus:outline-none focus:ring-2 focus:ring-white-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-black
+        after:opacity-0
+        checked:after:opacity-100
+      "
+                      />
+                      <span className="text-sm text-slate-600 dark:text-slate-300">유통기간 없음</span>
+                    </label>
+                  </div>
                   <div className="relative">
                     <CalendarIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                     <input
                       type="date"
-                      value={formData.manufactureDate}
-                      onChange={(e) => handleInputChange("manufactureDate", e.target.value)}
-                      className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      value={formData.expiryDate} 
+                      onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                      disabled={formData.noExpiryPeriod}
+                      className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한 기간</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      value={formData.expiryMonths}
-                      onChange={(e) => handleInputChange("expiryMonths", Number(e.target.value))}
-                      className="h-11 w-20 rounded-xl border border-slate-200 bg-white px-4 text-center text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    />
-                    <select
-                      value={formData.expiryUnit}
-                      onChange={(e) => handleInputChange("expiryUnit", e.target.value)}
-                      className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-600 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      <option value="months">개월</option>
-                      <option value="days">일</option>
-                      <option value="years">년</option>
-                    </select>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    제조일부터 12개월 후가 유통기한이 됩니다.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">계산된 유통기한</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={
-                      formData.expiryDate && formData.manufactureDate
-                        ? formData.expiryDate
-                        : "제조일을 선택하면 자동 계산됩니다"
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-sky-50 px-4 text-sm font-semibold text-sky-600 dark:border-slate-700 dark:bg-sky-500/10 dark:text-sky-400"
-                  />
-                </div>
-                
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한 임박 알림 기준</label>
                   <div className="relative">
                     <select
                       value={formData.alertDays || ""}
                       onChange={(e) => handleInputChange("alertDays", e.target.value)}
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       <option value="">선택(30일전/60일전/90일전)</option>
                       <option value="30">30일전</option>
@@ -1504,9 +1671,12 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                 </div>
-
-              
+             
               </div>
+
+     
+
+            
             </div>
           </div>
         </section>
@@ -2052,13 +2222,21 @@ export default function InboundNewPage() {
       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
         보관 위치
       </label>
-      <input
-        type="text"
-        placeholder="보관 위치를 입력하거나 선택하세요"
-        value={formData.storage}
-        onChange={(e) => handleInputChange("storage", e.target.value)}
-        className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      />
+      <div className="relative">
+        <input
+          type="text"
+          list="storage-options"
+          placeholder="보관 위치를 입력하거나 선택하세요"
+          value={formData.storage}
+          onChange={(e) => handleInputChange("storage", e.target.value)}
+          className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        />
+        <datalist id="storage-options">
+          {storageOptions.map((storage, index) => (
+            <option key={index} value={storage} />
+          ))}
+        </datalist>
+      </div>
      
     </div>
 

@@ -17,7 +17,7 @@ import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
     SupabaseService,
     JwtTenantGuard,
   ],
-  exports: [ReturnService, SupplierReturnNotificationService],
+  exports: [ReturnService, SupplierReturnNotificationService, ReturnRepository],
 })
 export class ReturnModule {}
 

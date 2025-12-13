@@ -58,6 +58,12 @@ export class ProductsService {
           expiry_months: dto.expiryMonths ?? null,
           expiry_unit: dto.expiryUnit ?? null,
           alert_days: dto.alertDays ?? null,
+          // Packaging unit conversion
+          has_different_packaging_quantity: dto.hasDifferentPackagingQuantity ?? false,
+          packaging_from_quantity: dto.packagingFromQuantity ?? null,
+          packaging_from_unit: dto.packagingFromUnit ?? null,
+          packaging_to_quantity: dto.packagingToQuantity ?? null,
+          packaging_to_unit: dto.packagingToUnit ?? null,
           returnPolicy: dto.returnPolicy
             ? {
                 create: {
@@ -740,5 +746,40 @@ export class ProductsService {
 
     const diffTime = expiry.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  /**
+   * Get distinct storage locations for a tenant
+   * @param tenantId - Tenant ID
+   * @returns Array of distinct storage location strings
+   */
+  async getStorages(tenantId: string): Promise<string[]> {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    // Get distinct storage values from Batch table
+    const batches = await this.prisma.batch.findMany({
+      where: {
+        tenant_id: tenantId,
+        storage: {
+          not: null,
+        },
+      },
+      select: {
+        storage: true,
+      },
+      distinct: ["storage"],
+    });
+
+    // Extract storage values, filter out null/empty, and sort alphabetically
+    const storages = batches
+      .map((batch) => batch.storage)
+      .filter((storage): storage is string => {
+        return storage !== null && storage !== undefined && storage.trim() !== "";
+      })
+      .sort((a, b) => a.localeCompare(b, "ko", { sensitivity: "base" }));
+
+    return storages;
   }
 }

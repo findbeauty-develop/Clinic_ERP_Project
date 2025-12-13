@@ -35,6 +35,13 @@ model Product {
   expiry_unit          String?           // 유통기한 단위 ("months" or "days")
   alert_days           String?           // 알림 일수 (유효기간 임박 alert)
   
+  // Packaging unit conversion
+  has_different_packaging_quantity Boolean @default(false) // 포장 단위 내 제품 수량이 다른 경우
+  packaging_from_quantity          Int?                    // 포장 단위 수량 (예: 1)
+  packaging_from_unit             String?                  // 포장 단위 (예: "box")
+  packaging_to_quantity           Int?                    // 제품 수량 (예: 2)
+  packaging_to_unit               String?                  // 제품 단위 (예: "ea")
+  
   batches              Batch[]
   orderItems           OrderItem[]
   outbounds            Outbound[]
@@ -117,6 +124,7 @@ model Batch {
   expiry_months    Int?
   qty              Int
   alert_days       String?
+  used_count       Int         @default(0) // Ishlatilgan mahsulotlar soni (usageCapacity asosida)
   created_at       DateTime    @default(now())
   updated_at       DateTime?
   expiry_unit      String?

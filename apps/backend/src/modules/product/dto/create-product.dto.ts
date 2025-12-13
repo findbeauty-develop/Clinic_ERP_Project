@@ -191,6 +191,29 @@ export class CreateProductDto {
   @IsString()
   alertDays?: string;
 
+  // Packaging unit conversion
+  @IsOptional()
+  @IsBoolean()
+  hasDifferentPackagingQuantity?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  packagingFromQuantity?: number;
+
+  @IsOptional()
+  @IsString()
+  packagingFromUnit?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  packagingToQuantity?: number;
+
+  @IsOptional()
+  @IsString()
+  packagingToUnit?: string;
+
   @IsOptional()
   @IsString()
   tenantId?: string;

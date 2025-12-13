@@ -254,8 +254,7 @@ export class OrderService {
   private async notifyClinicBackend(order: any, adjustments: any[]) {
     try {
       const clinicApiUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
-      const apiKey = process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
-
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
       if (!apiKey) {
         this.logger.warn("API_KEY_SECRET not configured, skipping clinic notification");
         return;

@@ -25,6 +25,7 @@ type AvailableProduct = {
   supplierName: string | null;
   storageLocation: string | null;
   unreturnedQty: number;
+  emptyBoxes?: number; // 사용 단위 mantiqi: bo'sh box'lar soni
   refundAmount: number;
   batches: BatchDetail[];
 };
@@ -89,7 +90,9 @@ export default function ReturnsPage() {
     try {
       const searchParam = debouncedSearchQuery ? `?search=${encodeURIComponent(debouncedSearchQuery)}` : "";
       const data = await apiGet<AvailableProduct[]>(`${apiUrl}/returns/available-products${searchParam}`);
-      setProducts(data);
+      console.log("📦 Fetched available products:", data);
+      console.log("📦 Products count:", data?.length || 0);
+      setProducts(data || []);
     } catch (err) {
       console.error("Failed to load available products", err);
       setError("반납 가능한 제품 정보를 불러오지 못했습니다.");
@@ -103,6 +106,9 @@ export default function ReturnsPage() {
     const product = products.find((p) => p.productId === productId);
     if (!product) return;
 
+    // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
+    const maxQty = product.emptyBoxes !== undefined ? product.emptyBoxes : product.unreturnedQty;
+
     setSelectedItems((prev) => {
       const existingIndex = prev.findIndex(
         (item) => item.productId === productId
@@ -110,7 +116,7 @@ export default function ReturnsPage() {
 
       if (existingIndex >= 0) {
         const existing = prev[existingIndex];
-        const newQty = Math.max(0, Math.min(existing.returnQty + delta, product.unreturnedQty));
+        const newQty = Math.max(0, Math.min(existing.returnQty + delta, maxQty));
         
         if (newQty === 0) {
           // Remove item if quantity is 0
@@ -132,6 +138,9 @@ export default function ReturnsPage() {
           const firstBatch = product.batches[0];
           if (!firstBatch) return prev;
 
+          // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
+          const maxQty = product.emptyBoxes !== undefined ? product.emptyBoxes : product.unreturnedQty;
+
           const newItem: SelectedReturnItem = {
             productId: product.productId,
             productName: product.productName,
@@ -142,9 +151,9 @@ export default function ReturnsPage() {
             supplierId: product.supplierId,
             supplierName: product.supplierName,
             managerName: firstBatch.managerName || null,
-            returnQty: Math.min(delta, product.unreturnedQty),
+            returnQty: Math.min(delta, maxQty),
             refundAmount: product.refundAmount,
-            totalRefund: Math.min(delta, product.unreturnedQty) * product.refundAmount,
+            totalRefund: Math.min(delta, maxQty) * product.refundAmount,
           };
           return [...prev, newItem];
         }
@@ -238,18 +247,21 @@ export default function ReturnsPage() {
         }
       });
 
+      // Backend'da har bir item uchun empty box return ekanligini avtomatik tekshiradi
       const response = await apiPost(`${apiUrl}/returns/process`, {
         managerName: managerName.trim(),
-        memo: "",
+        memo: "", // Backend'da avtomatik aniqlanadi
         items: returnItems,
       });
 
       if (response.success) {
         alert("반납이 성공적으로 처리되었습니다.");
+        
         // Clear selected items
         setSelectedItems([]);
-        // Refresh products
-        fetchAvailableProducts();
+        
+        // Refresh products from backend (real data) - optimistic update'ni olib tashladik, faqat backend'dan olamiz
+        await fetchAvailableProducts();
       } else {
         alert(`반납 처리 중 오류가 발생했습니다: ${response.message || "Unknown error"}`);
       }
@@ -383,7 +395,7 @@ export default function ReturnsPage() {
                                 <div className="flex items-center gap-3">
                                   {/* Unreturned Quantity Badge */}
                                   <span className="rounded-lg bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                                    미반납 수량: {product.unreturnedQty}
+                                    미반납 수량: {product.emptyBoxes !== undefined ? product.emptyBoxes : product.unreturnedQty}
                                     {product.unit || "개"}
                                   </span>
                                   
@@ -394,6 +406,8 @@ export default function ReturnsPage() {
                                       (item) => item.productId === product.productId
                                     );
                                     const currentQty = selectedItem?.returnQty || 0;
+                                    // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
+                                    const maxQty = product.emptyBoxes !== undefined ? product.emptyBoxes : product.unreturnedQty;
 
                                     return (
                                       <>
@@ -409,7 +423,7 @@ export default function ReturnsPage() {
                                         <input
                                           type="number"
                                           min="0"
-                                          max={product.unreturnedQty}
+                                          max={maxQty}
                                           value={currentQty === 0 ? 0 : currentQty}
                                           onChange={(e) => {
                                             const inputValue = e.target.value;
@@ -420,7 +434,7 @@ export default function ReturnsPage() {
                                               }
                                               return;
                                             }
-                                            const newQty = Math.max(0, Math.min(parseInt(inputValue) || 0, product.unreturnedQty));
+                                            const newQty = Math.max(0, Math.min(parseInt(inputValue) || 0, maxQty));
                                             if (newQty === 0) {
                                               removeSelectedItem(product.productId);
                                             } else {
@@ -434,7 +448,7 @@ export default function ReturnsPage() {
                                         />
                                         <button
                                           onClick={() => handleQuantityChange(product.productId, 1)}
-                                          disabled={currentQty >= product.unreturnedQty}
+                                          disabled={currentQty >= maxQty}
                                           className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                         >
                                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

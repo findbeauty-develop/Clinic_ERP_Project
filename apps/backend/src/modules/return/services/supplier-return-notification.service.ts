@@ -66,9 +66,10 @@ export class SupplierReturnNotificationService {
         }
 
         // 5. Supplier'ning barcha ACTIVE SupplierManager'larini topish
+        // SupplierManager supplier_tenant_id orqali Supplier bilan bog'langan
         const supplierManagers = await (prisma as any).supplierManager.findMany({
           where: {
-            supplier_id: supplier.id,
+            supplier_tenant_id: supplier.tenant_id,
             status: "ACTIVE",
           },
         });
