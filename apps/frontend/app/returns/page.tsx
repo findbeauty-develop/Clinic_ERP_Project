@@ -372,7 +372,13 @@ export default function ReturnsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
-                    {products.map((product) => {
+                    {products
+                      .filter((product) => {
+                        // Agar 미반납 수량 0 bo'lsa, product'ni ko'rsatma
+                        const displayQty = product.emptyBoxes !== undefined ? product.emptyBoxes : product.unreturnedQty;
+                        return displayQty > 0;
+                      })
+                      .map((product) => {
                       // Calculate total selected quantity for this product
                       const totalSelectedQty = selectedItems
                         .filter((item) => item.productId === product.productId)

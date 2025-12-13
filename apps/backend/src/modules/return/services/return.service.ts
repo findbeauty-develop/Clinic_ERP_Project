@@ -410,24 +410,7 @@ export class ReturnService {
             );
 
             // 9. Batch stock'ini yangilash
-            await (tx as any).batch.update({
-              where: { id: item.batchId },
-              data: {
-                qty: {
-                  increment: item.returnQty,
-                },
-              },
-            });
-
-            // 10. Product stock'ini yangilash
-            await (tx as any).product.update({
-              where: { id: item.productId },
-              data: {
-                current_stock: {
-                  increment: item.returnQty,
-                },
-              },
-            });
+            
 
             createdReturns.push(returnRecord);
           } catch (error: any) {
