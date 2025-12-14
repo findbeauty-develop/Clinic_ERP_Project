@@ -593,18 +593,23 @@ export default function InventoryPage() {
               </p>
             ) : (
               <div className="space-y-4">
-                <select
-                  value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 mb-2"
-                >
-                  <option value="">위치를 선택하세요</option>
-                  {locations.map((loc) => (
-                    <option key={loc.location} value={loc.location}>
-                      {loc.location} 제품종류 {loc.productCount}종
-                    </option>
-                  ))}
-                </select>
+              <select
+  value={selectedLocation}
+  onChange={(e) => setSelectedLocation(e.target.value)}
+  className="w-full px-3 py-2 mb-2 rounded-lg text-sm
+             border border-slate-300
+             bg-white text-slate-900
+             [color-scheme:light]
+             dark:bg-white dark:text-slate-900 dark:border-slate-300"
+>
+  <option value="">위치를 선택하세요</option>
+  {locations.map((loc) => (
+    <option key={loc.location} value={loc.location}>
+      {loc.location} 제품종류 {loc.productCount}종
+    </option>
+  ))}
+</select>
+
                 {selectedLocationData && (
                   <div className="mt-2 space-y-1">
                     {selectedLocationData.items.map((item) => (

@@ -396,6 +396,7 @@ export function Sidebar() {
   const [mounted, setMounted] = useState(false); // hydration-safe flag
   const [userName, setUserName] = useState<string>("");
   const [clinicName, setClinicName] = useState<string>("");
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const loadUserInfo = useCallback(() => {
     const memberData = localStorage.getItem("erp_member_data");
@@ -471,7 +472,10 @@ export function Sidebar() {
       <div className="mt-6 space-y-3 border-t border-slate-700 pt-6">
         {/* mounted bo'lmaguncha SSR va client bir xil bo'lishi uchun placeholder */}
         {mounted && userName ? (
-          <div className="rounded-lg bg-slate-800 px-4 py-3">
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="w-full rounded-lg bg-slate-800 px-4 py-3 text-left transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-sm font-semibold text-white">
                 {userName.charAt(0).toUpperCase()}
@@ -483,7 +487,7 @@ export function Sidebar() {
                 )}
               </div>
             </div>
-          </div>
+          </button>
         ) : (
           // bir xil HTML chiqishi uchun skeleton (optional)
           <div className="rounded-lg bg-slate-800/60 px-4 py-3">
@@ -497,7 +501,7 @@ export function Sidebar() {
           </div>
         )}
 
-        <button
+        {/* <button
           onClick={handleLogout}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900"
         >
@@ -505,8 +509,85 @@ export function Sidebar() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
           </svg>
           <span>로그아웃</span>
-        </button>
+        </button> */}
       </div>
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/20"
+            onClick={() => setShowSettingsModal(false)}
+          />
+          {/* Modal - positioned relative to sidebar */}
+          <div className="absolute bottom-20 left-full z-50 ml-2 w-72 rounded-xl bg-white shadow-2xl dark:bg-slate-800">
+            <div className="flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  설정 및 서포트
+                </h2>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="h-5 w-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Menu Items */}
+              <div className="px-3 py-3">
+                <nav className="space-y-1">
+                  {[
+                    { label: "계정 관리", href: "/settings/account" },
+                    { label: "공급업체 정보", href: "/settings/supplier" },
+                    { label: "창고위치 관리", href: "/settings/warehouse" },
+                    { label: "알림 설정", href: "/settings/notifications" },
+                    { label: "고객센터", href: "/settings/support" },
+                  ].map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setShowSettingsModal(false)}
+                      className="flex items-center justify-between rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      <span>{item.label}</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        className="h-4 w-4 text-slate-400"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                        />
+                      </svg>
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </aside>
   );
 }
