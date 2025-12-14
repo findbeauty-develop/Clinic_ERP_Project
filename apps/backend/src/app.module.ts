@@ -9,6 +9,7 @@ import { ReturnModule } from "./modules/return/return.module";
 import { OrderModule } from "./modules/order/order.module";
 import { OrderReturnModule } from "./modules/order-return/order-return.module";
 import { SupplierModule } from "./modules/supplier/supplier.module";
+import { InventoryModule } from "./modules/inventory/inventory.module";
 import { UploadsModule } from "./uploads/uploads.module";
 
 @Module({
@@ -35,6 +36,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     OrderModule,
     OrderReturnModule,
     SupplierModule,
+    InventoryModule,
     UploadsModule,
   ],
 })
