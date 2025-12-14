@@ -9,9 +9,30 @@ const inboundFilters = [
   { label: "이름순", value: "name" },
 ];
 
-const categories = ["전체 카테고리", "스킨케어", "바디케어", "헤어케어"];
-const statuses = ["전체 상태", "입고 완료", "입고 대기", "재고 부족"];
-const suppliers = ["전체 공급업체", "뷰티랩", "글로우웰", "퍼스트메드"];
+// These will be populated from products data
+const getCategories = (products: ProductListItem[]): string[] => {
+  const cats = new Set<string>();
+  products.forEach((p) => {
+    if (p.category) cats.add(p.category);
+  });
+  return ["전체 카테고리", ...Array.from(cats).sort()];
+};
+
+const getStatuses = (products: ProductListItem[]): string[] => {
+  const statuses = new Set<string>();
+  products.forEach((p) => {
+    if (p.status) statuses.add(p.status);
+  });
+  return ["전체 상태", ...Array.from(statuses).sort()];
+};
+
+const getSuppliers = (products: ProductListItem[]): string[] => {
+  const suppliers = new Set<string>();
+  products.forEach((p) => {
+    if (p.supplierName) suppliers.add(p.supplierName);
+  });
+  return ["전체 공급업체", ...Array.from(suppliers).sort()];
+};
 
 type ProductBatch = {
   batch_no: string;
@@ -47,7 +68,7 @@ export default function InboundPage() {
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
-  const [activeTab, setActiveTab] = useState<"quick" | "pending">("quick");
+  
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,9 +77,16 @@ export default function InboundPage() {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 5;
 
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("recent");
+  const [selectedCategory, setSelectedCategory] = useState("전체 카테고리");
+  const [selectedStatus, setSelectedStatus] = useState("전체 상태");
+  const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
+
   // Fetch products for "빠른 입고" tab
   useEffect(() => {
-    if (activeTab !== "quick") return;
+   
 
     const fetchProducts = async () => {
       setLoading(true);
@@ -110,12 +138,11 @@ export default function InboundPage() {
     };
 
     fetchProducts();
-  }, [apiUrl, activeTab]);
+  }, [apiUrl, ]);
 
   // Fetch pending orders function
   const fetchPendingOrders = useCallback(async () => {
-    if (activeTab !== "pending") return;
-
+   
     setLoading(true);
     setError(null);
     try {
@@ -141,7 +168,7 @@ export default function InboundPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, activeTab]);
+  }, [apiUrl, ]);
 
   // Fetch pending orders for "입고 대기" tab
   useEffect(() => {
@@ -149,10 +176,74 @@ export default function InboundPage() {
   }, [fetchPendingOrders]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(products.length / itemsPerPage);
+  // Filter and sort products
+  const filteredAndSortedProducts = useMemo(() => {
+    let filtered = [...products];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.productName?.toLowerCase().includes(query) ||
+          p.brand?.toLowerCase().includes(query) ||
+          p.category?.toLowerCase().includes(query)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== "전체 카테고리") {
+      filtered = filtered.filter((p) => p.category === selectedCategory);
+    }
+
+    // Status filter
+    if (selectedStatus !== "전체 상태") {
+      filtered = filtered.filter((p) => p.status === selectedStatus);
+    }
+
+    // Supplier filter
+    if (selectedSupplier !== "전체 공급업체") {
+      filtered = filtered.filter((p) => p.supplierName === selectedSupplier);
+    }
+
+    // Sort
+    switch (sortBy) {
+      case "recent":
+        // Sort by most recently updated (assuming updated_at exists, fallback to id)
+        filtered.sort((a, b) => {
+          // If products have updated_at, use it, otherwise keep original order
+          return 0; // Keep original order for now
+        });
+        break;
+      case "newest":
+        // Sort by newest (by id or created_at)
+        filtered.sort((a, b) => {
+          // Reverse order for newest first
+          return b.id.localeCompare(a.id);
+        });
+        break;
+      case "name":
+        // Sort by name
+        filtered.sort((a, b) => {
+          const nameA = a.productName?.toLowerCase() || "";
+          const nameB = b.productName?.toLowerCase() || "";
+          return nameA.localeCompare(nameB);
+        });
+        break;
+    }
+
+    return filtered;
+  }, [products, searchQuery, sortBy, selectedCategory, selectedStatus, selectedSupplier]);
+
+  const totalPages = Math.ceil(filteredAndSortedProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentProducts = products.slice(startIndex, endIndex);
+  const currentProducts = filteredAndSortedProducts.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortBy, selectedCategory, selectedStatus, selectedSupplier]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -176,36 +267,10 @@ export default function InboundPage() {
          
         </header>
 
-        {/* Tabs */}
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
-          <button
-            onClick={() => setActiveTab("quick")}
-            className={`px-6 py-3 text-sm font-semibold transition border-b-2 ${
-              activeTab === "quick"
-                ? "border-sky-500 text-sky-600 dark:text-sky-400"
-                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
-            }`}
-          >
-            빠른 입고
-          </button>
-          <button
-            onClick={() => setActiveTab("pending")}
-            className={`px-6 py-3 text-sm font-semibold transition border-b-2 ${
-              activeTab === "pending"
-                ? "border-sky-500 text-sky-600 dark:text-sky-400"
-                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
-            }`}
-          >
-            입고 대기
-            {pendingOrders.length > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">
-                {pendingOrders.length}
-              </span>
-            )}
-          </button>
-        </div>
+       
+     
 
-        {activeTab === "quick" && (
+        
           <>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-900/70">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -214,6 +279,8 @@ export default function InboundPage() {
                   <input
                     aria-label="제품 검색"
                     placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
                   />
                 </div>
@@ -221,35 +288,43 @@ export default function InboundPage() {
                   <FilterChip
                     label="정렬"
                     options={inboundFilters}
+                    value={sortBy}
+                    onChange={(value) => setSortBy(value)}
                     defaultValue="최근 업데이트순"
                   />
                   <FilterChip
                     label="카테고리"
-                    options={categories}
+                    options={getCategories(products)}
+                    value={selectedCategory}
+                    onChange={(value) => setSelectedCategory(value)}
                     defaultValue="전체 카테고리"
                   />
                   <FilterChip
                     label="상태"
-                    options={statuses}
+                    options={getStatuses(products)}
+                    value={selectedStatus}
+                    onChange={(value) => setSelectedStatus(value)}
                     defaultValue="전체 상태"
                   />
                   <FilterChip
                     label="공급업체"
-                    options={suppliers}
+                    options={getSuppliers(products)}
+                    value={selectedSupplier}
+                    onChange={(value) => setSelectedSupplier(value)}
                     defaultValue="전체 공급업체"
                   />
                 </div>
               </div>
             </div>
           </>
-        )}
+       
 
         <section className="space-y-4">
-          {activeTab === "quick" && (
+         
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  총 {products.length.toLocaleString()}개의 제품
+                  총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
                 </h2>
                 <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
                   <FunnelIcon className="h-4 w-4" />
@@ -293,9 +368,9 @@ export default function InboundPage() {
                 )}
               </div>
             </>
-          )}
+         
 
-          {activeTab === "pending" && (
+         
             <PendingOrdersList
               orders={pendingOrders}
               loading={loading}
@@ -303,7 +378,7 @@ export default function InboundPage() {
               apiUrl={apiUrl}
               onRefresh={fetchPendingOrders}
             />
-          )}
+      
         </section>
       </section>
     </main>
@@ -592,10 +667,25 @@ function ProductCard({
       {isExpanded && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
-              <BoxIcon className="h-4 w-4" />
-              기존 배치 목록
-            </div>
+          <div className="mb-3 flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-100">
+  {/* LEFT */}
+  <div className="flex items-center gap-2">
+    <BoxIcon className="h-4 w-4" />
+    기존 배치 목록
+  </div>
+
+  {/* RIGHT */}
+  <Link
+    href={`/products/${product.id}`}
+    onClick={handleButtonClick}
+    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+  >
+    <PencilIcon className="h-3.5 w-3.5" />
+    상세 보기
+  </Link>
+</div>
+
+           
             {loadingBatches ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 불러오는 중...
@@ -652,88 +742,7 @@ function ProductCard({
             )}
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                새 배치 입고 처리
-              </div>
-              <Link
-                href={`/products/${product.id}`}
-                onClick={handleButtonClick}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <PencilIcon className="h-3.5 w-3.5" />
-                상세 보기
-              </Link>
-            </div>
-
-            {/* 입고 담당자 - read-only (current logged-in member) */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                입고 담당자: <span className="bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                  {batchForm.inboundManager || "알 수 없음"}
-                </span>
-              </label>
-              <div className="flex items-center gap-3">
-                
-               
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <InlineField 
-                label="제조일 (선택)" 
-                type="date"
-                value={batchForm.manufactureDate}
-                onChange={(value) => setBatchForm({ ...batchForm, manufactureDate: value })}
-              />
-              <InlineField
-                label="구매원가 (원)"
-                placeholder="구매원가를 입력하세요"
-                type="number"
-                value={batchForm.purchasePrice}
-                onChange={(value) => setBatchForm({ ...batchForm, purchasePrice: value })}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <QuantityField
-                value={batchQuantity}
-                onChange={setBatchQuantity}
-              />
-              <div>
-                <InlineField 
-                  label="유효 기간 *" 
-                  type="date"
-                  value={batchForm.expiryDate}
-                  onChange={(value) => setBatchForm({ ...batchForm, expiryDate: value })}
-                />
-                {batchForm.manufactureDate && product.expiryMonths && product.expiryUnit && (
-                  <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
-                    계산된 유통기한: {batchForm.expiryDate || "계산 중..."}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* 보관 위치 - to'liq width */}
-            <InlineField
-              label="보관 위치 (선택)"
-              placeholder="예: 창고 A-3, 냉장실 1번"
-              value={batchForm.storageLocation}
-              onChange={(value) => setBatchForm({ ...batchForm, storageLocation: value })}
-            />
-
-            <div className="flex justify-end">
-              <button
-                onClick={handleCreateBatch}
-                disabled={submittingBatch}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submittingBatch ? "처리 중..." : "+ 입고"}
-              </button>
-            </div>
-          </div>
+         
         </div>
       )}
     </div>
@@ -743,21 +752,64 @@ function ProductCard({
 interface FilterChipProps {
   label: string;
   options: string[] | { label: string; value: string }[];
+  value?: string;
+  onChange?: (value: string) => void;
   defaultValue: string;
 }
 
-function FilterChip({ label, options, defaultValue }: FilterChipProps) {
+function FilterChip({ label, options, value, onChange, defaultValue }: FilterChipProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const resolvedOptions = options.map((option) =>
     typeof option === "string" ? { label: option, value: option } : option
   );
 
+  const displayValue = value || defaultValue;
+  const selectedOption = resolvedOptions.find((opt) => opt.value === displayValue);
+
+  const handleSelect = (optionValue: string) => {
+    if (onChange) {
+      onChange(optionValue);
+    }
+    setIsOpen(false);
+  };
+
   return (
-    <button className="group flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600">
-      <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-        {defaultValue}
-      </span>
-      <ChevronDownIcon className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300" />
-    </button>
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="group flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
+      >
+        <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+          {selectedOption?.label || displayValue}
+        </span>
+        <ChevronDownIcon className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+            <div className="max-h-60 overflow-auto py-1">
+              {resolvedOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelect(option.value)}
+                  className={`w-full px-4 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                    displayValue === option.value
+                      ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+                      : "text-slate-700 dark:text-slate-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1465,339 +1517,6 @@ function PendingOrdersList({
     );
   }
 
-  if (orders.length === 0) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        입고 대기 중인 주문이 없습니다.
-      </div>
-    );
-  }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-          입고 대기 중인 주문 ({orders.length}건)
-        </h2>
-      </div>
 
-      <div className="space-y-4">
-        {orders.map((order) => {
-          // Get current member info for inbound manager
-          const memberData = typeof window !== 'undefined' ? localStorage.getItem("erp_member_data") : null;
-          const memberInfo = memberData ? JSON.parse(memberData) : {};
-          const inboundManagerName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
-
-          // Determine order status
-          const isPending = order.status === "pending";
-          const isSupplierConfirmed = order.status === "supplier_confirmed";
-          const isRejected = order.status === "rejected";
-
-          return (
-            <div key={order.orderId} className="space-y-2">
-              {/* Badge - Above Card */}
-              <div className="flex items-start">
-                {isPending ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    주문 요청
-                  </span>
-                ) : isRejected ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    주문 거절
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    주문 진행
-                  </span>
-                )}
-              </div>
-
-              {/* Card */}
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-
-              {/* Order Info - 3 Columns */}
-              <div className="mb-4 grid grid-cols-1 gap-4 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
-                {/* Left: 공급업체 + Manager */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <TruckIcon className="h-5 w-5 text-indigo-500" />
-                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                      {order.supplierName || "알 수 없음"}
-                    </h3>
-                  </div>
-                  {order.managerName && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      담당자: {order.managerName}
-                    </p>
-                  )}
-                </div>
-
-                {/* Center: 주문번호 */}
-                <div className="flex items-center justify-center">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">주문번호</span>
-                    <span className="text-base font-bold text-sky-600 dark:text-sky-400">
-                      {order.orderNo}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Right: 확인일/거절일 + 주문자 */}
-                <div className="space-y-2 lg:text-right">
-                  {isSupplierConfirmed && order.confirmedAt && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-emerald-400" />
-                      <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                        확인일: {new Date(order.confirmedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                  {isRejected && order.confirmedAt && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-red-400" />
-                      <span className="text-sm text-red-600 dark:text-red-400">
-                        거절일: {new Date(order.confirmedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                  {isPending && order.orderDate && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-slate-400" />
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        주문일: {new Date(order.orderDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 lg:justify-end">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      주문자: {order.createdByName || "알 수 없음"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-            {/* Order Items - Editable Form */}
-            <div className="space-y-4">
-              {order.items?.map((item: any, index: number) => {
-                const edited = editedItems[item.id] || {};
-                const hasQtyChange = item.confirmedQuantity !== item.orderedQuantity;
-                const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
-
-                return (
-                  <div
-                    key={index}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
-                  >
-                    {/* Product Name + Reasons */}
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-base font-semibold text-slate-900 dark:text-white">
-                          {item.productName || "알 수 없음"}
-                        </h4>
-                        {item.brand && (
-                          <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {item.brand}
-                          </span>
-                        )}
-                      </div>
-                      {(isSupplierConfirmed || isRejected) && (
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {item.quantityReason && (
-                            <span className="text-xs text-rose-600 dark:text-rose-400">
-                              ⚠ 수량 변경: {item.quantityReason}
-                            </span>
-                          )}
-                          {item.priceReason && (
-                            <span className="text-xs text-amber-600 dark:text-amber-400">
-                              💰 가격 변경: {item.priceReason}
-                            </span>
-                          )}
-                          {isRejected && item.memo && (
-                            <span className="text-xs text-red-600 dark:text-red-400">
-                              ❌ 거절 사유: {item.memo}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Editable Fields - Read-only for pending orders */}
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {/* 입고수량 (Editable with original qty shown) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          입고수량:
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={edited.quantity || ""}
-                            onChange={(e) => updateItemField(item.id, "quantity", parseInt(e.target.value) || 0)}
-                            disabled={isPending || isRejected}
-                            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                          />
-                          <span className="text-sm text-slate-400">|</span>
-                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {item.orderedQuantity}개
-                          </span>
-                        </div>
-                        {(isSupplierConfirmed || isRejected) && hasQtyChange && (
-                          <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                            공급업체 조정: {item.confirmedQuantity}개
-                          </p>
-                        )}
-                      </div>
-
-                      {/* 유통기간: (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          유통기간:
-                        </label>
-                        <input
-                          type="date"
-                          value={edited.expiryDate || ""}
-                          onChange={(e) => updateItemField(item.id, "expiryDate", e.target.value)}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                      </div>
-
-                      {/* 보관위치 (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          보관위치
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="창고 A-3, 냉장실 선반 1"
-                          value={edited.storageLocation || ""}
-                          onChange={(e) => updateItemField(item.id, "storageLocation", e.target.value)}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                      </div>
-
-                      {/* 이번 구매가 (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          이번 구매가
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="구매가 입력"
-                          value={edited.purchasePrice || ""}
-                          onChange={(e) => updateItemField(item.id, "purchasePrice", parseInt(e.target.value) || "")}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                        {(isSupplierConfirmed || isRejected) && hasPriceChange && (
-                          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                            공급업체 조정: {item.orderedPrice.toLocaleString()}원 → {item.confirmedPrice.toLocaleString()}원
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-                {/* Footer - 입고 담당자 + Button */}
-                <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-                  {(isSupplierConfirmed || isRejected) && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        입고 담당자:
-                      </span>
-                      <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                        {inboundManagerName}
-                      </span>
-                    </div>
-                  )}
-                  {isPending ? (
-                    <button
-                      disabled
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm cursor-not-allowed dark:bg-slate-600 dark:text-slate-300"
-                    >
-                      요청중
-                    </button>
-                  ) : isRejected ? (
-                    <button
-                      onClick={async () => {
-                        if (!confirm(`주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`)) {
-                          return;
-                        }
-
-                        try {
-                          const { apiPost } = await import("../../../lib/api");
-                          const memberData = typeof window !== 'undefined' ? localStorage.getItem("erp_member_data") : null;
-                          const memberInfo = memberData ? JSON.parse(memberData) : {};
-                          const memberName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
-
-                          // Prepare items array with product info
-                          const items = order.items?.map((item: any) => ({
-                            productName: item.productName || "알 수 없음",
-                            productBrand: item.brand || null,
-                            qty: item.orderedQuantity || item.confirmedQuantity || 0,
-                          })) || [];
-
-                          const endpoint = `${apiUrl}/order/rejected-order/confirm`;
-                          console.log("Calling endpoint:", endpoint);
-                          await apiPost(endpoint, {
-                            orderId: order.orderId,
-                            orderNo: order.orderNo,
-                            companyName: order.supplierName || "알 수 없음",
-                            managerName: order.managerName || "알 수 없음",
-                            memberName: memberName,
-                            items: items,
-                          });
-
-                          alert("거절 상황이 확인되었습니다.");
-                          // Refresh the orders list to remove the confirmed rejected order
-                          if (onRefresh) {
-                            onRefresh();
-                          }
-                          // Trigger a custom event to notify order page to refresh rejected orders
-                          window.dispatchEvent(new CustomEvent('rejectedOrderConfirmed', { 
-                            detail: { orderNo: order.orderNo } 
-                          }));
-                          // Also trigger a page visibility refresh to ensure data is updated
-                          window.dispatchEvent(new Event('visibilitychange'));
-                        } catch (err: any) {
-                          console.error("Failed to confirm rejection:", err);
-                          alert(`거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
-                        }
-                      }}
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                    >
-                      상황 확인
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleProcessOrder(order)}
-                      disabled={processing === order.orderId}
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }

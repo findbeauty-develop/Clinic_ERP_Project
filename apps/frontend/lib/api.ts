@@ -53,6 +53,7 @@ export const apiRequest = async (
 ): Promise<Response> => {
   const apiUrl = getApiUrl();
   const token = getAuthToken();
+  const tenantId = getTenantId();
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -61,6 +62,10 @@ export const apiRequest = async (
 
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (tenantId) {
+    (headers as Record<string, string>)["X-Tenant-Id"] = tenantId;
   }
 
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;

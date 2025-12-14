@@ -105,7 +105,7 @@ export class ProductsService {
               expiry_date: batch.expiry_date
                 ? new Date(batch.expiry_date)
                 : null,
-              alert_days: batch.alert_days ?? null,
+              alert_days: batch.alert_days ?? product.alert_days ?? null,
             } as any,
           });
         }
@@ -195,6 +195,10 @@ export class ProductsService {
     const latestBatch = product.batches?.[0];
     const supplierProduct = product.supplierProducts?.[0];
 
+    // alertDays ni batch'dan yoki product'dan olish
+    // Agar batch'da alert_days bo'lsa, uni ishlatish, aks holda null
+    const alertDays = latestBatch?.alert_days ?? null;
+
     return {
       id: product.id,
       productName: product.name,
@@ -220,6 +224,8 @@ export class ProductsService {
       memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
+      returnStorage: product.returnPolicy?.return_storage ?? null,
+      alertDays: (product as any).alert_days ?? null,
     };
   }
 
@@ -626,7 +632,7 @@ export class ProductsService {
           inbound_manager: dto.inbound_manager ?? null, // 입고 담당자 (Inbound manager) - optional
           sale_price: dto.sale_price ?? null,
           expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
-          alert_days: dto.alert_days ?? null,
+          alert_days: dto.alert_days ?? (product as any).alert_days ?? null,
         } as any,
       });
 

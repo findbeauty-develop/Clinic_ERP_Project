@@ -213,7 +213,22 @@ export default function InventoryPage() {
                   value="7"
                   checked={dateRange === "7"}
                   onChange={(e) => setDateRange(e.target.value as any)}
-                  className="w-4 h-4 text-blue-600"
+                  className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
                 />
                 <span className="text-sm text-slate-700">7일</span>
               </label>
@@ -224,7 +239,22 @@ export default function InventoryPage() {
                   value="30"
                   checked={dateRange === "30"}
                   onChange={(e) => setDateRange(e.target.value as any)}
-                  className="w-4 h-4 text-blue-600"
+                  className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
                 />
                 <span className="text-sm text-slate-700">30일</span>
               </label>
@@ -235,7 +265,22 @@ export default function InventoryPage() {
                   value="90"
                   checked={dateRange === "90"}
                   onChange={(e) => setDateRange(e.target.value as any)}
-                  className="w-4 h-4 text-blue-600"
+                  className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
                 />
                 <span className="text-sm text-slate-700">90일</span>
               </label>
@@ -246,7 +291,22 @@ export default function InventoryPage() {
                   value="other"
                   checked={dateRange === "other"}
                   onChange={(e) => setDateRange(e.target.value as any)}
-                  className="w-4 h-4 text-blue-600"
+                  className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
                 />
                 <span className="text-sm text-slate-700">기타</span>
               </label>
@@ -254,20 +314,23 @@ export default function InventoryPage() {
 
             {dateRange === "other" && (
               <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-1 border border-slate-300 rounded text-sm"
-                />
-                <span className="text-slate-500">~</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-1 border border-slate-300 rounded text-sm"
-                />
-              </div>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                           [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
+              />
+              <span className="text-slate-500">~</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                           [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
+              />
+            </div>
+            
             )}
           </div>
 
