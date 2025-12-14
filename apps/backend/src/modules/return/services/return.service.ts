@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from "@nestjs/common";
 import { Prisma } from "../../../../node_modules/.prisma/client-backend";
 import { PrismaService } from "../../../core/prisma.service";
@@ -11,6 +12,8 @@ import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
 
 @Injectable()
 export class ReturnService {
+  private readonly logger = new Logger(ReturnService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly returnRepository: ReturnRepository,
@@ -343,8 +346,8 @@ export class ReturnService {
               continue;
             }
 
-            // 6. Supplier ID - optional field, set to undefined if not available
-            const supplierId = undefined;
+            // 6. Supplier ID olish (supplierProducts orqali)
+            const supplierId = product.supplierProducts?.[0]?.supplier_id || undefined;
 
             // 7. Refund amount olish
             const refundAmount = product.returnPolicy?.refund_amount ?? 0;
@@ -443,6 +446,7 @@ export class ReturnService {
           });
 
           if (product) {
+            // Eski notification service (clinic backend DB'ga yozadi)
             this.supplierReturnNotificationService
               .createNotificationsForReturn(returnRecord, product, tenantId)
               .catch((error) => {
@@ -452,6 +456,18 @@ export class ReturnService {
                   error
                 );
               });
+
+            // Yangi: Supplier backend'ga API call qilish
+            if (returnRecord.supplier_id) {
+              this.sendReturnToSupplier(returnRecord, product, tenantId)
+                .catch((error) => {
+                  // Log error but don't fail the return process
+                  this.logger.error(
+                    `Failed to send return to supplier-backend for return ${returnRecord.id}:`,
+                    error
+                  );
+                });
+            }
           }
         }
 
@@ -486,6 +502,199 @@ export class ReturnService {
     }
 
     return await this.returnRepository.getReturnHistory(tenantId, filters);
+  }
+
+  /**
+   * Generate unique return number for /returns page
+   * Format: R + YYYYMMDD + 6 random digits
+   */
+  private async generateReturnNumber(): Promise<string> {
+    const maxAttempts = 10;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      const date = new Date();
+      const year = String(date.getFullYear()); // YYYY
+      const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
+      const day = String(date.getDate()).padStart(2, "0"); // DD
+      const dateStr = `${year}${month}${day}`; // YYYYMMDD
+
+      // Random 6 digits
+      const randomDigits = Math.floor(
+        100000 + Math.random() * 900000
+      ).toString();
+      const returnNo = `R${dateStr}${randomDigits}`;
+
+      // Check if this return_no already exists in OrderReturn table
+      // (to avoid conflicts, since both OrderReturn and Return send to supplier-backend)
+      const existing = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { return_no: returnNo },
+          select: { id: true },
+        });
+      });
+
+      // If not exists, return this number
+      if (!existing) {
+        return returnNo;
+      }
+
+      attempts++;
+    }
+
+    // If all attempts failed (shouldn't happen), use timestamp-based approach
+    const timestamp = Date.now().toString().slice(-6);
+    const date = new Date();
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `R${year}${month}${day}${timestamp}`;
+  }
+
+  /**
+   * Send return request to supplier-backend
+   */
+  private async sendReturnToSupplier(
+    returnRecord: any,
+    product: any,
+    tenantId: string
+  ): Promise<void> {
+    if (!returnRecord.supplier_id) {
+      this.logger.warn(
+        `Return ${returnRecord.id} has no supplier_id, skipping supplier notification`
+      );
+      return;
+    }
+
+    try {
+      // Get supplier details
+      const supplier = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplier.findFirst({
+          where: { id: returnRecord.supplier_id },
+          select: { tenant_id: true },
+        });
+      });
+
+      if (!supplier || !supplier.tenant_id) {
+        this.logger.warn(
+          `Supplier ${returnRecord.supplier_id} not found or missing tenant_id`
+        );
+        return;
+      }
+
+      // Get clinic details
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: tenantId },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "알 수 없음";
+
+      // Get clinic manager name
+      let clinicManagerName = returnRecord.manager_name || "";
+      if (returnRecord.manager_name) {
+        const member = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).member.findFirst({
+            where: {
+              full_name: returnRecord.manager_name,
+              tenant_id: tenantId,
+            },
+            select: { full_name: true },
+          });
+        });
+        if (member?.full_name) {
+          clinicManagerName = member.full_name;
+        }
+      }
+
+      // Generate return_no (format: R + YYYYMMDD + 6 random digits)
+      const returnNo = await this.generateReturnNumber();
+
+      // Determine return type based on memo
+      let returnType = "반품"; // Default
+      if (returnRecord.memo && returnRecord.memo.includes("자동 반납: 빈 박스")) {
+        returnType = "빈 박스";
+      }
+
+      // Get batch inbound date (created_at)
+      const batchData = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).batch.findFirst({
+          where: { id: returnRecord.batch_id },
+          select: { created_at: true },
+        });
+      });
+
+      const inboundDate = batchData?.created_at
+        ? new Date(batchData.created_at).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+
+      // Prepare return data for supplier
+      const returnData = {
+        returnNo: returnNo,
+        supplierTenantId: supplier.tenant_id,
+        clinicTenantId: tenantId,
+        clinicName: clinicName,
+        clinicManagerName: clinicManagerName,
+        items: [
+          {
+            productName: product.name || "",
+            brand: product.brand || "",
+            quantity: returnRecord.return_qty,
+            returnType: returnType,
+            memo: returnRecord.memo || "",
+            images: [], // /returns page doesn't have images
+            inboundDate: inboundDate,
+            totalPrice: returnRecord.total_refund || 0,
+            orderNo: null, // /returns page doesn't have order_no
+            batchNo: returnRecord.batch_no || null,
+          },
+        ],
+        createdAt: returnRecord.return_date
+          ? new Date(returnRecord.return_date).toISOString()
+          : new Date().toISOString(),
+      };
+
+      // Call supplier-backend API
+      const supplierApiUrl =
+        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+
+      if (!apiKey) {
+        this.logger.warn(
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification"
+        );
+        return;
+      }
+
+      const response = await fetch(`${supplierApiUrl}/supplier/returns`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify(returnData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to send return to supplier-backend: ${response.status} ${errorText}`
+        );
+      } else {
+        const result: any = await response.json();
+        this.logger.log(
+          `Return ${returnNo} sent to supplier-backend successfully: ${result.id || "OK"}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error sending return to supplier-backend: ${error.message}`,
+        error.stack
+      );
+      // Don't throw - notification failure shouldn't break return process
+    }
   }
 }
 
