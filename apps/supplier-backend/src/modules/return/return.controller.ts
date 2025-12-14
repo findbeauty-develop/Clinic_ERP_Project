@@ -115,7 +115,7 @@ export class ReturnController {
   })
   async acceptReturn(
     @Param("id") id: string,
-    @Body() body: { itemId?: string },
+    @Body() body: { itemId?: string; adjustments?: Array<{ itemId: string; actualQuantity: number; quantityChangeReason?: string | null }> },
     @Req() req: any
   ) {
     const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
@@ -124,7 +124,7 @@ export class ReturnController {
       throw new Error("Supplier Manager ID not found in token");
     }
 
-    return this.returnService.acceptReturn(id, supplierManagerId, body.itemId);
+    return this.returnService.acceptReturn(id, supplierManagerId, body.itemId, body.adjustments);
   }
 
   @Put(":id/reject")

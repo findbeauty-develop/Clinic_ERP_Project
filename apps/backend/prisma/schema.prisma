@@ -254,6 +254,7 @@ model Return {
   outbound_id   String?
   batch_no      String
   supplier_id   String?
+  return_no     String?   // 반품번호: R + YYYYMMDD + 6 random digits (for supplier communication)
   return_qty    Int
   return_date   DateTime  @default(now())
   refund_amount Float     @default(0)

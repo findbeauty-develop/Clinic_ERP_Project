@@ -17,6 +17,7 @@ export class ReturnRepository {
       outbound_id?: string;
       batch_no: string;
       supplier_id?: string;
+      return_no?: string;
       return_qty: number;
       refund_amount: number;
       total_refund: number;
@@ -27,21 +28,28 @@ export class ReturnRepository {
     tx?: Prisma.TransactionClient
   ) {
     const client = tx || this.prisma;
+    const createData: any = {
+      tenant_id: data.tenant_id,
+      product_id: data.product_id,
+      batch_id: data.batch_id,
+      outbound_id: data.outbound_id ?? null,
+      batch_no: data.batch_no,
+      supplier_id: data.supplier_id ?? null,
+      return_qty: data.return_qty,
+      refund_amount: data.refund_amount,
+      total_refund: data.total_refund,
+      manager_name: data.manager_name,
+      memo: data.memo ?? null,
+      created_by: data.created_by ?? null,
+    };
+    
+    // Only include return_no if it exists (after migration)
+    if (data.return_no !== undefined) {
+      createData.return_no = data.return_no;
+    }
+    
     return await (client as any).return.create({
-      data: {
-        tenant_id: data.tenant_id,
-        product_id: data.product_id,
-        batch_id: data.batch_id,
-        outbound_id: data.outbound_id ?? null,
-        batch_no: data.batch_no,
-        supplier_id: data.supplier_id ?? null,
-        return_qty: data.return_qty,
-        refund_amount: data.refund_amount,
-        total_refund: data.total_refund,
-        manager_name: data.manager_name,
-        memo: data.memo ?? null,
-        created_by: data.created_by ?? null,
-      },
+      data: createData,
     });
   }
 

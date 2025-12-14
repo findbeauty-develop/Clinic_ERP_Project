@@ -505,6 +505,49 @@ export class ReturnService {
   }
 
   /**
+   * Handle return accept webhook from supplier (for /returns page)
+   */
+  async handleReturnAccept(dto: { return_no: string; status: string }) {
+    try {
+      this.logger.log(`Received return accept webhook: return_no=${dto.return_no}, status=${dto.status}`);
+
+      // Find return by return_no
+      const returnRecord = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).return.findFirst({
+          where: { return_no: dto.return_no },
+        });
+      });
+
+      if (!returnRecord) {
+        this.logger.warn(`Return not found for return_no: ${dto.return_no}`);
+        return { success: false, message: `Return not found for return_no: ${dto.return_no}` };
+      }
+
+      // Update SupplierReturnNotification status to ACCEPTED
+      await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnNotification.updateMany({
+          where: {
+            return_id: returnRecord.id,
+            status: "PENDING",
+          },
+          data: {
+            status: "ACCEPTED",
+            accepted_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
+      });
+
+      this.logger.log(`Return accept webhook processed for return_no: ${dto.return_no}, return_id: ${returnRecord.id}, SupplierReturnNotification status updated to ACCEPTED`);
+      
+      return { success: true, message: "Return accept webhook processed" };
+    } catch (error: any) {
+      this.logger.error(`Error handling return accept: ${error.message}`, error.stack);
+      return { success: false, message: `Failed to handle return accept: ${error.message}` };
+    }
+  }
+
+  /**
    * Generate unique return number for /returns page
    * Format: R + YYYYMMDD + 6 random digits
    */
@@ -687,6 +730,14 @@ export class ReturnService {
         this.logger.log(
           `Return ${returnNo} sent to supplier-backend successfully: ${result.id || "OK"}`
         );
+
+        // Save return_no to Return record
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).return.update({
+            where: { id: returnRecord.id },
+            data: { return_no: returnNo },
+          });
+        });
       }
     } catch (error: any) {
       this.logger.error(

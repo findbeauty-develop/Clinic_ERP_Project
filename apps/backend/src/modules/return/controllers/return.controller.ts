@@ -7,8 +7,9 @@ import {
   UseGuards,
   ParseIntPipe,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiHeader } from "@nestjs/swagger";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReturnService } from "../services/return.service";
 import { CreateReturnDto } from "../dto/create-return.dto";
@@ -113,6 +114,19 @@ export class ReturnController {
     }
 
     return await this.returnService.getReturnHistory(tenantId, filters);
+  }
+
+  @Post("webhook/accept")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: "Webhook: Supplier'dan return accept xabari (for /returns page)" })
+  @ApiHeader({ name: 'x-api-key', description: 'API Key for supplier-to-clinic authentication' })
+  async handleReturnAccept(@Body() dto: { return_no: string; status: string }) {
+    try {
+      return await this.returnService.handleReturnAccept(dto);
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      throw error;
+    }
   }
 }
 

@@ -245,8 +245,14 @@ export class ReturnService {
   /**
    * Return'ni qabul qilish (요청 확인) - status: pending → processing
    * If itemId is provided, only that item is accepted. Otherwise, entire request is accepted.
+   * Adjustments: Array of { itemId, actualQuantity, quantityChangeReason }
    */
-  async acceptReturn(notificationId: string, supplierManagerId: string, itemId?: string) {
+  async acceptReturn(
+    notificationId: string,
+    supplierManagerId: string,
+    itemId?: string,
+    adjustments?: Array<{ itemId: string; actualQuantity: number; quantityChangeReason?: string | null }>
+  ) {
     if (!notificationId || !supplierManagerId) {
       throw new BadRequestException("Notification ID and Supplier Manager ID are required");
     }
@@ -341,17 +347,82 @@ export class ReturnService {
         });
 
         // Update all items in the request to processing
-        await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnItem.updateMany({
-            where: {
-              return_request_id: notificationId,
-              status: "pending",
-            },
-            data: {
-              status: "processing",
-              updated_at: new Date(),
-            },
+        // If adjustments provided, apply them to each item
+        if (adjustments && adjustments.length > 0) {
+          // Get all items first to preserve existing memos
+          const allItems = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierReturnItem.findMany({
+              where: {
+                return_request_id: notificationId,
+              },
+            });
           });
+
+          // Update each item with its adjustment
+          for (const adj of adjustments) {
+            const existingItem = allItems.find((item: any) => item.id === adj.itemId);
+            const updateData: any = {
+              status: "processing",
+              quantity: adj.actualQuantity, // Update quantity to actual
+              updated_at: new Date(),
+            };
+
+            // If quantity changed and reason provided, update memo
+            if (adj.quantityChangeReason && existingItem) {
+              const existingMemo = existingItem.memo || "";
+              updateData.memo = existingMemo 
+                ? `${adj.quantityChangeReason} - ${existingMemo}`
+                : adj.quantityChangeReason;
+            }
+
+            await this.prisma.executeWithRetry(async () => {
+              return (this.prisma as any).supplierReturnItem.updateMany({
+                where: {
+                  return_request_id: notificationId,
+                  id: adj.itemId,
+                  status: "pending",
+                },
+                data: updateData,
+              });
+            });
+          }
+
+          // Update items that are not in adjustments (keep original quantity)
+          const adjustmentItemIds = adjustments.map((adj) => adj.itemId);
+          await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierReturnItem.updateMany({
+              where: {
+                return_request_id: notificationId,
+                status: "pending",
+                NOT: {
+                  id: { in: adjustmentItemIds },
+                },
+              },
+              data: {
+                status: "processing",
+                updated_at: new Date(),
+              },
+            });
+          });
+        } else {
+          // No adjustments, update all items normally
+          await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierReturnItem.updateMany({
+              where: {
+                return_request_id: notificationId,
+                status: "pending",
+              },
+              data: {
+                status: "processing",
+                updated_at: new Date(),
+              },
+            });
+          });
+        }
+
+        // Send webhook to clinic-backend for /returns page
+        this.sendAcceptWebhookToClinic(returnRequest).catch((error) => {
+          this.logger.error(`Failed to send accept webhook to clinic: ${error.message}`);
         });
 
         return {
@@ -577,6 +648,68 @@ export class ReturnService {
     } catch (error: any) {
       this.logger.error(`Error completing return: ${error.message}`, error.stack);
       throw new BadRequestException(`Failed to complete return: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send webhook to clinic-backend when return is accepted (for /returns page)
+   */
+  private async sendAcceptWebhookToClinic(request: any): Promise<void> {
+    try {
+      const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const supplierApiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET || "";
+
+      if (!supplierApiKey) {
+        this.logger.warn(`SUPPLIER_BACKEND_API_KEY not configured, skipping accept webhook`);
+        return;
+      }
+
+      // Get return request to find return_no
+      // For /returns page, SupplierReturnRequest.return_no contains the return_no
+      const requestWithReturnNo = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierReturnRequest.findFirst({
+          where: { id: request.id },
+          select: { return_no: true },
+        });
+      });
+
+      if (!requestWithReturnNo || !requestWithReturnNo.return_no) {
+        this.logger.warn(`Return request ${request.id} has no return_no, skipping webhook`);
+        return;
+      }
+
+      // For /returns page, return_no starts with "R"
+      const returnNo = requestWithReturnNo.return_no;
+      if (returnNo && typeof returnNo === "string" && returnNo.startsWith("R")) {
+        try {
+          this.logger.log(`Sending accept webhook to ${clinicBackendUrl}/returns/webhook/accept for return_no: ${returnNo}`);
+
+          const webhookResponse = await fetch(`${clinicBackendUrl}/returns/webhook/accept`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": supplierApiKey,
+            },
+            body: JSON.stringify({
+              return_no: returnNo,
+              status: "processing",
+            }),
+          });
+
+          if (!webhookResponse.ok) {
+            const errorText = await webhookResponse.text();
+            this.logger.error(`Accept webhook failed: ${webhookResponse.status} - ${errorText} for return_no: ${returnNo}`);
+          } else {
+            const responseData = await webhookResponse.json();
+            this.logger.log(`Accept webhook sent successfully for return_no: ${returnNo}`);
+          }
+        } catch (fetchError: any) {
+          this.logger.error(`Accept webhook fetch error for return_no ${returnNo}: ${fetchError.message}`);
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to send accept webhook to clinic: ${error.message}`, error.stack);
+      // Don't throw - webhook failure shouldn't break return acceptance
     }
   }
 
