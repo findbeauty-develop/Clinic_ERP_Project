@@ -22,7 +22,13 @@ export class JwtTenantGuard implements CanActivate {
     try {
       const { data, error } = await this.sb.getUser(token);
       if (!error && data?.user) {
-        const tenantId = (data.user.user_metadata as any)?.tenant_id;
+        let tenantId = (data.user.user_metadata as any)?.tenant_id;
+        
+        // Fallback to X-Tenant-Id header if not in user metadata
+        if (!tenantId) {
+          tenantId = req.headers["x-tenant-id"] as string | undefined;
+        }
+        
         if (!tenantId) throw new ForbiddenException("Tenant not assigned");
         req.user = {
           id: data.user.id,
@@ -55,7 +61,13 @@ export class JwtTenantGuard implements CanActivate {
         member_id?: string;
       };
 
-      const tenantId = payload.tenant_id ?? payload.tenantId;
+      let tenantId = payload.tenant_id ?? payload.tenantId;
+      
+      // Fallback to X-Tenant-Id header if not in token
+      if (!tenantId) {
+        tenantId = req.headers["x-tenant-id"] as string | undefined;
+      }
+      
       if (!tenantId) {
         throw new ForbiddenException("Tenant not assigned");
       }

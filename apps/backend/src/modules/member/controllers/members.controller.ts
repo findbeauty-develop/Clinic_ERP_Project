@@ -65,18 +65,21 @@ export class MembersController {
   }
 
   @Post("change-password")
+  @UseGuards(JwtTenantGuard)
   @ApiOperation({ summary: "Change password (for temporary password change)" })
   async changePassword(
     @Body() body: { memberId?: string; currentPassword: string; newPassword: string },
     @ReqUser("member_id") tokenMemberId?: string,
-    @Tenant() tenantId?: string
+    @Tenant() tenantId?: string,
+    @Query("tenantId") tenantQuery?: string
   ) {
     // memberId'ni token'dan yoki body'dan olish
     const memberId = tokenMemberId || body.memberId;
     if (!memberId) {
       throw new Error("Member ID is required");
     }
-    const resolvedTenantId = tenantId ?? "self-service-tenant";
+    // tenantId'ni guard'dan, query'dan yoki header'dan olish
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
     return this.service.changePassword(
       memberId,
       body.currentPassword,
