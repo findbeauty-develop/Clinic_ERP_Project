@@ -1,13 +1,13 @@
 version: "3.8"
 
 services:
+  # Clinic Backend (Port 3000)
   backend:
     image: findbeauty/clinic-backend:latest
     container_name: clinic-erp-backend-prod
     restart: unless-stopped
     ports:
       - "3000:3000"
-
     env_file:
       - ./apps/backend/.env
     networks:
@@ -27,6 +27,7 @@ services:
       retries: 3
       start_period: 40s
 
+  # Clinic Frontend (Port 3001)
   frontend:
     image: findbeauty/clinic-frontend:latest
     container_name: clinic-erp-frontend-prod
@@ -40,6 +41,49 @@ services:
       - ./apps/frontend/.env.local
     depends_on:
       - backend
+    networks:
+      - clinic-erp-network
+
+  # Supplier Backend (Port 3002)
+  supplier-backend:
+    image: findbeauty/supplier-backend:latest
+    container_name: supplier-erp-backend-prod
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./apps/supplier-backend/.env
+    networks:
+      - clinic-erp-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3002/docs",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Supplier Frontend (Port 3003)
+  supplier-frontend:
+    image: findbeauty/supplier-frontend:latest
+    container_name: supplier-erp-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${SUPPLIER_NEXT_PUBLIC_API_URL:-http://localhost:3002}
+    env_file:
+      - ./apps/supplier-frontend/.env.local
+    depends_on:
+      - supplier-backend
     networks:
       - clinic-erp-network
 
