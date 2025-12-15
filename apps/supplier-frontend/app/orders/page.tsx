@@ -369,7 +369,7 @@ export default function OrdersPage() {
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-slate-900">주문</h1>
+            <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-3">주문</h1>
             <p className="mt-1 text-sm text-slate-500">
               재고 부족 및 유효기한 임박 제품을 주문하고 관리하세요
             </p>

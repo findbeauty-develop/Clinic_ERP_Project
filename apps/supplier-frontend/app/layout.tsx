@@ -16,7 +16,7 @@ export default function RootLayout({
     <html lang="ko">
       <body className="antialiased">
         <Sidebar />
-        <main className="pl-16 lg:pl-64">
+        <main className="lg:pl-64">
           {children}
         </main>
       </body>

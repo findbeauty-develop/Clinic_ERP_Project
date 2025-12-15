@@ -232,7 +232,7 @@ export default function ExchangesPage() {
       {/* Header and Tabs */}
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-slate-900">반품 및 교환</h1>
+          <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-4">반품 및 교환</h1>
           <p className="mt-1 text-sm text-slate-500">
             클리닉에서 요청한 반품 및 교환을 처리하세요
           </p>

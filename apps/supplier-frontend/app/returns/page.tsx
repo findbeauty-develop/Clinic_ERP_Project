@@ -257,7 +257,7 @@ export default function ReturnsPage() {
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
       <div className="bg-white p-4 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">반납</h1>
+        <h1 className="text-2xl font-bold text-slate-900  ml-14 mt-2">반납</h1>
         <p className="text-sm text-slate-600 mt-1">
           팁 제품 반납을 처리하고 할인을 적용합니다
         </p>
