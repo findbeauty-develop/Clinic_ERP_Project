@@ -90,11 +90,8 @@ export default function ReturnsPage() {
     try {
       const searchParam = debouncedSearchQuery ? `?search=${encodeURIComponent(debouncedSearchQuery)}` : "";
       const data = await apiGet<AvailableProduct[]>(`${apiUrl}/returns/available-products${searchParam}`);
-      console.log("📦 Fetched available products:", data);
-      console.log("📦 Products count:", data?.length || 0);
       setProducts(data || []);
     } catch (err) {
-      console.error("Failed to load available products", err);
       setError("반납 가능한 제품 정보를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
@@ -266,7 +263,6 @@ export default function ReturnsPage() {
         alert(`반납 처리 중 오류가 발생했습니다: ${response.message || "Unknown error"}`);
       }
     } catch (err: any) {
-      console.error("Failed to process return", err);
       alert(`반납 처리 중 오류가 발생했습니다: ${err.message || "Unknown error"}`);
     } finally {
       setSubmitting(false);
