@@ -33,15 +33,9 @@ export default function NotificationSettingsPage() {
       const clinics = await apiGet<any[]>(`${apiUrl}/iam/members/clinics`);
       const clinic = Array.isArray(clinics) && clinics.length > 0 ? clinics[0] : clinics;
       
-      console.log("Fetched clinic data:", clinic);
-      console.log("allow_company_search:", clinic?.allow_company_search, typeof clinic?.allow_company_search);
-      console.log("allow_info_disclosure:", clinic?.allow_info_disclosure, typeof clinic?.allow_info_disclosure);
-      
       // Handle both boolean and string "true"/"false" values
       const allowCompanySearch = clinic?.allow_company_search === true || clinic?.allow_company_search === "true";
       const allowInfoDisclosure = clinic?.allow_info_disclosure === true || clinic?.allow_info_disclosure === "true";
-      
-      console.log("Parsed settings:", { allowCompanySearch, allowInfoDisclosure });
       
       setSettings({
         allowCompanySearch,
@@ -74,8 +68,7 @@ export default function NotificationSettingsPage() {
         updatePayload.allow_info_disclosure = newValue;
       }
       
-      const result = await apiPut(`${apiUrl}/iam/members/clinics`, updatePayload);
-      console.log("Update result:", result);
+      await apiPut(`${apiUrl}/iam/members/clinics`, updatePayload);
 
       setSettings((prev) => ({
         ...prev,
@@ -87,7 +80,7 @@ export default function NotificationSettingsPage() {
       // Refresh settings to ensure we have the latest data from server
       setTimeout(() => {
         fetchSettings();
-      }, 500);
+      }, 6000);
     } catch (err: any) {
       console.error("Failed to update settings", err);
       setError(`설정 저장에 실패했습니다: ${err?.message || "Unknown error"}`);
@@ -98,7 +91,7 @@ export default function NotificationSettingsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 dark:bg-slate-900">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-8xl">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white">

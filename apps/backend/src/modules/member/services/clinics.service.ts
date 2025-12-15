@@ -52,14 +52,7 @@ export class ClinicsService {
   }
 
   async getClinics(tenantId: string) {
-    const clinics = await this.repository.findByTenant(tenantId);
-    console.log("getClinics - returning clinics for tenant:", tenantId);
-    console.log("getClinics - first clinic data:", clinics[0] ? {
-      id: clinics[0].id,
-      allow_company_search: (clinics[0] as any).allow_company_search,
-      allow_info_disclosure: (clinics[0] as any).allow_info_disclosure,
-    } : "No clinics found");
-    return clinics;
+    return this.repository.findByTenant(tenantId);
   }
 
   /**
@@ -97,9 +90,7 @@ export class ClinicsService {
       updateData.allow_info_disclosure = clinic.allow_info_disclosure ?? false;
     }
 
-    const updated = await this.repository.update(clinic.id, updateData, tenantId);
-    console.log("Updated clinic settings:", updated);
-    return updated;
+    return this.repository.update(clinic.id, updateData, tenantId);
   }
 
   async updateClinic(
