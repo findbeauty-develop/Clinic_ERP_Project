@@ -360,6 +360,95 @@ export class SupplierRepository {
   }
 
   /**
+   * List all approved suppliers for a tenant
+   * Returns all suppliers that have APPROVED ClinicSupplierLink with all their managers
+   */
+  async listAllApprovedSuppliers(tenantId: string) {
+    const prisma = this.prisma as any;
+
+    // Get SupplierManager IDs that have APPROVED trade relationship
+    const approvedLinks = await prisma.clinicSupplierLink.findMany({
+      where: {
+        tenant_id: tenantId,
+        status: "APPROVED",
+      },
+      select: {
+        supplier_manager_id: true,
+      },
+    });
+
+    const approvedManagerIds = new Set<string>();
+    approvedLinks.forEach((link: any) => {
+      approvedManagerIds.add(link.supplier_manager_id);
+    });
+
+    if (approvedManagerIds.size === 0) {
+      return [];
+    }
+
+    // Get unique supplier IDs from approved managers
+    const approvedManagers = await prisma.supplierManager.findMany({
+      where: {
+        id: {
+          in: Array.from(approvedManagerIds),
+        },
+      },
+      select: {
+        supplier_tenant_id: true,
+      },
+    });
+
+    const supplierIds = new Set<string>();
+    approvedManagers.forEach((manager: any) => {
+      supplierIds.add(manager.supplier_tenant_id);
+    });
+
+    if (supplierIds.size === 0) {
+      return [];
+    }
+
+    // Return suppliers with all their managers
+    return prisma.supplier.findMany({
+      where: {
+        tenant_id: {
+          in: Array.from(supplierIds),
+        },
+      },
+      include: {
+        managers: {
+          select: {
+            id: true,
+            manager_id: true,
+            name: true,
+            position: true,
+            phone_number: true,
+            email1: true,
+            responsible_products: true,
+            status: true,
+          },
+        },
+        clinicManagers: {
+          where: {
+            tenant_id: tenantId,
+          },
+          select: {
+            id: true,
+            name: true,
+            position: true,
+            phone_number: true,
+            email1: true,
+            email2: true,
+            responsible_products: true,
+          },
+        },
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+  }
+
+  /**
    * Create or get ClinicSupplierLink
    * Creates a REQUESTED link, or returns existing link
    * IMPORTANT: Now works with SupplierManager ID, not Supplier ID

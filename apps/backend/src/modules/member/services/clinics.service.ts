@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ClinicsRepository } from "../repositories/clinics.repository";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
@@ -51,8 +51,55 @@ export class ClinicsService {
     return clinic;
   }
 
-  getClinics(tenantId: string) {
-    return this.repository.findByTenant(tenantId);
+  async getClinics(tenantId: string) {
+    const clinics = await this.repository.findByTenant(tenantId);
+    console.log("getClinics - returning clinics for tenant:", tenantId);
+    console.log("getClinics - first clinic data:", clinics[0] ? {
+      id: clinics[0].id,
+      allow_company_search: (clinics[0] as any).allow_company_search,
+      allow_info_disclosure: (clinics[0] as any).allow_info_disclosure,
+    } : "No clinics found");
+    return clinics;
+  }
+
+  /**
+   * Update clinic settings (privacy and disclosure settings)
+   */
+  async updateClinicSettings(
+    tenantId: string,
+    settings: { allow_company_search?: boolean; allow_info_disclosure?: boolean }
+  ) {
+    const clinics = await this.repository.findByTenant(tenantId);
+    if (clinics.length === 0) {
+      throw new BadRequestException("Clinic not found for this tenant");
+    }
+
+    // Update the first clinic (should be only one per tenant)
+    const clinic = clinics[0] as any;
+    
+    // Preserve existing values - only update fields that are provided
+    const updateData: any = {
+      updated_at: new Date(),
+    };
+
+    // Only update fields that are explicitly provided (not undefined)
+    if (settings.allow_company_search !== undefined) {
+      updateData.allow_company_search = settings.allow_company_search;
+    } else {
+      // Preserve existing value
+      updateData.allow_company_search = clinic.allow_company_search ?? false;
+    }
+    
+    if (settings.allow_info_disclosure !== undefined) {
+      updateData.allow_info_disclosure = settings.allow_info_disclosure;
+    } else {
+      // Preserve existing value
+      updateData.allow_info_disclosure = clinic.allow_info_disclosure ?? false;
+    }
+
+    const updated = await this.repository.update(clinic.id, updateData, tenantId);
+    console.log("Updated clinic settings:", updated);
+    return updated;
   }
 
   async updateClinic(

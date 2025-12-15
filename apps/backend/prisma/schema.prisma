@@ -10,45 +10,45 @@ datasource db {
 }
 
 model Product {
-  id                   String            @id @default(uuid())
+  id                   String    @id @default(uuid())
   tenant_id            String
   name                 String
   barcode              String?
-  created_at           DateTime          @default(now())
+  created_at           DateTime  @default(now())
   updated_at           DateTime?
   brand                String
   category             String
-  current_stock        Int               @default(0)
+  current_stock        Int       @default(0)
   image_url            String?
-  is_active            Boolean           @default(true)
-  min_stock            Int               @default(0)
-  status               String            @default("활성")
+  is_active            Boolean   @default(true)
+  min_stock            Int       @default(0)
+  status               String    @default("활성")
   unit                 String?
   purchase_price       Int?
   sale_price           Int?
   capacity_per_product Int?
   capacity_unit        String?
   usage_capacity       Int?
-  
+
   // Product-level expiry defaults (yangi fieldlar)
-  expiry_months        Int?              // 유통기한 기간 (default for all batches)
-  expiry_unit          String?           // 유통기한 단위 ("months" or "days")
-  alert_days           String?           // 알림 일수 (유효기간 임박 alert)
-  
+  expiry_months Int? // 유통기한 기간 (default for all batches)
+  expiry_unit   String? // 유통기한 단위 ("months" or "days")
+  alert_days    String? // 알림 일수 (유효기간 임박 alert)
+
   // Packaging unit conversion
   has_different_packaging_quantity Boolean @default(false) // 포장 단위 내 제품 수량이 다른 경우
-  packaging_from_quantity          Int?                    // 포장 단위 수량 (예: 1)
-  packaging_from_unit             String?                  // 포장 단위 (예: "box")
-  packaging_to_quantity           Int?                    // 제품 수량 (예: 2)
-  packaging_to_unit               String?                  // 제품 단위 (예: "ea")
-  
-  batches              Batch[]
-  orderItems           OrderItem[]
-  outbounds            Outbound[]
-  packageItems         PackageItem[]
-  returns              Return[]
-  returnPolicy         ReturnPolicy?
-  supplierProducts     SupplierProduct[]
+  packaging_from_quantity          Int? // 포장 단위 수량 (예: 1)
+  packaging_from_unit              String? // 포장 단위 (예: "box")
+  packaging_to_quantity            Int? // 제품 수량 (예: 2)
+  packaging_to_unit                String? // 제품 단위 (예: "ea")
+
+  batches          Batch[]
+  orderItems       OrderItem[]
+  outbounds        Outbound[]
+  packageItems     PackageItem[]
+  returns          Return[]
+  returnPolicy     ReturnPolicy?
+  supplierProducts SupplierProduct[]
 
   @@index([tenant_id])
 }
@@ -72,6 +72,9 @@ model Clinic {
   updated_by            String?
   doctor_name           String?
   open_date             DateTime?
+  // Privacy and disclosure settings
+  allow_company_search  Boolean   @default(false) // 기업 검색 허용
+  allow_info_disclosure Boolean   @default(false) // 병의원 정보 공개
 
   @@index([tenant_id])
 }
@@ -254,7 +257,7 @@ model Return {
   outbound_id   String?
   batch_no      String
   supplier_id   String?
-  return_no     String?   // 반품번호: R + YYYYMMDD + 6 random digits (for supplier communication)
+  return_no     String? // 반품번호: R + YYYYMMDD + 6 random digits (for supplier communication)
   return_qty    Int
   return_date   DateTime  @default(now())
   refund_amount Float     @default(0)
@@ -277,25 +280,25 @@ model Return {
 }
 
 model Order {
-  id                     String      @id @default(uuid())
+  id                     String    @id @default(uuid())
   tenant_id              String
-  order_no               String      @unique
-  status                 String      @default("draft") // draft, pending, supplier_confirmed, inbound_completed, cancelled
+  order_no               String    @unique
+  status                 String    @default("draft") // draft, pending, supplier_confirmed, inbound_completed, cancelled
   supplier_id            String?
-  total_amount           Float       @default(0)
-  order_date             DateTime    @default(now())
+  total_amount           Float     @default(0)
+  order_date             DateTime  @default(now())
   expected_delivery_date DateTime?
   created_by             String?
   approved_by            String?
   memo                   String?
-  
+
   // Supplier confirmation data
-  supplier_adjustments   Json?       // Supplier'ning adjustment ma'lumotlari (qty, price, reasons)
-  confirmed_at           DateTime?   // Supplier qachon confirm qilgan
-  
-  created_at             DateTime    @default(now())
-  updated_at             DateTime?
-  items                  OrderItem[]
+  supplier_adjustments Json? // Supplier'ning adjustment ma'lumotlari (qty, price, reasons)
+  confirmed_at         DateTime? // Supplier qachon confirm qilgan
+
+  created_at DateTime    @default(now())
+  updated_at DateTime?
+  items      OrderItem[]
 
   @@index([tenant_id])
   @@index([supplier_id])
@@ -345,27 +348,27 @@ model OrderDraft {
 }
 
 model OrderReturn {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   tenant_id       String
-  order_id        String?  // Optional for defective products from outbound
-  order_no        String?  // Optional for defective products from outbound
-  outbound_id     String?  // For defective products from outbound
-  return_no       String?  // 반품번호: B + YYYYMMDD + 6 random digits
+  order_id        String? // Optional for defective products from outbound
+  order_no        String? // Optional for defective products from outbound
+  outbound_id     String? // For defective products from outbound
+  return_no       String? // 반품번호: B + YYYYMMDD + 6 random digits
   batch_no        String
   product_id      String
   product_name    String
   brand           String?
-  return_quantity Int      // 미입고수량 (excess/defective qty)
-  total_quantity  Int      // confirmedQuantity from supplier (for order returns) or outbound qty (for defective)
+  return_quantity Int // 미입고수량 (excess/defective qty)
+  total_quantity  Int // confirmedQuantity from supplier (for order returns) or outbound qty (for defective)
   unit_price      Int
-  return_type     String   // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
-  status          String   @default("pending") // "pending", "processing", "completed", "rejected"
+  return_type     String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
+  status          String    @default("pending") // "pending", "processing", "completed", "rejected"
   memo            String?
-  images          String[] @default([])
-  return_manager  String?  // 반품 담당자
+  images          String[]  @default([])
+  return_manager  String? // 반품 담당자
   supplier_id     String?
-  inbound_date    DateTime @default(now())
-  created_at      DateTime @default(now())
+  inbound_date    DateTime  @default(now())
+  created_at      DateTime  @default(now())
   updated_at      DateTime?
 
   @@index([tenant_id])
@@ -378,18 +381,18 @@ model OrderReturn {
 }
 
 model RejectedOrder {
-  id           String   @id @default(uuid())
-  tenant_id    String
-  order_id     String
-  order_no     String
-  company_name String   // Supplier company name
-  manager_name String   // Supplier manager name
-  product_name String
+  id            String    @id @default(uuid())
+  tenant_id     String
+  order_id      String
+  order_no      String
+  company_name  String // Supplier company name
+  manager_name  String // Supplier manager name
+  product_name  String
   product_brand String?
-  qty          Int      // Rejected quantity
-  member_name  String   // Member who checked/confirmed the rejection
-  created_at   DateTime @default(now())
-  updated_at   DateTime?
+  qty           Int // Rejected quantity
+  member_name   String // Member who checked/confirmed the rejection
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
 
   @@index([tenant_id])
   @@index([order_id])
@@ -411,7 +414,7 @@ model Supplier {
   created_at         DateTime                @default(now())
   updated_at         DateTime?
   clinicManagers     ClinicSupplierManager[]
-  managers           SupplierManager[] @relation("SupplierToManagers")
+  managers           SupplierManager[]       @relation("SupplierToManagers")
 
   @@index([tenant_id])
   @@index([business_number])
@@ -439,7 +442,7 @@ model ClinicSupplierLink {
 
 model ClinicSupplierManager {
   id                    String           @id @default(uuid())
-  supplier_id           String 
+  supplier_id           String
   tenant_id             String
   name                  String
   phone_number          String
@@ -482,7 +485,7 @@ model SupplierManager {
   clinicManager               ClinicSupplierManager?       @relation(fields: [clinic_manager_id], references: [id])
   supplierReturnNotifications SupplierReturnNotification[]
 
-  supplier    Supplier @relation("SupplierToManagers", fields: [supplier_tenant_id], references: [tenant_id])
+  supplier Supplier @relation("SupplierToManagers", fields: [supplier_tenant_id], references: [tenant_id])
 
   @@index([supplier_tenant_id])
   @@index([manager_id])
@@ -567,4 +570,18 @@ model SupplierOrderItem {
 
   @@index([order_id])
   @@index([product_id])
+}
+
+model WarehouseLocation {
+  id         String    @id @default(uuid())
+  tenant_id  String
+  name       String
+  category   String? // 수면실, 레이저 실, 창고, 기타
+  items      String[]  @default([]) // A 침대, B 침대, etc.
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+
+  @@unique([tenant_id, name])
+  @@index([tenant_id])
+  @@index([category])
 }

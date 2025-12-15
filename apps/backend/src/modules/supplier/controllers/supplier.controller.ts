@@ -2,7 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
+  Param,
   Query,
   UseGuards,
   BadRequestException,
@@ -107,6 +109,21 @@ export class SupplierController {
     return result;
   }
 
+  @Get("list")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({
+    summary: "모든 공급업체 목록 조회 (Get all suppliers)",
+    description:
+      "거래 관계가 승인된(APPROVED ClinicSupplierLink) 모든 공급업체를 반환합니다.",
+  })
+  async listSuppliers(
+    @Tenant() tenantId: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    return this.supplierService.listAllSuppliers(resolvedTenantId);
+  }
+
   @Post("approve-trade-link")
   @UseGuards(JwtTenantGuard)
   @ApiOperation({
@@ -125,6 +142,23 @@ export class SupplierController {
     }
 
     return this.supplierService.approveTradeLink(tenantId, supplierId, managerId, supplierManagerId);
+  }
+
+  @Delete("manager/:managerId")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({
+    summary: "담당자 삭제 (Delete contact/manager)",
+    description: "ClinicSupplierManager'ni 삭제합니다. SupplierManager는 삭제할 수 없습니다.",
+  })
+  async deleteManager(
+    @Param("managerId") managerId: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!managerId) {
+      throw new BadRequestException("담당자 ID는 필수입니다");
+    }
+
+    return this.supplierService.deleteClinicManager(managerId, tenantId);
   }
 }
 

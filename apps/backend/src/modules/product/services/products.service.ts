@@ -764,6 +764,16 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    // Get warehouse locations from WarehouseLocation table
+    const warehouseLocations = await this.prisma.warehouseLocation.findMany({
+      where: {
+        tenant_id: tenantId,
+      },
+      select: {
+        name: true,
+      },
+    });
+
     // Get distinct storage values from Batch table
     const batches = await this.prisma.batch.findMany({
       where: {
@@ -778,14 +788,111 @@ export class ProductsService {
       distinct: ["storage"],
     });
 
-    // Extract storage values, filter out null/empty, and sort alphabetically
-    const storages = batches
+    // Combine both sources
+    const warehouseNames = new Set(warehouseLocations.map((w) => w.name));
+    const batchStorages = batches
       .map((batch) => batch.storage)
       .filter((storage): storage is string => {
         return storage !== null && storage !== undefined && storage.trim() !== "";
-      })
-      .sort((a, b) => a.localeCompare(b, "ko", { sensitivity: "base" }));
+      });
 
-    return storages;
+    // Merge and deduplicate
+    const allStorages = new Set([...warehouseNames, ...batchStorages]);
+    
+    // Sort alphabetically
+    return Array.from(allStorages).sort((a, b) =>
+      a.localeCompare(b, "ko", { sensitivity: "base" })
+    );
+  }
+
+  /**
+   * Get all warehouse locations with full data
+   * @param tenantId - Tenant ID
+   * @returns Array of warehouse locations with category and items
+   */
+  async getWarehouseLocations(tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const warehouses = await this.prisma.warehouseLocation.findMany({
+      where: {
+        tenant_id: tenantId,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+
+    return warehouses.map((w) => ({
+      id: w.id,
+      name: w.name,
+      category: w.category,
+      items: w.items || [],
+      createdAt: w.created_at,
+      updatedAt: w.updated_at,
+    }));
+  }
+
+  /**
+   * Add new warehouse location
+   * @param tenantId - Tenant ID
+   * @param name - Warehouse name
+   * @param category - Warehouse category (수면실, 레이저 실, 창고, 기타)
+   * @param items - Items in warehouse (A 침대, B 침대, etc.)
+   */
+  async addWarehouseLocation(
+    tenantId: string,
+    name: string,
+    category: string | null,
+    items: string[]
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    if (!name || !name.trim()) {
+      throw new BadRequestException("창고 이름은 필수입니다");
+    }
+
+    // Check if warehouse already exists
+    const existing = await this.prisma.warehouseLocation.findUnique({
+      where: {
+        tenant_id_name: {
+          tenant_id: tenantId,
+          name: name.trim(),
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException("이미 존재하는 창고 위치입니다");
+    }
+
+    // Create warehouse location
+    const warehouse = await this.prisma.warehouseLocation.create({
+      data: {
+        tenant_id: tenantId,
+        name: name.trim(),
+        category: category || null,
+        items: items || [],
+      },
+    });
+
+    console.log("Created warehouse:", warehouse);
+    console.log("Warehouse items:", warehouse.items);
+
+    return {
+      success: true,
+      message: "창고 위치가 추가되었습니다",
+      warehouse: {
+        id: warehouse.id,
+        name: warehouse.name,
+        category: warehouse.category,
+        items: warehouse.items || [],
+        createdAt: warehouse.created_at,
+        updatedAt: warehouse.updated_at,
+      },
+    };
   }
 }

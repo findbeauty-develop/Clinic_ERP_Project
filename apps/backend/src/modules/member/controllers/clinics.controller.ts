@@ -34,6 +34,7 @@ export class ClinicsController {
   constructor(private readonly service: ClinicsService) {}
 
   @Get()
+  @UseGuards(JwtTenantGuard)
   @ApiOperation({ summary: "Retrieve clinics for the tenant" })
   getClinics(
     @Tenant() tenantId: string,
@@ -72,6 +73,19 @@ export class ClinicsController {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 10);
     return `clinic_${timestamp}_${random}`;
+  }
+
+  @Put()
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Update clinic settings by tenant ID" })
+  updateClinicSettings(
+    @Body() dto: { allow_company_search?: boolean; allow_info_disclosure?: boolean },
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("tenant_id is required");
+    }
+    return this.service.updateClinicSettings(tenantId, dto);
   }
 
   @Put(":id")

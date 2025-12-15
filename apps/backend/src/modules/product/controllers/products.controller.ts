@@ -91,6 +91,33 @@ export class ProductsController {
     return this.productsService.getStorages(tenantId);
   }
 
+  @Get("warehouses/list")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get all warehouse locations with categories and items" })
+  getWarehouses(@Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.getWarehouseLocations(tenantId);
+  }
+
+  @Post("warehouse")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Add new warehouse location" })
+  async addWarehouse(
+    @Body("name") name: string,
+    @Body("category") category: string,
+    @Body("items") items: string[],
+    @Tenant() tenantId: string
+  ) {
+    if (!name || !name.trim()) {
+      throw new BadRequestException("창고 이름은 필수입니다");
+    }
+    return this.productsService.addWarehouseLocation(tenantId, name.trim(), category, items || []);
+  }
+
   @Get(":id/batches")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()

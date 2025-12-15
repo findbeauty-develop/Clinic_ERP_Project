@@ -322,7 +322,7 @@ export default function ReturnsPage() {
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex-1 flex flex-col min-h-0 overflow-hidden">
                 {/* Information Box */}
                 <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
-                  최근 30일 내 출고된 '팁' 카테고리 제품 및 반납 가능으로 설정된 제품들이 자동으로 표시됩니다.
+                최근 30일 내 출고된 &apos;팁&apos; 카테고리 제품 및 반납 가능으로 설정된 제품들이 자동으로 표시됩니다.
                 </div>
 
                 {/* Search Bar */}

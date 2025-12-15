@@ -153,6 +153,63 @@ export class SupplierService {
   }
 
   /**
+   * List all approved suppliers for a tenant
+   * Returns all suppliers that have APPROVED ClinicSupplierLink
+   */
+  async listAllSuppliers(tenantId: string) {
+    this.logger.log(`Listing all suppliers for tenant: ${tenantId}`);
+    const suppliers = await this.repository.listAllApprovedSuppliers(tenantId);
+    this.logger.log(`Found ${suppliers.length} approved suppliers`);
+    
+    // Format response same as searchSuppliers
+    return suppliers.map((supplier: any) => {
+      // Get all managers (both SupplierManager and ClinicSupplierManager)
+      const allManagers = [
+        ...(supplier.managers || []),
+        ...(supplier.clinicManagers || [])
+      ];
+
+      return {
+        // 회사 정보
+        id: supplier.id,
+        supplierId: supplier.id,
+        companyName: supplier.company_name,
+        companyAddress: supplier.company_address,
+        businessNumber: supplier.business_number,
+        companyPhone: supplier.company_phone,
+        companyEmail: supplier.company_email,
+        businessType: supplier.business_type,
+        businessItem: supplier.business_item,
+        productCategories: supplier.product_categories,
+        status: supplier.status,
+
+        // All managers (SupplierManager - global, login uchun)
+        managers: supplier.managers?.map((m: any) => ({
+          managerId: m.manager_id,
+          name: m.name,
+          position: m.position,
+          phoneNumber: m.phone_number,
+          email1: m.email1,
+          email2: m.email2,
+          responsibleProducts: m.responsible_products,
+          status: m.status,
+        })) || [],
+
+        // Clinic managers (ClinicSupplierManager - clinic-specific)
+        clinicManagers: supplier.clinicManagers?.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          position: m.position,
+          phoneNumber: m.phone_number,
+          email1: m.email1,
+          email2: m.email2,
+          responsibleProducts: m.responsible_products,
+        })) || [],
+      };
+    });
+  }
+
+  /**
    * Fallback search by phone number without transaction history filter
    * Used when main search returns no results
    * Also searches clinic-created suppliers (ClinicSupplierManager)
@@ -469,6 +526,35 @@ export class SupplierService {
         `거래 관계 승인 중 오류가 발생했습니다: ${error.message}`
       );
     }
+  }
+
+  /**
+   * Delete ClinicSupplierManager
+   * Only clinic-created managers can be deleted, not SupplierManager (platform managers)
+   */
+  async deleteClinicManager(managerId: string, tenantId: string) {
+    this.logger.log(`Deleting clinic manager: ${managerId} for tenant: ${tenantId}`);
+    
+    // Faqat ClinicSupplierManager'ni o'chirish mumkin (SupplierManager o'chirilmaydi)
+    const manager = await this.prisma.clinicSupplierManager.findFirst({
+      where: {
+        id: managerId,
+        tenant_id: tenantId,
+      },
+    });
+
+    if (!manager) {
+      throw new BadRequestException("담당자를 찾을 수 없습니다");
+    }
+
+    await this.prisma.clinicSupplierManager.delete({
+      where: {
+        id: managerId,
+      },
+    });
+
+    this.logger.log(`Clinic manager deleted successfully: ${managerId}`);
+    return { success: true, message: "담당자가 삭제되었습니다" };
   }
 }
 
