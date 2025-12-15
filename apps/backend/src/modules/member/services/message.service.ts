@@ -78,12 +78,30 @@ export class MessageService {
         '직원';
       
       message += `${roleLabel} ID: ${member.memberId}\n`;
-      message += `임시 비밀번호: ${member.temporaryPassword}\n\n`;
+      
+      // Owner uchun "비밀번호", boshqalar uchun "임시 비밀번호"
+      if (member.role === 'owner') {
+        message += `비밀번호: ${member.temporaryPassword}\n\n`;
+      } else {
+        message += `임시 비밀번호: ${member.temporaryPassword}\n\n`;
+      }
     });
     
-    const loginUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3001';
-    message += `로그인: ${loginUrl}/login\n\n`;
-    message += `※ 보안을 위해 첫 로그인 시 비밀번호를 변경해주세요.`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) {
+      this.logger.warn('FRONTEND_URL is not set in .env, using default localhost URL');
+    }
+    const baseUrl = frontendUrl || 'http://localhost:3001';
+    // Trailing slash'ni olib tashlash
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    message += `로그인: ${cleanBaseUrl}/login\n\n`;
+    
+    // Owner uchun xabar o'zgartirish
+    if (members.some(m => m.role === 'owner') && members.length === 1) {
+      message += `※ 비밀번호를 안전하게 보관해주세요.`;
+    } else {
+      message += `※ 보안을 위해 첫 로그인 시 비밀번호를 변경해주세요.`;
+    }
     
     return message;
   }

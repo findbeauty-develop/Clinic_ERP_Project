@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { sign, SignOptions } from "jsonwebtoken";
 import { MembersRepository } from "../repositories/members.repository";
 import { CreateMembersDto } from "../dto/create-members.dto";
+import { MessageService } from "./message.service";
 
 type CreatedMemberResult = {
   memberId: string;
@@ -15,7 +16,9 @@ type CreatedMemberResult = {
 export class MembersService {
   private readonly logger = new Logger(MembersService.name);
 
-  constructor(private readonly repository: MembersRepository) {}
+  constructor(private readonly repository: MembersRepository,
+    private readonly messageService: MessageService
+  ) {}
 
   public async getMembers(tenantId: string) {
     return this.repository.findByTenant(tenantId);
@@ -165,6 +168,31 @@ export class MembersService {
       );
       throw error;
     }
+    // Ownerga barcha memberlarning (owner, manager, member) ID va passwordlari yuboriladi
+if (!dto.isEditMode && dto.ownerPhoneNumber) {
+  try {
+    // Barcha memberlarni (owner, manager, member) SMS'ga qo'shish
+    const allMembers = definitions.map((definition) => {
+      const memberId = `${definition.label}@${clinicIdentifier}`;
+      return {
+        memberId: memberId,
+        role: definition.role,
+        temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
+      };
+    });
+
+    await this.messageService.sendMemberCredentials(
+      dto.ownerPhoneNumber,
+      dto.clinicName,
+      allMembers // Barcha memberlarni (owner, manager, member) yuborish
+    );
+    this.logger.log(`SMS sent to owner with all members (owner, manager, member): ${dto.ownerPhoneNumber}`);
+  } catch (error) {
+    this.logger.warn('Failed to send SMS to owner', error);
+    // Continue even if SMS fails - don't throw error
+  }
+}
+    
 
     return payload.map((item) => item.result);
   }

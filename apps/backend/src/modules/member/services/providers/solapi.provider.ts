@@ -37,19 +37,8 @@ export class SolapiProvider implements IMessageProvider {
         return false;
       }
 
-      // Remove any non-numeric characters from phone number (except +)
-      const cleanPhoneNumber = phoneNumber.replace(/[^\d+]/g, '');
-      
-      // Ensure phone number starts with country code (Korea: 82)
-      let formattedPhone = cleanPhoneNumber;
-      if (formattedPhone.startsWith('0')) {
-        // Korean local number (010-xxxx-xxxx) -> convert to international (82-10-xxxx-xxxx)
-        formattedPhone = '82' + formattedPhone.substring(1);
-      } else if (!formattedPhone.startsWith('82') && !formattedPhone.startsWith('+82')) {
-        // If doesn't start with 82, assume it's local and add 82
-        formattedPhone = '82' + formattedPhone.replace(/^\+/, '');
-      }
-      formattedPhone = formattedPhone.replace(/^\+/, ''); // Remove + if present
+      // Remove any non-numeric characters (Solapi accepts Korean local format like 01012345678)
+      const formattedPhone = phoneNumber.replace(/[^\d]/g, '');
 
       const result = await this.messageService.send({
         to: formattedPhone,
@@ -58,6 +47,14 @@ export class SolapiProvider implements IMessageProvider {
       });
 
       // Check if result is successful
+      const groupInfo = (result as any)?.groupInfo;
+if (groupInfo) {
+  // If groupInfo exists and has groupId, message was accepted
+  if (groupInfo.groupId || groupInfo.status === "SENDING" || groupInfo.count?.registeredSuccess > 0) {
+    this.logger.log(`Solapi SMS sent to ${phoneNumber} (${formattedPhone})`);
+    return true;
+  }
+}
       if (result && (result as any).successCount > 0) {
         this.logger.log(`Solapi SMS sent to ${phoneNumber} (${formattedPhone})`);
         return true;
@@ -70,7 +67,38 @@ export class SolapiProvider implements IMessageProvider {
         return false;
       }
     } catch (error: any) {
-      this.logger.error(`Solapi SMS failed: ${error?.message || error}`);
+      this.logger.error(`Solapi SMS failed`);
+      
+      // Error'ning barcha property'larini ko'rsatish
+      if (error) {
+        this.logger.error(`Error type: ${typeof error}`);
+        this.logger.error(`Error constructor: ${error?.constructor?.name || 'unknown'}`);
+        
+        // Barcha property'larni ko'rsatish
+        const errorProps: any = {};
+        for (const key in error) {
+          if (error.hasOwnProperty(key)) {
+            try {
+              errorProps[key] = error[key];
+            } catch (e) {
+              errorProps[key] = '[Cannot serialize]';
+            }
+          }
+        }
+        
+        if (Object.keys(errorProps).length > 0) {
+          this.logger.error(`Error properties: ${JSON.stringify(errorProps, null, 2)}`);
+        }
+      }
+      
+      // Message va stack
+      if (error?.message) {
+        this.logger.error(`Error message: ${error.message}`);
+      }
+      if (error?.stack) {
+        this.logger.debug(`Stack trace: ${error.stack}`);
+      }
+      
       return false;
     }
   }
@@ -90,19 +118,8 @@ export class SolapiProvider implements IMessageProvider {
         return false;
       }
 
-      // Remove any non-numeric characters from phone number (except +)
-      const cleanPhoneNumber = phoneNumber.replace(/[^\d+]/g, '');
-      
-      // Ensure phone number starts with country code (Korea: 82)
-      let formattedPhone = cleanPhoneNumber;
-      if (formattedPhone.startsWith('0')) {
-        // Korean local number (010-xxxx-xxxx) -> convert to international (82-10-xxxx-xxxx)
-        formattedPhone = '82' + formattedPhone.substring(1);
-      } else if (!formattedPhone.startsWith('82') && !formattedPhone.startsWith('+82')) {
-        // If doesn't start with 82, assume it's local and add 82
-        formattedPhone = '82' + formattedPhone.replace(/^\+/, '');
-      }
-      formattedPhone = formattedPhone.replace(/^\+/, ''); // Remove + if present
+      // Remove any non-numeric characters (Solapi accepts Korean local format like 01012345678)
+      const formattedPhone = phoneNumber.replace(/[^\d]/g, '');
 
       // Solapi KakaoAlimTalk API
       // Use send method with kakaoOptions for KakaoAlimTalk
@@ -132,7 +149,18 @@ export class SolapiProvider implements IMessageProvider {
         return false;
       }
     } catch (error: any) {
-      this.logger.error(`Solapi KakaoAlimTalk failed: ${error?.message || error}`);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      const errorDetails = error?.response?.data || error?.body || error;
+      
+      this.logger.error(`Solapi KakaoAlimTalk failed: ${errorMessage}`);
+      
+      // Batafsil error ma'lumotlari
+      if (error?.response?.data) {
+        this.logger.error(`Solapi API error response: ${JSON.stringify(error.response.data, null, 2)}`);
+      } else if (errorDetails && typeof errorDetails === 'object') {
+        this.logger.error(`Error details: ${JSON.stringify(errorDetails, null, 2)}`);
+      }
+      
       return false;
     }
   }
