@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
@@ -16,6 +17,8 @@ import * as fs from "fs/promises";
 
 @Injectable()
 export class ManagerService {
+  private readonly logger = new Logger(ManagerService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly businessVerificationService: BusinessVerificationService,
@@ -211,23 +214,50 @@ export class ManagerService {
 
         // 2. Verify business number with data.go.kr API (only if all required data is available)
         // Verification is only performed when ALL required fields are extracted from OCR
+        // NOTE: API verification is optional - if API fails (404, connection error, etc.), registration continues
         if (representativeName && openingDate && dto.company.businessNumber) {
-          // All required data is available - perform strict verification
-          const verification = await this.businessVerificationService.verifyBusinessNumber({
-            businessNumber: dto.company.businessNumber,
-            representativeName: representativeName,
-            openingDate: openingDate,
-          });
+          try {
+            // All required data is available - attempt verification
+            const verification = await this.businessVerificationService.verifyBusinessNumber({
+              businessNumber: dto.company.businessNumber,
+              representativeName: representativeName,
+              openingDate: openingDate,
+            });
 
-          if (!verification.isValid) {
-            throw new BadRequestException(
-              verification.error || 
-              '사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요.'
-            );
+            if (verification.isValid) {
+              // Log verification success
+              this.logger.log(`Business verification successful - Status: ${verification.businessStatus}`);
+            } else {
+              // Verification failed - check if it's an API error or data mismatch
+              const errorMessage = verification.error || '';
+              
+              // If it's an API error (404, connection failed, etc.), log warning but continue registration
+              if (errorMessage.includes('404') || 
+                  errorMessage.includes('Not Found') || 
+                  errorMessage.includes('API request failed') ||
+                  errorMessage.includes('Cannot connect') ||
+                  errorMessage.includes('timeout') ||
+                  errorMessage.includes('API key is not configured')) {
+                this.logger.warn(`Business verification API error: ${errorMessage}. Registration will continue without verification.`);
+                // Continue registration - API errors don't block registration
+              } else {
+                // Data mismatch - this is a real validation error
+                throw new BadRequestException(
+                  verification.error || 
+                  '사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요.'
+                );
+              }
+            }
+          } catch (error: any) {
+            // If it's already a BadRequestException (data mismatch), re-throw it
+            if (error instanceof BadRequestException) {
+              throw error;
+            }
+            
+            // For other errors (network, API unavailable, etc.), log and continue
+            this.logger.warn(`Business verification failed due to API error: ${error?.message || 'Unknown error'}. Registration will continue without verification.`);
+            // Continue registration - API errors don't block registration
           }
-
-          // Log verification success
-          console.log(`Business verification successful - Status: ${verification.businessStatus}`);
         } else {
           // OCR data incomplete - skip verification but log warning
           const missingFields = [];
@@ -235,7 +265,7 @@ export class ManagerService {
           if (!openingDate) missingFields.push('개업일자');
           if (!dto.company.businessNumber) missingFields.push('사업자등록번호');
           
-          console.warn(`OCR data incomplete for business verification. Missing: ${missingFields.join(', ')}. Skipping verification.`);
+          this.logger.warn(`OCR data incomplete for business verification. Missing: ${missingFields.join(', ')}. Skipping verification.`);
           // Registration continues without verification when data is incomplete
         }
         
@@ -399,39 +429,54 @@ export class ManagerService {
           });
 
           // 12a. Create APPROVED trade link for all clinics that have this ClinicSupplierManager
-          // Find all ClinicSupplierManagers for this supplier
-          const allClinicManagers = await tx.clinicSupplierManager.findMany({
-            where: {
-              supplier_id: supplier.id,
-            },
-            select: {
-              tenant_id: true,
-            },
-          });
-
-          // Create APPROVED trade links for all clinics
-          // IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
-          const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
-          for (const tenantId of uniqueTenantIds) {
-            await tx.clinicSupplierLink.upsert({
+          // NOTE: ClinicSupplierLink is in clinic-backend database, not supplier-backend
+          // This operation is optional - if it fails, registration continues
+          try {
+            // Find all ClinicSupplierManagers for this supplier
+            const allClinicManagers = await tx.clinicSupplierManager.findMany({
               where: {
-                tenant_id_supplier_manager_id: {
-                  tenant_id: tenantId,
-                  supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
-                },
+                supplier_id: supplier.id,
               },
-              update: {
-                status: "APPROVED", // Auto-approve if clinic already has manager
-                approved_at: new Date(),
-                updated_at: new Date(),
-              },
-              create: {
-                tenant_id: tenantId,
-                supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
-                status: "APPROVED",
-                approved_at: new Date(),
+              select: {
+                tenant_id: true,
               },
             });
+
+            // Create APPROVED trade links for all clinics
+            // IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
+            // NOTE: This model exists in clinic-backend, not supplier-backend
+            // If clinicSupplierLink is not available, skip this step
+            if (tx.clinicSupplierLink && typeof tx.clinicSupplierLink.upsert === 'function') {
+              const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
+              for (const tenantId of uniqueTenantIds) {
+                await tx.clinicSupplierLink.upsert({
+                  where: {
+                    tenant_id_supplier_manager_id: {
+                      tenant_id: tenantId,
+                      supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
+                    },
+                  },
+                  update: {
+                    status: "APPROVED", // Auto-approve if clinic already has manager
+                    approved_at: new Date(),
+                    updated_at: new Date(),
+                  },
+                  create: {
+                    tenant_id: tenantId,
+                    supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
+                    status: "APPROVED",
+                    approved_at: new Date(),
+                  },
+                });
+              }
+              this.logger.log(`Created APPROVED trade links for ${uniqueTenantIds.length} clinic(s)`);
+            } else {
+              this.logger.warn('ClinicSupplierLink model is not available in supplier-backend database. Skipping trade link creation.');
+            }
+          } catch (linkError: any) {
+            // Log error but don't fail registration - trade links can be created later via clinic-backend
+            this.logger.warn(`Failed to create trade links: ${linkError?.message || 'Unknown error'}. Registration will continue.`);
+            this.logger.warn('Trade links can be created later via clinic-backend API if needed.');
           }
         }
 
