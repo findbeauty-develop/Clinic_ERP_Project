@@ -16,8 +16,10 @@ import { CoolSMSProvider } from "./services/providers/coolsms.provider";
 import { KakaoProvider } from "./services/providers/kakao.provider";
 import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
 import { SolapiProvider } from "./services/providers/solapi.provider";
+import { HiraModule } from "../hira/hira.module";
 
 @Module({
+  imports: [HiraModule], // Import HiraModule to use HiraService
   controllers: [ClinicsController, MembersController],
   providers: [
     ClinicsService,

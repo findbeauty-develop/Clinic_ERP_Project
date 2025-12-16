@@ -5,6 +5,7 @@ import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { GoogleVisionService } from "./google-vision.service";
 import { CertificateParserService } from "./certificate-parser.service";
 import { VerifyCertificateResponseDto } from "../dto/verify-certificate-response.dto";
+import { HiraService } from "../../hira/services/hira.service";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { v4 as uuidv4 } from "uuid";
@@ -14,7 +15,8 @@ export class ClinicsService {
   constructor(
     private readonly repository: ClinicsRepository,
     private readonly googleVisionService: GoogleVisionService,
-    private readonly certificateParserService: CertificateParserService
+    private readonly certificateParserService: CertificateParserService,
+    private readonly hiraService: HiraService
   ) {}
 
   async clinicRegister(
@@ -192,15 +194,40 @@ export class ClinicsService {
       (field) => !fields[field as keyof typeof fields] || fields[field as keyof typeof fields] === ""
     );
 
-    // Step 5: Determine validity
-    const isValid = missingFields.length === 0;
+    // Step 5: HIRA verification (if clinic name is available)
+    let hiraVerification = null;
+    if (fields.clinicName) {
+      try {
+        hiraVerification = await this.hiraService.verifyClinicInfo({
+          clinicName: fields.clinicName,
+          address: fields.address,
+          clinicType: fields.clinicType,
+          openDate: fields.openDate,
+        });
+      } catch (error) {
+        console.error("HIRA verification failed:", error);
+        // Continue without HIRA verification - don't fail the whole process
+      }
+    }
 
-    // Step 6: Calculate confidence
-    // Simple scoring: 0.8 if valid, 0.2 if invalid
-    // Could be enhanced with more sophisticated scoring
-    const confidence = isValid ? 0.8 : 0.2;
+    // Step 6: Determine validity (combine OCR and HIRA results)
+    const ocrValid = missingFields.length === 0;
+    const hiraValid = hiraVerification?.isValid ?? true; // If HIRA fails, don't invalidate
+    const isValid = ocrValid && hiraValid;
 
-    // Step 7: Generate warnings
+    // Step 7: Calculate combined confidence
+    let confidence = ocrValid ? 0.8 : 0.2;
+    
+    // If HIRA verification succeeded, combine confidence scores
+    if (hiraVerification && hiraVerification.isValid) {
+      // Weighted average: 40% OCR, 60% HIRA
+      confidence = (confidence * 0.4) + (hiraVerification.confidence * 0.6);
+    } else if (hiraVerification && !hiraVerification.isValid) {
+      // If HIRA verification failed, reduce confidence
+      confidence = confidence * 0.5;
+    }
+
+    // Step 8: Generate warnings
     const warnings: string[] = [];
     if (missingFields.length > 0) {
       warnings.push(`Missing required fields: ${missingFields.join(", ")}`);
@@ -213,6 +240,11 @@ export class ClinicsService {
         warnings.push(`Missing optional field: ${field}`);
       }
     });
+
+    // Add HIRA warnings
+    if (hiraVerification && hiraVerification.warnings.length > 0) {
+      warnings.push(...hiraVerification.warnings);
+    }
 
     // Map parsed fields to RegisterClinicDto format
     const mappedData = {
@@ -244,6 +276,13 @@ export class ClinicsService {
       rawText: fields.rawText,
       warnings,
       fileUrl: fileUrl || undefined,
+      hiraVerification: hiraVerification ? {
+        isValid: hiraVerification.isValid,
+        confidence: hiraVerification.confidence,
+        matches: hiraVerification.matches,
+        hiraData: hiraVerification.hiraData,
+        warnings: hiraVerification.warnings,
+      } : undefined,
     };
   }
 }

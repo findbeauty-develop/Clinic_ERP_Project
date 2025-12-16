@@ -12,6 +12,7 @@ import { SupplierModule } from "./modules/supplier/supplier.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { NewsModule } from "./modules/news/news.module";
+import { HiraModule } from "./modules/hira/hira.module";
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { NewsModule } from "./modules/news/news.module";
     InventoryModule,
     UploadsModule,
     NewsModule,
+    HiraModule,
   ],
 })
 export class AppModule {}

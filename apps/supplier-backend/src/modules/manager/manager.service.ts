@@ -8,10 +8,20 @@ import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterContactDto } from "./dto/register-contact.dto";
 import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { hash } from "bcryptjs";
+import { BusinessVerificationService } from "../../services/business-verification.service";
+import { GoogleVisionService } from "../../services/google-vision.service";
+import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
+import { join } from "path";
+import * as fs from "fs/promises";
 
 @Injectable()
 export class ManagerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly businessVerificationService: BusinessVerificationService,
+    private readonly googleVisionService: GoogleVisionService,
+    private readonly certificateParser: BusinessCertificateParserService,
+  ) {}
 
   async registerManager(dto: RegisterManagerDto) {
     // 1. Duplicate phone number check
@@ -161,26 +171,94 @@ export class ManagerService {
       return await this.prisma.$transaction(async (tx: any) => {
         // STEP 1: ALL VALIDATIONS FIRST - before any database writes
         
-        // 1. Hash password
+        // 1. Extract OCR data from certificate if provided (for verification)
+        let representativeName: string | undefined;
+        let openingDate: string | undefined;
+
+        if (dto.manager.certificateImageUrl) {
+          try {
+            // Extract file path from URL
+            // URL format: /uploads/supplier/certificate/filename.jpg
+            const uploadRoot = join(process.cwd(), 'uploads');
+            const relativePath = dto.manager.certificateImageUrl.replace(/^\/uploads\//, '');
+            const filePath = join(uploadRoot, relativePath);
+            
+            // Read file and extract OCR
+            const buffer = await fs.readFile(filePath);
+            const rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
+            const parsedFields = this.certificateParser.parseBusinessCertificate(rawText);
+            
+            representativeName = parsedFields.representativeName;
+            openingDate = parsedFields.openingDate;
+            
+            // Log extracted data
+            if (representativeName && openingDate) {
+              console.log(`✅ OCR extracted - Representative: ${representativeName}, Opening Date: ${openingDate}`);
+            } else {
+              console.warn(`⚠️ OCR extraction incomplete - Representative: ${representativeName || 'undefined'}, Opening Date: ${openingDate || 'undefined'}`);
+              console.warn(`Parsed fields: ${JSON.stringify({
+                representativeName: parsedFields.representativeName,
+                openingDate: parsedFields.openingDate,
+                businessNumber: parsedFields.businessNumber,
+                companyName: parsedFields.companyName,
+              })}`);
+            }
+          } catch (error) {
+            console.error('Failed to extract OCR data from certificate:', error);
+            // Continue without OCR data - verification will fail if required
+          }
+        }
+
+        // 2. Verify business number with data.go.kr API (only if all required data is available)
+        // Verification is only performed when ALL required fields are extracted from OCR
+        if (representativeName && openingDate && dto.company.businessNumber) {
+          // All required data is available - perform strict verification
+          const verification = await this.businessVerificationService.verifyBusinessNumber({
+            businessNumber: dto.company.businessNumber,
+            representativeName: representativeName,
+            openingDate: openingDate,
+          });
+
+          if (!verification.isValid) {
+            throw new BadRequestException(
+              verification.error || 
+              '사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요.'
+            );
+          }
+
+          // Log verification success
+          console.log(`Business verification successful - Status: ${verification.businessStatus}`);
+        } else {
+          // OCR data incomplete - skip verification but log warning
+          const missingFields = [];
+          if (!representativeName) missingFields.push('대표자명');
+          if (!openingDate) missingFields.push('개업일자');
+          if (!dto.company.businessNumber) missingFields.push('사업자등록번호');
+          
+          console.warn(`OCR data incomplete for business verification. Missing: ${missingFields.join(', ')}. Skipping verification.`);
+          // Registration continues without verification when data is incomplete
+        }
+        
+        // 3. Hash password
         const passwordHash = await hash(dto.contact.password, 10);
 
-        // 2. Check for existing supplier by business_number
+        // 4. Check for existing supplier by business_number
         const existingSupplier = await tx.supplier.findUnique({
           where: { business_number: dto.company.businessNumber },
         });
 
-        // 3. Check for existing SupplierManager by phone_number (global, login uchun)
+        // 5. Check for existing SupplierManager by phone_number (global, login uchun)
         // CRITICAL: This validation MUST happen before any writes
         const existingManager = await tx.supplierManager.findUnique({
           where: { phone_number: dto.manager.phoneNumber },
         });
 
-        // 4. Validate: If SupplierManager exists with password_hash, registration is not allowed
+        // 6. Validate: If SupplierManager exists with password_hash, registration is not allowed
         if (existingManager && existingManager.password_hash) {
           throw new ConflictException("이미 등록된 휴대폰 번호입니다");
         }
 
-        // 5. Check for duplicate email1 in SupplierManager (if email1 is provided)
+        // 7. Check for duplicate email1 in SupplierManager (if email1 is provided)
         if (dto.contact.email1 && (!existingManager || existingManager.email1 !== dto.contact.email1)) {
           const existingEmail = await tx.supplierManager.findFirst({
             where: { email1: dto.contact.email1 },
@@ -191,7 +269,7 @@ export class ManagerService {
           }
         }
 
-        // 6. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
+        // 8. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
         // Matching: business_number + phone_number + name
         const existingClinicManager = existingSupplier
           ? await tx.clinicSupplierManager.findFirst({

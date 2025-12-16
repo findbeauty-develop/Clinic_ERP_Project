@@ -54,5 +54,47 @@ export class VerifyCertificateResponseDto {
     licenseNumber: string;
     documentIssueNumber: string;
   };
+
+  @ApiProperty({ 
+    description: "HIRA verification result",
+    required: false,
+    example: {
+      isValid: true,
+      confidence: 0.9,
+      matches: {
+        nameMatch: true,
+        addressMatch: true,
+        typeMatch: true,
+        dateMatch: false
+      },
+      hiraData: {
+        yadmNm: "닥터정리반의원",
+        addr: "서울특별시 강남구 압구정로 320",
+        clcdNm: "의원",
+        telno: "02-1234-5678"
+      },
+      warnings: []
+    }
+  })
+  hiraVerification?: {
+    isValid: boolean;
+    confidence: number;
+    matches: {
+      nameMatch: boolean;
+      addressMatch: boolean;
+      typeMatch: boolean;
+      dateMatch: boolean;
+    };
+    hiraData?: {
+      yadmNm?: string;
+      addr?: string;
+      clcdNm?: string;
+      estbDd?: string;
+      telno?: string;
+      clCd?: string;
+      ykiho?: string;
+    };
+    warnings: string[];
+  };
 }
 
