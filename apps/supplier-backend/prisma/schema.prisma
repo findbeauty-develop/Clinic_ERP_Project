@@ -78,7 +78,14 @@ model SupplierManager {
   responsible_products String[] @default([]) // 담당 제품
   position             String? // 직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장
 
-  status     String    @default("pending") // pending, approved, rejected, active
+  // 알림 설정 (Notification Settings)
+  public_contact_name   Boolean @default(false) // 담당자 이름 공개
+  allow_hospital_search Boolean @default(false) // 병의원 검색 허용
+  receive_kakaotalk     Boolean @default(false) // 카톡 알림 받기
+  receive_sms           Boolean @default(false) // 문자(SMS) 알림 받기
+  receive_email         Boolean @default(false) // 이메일 알림 받기
+
+  status     String    @default("pending") // pending, approved, rejected, active, deleted
   created_at DateTime  @default(now())
   updated_at DateTime?
   created_by String? // Who created this manager (clinic or self-registered)

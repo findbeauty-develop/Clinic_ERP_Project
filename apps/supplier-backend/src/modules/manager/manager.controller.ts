@@ -1,16 +1,21 @@
 import {
   Controller,
   Post,
+  Get,
+  Put,
+  Delete,
   Body,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UseGuards,
+  Req,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { join } from "path";
 import { promises as fs } from "fs";
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from "@nestjs/swagger";
 import { ManagerService } from "./manager.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterCompanyDto } from "./dto/register-company.dto";
@@ -18,6 +23,7 @@ import { RegisterContactDto } from "./dto/register-contact.dto";
 import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import type { Request } from "express";
 
 const UPLOAD_ROOT = join(process.cwd(), "uploads");
@@ -164,6 +170,52 @@ export class ManagerController {
   @ApiOperation({ summary: "Complete registration with all data (final step)" })
   async registerComplete(@Body() dto: RegisterCompleteDto) {
     return this.managerService.registerComplete(dto);
+  }
+
+  @Get("profile")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get manager profile with supplier information" })
+  async getProfile(@Req() req: Request & { user: any }) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    return this.managerService.getProfile(supplierManagerId);
+  }
+
+  @Post("change-password")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Change password" })
+  async changePassword(
+    @Body() body: { currentPassword: string; newPassword: string },
+    @Req() req: Request & { user: any }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    if (!body.currentPassword || !body.newPassword) {
+      throw new BadRequestException("Current password and new password are required");
+    }
+    return this.managerService.changePassword(
+      supplierManagerId,
+      body.currentPassword,
+      body.newPassword
+    );
+  }
+
+  @Delete("withdraw")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Withdraw (soft delete) manager account" })
+  async withdraw(@Req() req: Request & { user: any }) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    return this.managerService.withdraw(supplierManagerId);
   }
 }
 

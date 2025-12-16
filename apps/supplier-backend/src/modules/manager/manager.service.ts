@@ -3,12 +3,14 @@ import {
   BadRequestException,
   ConflictException,
   Logger,
+  NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterContactDto } from "./dto/register-contact.dto";
 import { RegisterCompleteDto } from "./dto/register-complete.dto";
-import { hash } from "bcryptjs";
+import { hash, compare } from "bcryptjs";
 import { BusinessVerificationService } from "../../services/business-verification.service";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
@@ -522,6 +524,150 @@ export class ManagerService {
         };
       }); // End of transaction
     }); // End of executeWithRetry
+  }
+
+  /**
+   * Get manager profile with supplier information
+   */
+  async getProfile(supplierManagerId: string) {
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            tenant_id: true,
+            company_name: true,
+            business_number: true,
+            company_phone: true,
+            company_email: true,
+            company_address: true,
+            product_categories: true,
+          },
+        },
+      },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    if (manager.status === "deleted") {
+      throw new UnauthorizedException("This account has been withdrawn");
+    }
+
+    const managerData = manager as any;
+    return {
+      manager: {
+        id: manager.id,
+        manager_id: manager.manager_id,
+        name: manager.name,
+        phone_number: manager.phone_number,
+        email1: manager.email1,
+        position: manager.position,
+        manager_address: manager.manager_address,
+        responsible_products: manager.responsible_products,
+        public_contact_name: managerData.public_contact_name ?? false,
+        allow_hospital_search: managerData.allow_hospital_search ?? false,
+        receive_kakaotalk: managerData.receive_kakaotalk ?? false,
+        receive_sms: managerData.receive_sms ?? false,
+        receive_email: managerData.receive_email ?? false,
+        status: manager.status,
+        created_at: manager.created_at,
+      },
+      supplier: manager.supplier,
+    };
+  }
+
+  /**
+   * Change password
+   */
+  async changePassword(
+    supplierManagerId: string,
+    currentPassword: string,
+    newPassword: string
+  ) {
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      select: {
+        id: true,
+        password_hash: true,
+        status: true,
+      },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    if (manager.status === "deleted") {
+      throw new UnauthorizedException("This account has been withdrawn");
+    }
+
+    if (!manager.password_hash) {
+      throw new BadRequestException("Password is not set");
+    }
+
+    // Verify current password
+    const isPasswordValid = await compare(currentPassword, manager.password_hash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Current password is incorrect");
+    }
+
+    // Validate new password
+    if (newPassword.length < 6) {
+      throw new BadRequestException("New password must be at least 6 characters");
+    }
+
+    // Hash new password
+    const newPasswordHash = await hash(newPassword, 10);
+
+    // Update password
+    await this.prisma.supplierManager.update({
+      where: { id: supplierManagerId },
+      data: {
+        password_hash: newPasswordHash,
+        updated_at: new Date(),
+      },
+    });
+
+    return {
+      message: "Password changed successfully",
+    };
+  }
+
+  /**
+   * Withdraw (soft delete) manager account
+   */
+  async withdraw(supplierManagerId: string) {
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    if (manager.status === "deleted") {
+      throw new BadRequestException("Account is already withdrawn");
+    }
+
+    // Soft delete - set status to 'deleted'
+    await this.prisma.supplierManager.update({
+      where: { id: supplierManagerId },
+      data: {
+        status: "deleted",
+        updated_at: new Date(),
+      },
+    });
+
+    return {
+      message: "Account withdrawn successfully",
+    };
   }
 }
 

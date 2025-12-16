@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "SupplierManager" ADD COLUMN IF NOT EXISTS "public_contact_name" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "allow_hospital_search" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "receive_kakaotalk" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "receive_sms" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "receive_email" BOOLEAN NOT NULL DEFAULT false;
+
