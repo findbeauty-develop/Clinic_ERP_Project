@@ -206,6 +206,21 @@ export class ManagerController {
     );
   }
 
+  @Put("profile")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update manager profile" })
+  async updateProfile(
+    @Body() body: { position?: string; phone_number?: string },
+    @Req() req: Request & { user: any }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    return this.managerService.updateProfile(supplierManagerId, body);
+  }
+
   @Delete("withdraw")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

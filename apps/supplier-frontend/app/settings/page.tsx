@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, apiDelete } from "../../lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "../../lib/api";
 
 type Manager = {
   id: string;
@@ -47,10 +47,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Edit states
-  const [editingPosition, setEditingPosition] = useState(false);
-  const [editingPhone, setEditingPhone] = useState(false);
-  const [editingPassword, setEditingPassword] = useState(false);
+  // Modal states
+  const [showPositionModal, setShowPositionModal] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   // Form states
   const [position, setPosition] = useState("");
@@ -96,9 +96,20 @@ export default function SettingsPage() {
   };
 
   const handlePositionSave = async () => {
-    // TODO: Implement PUT endpoint later
-    alert("직함 수정 기능은 곧 제공될 예정입니다.");
-    setEditingPosition(false);
+    if (!position) {
+      alert("직함을 선택해주세요.");
+      return;
+    }
+
+    try {
+      await apiPut(`/supplier/manager/profile`, { position });
+      alert("직함이 변경되었습니다.");
+      setShowPositionModal(false);
+      fetchProfile(); // Refresh profile data
+    } catch (err: any) {
+      console.error("Failed to update position", err);
+      alert(`직함 변경에 실패했습니다: ${err?.message || "Unknown error"}`);
+    }
   };
 
   const handlePhoneSave = async () => {
@@ -109,9 +120,15 @@ export default function SettingsPage() {
       return;
     }
 
-    // TODO: Implement PUT endpoint later
-    alert("전화번호 수정 기능은 곧 제공될 예정입니다.");
-    setEditingPhone(false);
+    try {
+      await apiPut(`/supplier/manager/profile`, { phone_number: cleanPhone });
+      alert("전화번호가 변경되었습니다.");
+      setShowPhoneModal(false);
+      fetchProfile(); // Refresh profile data
+    } catch (err: any) {
+      console.error("Failed to update phone", err);
+      alert(`전화번호 변경에 실패했습니다: ${err?.message || "Unknown error"}`);
+    }
   };
 
   const handlePasswordSave = async () => {
@@ -134,7 +151,7 @@ export default function SettingsPage() {
         newPassword,
       });
       alert("비밀번호가 변경되었습니다.");
-      setEditingPassword(false);
+      setShowPasswordModal(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -223,147 +240,50 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">직함</span>
               <div className="flex items-center gap-2">
-                {editingPosition ? (
-                  <>
-                    <select
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-sm"
-                    >
-                      <option value="">선택하세요</option>
-                      {POSITIONS.map((pos) => (
-                        <option key={pos} value={pos}>
-                          {pos}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handlePositionSave}
-                      className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"
-                    >
-                      저장
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingPosition(false);
-                        setPosition(profile.manager.position || "");
-                      }}
-                      className="rounded bg-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-400"
-                    >
-                      취소
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium text-slate-900">
-                      {profile.manager.position || "—"}
-                    </span>
-                    <button
-                      onClick={() => setEditingPosition(true)}
-                      className="rounded bg-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-300"
-                    >
-                      수정
-                    </button>
-                  </>
-                )}
+                <span className="font-medium text-slate-900">
+                  {profile.manager.position || "—"}
+                </span>
+                <button
+                  onClick={() => {
+                    setPosition(profile.manager.position || "");
+                    setShowPositionModal(true);
+                  }}
+                  className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg"
+                >
+                  수정
+                </button>
               </div>
             </div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">핸드폰 번호</span>
               <div className="flex items-center gap-2">
-                {editingPhone ? (
-                  <>
-                    <input
-                      type="text"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="01012345678"
-                      className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
-                    />
-                    <button
-                      onClick={handlePhoneSave}
-                      className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"
-                    >
-                      저장
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingPhone(false);
-                        setPhoneNumber(profile.manager.phone_number || "");
-                      }}
-                      className="rounded bg-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-400"
-                    >
-                      취소
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium text-slate-900">
-                      {formatPhoneNumber(profile.manager.phone_number)}
-                    </span>
-                    <button
-                      onClick={() => setEditingPhone(true)}
-                      className="rounded bg-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-300"
-                    >
-                      수정
-                    </button>
-                  </>
-                )}
+                <span className="font-medium text-slate-900">
+                  {formatPhoneNumber(profile.manager.phone_number)}
+                </span>
+                <button
+                  onClick={() => {
+                    setPhoneNumber(profile.manager.phone_number || "");
+                    setShowPhoneModal(true);
+                  }}
+                  className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg"
+                >
+                  수정
+                </button>
               </div>
             </div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">비밀번호</span>
-              {editingPassword ? (
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="현재 비밀번호"
-                    className="w-48 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="새 비밀번호"
-                    className="w-48 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="새 비밀번호 확인"
-                    className="w-48 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handlePasswordSave}
-                      className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"
-                    >
-                      저장
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingPassword(false);
-                        setCurrentPassword("");
-                        setNewPassword("");
-                        setConfirmPassword("");
-                      }}
-                      className="rounded bg-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-400"
-                    >
-                      취소
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditingPassword(true)}
-                  className="rounded bg-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-300"
-                >
-                  재설정
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setShowPasswordModal(true);
+                }}
+                className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg"
+              >
+                재설정
+              </button>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-600">회원탈퇴</span>
@@ -562,6 +482,164 @@ export default function SettingsPage() {
           로그아웃
         </button>
       </div>
+
+      {/* 직함 수정 Modal */}
+      {showPositionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">직함 수정</h3>
+              <button
+                onClick={() => {
+                  setShowPositionModal(false);
+                  setPosition(profile?.manager.position || "");
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                직함
+              </label>
+              <select
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              >
+                <option value="">선택하세요</option>
+                {POSITIONS.map((pos) => (
+                  <option key={pos} value={pos}>
+                    {pos}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handlePositionSave}
+              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl"
+            >
+              저장
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 핸드폰 번호 수정 Modal */}
+      {showPhoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">핸드폰 번호 수정</h3>
+              <button
+                onClick={() => {
+                  setShowPhoneModal(false);
+                  setPhoneNumber(profile?.manager.phone_number || "");
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-slate-600">
+                전화번호를 수정하기 위해 인증절차가 필요합니다.
+              </p>
+              <div className="my-4 h-px bg-slate-200"></div>
+              <p className="text-sm text-slate-700">
+                사용중 번호:{" "}
+                <span className="font-semibold">
+                  {profile?.manager.phone_number
+                    ? formatPhoneNumber(profile.manager.phone_number).replace(
+                        /(\d{3}-\d)\d{2}(\d{2}-\d)\d{2}/,
+                        "$1***-$2***"
+                      )
+                    : "—"}
+                </span>
+              </p>
+            </div>
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                전화번호
+              </label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="01012345678"
+                className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
+            <button
+              onClick={handlePhoneSave}
+              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl"
+            >
+              변경
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 비밀번호 재설정 Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">비밀번호 재설정</h3>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+            <p className="mb-6 text-sm text-slate-600">
+              안전한 사용하기 위해 비밀번호를 다시 한번 입력해 주세요.
+            </p>
+            <div className="mb-4 space-y-4">
+              <div>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="현재 비밀번호"
+                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+              <div>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="새로운 비밀번호"
+                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+              <div>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="새로운 비밀번호 확인"
+                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handlePasswordSave}
+              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

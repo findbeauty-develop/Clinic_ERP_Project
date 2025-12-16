@@ -637,6 +637,92 @@ export class ManagerService {
   }
 
   /**
+   * Update manager profile
+   */
+  async updateProfile(
+    supplierManagerId: string,
+    data: { position?: string; phone_number?: string }
+  ) {
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    if (manager.status === "deleted") {
+      throw new UnauthorizedException("This account has been withdrawn");
+    }
+
+    // Validate phone number format if provided
+    if (data.phone_number) {
+      const cleanPhone = data.phone_number.replace(/[^0-9]/g, "");
+      if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+        throw new BadRequestException(
+          "올바른 전화번호 형식을 입력하세요 (예: 01012345678)"
+        );
+      }
+
+      // Check if phone number is already used by another manager
+      const existingManager = await this.prisma.supplierManager.findFirst({
+        where: {
+          phone_number: cleanPhone,
+          id: { not: supplierManagerId },
+        },
+      });
+
+      if (existingManager) {
+        throw new ConflictException("이미 사용 중인 전화번호입니다");
+      }
+
+      data.phone_number = cleanPhone; // Store without dashes
+    }
+
+    // Validate position if provided
+    if (data.position) {
+      const validPositions = ["사원", "주임", "대리", "과장", "차장", "부장"];
+      if (!validPositions.includes(data.position)) {
+        throw new BadRequestException(
+          `올바른 직함을 선택하세요: ${validPositions.join(", ")}`
+        );
+      }
+    }
+
+    // Update manager
+    const updateData: any = {
+      updated_at: new Date(),
+    };
+
+    if (data.position !== undefined) {
+      updateData.position = data.position;
+    }
+
+    if (data.phone_number !== undefined) {
+      updateData.phone_number = data.phone_number;
+    }
+
+    const updatedManager = await this.prisma.supplierManager.update({
+      where: { id: supplierManagerId },
+      data: updateData,
+      select: {
+        id: true,
+        position: true,
+        phone_number: true,
+      },
+    });
+
+    return {
+      message: "프로필이 업데이트되었습니다",
+      manager: updatedManager,
+    };
+  }
+
+  /**
    * Withdraw (soft delete) manager account
    */
   async withdraw(supplierManagerId: string) {
