@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { apiGet } from "@/lib/api";
+import { useState, useEffect, useMemo } from "react";
 
 export default function DashboardPage() {
   const [currentBannerSlide, setCurrentBannerSlide] = useState(0);
   const [currentNewsTab, setCurrentNewsTab] = useState("추천");
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
+  const [newsArticlesState, setNewsArticlesState] = useState<any[]>([]);
+  const [loadingNews, setLoadingNews] = useState(false);
+
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
 
   // Mock data
   const bannerSlides = [
@@ -13,23 +21,41 @@ export default function DashboardPage() {
       id: 1,
       title: "프리미엄 스킨케어 제품 신규 입고",
       subtitle: "유럽 최고급 브랜드의 안티에이징 제품군을 만나보세요",
+      imageUrl: "/images/baner1.jpg",
       bgImage: "bg-gradient-to-r from-purple-600 to-indigo-600",
     },
     {
       id: 2,
       title: "여름 특가 세일 진행중",
       subtitle: "최대 50% 할인 혜택을 놓치지 마세요",
+      imageUrl: "/images/baner2.jpg",
       bgImage: "bg-gradient-to-r from-pink-500 to-rose-500",
     },
     {
       id: 3,
       title: "신제품 런칭 이벤트",
       subtitle: "첫 구매 고객에게 특별 혜택을 드립니다",
+      imageUrl: "/images/baner3.jpg",
       bgImage: "bg-gradient-to-r from-blue-500 to-cyan-500",
     },
   ];
 
-  const newsTabs = ["추천", "카테크", "웹툰", "패션뷰티", "리빙푸드", "책방", "지식", "건강", "게임"];
+  const newsTabs = ["의료·헬스케어", "카테크", "웹툰", "패션뷰티", "리빙푸드", "책방", "지식", "건강", "게임"];
+  
+  // Category to keywords mapping
+  // Category to keywords mapping
+const categoryKeywords: Record<string, string[]> = {
+  "의료·헬스케어": ["의료", "헬스케어", "건강"],
+  "제약·바이오": ["제약", "바이오", "약품"],
+  "의료기기": ["의료기기", "의료장비"],
+  "병원·클리닉 운영": ["병원", "클리닉", "의원"],
+  "정책·규제": ["의료정책", "보건정책", "규제"],
+  "보험·수가": ["건강보험", "수가", "의료보험"],
+  "보안·개인정보": ["의료정보", "개인정보", "보안"],
+  "AI·기술": ["의료AI", "디지털헬스", "의료기술"],
+  "리콜·안전": ["의료기기리콜", "안전"],
+  "시장·산업 동향": ["의료시장", "헬스케어산업"],
+};
 
   const newsArticles = [
     {
@@ -37,21 +63,21 @@ export default function DashboardPage() {
       title: "결국 사실로 밝혀진 호주의 6m 왕도마 뱀 목격담",
       source: "탐사튜브",
       image: "bg-gradient-to-br from-green-400 to-emerald-600",
-      category: "지식",
+      category: "의료·헬스케어",
     },
     {
       id: 2,
       title: "하버드대가 발표한 '은근 매력적인 사람' 특징 5가지",
       source: "오분서가",
       image: "bg-gradient-to-br from-purple-400 to-pink-600",
-      category: "지식",
+      category: "제약·바이오",
     },
     {
       id: 3,
       title: "북한에서 김일성을 우상시하는 전투가 있다?",
       source: "역사돋보기",
       image: "bg-gradient-to-br from-blue-400 to-indigo-600",
-      category: "지식",
+      category: "의료기기",
       isVideo: true,
       duration: "01:02",
     },
@@ -60,7 +86,7 @@ export default function DashboardPage() {
       title: "4살 준이와 앞이 보이지 않는... 신장투석 중인 할머니 곁을 지...",
       source: "밀알복지재단",
       image: "bg-gradient-to-br from-orange-400 to-red-600",
-      category: "지식",
+      category: "병원·클리닉 운영",
       isAd: true,
     },
     {
@@ -68,14 +94,42 @@ export default function DashboardPage() {
       title: "친구로도 지내선 안 되는 사람 특징 5",
       source: "부크럼",
       image: "bg-gradient-to-br from-yellow-400 to-orange-600",
-      category: "지식",
+      category: "정책·규제",
     },
     {
       id: 6,
       title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
       source: "피카 출판사",
       image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "지식",
+      category: "보험·수가",
+    },
+    {
+      id: 7,
+      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+      source: "피카 출판사",
+      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+      category: "보안·개인정보",
+    },
+    {
+      id: 8,
+      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+      source: "피카 출판사",
+      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+      category: "AI·기술",
+    },
+    {
+      id: 9,
+      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+      source: "피카 출판사",
+      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+      category: "리콜·안전",
+    },
+    {
+      id: 10,
+      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+      source: "피카 출판사",
+      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+      category: "시장·산업 동향",
     },
   ];
 
@@ -160,6 +214,83 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+   // Fetch news by category
+   useEffect(() => {
+    const fetchNews = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:218',message:'fetchNews started',data:{apiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      setLoadingNews(true);
+      try {
+        // Barcha category'lardan news olish
+        const allKeywords: string[] = [];
+        Object.values(categoryKeywords).forEach(keywords => {
+          allKeywords.push(...keywords);
+        });
+
+        // Unique keywords
+        const uniqueKeywords = [...new Set(allKeywords)];
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:230',message:'Before API call',data:{uniqueKeywords:uniqueKeywords.length,apiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
+        const response = await apiGet<any[]>(
+          `${apiUrl}/news/search?keywords=${uniqueKeywords.join(',')}&limit=20`
+        );
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:234',message:'API response received',data:{responseLength:response?.length,responseType:typeof response},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+
+        // Format news articles
+        const formattedNews = response.map((article: any, index: number) => {
+          // Category'ni aniqlash
+          let category = "의료·헬스케어";
+          for (const [cat, keywords] of Object.entries(categoryKeywords)) {
+            if (keywords.some(kw => 
+              article.title?.includes(kw) || 
+              article.summary?.includes(kw)
+            )) {
+              category = cat;
+              break;
+            }
+          }
+
+          return {
+            id: article.id || index + 1,
+            title: article.title || "제목 없음",
+            source: article.source || "알 수 없음",
+            image: article.image || `bg-gradient-to-br from-green-400 to-emerald-600`,
+            category: category,
+            url: article.url,
+            publishedAt: article.publishedAt,
+          };
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:258',message:'Before setState',data:{formattedNewsLength:formattedNews.length,setNewsArticlesStateType:typeof setNewsArticlesState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+
+        setNewsArticlesState(formattedNews);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:260',message:'After setState',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+      } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:262',message:'Error caught',data:{errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        console.error("Failed to fetch news", error);
+        // Fallback to mock data
+        setNewsArticlesState(newsArticles);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:264',message:'Fallback to mock data',data:{mockDataLength:newsArticles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+      } finally {
+        setLoadingNews(false);
+      }
+    };
+
+    fetchNews();
+  }, [apiUrl]);
+
   const nextBannerSlide = () => {
     setCurrentBannerSlide((prev) => (prev + 1) % bannerSlides.length);
   };
@@ -187,22 +318,35 @@ export default function DashboardPage() {
       {/* Top Banner Carousel */}
       <div className="relative mb-6 h-64 rounded-2xl overflow-hidden shadow-lg">
         <div className="relative h-full">
-          {bannerSlides.map((slide, index) => (
-            <div
-              key={slide.id}
-              className={`absolute inset-0 transition-opacity duration-500 ${
-                index === currentBannerSlide ? "opacity-100" : "opacity-0"
-              } ${slide.bgImage}`}
-            >
-              <div className="absolute inset-0 bg-black/20"></div>
-              <div className="relative h-full flex items-center justify-start px-12">
-                <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-xl p-6 max-w-md">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{slide.title}</h2>
-                  <p className="text-gray-700 dark:text-gray-300">{slide.subtitle}</p>
-                </div>
-              </div>
-            </div>
-          ))}
+        {bannerSlides.map((slide, index) => (
+  <div
+    key={slide.id}
+    className={`absolute inset-0 transition-opacity duration-500 ${
+      index === currentBannerSlide ? "opacity-100" : "opacity-0"
+    }`}
+  >
+    {/* Background Image */}
+    {slide.imageUrl ? (
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${slide.imageUrl})` }}
+      ></div>
+    ) : (
+      <div className={`absolute inset-0 ${slide.bgImage}`}></div>
+    )}
+    
+    {/* Overlay */}
+    <div className="absolute inset-0 bg-black/30"></div>
+    
+    {/* Content */}
+    <div className="relative h-full flex items-center justify-start px-12">
+      <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-xl p-6 max-w-md">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{slide.title}</h2>
+        <p className="text-gray-700 dark:text-gray-300">{slide.subtitle}</p>
+      </div>
+    </div>
+  </div>
+))}
         </div>
 
         {/* Navigation Arrows */}
@@ -267,7 +411,13 @@ export default function DashboardPage() {
 
             {/* News Articles Grid */}
             <div className="grid grid-cols-2 gap-4">
-              {newsArticles.map((article) => (
+              {/* #region agent log */}
+              {(() => {
+                fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:393',message:'Rendering news articles',data:{newsArticlesStateLength:newsArticlesState.length,newsArticlesLength:newsArticles.length,usingState:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+                return null;
+              })()}
+              {/* #endregion */}
+              {(newsArticlesState.length > 0 ? newsArticlesState : newsArticles).map((article) => (
                 <div
                   key={article.id}
                   className="group cursor-pointer rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800 hover:shadow-lg transition-all"

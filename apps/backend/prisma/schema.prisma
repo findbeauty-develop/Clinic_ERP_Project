@@ -585,3 +585,14 @@ model WarehouseLocation {
   @@index([tenant_id])
   @@index([category])
 }
+
+model NewsCache {
+  id         String   @id @default(uuid())
+  cache_key  String   @unique
+  data       String   // JSON string
+  updated_at DateTime @default(now())
+  created_at DateTime @default(now())
+
+  @@index([cache_key])
+  @@index([updated_at])
+}
