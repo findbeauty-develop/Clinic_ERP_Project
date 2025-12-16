@@ -221,16 +221,49 @@ export class ManagerController {
     return this.managerService.updateProfile(supplierManagerId, body);
   }
 
-  @Delete("withdraw")
+  @Put("change-affiliation")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Withdraw (soft delete) manager account" })
-  async withdraw(@Req() req: Request & { user: any }) {
+  @ApiOperation({ summary: "Change supplier affiliation (update company information)" })
+  async changeAffiliation(
+    @Body() body: {
+      company_name: string;
+      business_number: string;
+      company_phone: string;
+      company_email: string;
+      company_address?: string;
+      product_categories: string[];
+      certificate_image_url?: string;
+    },
+    @Req() req: Request & { user: any }
+  ) {
     const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
     if (!supplierManagerId) {
       throw new BadRequestException("Manager ID not found in token");
     }
-    return this.managerService.withdraw(supplierManagerId);
+    return this.managerService.changeAffiliation(supplierManagerId, body);
+  }
+
+  @Delete("withdraw")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Withdraw (soft delete) manager account" })
+  async withdraw(
+    @Body() body: { password: string; withdrawal_reason?: string },
+    @Req() req: Request & { user: any }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    if (!body.password) {
+      throw new BadRequestException("Password is required");
+    }
+    return this.managerService.withdraw(
+      supplierManagerId,
+      body.password,
+      body.withdrawal_reason
+    );
   }
 }
 

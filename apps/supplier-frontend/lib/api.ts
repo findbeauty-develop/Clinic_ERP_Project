@@ -70,7 +70,10 @@ export async function apiPut<T>(
   return response.json();
 }
 
-export async function apiDelete<T>(endpoint: string): Promise<T> {
+export async function apiDelete<T>(
+  endpoint: string,
+  data?: unknown
+): Promise<T> {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem("supplier_access_token")
@@ -82,6 +85,7 @@ export async function apiDelete<T>(endpoint: string): Promise<T> {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
+    ...(data ? { body: JSON.stringify(data) } : {}),
   });
 
   if (!response.ok) {

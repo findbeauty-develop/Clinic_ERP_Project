@@ -723,14 +723,134 @@ export class ManagerService {
   }
 
   /**
+   * Change affiliation (update supplier company information)
+   */
+  async changeAffiliation(
+    supplierManagerId: string,
+    data: {
+      company_name: string;
+      business_number: string;
+      company_phone: string;
+      company_email: string;
+      company_address?: string;
+      product_categories: string[];
+      certificate_image_url?: string;
+    }
+  ) {
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      include: {
+        supplier: true,
+      },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    if (manager.status === "deleted") {
+      throw new UnauthorizedException("This account has been withdrawn");
+    }
+
+    // Validate required fields
+    if (!data.company_name || !data.business_number || !data.company_phone || !data.company_email) {
+      throw new BadRequestException("회사명, 사업자등록번호, 회사 전화번호, 회사 이메일은 필수입니다");
+    }
+
+    // Validate business number format (10 digits)
+    const cleanBusinessNumber = data.business_number.replace(/[^0-9]/g, "");
+    if (cleanBusinessNumber.length !== 10) {
+      throw new BadRequestException("사업자등록번호는 10자리 숫자여야 합니다");
+    }
+
+    // Validate phone number format
+    const cleanPhone = data.company_phone.replace(/[^0-9]/g, "");
+    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+      throw new BadRequestException("올바른 전화번호 형식을 입력하세요");
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.company_email)) {
+      throw new BadRequestException("올바른 이메일 형식을 입력하세요");
+    }
+
+    // Check if business number is already used by another supplier
+    const existingSupplier = await this.prisma.supplier.findFirst({
+      where: {
+        business_number: cleanBusinessNumber,
+        id: { not: manager.supplier.id },
+      },
+    });
+
+    if (existingSupplier) {
+      throw new ConflictException("이미 사용 중인 사업자등록번호입니다");
+    }
+
+    // Check if email is already used by another supplier
+    const existingSupplierByEmail = await this.prisma.supplier.findFirst({
+      where: {
+        company_email: data.company_email,
+        id: { not: manager.supplier.id },
+      },
+    });
+
+    if (existingSupplierByEmail) {
+      throw new ConflictException("이미 사용 중인 이메일입니다");
+    }
+
+    // Update supplier information
+    const updateData: any = {
+      company_name: data.company_name,
+      business_number: cleanBusinessNumber,
+      company_phone: cleanPhone,
+      company_email: data.company_email,
+      company_address: data.company_address || null,
+      product_categories: data.product_categories || [],
+      updated_at: new Date(),
+    };
+
+    // If certificate is provided, update it (OCR will be done later)
+    if (data.certificate_image_url) {
+      // For now, just store the URL. OCR processing can be added later
+      // You might want to store this in SupplierManager or Supplier model
+      // For now, we'll skip it as it's not in the schema
+    }
+
+    const updatedSupplier = await this.prisma.supplier.update({
+      where: { id: manager.supplier.id },
+      data: updateData,
+      select: {
+        id: true,
+        company_name: true,
+        business_number: true,
+        company_phone: true,
+        company_email: true,
+        company_address: true,
+        product_categories: true,
+      },
+    });
+
+    return {
+      message: "소속 정보가 변경되었습니다. 관리자 승인이 필요할 수 있습니다.",
+      supplier: updatedSupplier,
+    };
+  }
+
+  /**
    * Withdraw (soft delete) manager account
    */
-  async withdraw(supplierManagerId: string) {
+  async withdraw(
+    supplierManagerId: string,
+    password: string,
+    withdrawalReason?: string
+  ) {
     const manager = await this.prisma.supplierManager.findUnique({
       where: { id: supplierManagerId },
       select: {
         id: true,
         status: true,
+        password_hash: true,
       },
     });
 
@@ -742,13 +862,29 @@ export class ManagerService {
       throw new BadRequestException("Account is already withdrawn");
     }
 
-    // Soft delete - set status to 'deleted'
+    if (!manager.password_hash) {
+      throw new BadRequestException("Password is not set");
+    }
+
+    // Verify password
+    const isPasswordValid = await compare(password, manager.password_hash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Password is incorrect");
+    }
+
+    // Soft delete - set status to 'deleted' and save withdrawal reason
+    const updateData: any = {
+      status: "deleted",
+      updated_at: new Date(),
+    };
+    
+    if (withdrawalReason) {
+      updateData.withdrawal_reason = withdrawalReason;
+    }
+
     await this.prisma.supplierManager.update({
       where: { id: supplierManagerId },
-      data: {
-        status: "deleted",
-        updated_at: new Date(),
-      },
+      data: updateData,
     });
 
     return {

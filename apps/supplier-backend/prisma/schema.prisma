@@ -85,10 +85,11 @@ model SupplierManager {
   receive_sms           Boolean @default(false) // 문자(SMS) 알림 받기
   receive_email         Boolean @default(false) // 이메일 알림 받기
 
-  status     String    @default("pending") // pending, approved, rejected, active, deleted
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-  created_by String? // Who created this manager (clinic or self-registered)
+  status           String    @default("pending") // pending, approved, rejected, active, deleted
+  withdrawal_reason String? // 회원탈퇴 사유 (optional)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime?
+  created_by       String? // Who created this manager (clinic or self-registered)
 
   // Relations
   supplier      Supplier               @relation(fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)

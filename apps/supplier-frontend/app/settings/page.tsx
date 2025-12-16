@@ -40,6 +40,19 @@ type ProfileData = {
 
 const POSITIONS = ["사원", "주임", "대리", "과장", "차장", "부장"];
 
+const PRODUCT_CATEGORIES = [
+  "코스메슈티컬",
+  "주사 재료",
+  "일회용품",
+  "건강기능식품",
+  "청소용품",
+  "레이저 소모품",
+  "의료기기",
+  "스킨케어 제품",
+  "장비 부품",
+  "기타",
+];
+
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -51,6 +64,30 @@ export default function SettingsPage() {
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAffiliationModal, setShowAffiliationModal] = useState(false);
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
+  
+  // Withdrawal states
+  const [withdrawalStep, setWithdrawalStep] = useState(1); // 1: warnings, 2: password
+  const [withdrawalAgreement, setWithdrawalAgreement] = useState(false);
+  const [withdrawalReasons, setWithdrawalReasons] = useState<string[]>([]);
+  const [withdrawalOtherReason, setWithdrawalOtherReason] = useState("");
+  const [withdrawalPassword, setWithdrawalPassword] = useState("");
+  
+  // Affiliation change states
+  const [affiliationStep, setAffiliationStep] = useState(1); // 1: warnings, 2: certificate, 3: form
+  const [agreementChecked, setAgreementChecked] = useState(false);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
+  const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
+  const [affiliationForm, setAffiliationForm] = useState({
+    company_name: "",
+    business_number: "",
+    company_phone: "",
+    company_email: "",
+    company_address: "",
+    product_categories: [] as string[],
+  });
 
   // Form states
   const [position, setPosition] = useState("");
@@ -161,13 +198,78 @@ export default function SettingsPage() {
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!confirm("정말 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+  const handleWithdrawStart = () => {
+    setWithdrawalStep(1);
+    setWithdrawalAgreement(false);
+    setWithdrawalReasons([]);
+    setWithdrawalOtherReason("");
+    setWithdrawalPassword("");
+    setShowWithdrawalModal(true);
+  };
+
+  const handleWithdrawalNext = () => {
+    if (withdrawalStep === 1) {
+      if (!withdrawalAgreement) {
+        alert("유의사항에 동의해주세요.");
+        return;
+      }
+      setWithdrawalStep(2);
+    }
+  };
+
+  const handleWithdrawalBack = () => {
+    if (withdrawalStep > 1) {
+      setWithdrawalStep(withdrawalStep - 1);
+    }
+  };
+
+  const handleWithdrawalReasonToggle = (reason: string) => {
+    if (reason === "기타") {
+      // Toggle "기타" - if already selected, remove it; otherwise add it
+      if (withdrawalReasons.includes("기타")) {
+        setWithdrawalReasons(withdrawalReasons.filter((r) => r !== "기타"));
+        setWithdrawalOtherReason("");
+      } else {
+        setWithdrawalReasons([...withdrawalReasons, "기타"]);
+      }
+    } else {
+      // Toggle other reasons
+      setWithdrawalReasons((prev) =>
+        prev.includes(reason)
+          ? prev.filter((r) => r !== reason)
+          : [...prev, reason]
+      );
+    }
+  };
+
+  const handleWithdrawExecute = async () => {
+    if (!withdrawalPassword) {
+      alert("비밀번호를 입력해주세요.");
       return;
     }
 
     try {
-      await apiDelete(`/supplier/manager/withdraw`);
+      // Build withdrawal reason string
+      let withdrawalReasonText = "";
+      if (withdrawalReasons.length > 0) {
+        const reasons = withdrawalReasons.filter((r) => r !== "기타");
+        if (reasons.length > 0) {
+          withdrawalReasonText = reasons.join(", ");
+        }
+        if (withdrawalReasons.includes("기타") && withdrawalOtherReason) {
+          if (withdrawalReasonText) {
+            withdrawalReasonText += `, 기타: ${withdrawalOtherReason}`;
+          } else {
+            withdrawalReasonText = `기타: ${withdrawalOtherReason}`;
+          }
+        }
+      }
+
+      await apiDelete(`/supplier/manager/withdraw`, {
+        password: withdrawalPassword,
+        withdrawal_reason: withdrawalReasonText || undefined,
+      } as any);
+
       alert("탈퇴가 완료되었습니다.");
       // Clear localStorage and redirect to login
       localStorage.removeItem("supplier_access_token");
@@ -177,6 +279,135 @@ export default function SettingsPage() {
       console.error("Failed to withdraw", err);
       alert(`탈퇴에 실패했습니다: ${err?.message || "Unknown error"}`);
     }
+  };
+
+  const handleAffiliationStart = () => {
+    // Initialize form with current supplier data
+    if (profile) {
+      setAffiliationForm({
+        company_name: profile.supplier.company_name,
+        business_number: profile.supplier.business_number,
+        company_phone: profile.supplier.company_phone || "",
+        company_email: profile.supplier.company_email,
+        company_address: profile.supplier.company_address || "",
+        product_categories: profile.supplier.product_categories || [],
+      });
+    }
+    setAffiliationStep(1);
+    setAgreementChecked(false);
+    setCertificateFile(null);
+    setCertificatePreview(null);
+    setCertificateUrl(null);
+    setShowAffiliationModal(true);
+  };
+
+  const handleAffiliationNext = () => {
+    if (affiliationStep === 1) {
+      if (!agreementChecked) {
+        alert("유의사항에 동의해주세요.");
+        return;
+      }
+      setAffiliationStep(2);
+    } else if (affiliationStep === 2) {
+      // Certificate upload is required, but we'll allow proceeding if file is selected
+      if (!certificateFile && !certificateUrl) {
+        alert("사업자등록증을 업로드해주세요.");
+        return;
+      }
+      setAffiliationStep(3);
+    }
+  };
+
+  const handleAffiliationBack = () => {
+    if (affiliationStep > 1) {
+      setAffiliationStep(affiliationStep - 1);
+    }
+  };
+
+  const handleCertificateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      alert("이미지 파일만 업로드 가능합니다.");
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert("파일 크기는 10MB 이하여야 합니다.");
+      return;
+    }
+
+    setCertificateFile(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCertificatePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload file
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002"}/supplier/manager/upload-certificate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("supplier_access_token")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("파일 업로드에 실패했습니다.");
+      }
+
+      const result = await response.json();
+      setCertificateUrl(result.fileUrl);
+    } catch (err: any) {
+      console.error("Failed to upload certificate", err);
+      alert(`파일 업로드에 실패했습니다: ${err?.message || "Unknown error"}`);
+    }
+  };
+
+  const handleAffiliationSave = async () => {
+    // Validate required fields
+    if (!affiliationForm.company_name || !affiliationForm.business_number || 
+        !affiliationForm.company_phone || !affiliationForm.company_email) {
+      alert("필수 항목을 모두 입력해주세요.");
+      return;
+    }
+
+    if (affiliationForm.product_categories.length === 0) {
+      alert("최소 1개 이상의 제품 카테고리를 선택해주세요.");
+      return;
+    }
+
+    try {
+      await apiPut(`/supplier/manager/change-affiliation`, {
+        ...affiliationForm,
+        certificate_image_url: certificateUrl || undefined,
+      });
+      alert("소속 정보가 변경되었습니다. 관리자 승인이 필요할 수 있습니다.");
+      setShowAffiliationModal(false);
+      fetchProfile(); // Refresh profile data
+    } catch (err: any) {
+      console.error("Failed to change affiliation", err);
+      alert(`소속 변경에 실패했습니다: ${err?.message || "Unknown error"}`);
+    }
+  };
+
+  const handleCategoryToggle = (category: string) => {
+    setAffiliationForm((prev) => ({
+      ...prev,
+      product_categories: prev.product_categories.includes(category)
+        ? prev.product_categories.filter((c) => c !== category)
+        : [...prev.product_categories, category],
+    }));
   };
 
   const formatPhoneNumber = (phone: string) => {
@@ -288,8 +519,8 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <span className="text-slate-600">회원탈퇴</span>
               <button
-                onClick={handleWithdraw}
-                className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700"
+                onClick={handleWithdrawStart}
+                className="rounded-lg bg-gradient-to-r from-red-500 to-pink-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-red-600 hover:to-pink-700 hover:shadow-lg"
               >
                 탈퇴하기
               </button>
@@ -372,8 +603,8 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <span className="text-slate-600">소속 변경</span>
               <button
-                onClick={() => alert("소속 변경 기능은 곧 제공될 예정입니다.")}
-                className="rounded bg-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-300"
+                onClick={handleAffiliationStart}
+                className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg"
               >
                 소속 변경
               </button>
@@ -637,6 +868,494 @@ export default function SettingsPage() {
             >
               확인
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 소속 변경 Multi-step Modal */}
+      {showAffiliationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">
+                소속(회사) 변경 시 유의사항
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAffiliationModal(false);
+                  setAffiliationStep(1);
+                  setAgreementChecked(false);
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+
+            {/* Step 1: Warnings */}
+            {affiliationStep === 1 && (
+              <div className="space-y-4">
+                <div className="space-y-3 text-sm text-slate-700">
+                  <div className="flex gap-3">
+                    <span className="font-semibold text-indigo-600">1.</span>
+                    <p>
+                      소속 변경 후 담당자의 이름, 직함, 연락처 등 계정 정보는 새 회사
+                      기준으로 업데이트됩니다.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="font-semibold text-indigo-600">2.</span>
+                    <p>
+                      이전 회사에서 담당자가 처리한 주문·출고·반품·정산·거래처 이력은
+                      해당 회사의 업무 기록으로 분류되며, 관련 법령에 따라 보관되며
+                      수정되거나 삭제되지 않습니다.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="font-semibold text-indigo-600">3.</span>
+                    <p>
+                      이전 회사에서 보유하던 모든 권한과 설정값은 해제되거나
+                      초기화됩니다.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="font-semibold text-indigo-600">4.</span>
+                    <p>
+                      새 회사 소속으로 활동하기 위해서는{" "}
+                      <span className="font-semibold underline">
+                        관리자 승인이 필요할 수 있으며, 승인 완료 전까지 일부 기능
+                        이용이 제한될 수 있습니다.
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="font-semibold text-indigo-600">5.</span>
+                    <p>
+                      동일 이메일은 여러 회사 소속 계정에서 동시에 사용할 수 없으며,
+                      계속 사용하려면 이전 회사에서의 권한 해제가 필요합니다.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="agreement"
+                    checked={agreementChecked}
+                    onChange={(e) => setAgreementChecked(e.target.checked)}
+                    className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor="agreement"
+                    className="text-sm text-slate-700"
+                  >
+                    위 내용을 모두 확인하였으며, 이에 동의합니다.
+                  </label>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleAffiliationNext}
+                    disabled={!agreementChecked}
+                    className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    다음단계
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Certificate Upload */}
+            {affiliationStep === 2 && (
+              <div className="space-y-4">
+                <div className="mb-6 flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50">
+                  {certificatePreview ? (
+                    <img
+                      src={certificatePreview}
+                      alt="Certificate preview"
+                      className="h-full w-full rounded-lg object-contain"
+                    />
+                  ) : (
+                    <div className="text-center">
+                      <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-slate-200"></div>
+                      <p className="text-sm text-slate-600">
+                        사업자등록증 이미지를 업로드하세요
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <label className="block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCertificateUpload}
+                    className="hidden"
+                  />
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+                        fileInput?.click();
+                      }}
+                      className="rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 px-6 py-3 font-medium text-white shadow-md transition-all hover:from-blue-600 hover:to-cyan-700 hover:shadow-lg"
+                    >
+                      사업자등록증 업데이트
+                    </button>
+                  </div>
+                </label>
+                <div className="flex justify-between">
+                  <button
+                    onClick={handleAffiliationBack}
+                    className="rounded-lg bg-slate-200 px-6 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-300"
+                  >
+                    이전
+                  </button>
+                  <button
+                    onClick={handleAffiliationNext}
+                    disabled={!certificateFile && !certificateUrl}
+                    className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    다음 단계
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Company Information Form */}
+            {affiliationStep === 3 && (
+              <div className="space-y-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      회사명 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={affiliationForm.company_name}
+                      onChange={(e) =>
+                        setAffiliationForm((prev) => ({
+                          ...prev,
+                          company_name: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      사업자 등록번호 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={affiliationForm.business_number}
+                      onChange={(e) =>
+                        setAffiliationForm((prev) => ({
+                          ...prev,
+                          business_number: e.target.value.replace(/[^0-9]/g, ""),
+                        }))
+                      }
+                      placeholder="1234567890"
+                      maxLength={10}
+                      className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      회사 전화번호 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={affiliationForm.company_phone}
+                      onChange={(e) =>
+                        setAffiliationForm((prev) => ({
+                          ...prev,
+                          company_phone: e.target.value.replace(/[^0-9]/g, ""),
+                        }))
+                      }
+                      placeholder="01012345678"
+                      className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      회사 이메일 주소 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={affiliationForm.company_email}
+                      onChange={(e) =>
+                        setAffiliationForm((prev) => ({
+                          ...prev,
+                          company_email: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      회사 주소
+                    </label>
+                    <input
+                      type="text"
+                      value={affiliationForm.company_address}
+                      onChange={(e) =>
+                        setAffiliationForm((prev) => ({
+                          ...prev,
+                          company_address: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      취급 제품 카테고리{" "}
+                      <span className="text-red-500">*</span> (중복 선택 가능)
+                    </label>
+                    <div className="grid grid-cols-2 gap-3 rounded-lg border-2 border-slate-300 bg-white p-4">
+                      {PRODUCT_CATEGORIES.map((category) => (
+                        <label
+                          key={category}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={affiliationForm.product_categories.includes(
+                              category
+                            )}
+                            onChange={() => handleCategoryToggle(category)}
+                            className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm text-slate-700">{category}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-between">
+                  <button
+                    onClick={handleAffiliationBack}
+                    className="rounded-lg bg-slate-200 px-6 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-300"
+                  >
+                    이전
+                  </button>
+                  <button
+                    onClick={handleAffiliationSave}
+                    className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl"
+                  >
+                    저장
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 회원 탈퇴 Multi-step Modal */}
+      {showWithdrawalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">회원 탈퇴</h3>
+              <button
+                onClick={() => {
+                  setShowWithdrawalModal(false);
+                  setWithdrawalStep(1);
+                  setWithdrawalAgreement(false);
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+
+            {/* Step 1: Warnings and Reasons */}
+            {withdrawalStep === 1 && (
+              <div className="space-y-6">
+                {/* Section 1: 탈퇴 시 즉시 삭제되는 정보 */}
+                <div>
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    1. 탈퇴 시 즉시 삭제되는 정보
+                  </h4>
+                  <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
+                    <li>담당자 이름, 직함, 연락처 등 개인 정보</li>
+                    <li>계정 설정 및 알림 설정</li>
+                    <li>로그인 기록</li>
+                  </ul>
+                </div>
+
+                {/* Section 2: 법적 보관이 필요한 정보 */}
+                <div>
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    2. 법적 보관이 필요한 정보
+                  </h4>
+                  <p className="mb-3 text-sm text-slate-700">
+                    다음 정보는 관련 법령(전자상거래법, 세무법 등)에 따라 최대 5년간
+                    보관되며, 법적 목적 외에는 사용되지 않습니다.
+                  </p>
+                  <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
+                    <li>병·의원 ↔ 기업 간의 주문/출고/반품/정산 이력</li>
+                    <li>세금계산서, 영수증 등 회계 자료</li>
+                  </ul>
+                  <p className="mt-3 text-xs text-slate-500">
+                    ※ 보관 기간 종료 후 안전하게 파기됩니다.
+                  </p>
+                </div>
+
+                {/* Section 3: 탈퇴 후 이용 제한 */}
+                <div>
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    3. 탈퇴 후 이용 제한
+                  </h4>
+                  <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
+                    <li>플랫폼 로그인 및 서비스 이용이 중단됩니다.</li>
+                    <li>
+                      동일 전화번호/이메일로 즉시 재가입이 제한될 수 있습니다.
+                    </li>
+                    <li>
+                      저장된 모든 설정 값은 초기화되며 복원되지 않습니다.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Section 4: 주의사항 */}
+                <div>
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    4. 주의사항
+                  </h4>
+                  <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
+                    <li>
+                      탈퇴 완료 후에는 개인 정보를 근거로 한 본인 확인이 불가능하여
+                    </li>
+                    <li>추가적인 삭제 요청을 처리할 수 없습니다.</li>
+                    <li>
+                      병원/기업과의 거래가 진행 중일 경우, 담당자 변경 후 탈퇴하는 것을
+                      권장합니다.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Section 5: 탈퇴 사유 */}
+                <div>
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    5. 탈퇴 사유 (선택)
+                  </h4>
+                  <div className="space-y-2">
+                    {[
+                      "사용이 불편함",
+                      "필요한 기능 부족",
+                      "타 시스템 사용",
+                      "계정 변경",
+                      "기타",
+                    ].map((reason) => (
+                      <label
+                        key={reason}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={withdrawalReasons.includes(reason)}
+                          onChange={() => handleWithdrawalReasonToggle(reason)}
+                          className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm text-slate-700">{reason}</span>
+                        {reason === "기타" && withdrawalReasons.includes("기타") && (
+                          <input
+                            type="text"
+                            value={withdrawalOtherReason}
+                            onChange={(e) => setWithdrawalOtherReason(e.target.value)}
+                            placeholder="직접 입력"
+                            className="ml-2 flex-1 rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Agreement Checkbox */}
+                <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
+                  <input
+                    type="checkbox"
+                    id="withdrawal-agreement"
+                    checked={withdrawalAgreement}
+                    onChange={(e) => setWithdrawalAgreement(e.target.checked)}
+                    className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor="withdrawal-agreement"
+                    className="text-sm text-slate-700"
+                  >
+                    위 내용을 모두 확인하였으며, 이에 동의합니다.
+                  </label>
+                </div>
+
+                {/* Next Step Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleWithdrawalNext}
+                    disabled={!withdrawalAgreement}
+                    className="rounded-lg bg-gradient-to-r from-red-500 to-pink-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:from-red-600 hover:to-pink-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    다음단계
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Password Reconfirmation */}
+            {withdrawalStep === 2 && (
+              <div className="space-y-4">
+                <p className="mb-6 text-sm text-slate-600">
+                  안전한 사용하기 위해 비밀번호를 다시 한번 입력해 주세요.
+                </p>
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    전화번호
+                  </label>
+                  <input
+                    type="text"
+                    value={profile?.manager.phone_number ? formatPhoneNumber(profile.manager.phone_number) : ""}
+                    disabled
+                    className="w-full rounded-lg border-2 border-slate-300 bg-slate-100 px-4 py-3 text-slate-600 shadow-sm"
+                  />
+                </div>
+                <div className="mb-6">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    비밀번호
+                  </label>
+                  <input
+                    type="password"
+                    value={withdrawalPassword}
+                    onChange={(e) => setWithdrawalPassword(e.target.value)}
+                    placeholder="비밀번호"
+                    className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+                <div className="flex justify-between">
+                  <button
+                    onClick={handleWithdrawalBack}
+                    className="rounded-lg bg-slate-200 px-6 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-300"
+                  >
+                    이전
+                  </button>
+                  <button
+                    onClick={handleWithdrawExecute}
+                    disabled={!withdrawalPassword}
+                    className="rounded-lg bg-gradient-to-r from-red-500 to-pink-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:from-red-600 hover:to-pink-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    확인
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
