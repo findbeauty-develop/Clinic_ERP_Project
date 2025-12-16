@@ -137,19 +137,19 @@ export class MembersService {
           );
         }
       } else {
-        // Create mode: check if members already exist, if so throw error
-        const existingMembers = await this.repository.findManyByMemberIds(
-          memberIds,
-          tenantId
+        // Create mode: check if members already exist GLOBALLY (member_id is unique across all tenants)
+        const existingMembers = await this.repository.findManyByMemberIdsGlobal(
+          memberIds
         );
         if (existingMembers.length > 0) {
           const existingMemberIds = existingMembers.map(
-            (m: { member_id: string }) => m.member_id
+            (m: { member_id: string; tenant_id: string }) => 
+              `${m.member_id} (tenant: ${m.tenant_id})`
           );
           throw new Error(
-            `Members with IDs [${existingMemberIds.join(
+            `Members with IDs already exist in database: [${existingMemberIds.join(
               ", "
-            )}] already exist. Cannot create duplicate members.`
+            )}]. Cannot create duplicate members. member_id must be unique across all tenants.`
           );
         }
 

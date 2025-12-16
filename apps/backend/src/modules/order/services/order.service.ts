@@ -13,6 +13,7 @@ import {
   UpdateOrderDraftItemDto,
 } from "../dto/update-order-draft.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
+import { MessageService } from "../../member/services/message.service";
 
 @Injectable()
 export class OrderService {
@@ -21,7 +22,8 @@ export class OrderService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly orderRepository: OrderRepository
+    private readonly orderRepository: OrderRepository,
+    private readonly messageService: MessageService
   ) {}
 
   /**
@@ -1151,9 +1153,60 @@ export class OrderService {
       }
 
       const supplierManager = supplier.managers?.[0];
+      
+      // Agar supplierManager yo'q bo'lsa (platformadan ro'yxatdan o'tmagan),
+      // SupplierProduct jadvalidan telefon raqamini olish
+      let supplierPhoneNumber: string | null = null;
       if (!supplierManager) {
-        this.logger.warn(`No active manager found for supplier ${order.supplier_id}`);
-        return;
+        this.logger.warn(`No active manager found for supplier ${order.supplier_id}, trying to get phone from SupplierProduct`);
+        
+        // Order items'dan birinchi product'ni olish va SupplierProduct'dan telefon raqamini olish
+        if (group.items && group.items.length > 0) {
+          const firstItem = group.items[0];
+          if (firstItem.productId) {
+            const supplierProduct = await this.prisma.supplierProduct.findFirst({
+              where: {
+                product_id: firstItem.productId,
+                supplier_id: order.supplier_id,
+              },
+              select: {
+                contact_phone: true,
+                contact_name: true,
+                company_name: true,
+              },
+            });
+            
+            if (supplierProduct?.contact_phone) {
+              supplierPhoneNumber = supplierProduct.contact_phone;
+              this.logger.log(`Found phone number from SupplierProduct: ${supplierPhoneNumber}`);
+            } else {
+              // Fallback: supplier_id bo'yicha qidirish (agar product_id topilmasa)
+              const supplierProductBySupplier = await this.prisma.supplierProduct.findFirst({
+                where: {
+                  supplier_id: order.supplier_id,
+                  contact_phone: { not: null },
+                },
+                select: {
+                  contact_phone: true,
+                },
+                orderBy: {
+                  created_at: 'desc',
+                },
+              });
+              
+              if (supplierProductBySupplier?.contact_phone) {
+                supplierPhoneNumber = supplierProductBySupplier.contact_phone;
+                this.logger.log(`Found phone number from SupplierProduct (by supplier_id): ${supplierPhoneNumber}`);
+              }
+            }
+          }
+        }
+        
+        // Agar hali ham telefon raqami topilmasa, supplier-backend API'ga yuborishni o'tkazib yuborish
+        // Lekin SMS yuborishni o'tkazib yuborish (chunki telefon raqami yo'q)
+        if (!supplierPhoneNumber) {
+          this.logger.warn(`No phone number found in SupplierProduct for supplier ${order.supplier_id}, SMS will not be sent`);
+        }
       }
 
       // Get clinic info
@@ -1215,10 +1268,11 @@ export class OrderService {
       );
 
       // Prepare order data for supplier-backend
+      // supplierManagerId null bo'lishi mumkin (agar supplier platformadan ro'yxatdan o'tmagan bo'lsa)
       const supplierOrderData = {
         orderNo: order.order_no,
         supplierTenantId: supplier.tenant_id,
-        supplierManagerId: supplierManager.id,
+        supplierManagerId: supplierManager?.id || null, // null bo'lishi mumkin
         clinicTenantId: tenantId,
         clinicName: finalClinicName,
         clinicManagerName: clinicManagerName,
@@ -1234,30 +1288,109 @@ export class OrderService {
       });
 
 
+      // Prepare supplier phone number for SMS (even if API fails, we can still send SMS)
+      const finalSupplierPhoneNumber = 
+        supplierManager?.phone_number || 
+        supplierPhoneNumber || 
+        supplier.company_phone;
+
       // Call supplier-backend API
       const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
       
+      let supplierBackendSuccess = false;
+      
       if (!apiKey) {
-        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification');
-        return;
+        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier-backend API call');
+      } else {
+        let timeoutId: NodeJS.Timeout | null = null;
+        try {
+          // Create AbortController for timeout
+          const controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
+          
+          const response = await fetch(`${supplierApiUrl}/supplier/orders`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey,
+            },
+            body: JSON.stringify(supplierOrderData),
+            signal: controller.signal,
+          });
+          
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => "Unknown error");
+            this.logger.error(`Failed to send order to supplier-backend: ${response.status} ${errorText}`);
+          } else {
+            const result: any = await response.json();
+            this.logger.log(`Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`);
+            supplierBackendSuccess = true;
+          }
+        } catch (fetchError: any) {
+          // Clear timeout if it wasn't already cleared
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          
+          // Network error (connection refused, timeout, etc.)
+          const errorMessage = fetchError?.message || String(fetchError);
+          const errorName = fetchError?.name || '';
+          
+          if (errorName === 'AbortError' || errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
+            this.logger.error(`Supplier-backend API request timed out after 10 seconds. URL: ${supplierApiUrl}`);
+          } else if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
+            this.logger.error(`Cannot connect to supplier-backend at ${supplierApiUrl}. Is supplier-backend running? Error: ${errorMessage}`);
+            this.logger.error(`Please check: 1) Supplier-backend is running, 2) SUPPLIER_BACKEND_URL is correct in .env`);
+          } else {
+            this.logger.error(`Error calling supplier-backend API: ${errorMessage}`);
+          }
+          // Continue - we'll still try to send SMS even if API call failed
+        }
       }
       
-      const response = await fetch(`${supplierApiUrl}/supplier/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify(supplierOrderData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        this.logger.error(`Failed to send order to supplier-backend: ${response.status} ${errorText}`);
+      // Send SMS notification to supplier manager
+      // SMS yuborish supplier-backend API muvaffaqiyatli bo'lgan yoki bo'lmaganidan qat'iy nazar
+      // (chunki telefon raqami mavjud bo'lsa, SMS yuborish kerak)
+      if (finalSupplierPhoneNumber) {
+        try {
+          // Products ma'lumotlarini formatlash
+          const products = itemsWithDetails.map((item: any) => ({
+            productName: item.productName || "제품",
+            brand: item.brand || "",
+          }));
+          
+          // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
+          const totalQuantity = itemsWithDetails.reduce((sum: number, item: any) => {
+            return sum + (item.quantity || 0);
+          }, 0);
+          
+          await this.messageService.sendOrderNotification(
+            finalSupplierPhoneNumber,
+            finalClinicName,
+            order.order_no,
+            order.total_amount,
+            totalQuantity, // itemsWithDetails.length o'rniga totalQuantity
+            clinicManagerName,
+            products
+          );
+          const phoneSource = supplierManager?.phone_number 
+            ? 'SupplierManager' 
+            : supplierPhoneNumber 
+            ? 'SupplierProduct' 
+            : 'Supplier.company_phone';
+          this.logger.log(`Order notification SMS sent to supplier: ${finalSupplierPhoneNumber} (source: ${phoneSource})`);
+        } catch (smsError: any) {
+          // Log error but don't fail the order creation
+          this.logger.error(`Failed to send SMS notification to supplier: ${smsError?.message || 'Unknown error'}`);
+        }
       } else {
-        const result: any = await response.json();
-        this.logger.log(`Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`);
+        this.logger.warn(`No phone number found for supplier ${order.supplier_id} (checked SupplierManager, SupplierProduct, and Supplier.company_phone), skipping SMS notification`);
       }
     } catch (error: any) {
       this.logger.error(`Error sending order to supplier-backend: ${error.message}`, error.stack);

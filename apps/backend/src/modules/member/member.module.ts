@@ -38,6 +38,7 @@ import { HiraModule } from "../hira/hira.module";
     KTCommunisProvider,
     SolapiProvider,
   ],
+  exports: [MessageService], // Export MessageService so other modules can use it
 })
 export class MemberModule {}
 

@@ -7,9 +7,10 @@ import { OrderWebhookController } from "./controllers/order-webhook.controller";
 import { OrderService } from "./services/order.service";
 import { OrderRepository } from "./repositories/order.repository";
 import { ProductModule } from "../product/product.module";
+import { MemberModule } from "../member/member.module";
 
 @Module({
-  imports: [ProductModule],
+  imports: [ProductModule, MemberModule], // Import MemberModule to use MessageService
   controllers: [OrderController, OrderWebhookController],
   providers: [
     OrderService,

@@ -76,7 +76,9 @@ export class MembersController {
     // memberId'ni token'dan yoki body'dan olish
     const memberId = tokenMemberId || body.memberId;
     if (!memberId) {
-      throw new Error("Member ID is required");
+      throw new Error(
+        "Member ID is required. Either provide it in the request body (memberId) or ensure the JWT token contains member_id."
+      );
     }
     // tenantId'ni guard'dan, query'dan yoki header'dan olish
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";

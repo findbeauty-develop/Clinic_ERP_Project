@@ -74,8 +74,12 @@ export class JwtTenantGuard implements CanActivate {
 
       req.user = {
         id: (payload.sub as string) ?? payload.member_id ?? "member",
+        member_id: payload.member_id, // Add member_id to user object
         email: (payload as any)?.email ?? null,
         roles: payload.roles ?? [],
+        tenant_id: tenantId,
+        clinic_name: (payload as any)?.clinic_name,
+        must_change_password: (payload as any)?.must_change_password,
       };
       req.tenantId = tenantId;
       return true;

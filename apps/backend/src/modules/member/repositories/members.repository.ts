@@ -98,6 +98,21 @@ export class MembersRepository {
     });
   }
 
+  // Check if member_id exists globally (across all tenants)
+  findManyByMemberIdsGlobal(memberIds: string[]) {
+    return this.prisma.member.findMany({
+      where: {
+        member_id: {
+          in: memberIds,
+        },
+      },
+      select: {
+        member_id: true,
+        tenant_id: true,
+      },
+    });
+  }
+
   update(id: string, data: Partial<MemberCreateInput>) {
     return this.prisma.member.update({
       where: { id },

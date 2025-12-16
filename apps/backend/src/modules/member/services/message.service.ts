@@ -105,5 +105,95 @@ export class MessageService {
     
     return message;
   }
+
+  /**
+   * Order notification'ni SMS orqali supplier'ga yuborish
+   */
+  async sendOrderNotification(
+    phoneNumber: string,
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string }>
+  ): Promise<boolean> {
+    if (!phoneNumber) {
+      this.logger.warn('Phone number is required for order notification');
+      return false;
+    }
+
+    const message = this.formatOrderNotificationMessage(
+      clinicName,
+      orderNo,
+      totalAmount,
+      itemCount,
+      clinicManagerName,
+      products
+    );
+
+    try {
+      const smsSent = await this.provider.sendSMS(phoneNumber, message);
+      if (smsSent) {
+        this.logger.log(`Order notification SMS sent to ${phoneNumber} for order ${orderNo}`);
+      } else {
+        this.logger.warn(`Failed to send order notification SMS to ${phoneNumber}`);
+      }
+      return smsSent;
+    } catch (error: any) {
+      this.logger.error(`Error sending order notification SMS: ${error?.message || 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  /**
+   * Order notification message format
+   */
+  private formatOrderNotificationMessage(
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string }>
+  ): string {
+    let message = `[주문 알림] ${clinicName}에서 주문이 접수되었습니다.\n\n`;
+    message += `주문번호: ${orderNo}\n`;
+    
+    if (clinicManagerName) {
+      message += `담당자: ${clinicManagerName}\n`;
+    }
+    
+    // Product ma'lumotlarini formatlash
+    if (products && products.length > 0) {
+      if (products.length === 1) {
+        // Faqat bitta product bo'lsa
+        const product = products[0];
+        const productDisplay = `${product.productName}${product.brand ? ` ${product.brand}` : ''}`;
+        message += `제품명: ${productDisplay}\n`;
+      } else {
+        // Bir nechta product bo'lsa - birinchi product va qolganlar soni
+        const firstProduct = products[0];
+        const productDisplay = `${firstProduct.productName}${firstProduct.brand ? ` ${firstProduct.brand}` : ''}`;
+        message += `제품명: ${productDisplay} 외 ${products.length - 1}개\n`;
+      }
+    }
+    
+    message += `총 금액: ${totalAmount.toLocaleString('ko-KR')}원\n`;
+    message += `제품 수: ${itemCount}개\n\n`;
+    message += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n\n`;
+    
+    // Supplier frontend URL
+    const supplierFrontendUrl = this.configService.get<string>('SUPPLIER_FRONTEND_URL');
+    if (!supplierFrontendUrl) {
+      this.logger.warn('SUPPLIER_FRONTEND_URL is not set in .env, using default localhost URL');
+    }
+    const baseUrl = supplierFrontendUrl || 'http://localhost:3003';
+    // Trailing slash'ni olib tashlash
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    message += `${cleanBaseUrl}/orders`;
+    
+    return message;
+  }
 }
 
