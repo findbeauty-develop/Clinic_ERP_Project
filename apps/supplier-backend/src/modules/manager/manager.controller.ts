@@ -23,6 +23,7 @@ import { RegisterContactDto } from "./dto/register-contact.dto";
 import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
+import { PhoneVerificationService } from "../../services/phone-verification.service";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import type { Request } from "express";
 
@@ -36,7 +37,8 @@ export class ManagerController {
   constructor(
     private readonly managerService: ManagerService,
     private readonly googleVisionService: GoogleVisionService,
-    private readonly certificateParser: BusinessCertificateParserService
+    private readonly certificateParser: BusinessCertificateParserService,
+    private readonly phoneVerificationService: PhoneVerificationService
   ) {}
 
   @Post("check-phone")
@@ -206,6 +208,34 @@ export class ManagerController {
     );
   }
 
+  @Post("send-phone-verification")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Send phone verification code via SMS" })
+  async sendPhoneVerification(
+    @Body() body: { phone_number: string },
+    @Req() req: Request & { user: any }
+  ) {
+    if (!body.phone_number) {
+      throw new BadRequestException("Phone number is required");
+    }
+    return this.phoneVerificationService.sendVerificationCode(body.phone_number);
+  }
+
+  @Post("verify-phone-code")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Verify phone verification code" })
+  async verifyPhoneCode(
+    @Body() body: { phone_number: string; code: string },
+    @Req() req: Request & { user: any }
+  ) {
+    if (!body.phone_number || !body.code) {
+      throw new BadRequestException("Phone number and code are required");
+    }
+    return this.phoneVerificationService.verifyCode(body.phone_number, body.code);
+  }
+
   @Put("profile")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -218,6 +248,15 @@ export class ManagerController {
     if (!supplierManagerId) {
       throw new BadRequestException("Manager ID not found in token");
     }
+    
+    // If phone_number is being updated, verify it first
+    if (body.phone_number) {
+      const isVerified = await this.phoneVerificationService.isPhoneVerified(body.phone_number);
+      if (!isVerified) {
+        throw new BadRequestException("전화번호 인증이 완료되지 않았습니다. 인증번호를 확인해주세요.");
+      }
+    }
+    
     return this.managerService.updateProfile(supplierManagerId, body);
   }
 

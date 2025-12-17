@@ -92,6 +92,10 @@ export default function SettingsPage() {
   // Form states
   const [position, setPosition] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -149,7 +153,67 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSendVerificationCode = async () => {
+    // Validate phone number format (01012345678)
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+      alert("올바른 전화번호 형식을 입력하세요 (예: 01012345678)");
+      return;
+    }
+
+    // Check if it's the same as current phone
+    if (profile?.manager.phone_number && cleanPhone === profile.manager.phone_number.replace(/[^0-9]/g, "")) {
+      alert("현재 사용 중인 전화번호와 동일합니다.");
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const response = await apiPost<{ message?: string }>(`/supplier/manager/send-phone-verification`, {
+        phone_number: cleanPhone,
+      });
+      alert(response.message || "인증번호가 전송되었습니다.");
+    } catch (err: any) {
+      console.error("Failed to send verification code", err);
+      alert(`인증번호 전송에 실패했습니다: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      alert("6자리 인증번호를 입력하세요.");
+      return;
+    }
+
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+    setIsVerifyingCode(true);
+    try {
+      const response = await apiPost<{ verified: boolean; success: boolean }>(`/supplier/manager/verify-phone-code`, {
+        phone_number: cleanPhone,
+        code: verificationCode,
+      });
+      if (response.verified) {
+        setIsPhoneVerified(true);
+        alert("인증이 완료되었습니다.");
+      } else {
+        alert("인증번호가 올바르지 않습니다.");
+      }
+    } catch (err: any) {
+      console.error("Failed to verify code", err);
+      alert(`인증에 실패했습니다: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
   const handlePhoneSave = async () => {
+    if (!isPhoneVerified) {
+      alert("전화번호 인증을 완료해주세요.");
+      return;
+    }
+
     // Validate phone number format (01012345678)
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
     if (cleanPhone.length < 10 || cleanPhone.length > 11) {
@@ -161,6 +225,9 @@ export default function SettingsPage() {
       await apiPut(`/supplier/manager/profile`, { phone_number: cleanPhone });
       alert("전화번호가 변경되었습니다.");
       setShowPhoneModal(false);
+      setPhoneNumber("");
+      setVerificationCode("");
+      setIsPhoneVerified(false);
       fetchProfile(); // Refresh profile data
     } catch (err: any) {
       console.error("Failed to update phone", err);
@@ -766,7 +833,9 @@ export default function SettingsPage() {
               <button
                 onClick={() => {
                   setShowPhoneModal(false);
-                  setPhoneNumber(profile?.manager.phone_number || "");
+                  setPhoneNumber("");
+                  setVerificationCode("");
+                  setIsPhoneVerified(false);
                 }}
                 className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
               >
@@ -790,21 +859,66 @@ export default function SettingsPage() {
                 </span>
               </p>
             </div>
-            <div className="mb-6">
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                전화번호
-              </label>
-              <input
-                type="text"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="01012345678"
-                className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
+            <div className="mb-4 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  전화번호
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={""}
+                    onChange={(e) => {
+                      setPhoneNumber(e.target.value);
+                      setIsPhoneVerified(false);
+                      setVerificationCode("");
+                    }}
+                    placeholder="01012345678"
+                    disabled={isPhoneVerified}
+                    className="flex-1 rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                  <button
+                    onClick={handleSendVerificationCode}
+                    disabled={isSendingCode || isPhoneVerified || !phoneNumber}
+                    className="rounded-lg bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition-all hover:bg-indigo-600 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  >
+                    {isSendingCode ? "전송 중..." : "인증"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  인증번호
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={verificationCode}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, "").slice(0, 6);
+                      setVerificationCode(value);
+                    }}
+                    placeholder="인증번호"
+                    disabled={isPhoneVerified || !phoneNumber}
+                    className="flex-1 rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                  <button
+                    onClick={handleVerifyCode}
+                    disabled={isVerifyingCode || isPhoneVerified || !verificationCode || verificationCode.length !== 6}
+                    className="rounded-lg bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition-all hover:bg-indigo-600 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  >
+                    {isVerifyingCode ? "확인 중..." : "확인"}
+                  </button>
+                </div>
+                {isPhoneVerified && (
+                  <p className="mt-2 text-sm text-green-600">✓ 인증이 완료되었습니다.</p>
+                )}
+              </div>
             </div>
             <button
               onClick={handlePhoneSave}
-              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl"
+              disabled={!isPhoneVerified}
+              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl disabled:bg-slate-300 disabled:cursor-not-allowed"
             >
               변경
             </button>

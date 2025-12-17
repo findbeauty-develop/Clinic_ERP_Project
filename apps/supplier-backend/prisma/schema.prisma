@@ -221,3 +221,17 @@ model SupplierReturnItem {
 
   @@index([return_request_id])
 }
+
+// Phone number verification code (for phone number change)
+model PhoneVerificationCode {
+  id         String   @id @default(uuid())
+  phone_number String // Phone number to verify
+  code       String   // 6-digit verification code
+  verified   Boolean  @default(false) // Whether code has been verified
+  expires_at DateTime // Expiration time (5 minutes)
+  created_at DateTime @default(now())
+
+  @@index([phone_number])
+  @@index([code])
+  @@index([expires_at])
+}

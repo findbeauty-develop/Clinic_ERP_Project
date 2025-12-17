@@ -5,6 +5,8 @@ import { PrismaService } from "../../core/prisma.service";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
 import { BusinessVerificationService } from "../../services/business-verification.service";
+import { PhoneVerificationService } from "../../services/phone-verification.service";
+import { SolapiProvider } from "../../services/providers/solapi.provider";
 
 @Module({
   controllers: [ManagerController],
@@ -14,6 +16,8 @@ import { BusinessVerificationService } from "../../services/business-verificatio
     GoogleVisionService,
     BusinessCertificateParserService,
     BusinessVerificationService,
+    PhoneVerificationService,
+    SolapiProvider,
   ],
   exports: [ManagerService],
 })
