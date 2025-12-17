@@ -30,6 +30,18 @@ export class ClinicsService {
       ...recognized
     } = dto;
 
+    // Check for duplicate clinic (same name and document_issue_number)
+    const existingClinic = await this.repository.findByDocumentIssueNumberAndName(
+      recognized.documentIssueNumber,
+      recognized.name
+    );
+
+    if (existingClinic) {
+      throw new BadRequestException(
+        `이미 등록된 클리닉입니다.`
+      );
+    }
+
     const documentUrls = recognized.documentImageUrls ?? [];
     const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
 
@@ -177,7 +189,6 @@ export class ClinicsService {
         await fs.writeFile(filePath, buffer);
         fileUrl = `/uploads/clinic/${tenantId}/${filename}`;
       } catch (error) {
-        console.error("Failed to save certificate file:", error);
         // Continue without saving file URL
       }
     }
@@ -194,7 +205,7 @@ export class ClinicsService {
       (field) => !fields[field as keyof typeof fields] || fields[field as keyof typeof fields] === ""
     );
 
-    // Step 5: HIRA verification (if clinic name is available)
+    // Step 5: HIRA verification (MANDATORY if clinic name is available)
     let hiraVerification = null;
     if (fields.clinicName) {
       try {
@@ -202,18 +213,41 @@ export class ClinicsService {
           clinicName: fields.clinicName,
           address: fields.address,
           clinicType: fields.clinicType,
-          openDate: fields.openDate,
+          openDate: fields.openDate, // Now in YYYYMMDD format
         });
       } catch (error) {
-        console.error("HIRA verification failed:", error);
-        // Continue without HIRA verification - don't fail the whole process
+        // HIRA verification failed - treat as invalid
+        hiraVerification = {
+          isValid: false,
+          confidence: 0,
+          matches: {
+            nameMatch: false,
+            addressMatch: false,
+            typeMatch: false,
+            dateMatch: false,
+          },
+          warnings: [`HIRA verification failed: ${typeof error === 'object' && error !== null && 'message' in error ? (error as any).message : 'Unknown error'}`],
+        };
       }
+    } else {
+      // If clinic name is missing, HIRA verification cannot proceed
+      hiraVerification = {
+        isValid: false,
+        confidence: 0,
+        matches: {
+          nameMatch: false,
+          addressMatch: false,
+          typeMatch: false,
+          dateMatch: false,
+        },
+        warnings: ['Clinic name is required for HIRA verification'],
+      };
     }
 
-    // Step 6: Determine validity (combine OCR and HIRA results)
+    // Step 6: Determine validity (HIRA verification is MANDATORY)
     const ocrValid = missingFields.length === 0;
-    const hiraValid = hiraVerification?.isValid ?? true; // If HIRA fails, don't invalidate
-    const isValid = ocrValid && hiraValid;
+    const hiraValid = hiraVerification?.isValid ?? false; // Changed: default to false if HIRA fails
+    const isValid = ocrValid && hiraValid; // Both must be valid
 
     // Step 7: Calculate combined confidence
     let confidence = ocrValid ? 0.8 : 0.2;
@@ -223,8 +257,8 @@ export class ClinicsService {
       // Weighted average: 40% OCR, 60% HIRA
       confidence = (confidence * 0.4) + (hiraVerification.confidence * 0.6);
     } else if (hiraVerification && !hiraVerification.isValid) {
-      // If HIRA verification failed, reduce confidence
-      confidence = confidence * 0.5;
+      // If HIRA verification failed, set confidence to 0
+      confidence = 0;
     }
 
     // Step 8: Generate warnings
@@ -234,7 +268,7 @@ export class ClinicsService {
     }
 
     // Check for other optional but important fields
-    const optionalFields = ["clinicType", "department", "openDate", "doctorLicenseNo"];
+    const optionalFields = ["clinicType", "department", "openDate", "doctorLicenseNo", "licenseType"];
     optionalFields.forEach((field) => {
       if (!fields[field as keyof typeof fields] || fields[field as keyof typeof fields] === "") {
         warnings.push(`Missing optional field: ${field}`);
@@ -246,17 +280,24 @@ export class ClinicsService {
       warnings.push(...hiraVerification.warnings);
     }
 
+    // Add specific error message if HIRA verification failed
+    if (hiraVerification && !hiraVerification.isValid) {
+      if (hiraVerification.warnings.some(w => w.includes('not found in HIRA database'))) {
+        warnings.push('이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요.');
+      }
+    }
+
     // Map parsed fields to RegisterClinicDto format
     const mappedData = {
-      name: fields.clinicName || "", // 명칭 -> name
-      category: fields.clinicType || "", // 종류 -> category
-      location: fields.address || "", // 소재지 -> location
-      medicalSubjects: fields.department || "", // 진료과목 -> medicalSubjects
-      openDate: fields.openDate || undefined, // 개설신고일자 -> openDate
-      doctorName: fields.doctorName || undefined, // 성명 -> doctorName
-      licenseType: "의사면허", // Default, can be enhanced
-      licenseNumber: fields.doctorLicenseNo || "", // 면허번호 -> licenseNumber
-      documentIssueNumber: fields.reportNumber || "", // 문서발급번호 -> documentIssueNumber
+      name: fields.clinicName || "",
+      category: fields.clinicType || "",
+      location: fields.address || "",
+      medicalSubjects: fields.department || "", // Can be comma-separated
+      openDate: fields.openDate ? `${fields.openDate.substring(0, 4)}-${fields.openDate.substring(4, 6)}-${fields.openDate.substring(6, 8)}` : undefined, // Convert YYYYMMDD to YYYY-MM-DD for DTO
+      doctorName: fields.doctorName || undefined,
+      licenseType: fields.licenseType || "의사면허", // Use extracted license type or default
+      licenseNumber: fields.doctorLicenseNo || "",
+      documentIssueNumber: fields.reportNumber || "",
     };
 
     return {
@@ -267,12 +308,13 @@ export class ClinicsService {
         clinicType: fields.clinicType,
         address: fields.address,
         department: fields.department,
-        openDate: fields.openDate,
+        openDate: fields.openDate, // Keep as YYYYMMDD in fields
         doctorName: fields.doctorName,
         doctorLicenseNo: fields.doctorLicenseNo,
+        licenseType: fields.licenseType, // Add license type to fields
         reportNumber: fields.reportNumber,
       },
-      mappedData, // Add mapped data for RegisterClinicDto
+      mappedData,
       rawText: fields.rawText,
       warnings,
       fileUrl: fileUrl || undefined,

@@ -82,6 +82,34 @@ export function extractSgguCode(address: string): string | null {
 }
 
 /**
+ * Extract 읍면동명 (Eup/Myeon/Dong Name) from address
+ * Usually found in parentheses at the end: (반포동)
+ * Example: "서울특별시 서초구 강남대로 527, 브랜드칸 타워 5층 (반포동)" -> "반포동"
+ */
+export function extractEmdongNm(address: string): string | null {
+  if (!address) return null;
+  
+  // Pattern: (동이름) at the end of address
+  // Examples: (반포동), (서초동), (강남동)
+  const match = address.match(/\(([가-힣]+동)\)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  
+  // Alternative pattern: try to find 동 at the end without parentheses
+  // This is less common but might occur
+  const words = address.split(/\s+/);
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (words[i].endsWith('동') && words[i].length <= 5) {
+      // Remove any trailing punctuation
+      return words[i].replace(/[.,)]+$/, '');
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Compare two addresses with fuzzy matching
  * Returns true if addresses are similar enough
  */

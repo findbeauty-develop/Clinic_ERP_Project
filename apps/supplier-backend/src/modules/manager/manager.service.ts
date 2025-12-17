@@ -645,7 +645,15 @@ export class ManagerService {
    */
   async updateProfile(
     supplierManagerId: string,
-    data: { position?: string; phone_number?: string }
+    data: {
+      position?: string;
+      phone_number?: string;
+      public_contact_name?: boolean;
+      allow_hospital_search?: boolean;
+      receive_kakaotalk?: boolean;
+      receive_sms?: boolean;
+      receive_email?: boolean;
+    }
   ) {
     const manager = await this.prisma.supplierManager.findUnique({
       where: { id: supplierManagerId },
@@ -710,19 +718,30 @@ export class ManagerService {
       updateData.phone_number = data.phone_number;
     }
 
-    const updatedManager = await this.prisma.supplierManager.update({
+    // Add notification settings if provided
+    if (data.public_contact_name !== undefined) {
+      updateData.public_contact_name = data.public_contact_name;
+    }
+    if (data.allow_hospital_search !== undefined) {
+      updateData.allow_hospital_search = data.allow_hospital_search;
+    }
+    if (data.receive_kakaotalk !== undefined) {
+      updateData.receive_kakaotalk = data.receive_kakaotalk;
+    }
+    if (data.receive_sms !== undefined) {
+      updateData.receive_sms = data.receive_sms;
+    }
+    if (data.receive_email !== undefined) {
+      updateData.receive_email = data.receive_email;
+    }
+
+    await this.prisma.supplierManager.update({
       where: { id: supplierManagerId },
       data: updateData,
-      select: {
-        id: true,
-        position: true,
-        phone_number: true,
-      },
     });
 
     return {
       message: "프로필이 업데이트되었습니다",
-      manager: updatedManager,
     };
   }
 

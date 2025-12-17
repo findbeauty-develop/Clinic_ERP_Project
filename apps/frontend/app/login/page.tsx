@@ -90,6 +90,7 @@ export default function LoginPage() {
         "erp_editing_clinic_id",
         "erp_selected_clinic",
         "erp_owner_info",
+        "clinic_register_form", // Clear form data from localStorage
       ];
 
       keysToRemove.forEach((key) => {

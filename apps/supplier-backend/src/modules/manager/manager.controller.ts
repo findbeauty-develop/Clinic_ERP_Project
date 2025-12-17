@@ -242,7 +242,15 @@ export class ManagerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Update manager profile" })
   async updateProfile(
-    @Body() body: { position?: string; phone_number?: string },
+    @Body() body: {
+      position?: string;
+      phone_number?: string;
+      public_contact_name?: boolean;
+      allow_hospital_search?: boolean;
+      receive_kakaotalk?: boolean;
+      receive_sms?: boolean;
+      receive_email?: boolean;
+    },
     @Req() req: Request & { user: any }
   ) {
     const supplierManagerId = req.user?.supplierManagerId || req.user?.id;

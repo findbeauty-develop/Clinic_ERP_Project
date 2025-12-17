@@ -717,30 +717,49 @@ export default function SettingsPage() {
               { key: "receive_kakaotalk", label: "카톡 알림 받기" },
               { key: "receive_sms", label: "문자(SMS) 알림 받기" },
               { key: "receive_email", label: "이메일 알림 받기" },
-            ].map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0"
-              >
-                <span className="text-slate-600">{item.label}</span>
-                <label className="relative inline-flex cursor-pointer items-center">
-                  <input
-                    type="checkbox"
-                    checked={notificationSettings[item.key as keyof typeof notificationSettings]}
-                    onChange={(e) => {
-                      setNotificationSettings((prev) => ({
-                        ...prev,
-                        [item.key]: e.target.checked,
-                      }));
-                      // TODO: Implement PUT endpoint later
-                      alert("알림 설정 저장 기능은 곧 제공될 예정입니다.");
-                    }}
-                    className="peer sr-only"
-                  />
-                  <div className="peer h-6 w-11 rounded-full bg-slate-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-full peer-checked:after:border-white"></div>
-                </label>
-              </div>
-            ))}
+            ].map((item) => {
+              const settingKey = item.key as keyof typeof notificationSettings;
+              return (
+                <div
+                  key={item.key}
+                  className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0"
+                >
+                  <span className="text-slate-600">{item.label}</span>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={notificationSettings[settingKey]}
+                      onChange={async (e) => {
+                        const newValue = e.target.checked;
+                        // Optimistic update
+                        const previousValue = notificationSettings[settingKey];
+                        setNotificationSettings((prev) => ({
+                          ...prev,
+                          [settingKey]: newValue,
+                        }));
+
+                        try {
+                          // Save to backend
+                          await apiPut(`/supplier/manager/profile`, {
+                            [settingKey]: newValue,
+                          });
+                        } catch (err: any) {
+                          console.error("Failed to update notification setting", err);
+                          // Revert on error
+                          setNotificationSettings((prev) => ({
+                            ...prev,
+                            [settingKey]: previousValue,
+                          }));
+                          alert(`설정 저장에 실패했습니다: ${err?.message || "Unknown error"}`);
+                        }
+                      }}
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-6 w-11 rounded-full bg-slate-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-full peer-checked:after:border-white"></div>
+                  </label>
+                </div>
+              );
+            })}
           </div>
         </div>
 

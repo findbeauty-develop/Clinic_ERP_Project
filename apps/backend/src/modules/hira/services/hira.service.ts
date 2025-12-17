@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { normalizeAddress, compareAddresses, extractSidoCode, extractSgguCode } from '../../../common/utils/address-normalizer.util';
+import { normalizeAddress, compareAddresses, extractSidoCode, extractSgguCode, extractEmdongNm } from '../../../common/utils/address-normalizer.util';
 import { normalizeDate, compareDates } from '../../../common/utils/date-normalizer.util';
 import { fuzzyMatchClinicName, compareClinicTypes } from '../../../common/utils/string-normalizer.util';
 
@@ -70,8 +70,14 @@ export class HiraService {
       const searchParams = new URLSearchParams({
         serviceKey: this.apiKey,
         pageNo: String(params.pageNo || 1),
-        numOfRows: String(params.numOfRows || 10),
+        // ❌ REMOVE numOfRows - don't send it automatically
+        // numOfRows: String(params.numOfRows || 10),
       });
+
+      // Only add numOfRows if explicitly provided
+      if (params.numOfRows) {
+        searchParams.append('numOfRows', String(params.numOfRows));
+      }
 
       if (params.yadmNm) {
         searchParams.append('yadmNm', params.yadmNm);
@@ -91,8 +97,6 @@ export class HiraService {
 
       const requestUrl = `${this.apiUrl}/getHospBasisList?${searchParams.toString()}`;
       
-      this.logger.debug(`Searching HIRA API: ${requestUrl}`);
-      
       const response = await fetch(requestUrl, {
         method: 'GET',
         headers: {
@@ -109,23 +113,90 @@ export class HiraService {
 
       const contentType = response.headers.get('content-type') || '';
       let data: any;
+      let rawResponse: string = '';
 
       if (contentType.includes('application/json')) {
-        data = await response.json();
+        rawResponse = await response.text();
+        data = JSON.parse(rawResponse);
       } else if (contentType.includes('text/xml') || contentType.includes('application/xml')) {
-        const xmlText = await response.text();
-        this.logger.warn('XML response received from HIRA API');
-        // Try to parse as JSON if it's JSON wrapped in XML
+        rawResponse = await response.text();
+        
+        // Parse XML response properly
         try {
-          data = JSON.parse(xmlText);
-        } catch {
-          this.logger.error('Failed to parse XML response');
+          // Simple XML parsing for HIRA API response structure
+          // Extract items from XML
+          const itemsMatch = rawResponse.match(/<items>(.*?)<\/items>/s);
+          if (itemsMatch) {
+            const itemsXml = itemsMatch[1];
+            const itemMatches = itemsXml.match(/<item>(.*?)<\/item>/gs) || [];
+            
+            const items: any[] = [];
+            itemMatches.forEach((itemXml: string) => {
+              const item: any = {};
+              // Extract common fields
+              const fieldPatterns = [
+                { name: 'yadmNm', pattern: /<yadmNm>(.*?)<\/yadmNm>/i }, // Add 'i' flag for case-insensitive
+                { name: 'addr', pattern: /<addr>(.*?)<\/addr>/i },
+                { name: 'clcdNm', pattern: /<cl[Cc]d[Nn]m>(.*?)<\/cl[Cc]d[Nn]m>/i }, // Match both clcdNm and clCdNm
+                { name: 'estbDd', pattern: /<estbDd>(.*?)<\/estbDd>/i },
+                { name: 'telno', pattern: /<telno>(.*?)<\/telno>/i },
+                { name: 'clCd', pattern: /<clCd>(.*?)<\/clCd>/i },
+                { name: 'ykiho', pattern: /<ykiho>(.*?)<\/ykiho>/i },
+                { name: 'emdongNm', pattern: /<emdongNm>(.*?)<\/emdongNm>/i },
+              ];
+              
+              fieldPatterns.forEach(({ name, pattern }) => {
+                const match = itemXml.match(pattern);
+                if (match && match[1]) {
+                  item[name] = match[1].trim();
+                }
+              });
+              
+              // ✅ FIX: Also try case-insensitive match for clcdNm (XML has clCdNm)
+              if (!item.clcdNm) {
+                const clcdNmMatch = itemXml.match(/<clCdNm>(.*?)<\/clCdNm>/i);
+                if (clcdNmMatch && clcdNmMatch[1]) {
+                  item.clcdNm = clcdNmMatch[1].trim();
+                }
+              }
+              
+              // ✅ FIX: Also try case-insensitive match for clCdNm
+              if (!item.clcdNm) {
+                const clcdNmMatch = itemXml.match(/<clCdNm>(.*?)<\/clCdNm>/i);
+                if (clcdNmMatch && clcdNmMatch[1]) {
+                  item.clcdNm = clcdNmMatch[1].trim();
+                }
+              }
+              
+              if (Object.keys(item).length > 0) {
+                items.push(item);
+              }
+            });
+            
+            data = {
+              response: {
+                body: {
+                  items: items.length === 1 ? items[0] : items,
+                },
+              },
+            };
+          } else {
+            // Fallback: try to parse as JSON if it's JSON wrapped in XML
+            try {
+              data = JSON.parse(rawResponse);
+            } catch {
+              this.logger.error('Failed to parse XML response');
+              return [];
+            }
+          }
+        } catch (error) {
+          this.logger.error('Error parsing XML response', error);
           return [];
         }
       } else {
-        const text = await response.text();
+        rawResponse = await response.text();
         try {
-          data = JSON.parse(text);
+          data = JSON.parse(rawResponse);
         } catch {
           this.logger.error(`Failed to parse response: ${contentType}`);
           return [];
@@ -161,7 +232,6 @@ export class HiraService {
         });
       });
 
-      this.logger.log(`Found ${hospitals.length} hospitals from HIRA API`);
       return hospitals;
     } catch (error: any) {
       this.logger.error('Error searching HIRA API', error);
@@ -207,24 +277,23 @@ export class HiraService {
     }
 
     try {
-      // Search HIRA API
+      // Search HIRA API with only 4 parameters: emdongNm, yadmNm, ServiceKey, pageNo
       const searchParams: HiraSearchParams = {
         yadmNm: certificateData.clinicName,
-        numOfRows: 10,
+        pageNo: 1, // Explicitly set pageNo
+        // ❌ REMOVE numOfRows - don't send it
+        // numOfRows: 10,
       };
 
-      // Add address-based filters if available
+      // Extract and add emdongNm from address if available
       if (certificateData.address) {
-        const sidoCode = extractSidoCode(certificateData.address);
-        if (sidoCode) {
-          searchParams.sidoCd = sidoCode;
-        }
-        const sgguCode = extractSgguCode(certificateData.address);
-        if (sgguCode) {
-          searchParams.sgguCd = sgguCode;
+        const emdongNm = extractEmdongNm(certificateData.address);
+        if (emdongNm) {
+          searchParams.emdongNm = emdongNm;
         }
       }
 
+      // Remove sidoCd and sgguCd - we only use emdongNm, yadmNm, ServiceKey, pageNo
       const hospitals = await this.searchHospitals(searchParams);
 
       if (hospitals.length === 0) {
@@ -243,7 +312,6 @@ export class HiraService {
 
       // Find best match
       const bestMatch = hospitals[0]; // For now, use first result
-      // TODO: Could implement better matching algorithm
 
       // Compare fields
       const nameMatch = certificateData.clinicName 
@@ -258,6 +326,7 @@ export class HiraService {
         ? compareClinicTypes(certificateData.clinicType, bestMatch.clcdNm)
         : false;
 
+      // Update date comparison to handle YYYYMMDD format
       const dateMatch = certificateData.openDate && bestMatch.estbDd
         ? compareDates(certificateData.openDate, bestMatch.estbDd)
         : false;

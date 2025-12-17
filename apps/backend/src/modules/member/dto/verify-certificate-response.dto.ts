@@ -12,10 +12,11 @@ export class VerifyCertificateResponseDto {
     clinicName?: string;
     clinicType?: string;
     address?: string;
-    department?: string;
-    openDate?: string;
+    department?: string; // Can be comma-separated
+    openDate?: string; // Format: YYYYMMDD
     doctorName?: string;
     doctorLicenseNo?: string;
+    licenseType?: string; // Add license type
     reportNumber?: string;
   };
 
