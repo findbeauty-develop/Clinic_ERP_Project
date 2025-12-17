@@ -66,6 +66,7 @@ export default function SettingsPage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showAffiliationModal, setShowAffiliationModal] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
+  const [showCustomerCenterModal, setShowCustomerCenterModal] = useState(false);
   
   // Withdrawal states
   const [withdrawalStep, setWithdrawalStep] = useState(1); // 1: warnings, 2: password
@@ -99,6 +100,8 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [customerInquiryMemo, setCustomerInquiryMemo] = useState("");
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
 
   // Notification settings
   const [notificationSettings, setNotificationSettings] = useState({
@@ -345,6 +348,31 @@ export default function SettingsPage() {
     } catch (err: any) {
       console.error("Failed to withdraw", err);
       alert(`탈퇴에 실패했습니다: ${err?.message || "Unknown error"}`);
+    }
+  };
+
+  const handleCustomerInquirySubmit = async () => {
+    if (!customerInquiryMemo || customerInquiryMemo.trim().length === 0) {
+      alert("문의 내용을 입력해주세요.");
+      return;
+    }
+
+    setIsSubmittingInquiry(true);
+    try {
+      const response = await apiPost<{ message: string }>(
+        `/supplier/manager/contact-support`,
+        {
+          memo: customerInquiryMemo.trim(),
+        }
+      );
+      alert(response.message || "문의가 성공적으로 전송되었습니다.");
+      setShowCustomerCenterModal(false);
+      setCustomerInquiryMemo("");
+    } catch (err: any) {
+      console.error("Failed to send inquiry", err);
+      alert(`문의 전송에 실패했습니다: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsSubmittingInquiry(false);
     }
   };
 
@@ -747,7 +775,10 @@ export default function SettingsPage() {
         <div className="rounded-lg bg-white p-4 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">고객센터</h2>
           <button
-            onClick={() => alert("고객센터 기능은 곧 제공될 예정입니다.")}
+            onClick={() => {
+              setCustomerInquiryMemo("");
+              setShowCustomerCenterModal(true);
+            }}
             className="flex w-full items-center justify-between rounded-lg border border-slate-200 p-3 text-left text-slate-700 hover:bg-slate-50"
           >
             <span>고객센터</span>
@@ -867,7 +898,7 @@ export default function SettingsPage() {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={""}
+                    value={phoneNumber}
                     onChange={(e) => {
                       setPhoneNumber(e.target.value);
                       setIsPhoneVerified(false);
@@ -1470,6 +1501,87 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 고객센터 Modal */}
+      {showCustomerCenterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-slate-900">고객센터</h3>
+              <button
+                onClick={() => {
+                  setShowCustomerCenterModal(false);
+                  setCustomerInquiryMemo("");
+                }}
+                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
+              >
+                취소
+              </button>
+            </div>
+            <p className="mb-6 text-sm text-slate-600">
+              문의 내용을 남겨주시면 담당자가 확인 후 연락드리겠습니다.
+            </p>
+            <div className="mb-4 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  회사명
+                </label>
+                <input
+                  type="text"
+                  value={profile?.supplier.company_name || "—"}
+                  disabled
+                  className="w-full rounded-lg border-2 border-slate-300 bg-slate-100 px-4 py-3 text-slate-900 shadow-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  이름
+                </label>
+                <input
+                  type="text"
+                  value={profile?.manager.name || "—"}
+                  disabled
+                  className="w-full rounded-lg border-2 border-slate-300 bg-slate-100 px-4 py-3 text-slate-900 shadow-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  연락처
+                </label>
+                <input
+                  type="text"
+                  value={
+                    profile?.manager.phone_number
+                      ? formatPhoneNumber(profile.manager.phone_number)
+                      : "—"
+                  }
+                  disabled
+                  className="w-full rounded-lg border-2 border-slate-300 bg-slate-100 px-4 py-3 text-slate-900 shadow-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  문의 내용 남겨주세요
+                </label>
+                <textarea
+                  value={customerInquiryMemo}
+                  onChange={(e) => setCustomerInquiryMemo(e.target.value)}
+                  placeholder="문의 내용을 입력해주세요"
+                  rows={6}
+                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleCustomerInquirySubmit}
+              disabled={!customerInquiryMemo.trim() || isSubmittingInquiry}
+              className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-3 font-semibold text-white shadow-lg transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-xl disabled:bg-slate-300 disabled:cursor-not-allowed"
+            >
+              {isSubmittingInquiry ? "전송 중..." : "확인"}
+            </button>
           </div>
         </div>
       )}

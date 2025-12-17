@@ -14,6 +14,8 @@ import { hash, compare } from "bcryptjs";
 import { BusinessVerificationService } from "../../services/business-verification.service";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
+import { SolapiProvider } from "../../services/providers/solapi.provider";
+import { ConfigService } from "@nestjs/config";
 import { join } from "path";
 import * as fs from "fs/promises";
 
@@ -26,6 +28,8 @@ export class ManagerService {
     private readonly businessVerificationService: BusinessVerificationService,
     private readonly googleVisionService: GoogleVisionService,
     private readonly certificateParser: BusinessCertificateParserService,
+    private readonly solapiProvider: SolapiProvider,
+    private readonly configService: ConfigService,
   ) {}
 
   async registerManager(dto: RegisterManagerDto) {
@@ -889,6 +893,70 @@ export class ManagerService {
 
     return {
       message: "Account withdrawn successfully",
+    };
+  }
+
+  /**
+   * Send customer service inquiry via SMS
+   */
+  async sendCustomerServiceInquiry(
+    supplierManagerId: string,
+    memo: string
+  ): Promise<{ message: string }> {
+    // Validate memo is not empty
+    if (!memo || memo.trim().length === 0) {
+      throw new BadRequestException("문의 내용을 입력해주세요.");
+    }
+
+    // Get manager and supplier information
+    const manager = await this.prisma.supplierManager.findUnique({
+      where: { id: supplierManagerId },
+      include: { supplier: true },
+    });
+
+    if (!manager) {
+      throw new NotFoundException("Manager not found");
+    }
+
+    // Get customer service phone number from environment
+    const customerServicePhone = this.configService.get<string>(
+      "CUSTOMER_SERVICE_PHONE"
+    ) || "01021455662"; // Fallback to default
+
+    // Format SMS message
+    const companyName = manager.supplier.company_name || "—";
+    const managerName = manager.name || "—";
+    const managerPhone = manager.phone_number || "—";
+    const inquiryMemo = memo.trim();
+
+    const smsMessage = `고객센터 메시지
+
+회사명: ${companyName}
+이름: ${managerName}
+연락처: ${managerPhone}
+문의 내용: ${inquiryMemo}`;
+
+    // Send SMS
+    const smsSent = await this.solapiProvider.sendSMS(
+      customerServicePhone,
+      smsMessage
+    );
+
+    if (!smsSent) {
+      this.logger.error(
+        `Failed to send customer service inquiry SMS to ${customerServicePhone}`
+      );
+      throw new BadRequestException(
+        "문의 메시지 전송에 실패했습니다. 잠시 후 다시 시도해주세요."
+      );
+    }
+
+    this.logger.log(
+      `Customer service inquiry sent from ${managerName} (${managerPhone}) to ${customerServicePhone}`
+    );
+
+    return {
+      message: "문의가 성공적으로 전송되었습니다.",
     };
   }
 }

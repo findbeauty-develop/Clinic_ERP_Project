@@ -304,5 +304,26 @@ export class ManagerController {
       body.withdrawal_reason
     );
   }
+
+  @Post("contact-support")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Send customer service inquiry via SMS" })
+  async contactSupport(
+    @Body() body: { memo: string },
+    @Req() req: Request & { user: any }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    if (!body.memo || body.memo.trim().length === 0) {
+      throw new BadRequestException("문의 내용을 입력해주세요.");
+    }
+    return this.managerService.sendCustomerServiceInquiry(
+      supplierManagerId,
+      body.memo
+    );
+  }
 }
 
