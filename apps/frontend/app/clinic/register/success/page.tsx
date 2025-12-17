@@ -11,6 +11,7 @@ type Clinic = {
   location: string;
   medical_subjects: string;
   description?: string | null;
+  doctor_name?: string | null;
   license_type: string;
   license_number: string;
   document_issue_number: string;
@@ -80,9 +81,6 @@ export default function ClinicRegisterSuccessPage() {
   const [members, setMembers] = useState<CreatedMember[]>([]);
   const [missingData, setMissingData] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showWarningPopup, setShowWarningPopup] = useState(false);
-  const [showPasswordSentPopup, setShowPasswordSentPopup] = useState(false);
-  const [sendingCredentials, setSendingCredentials] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -201,62 +199,6 @@ export default function ClinicRegisterSuccessPage() {
     [owner]
   );
 
-  const handleSendCredentials = async () => {
-    if (!owner?.ownerPhoneNumber || !clinic?.name || members.length === 0) {
-      window.alert("필수 정보가 없습니다.");
-      return;
-    }
-
-    setSendingCredentials(true);
-    try {
-      const token = typeof window !== "undefined" 
-        ? localStorage.getItem("erp_access_token") 
-        : null;
-
-      // Owner'ni filter qilish (owner'ga yuborilmaydi, chunki u o'z password'ini tanlagan)
-      const membersToSend = members.filter(m => m.role !== "owner" && m.role !== "소유자");
-
-      if (membersToSend.length === 0) {
-        window.alert("전송할 계정 정보가 없습니다.");
-        return;
-      }
-
-      const response = await fetch(`${apiUrl}/iam/members/send-credentials`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          ownerPhoneNumber: owner.ownerPhoneNumber,
-          clinicName: clinic.name,
-          members: membersToSend.map(m => ({
-            memberId: m.memberId,
-            role: m.role,
-            temporaryPassword: m.password,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || "전송에 실패했습니다.");
-      }
-
-      const result = await response.json();
-      
-      if (result.smsSent || result.kakaoSent) {
-        setShowPasswordSentPopup(true);
-      } else {
-        window.alert("전송에 실패했습니다. 다시 시도해주세요.");
-      }
-    } catch (error: any) {
-      console.error("Failed to send credentials", error);
-      window.alert(error.message || "전송에 실패했습니다.");
-    } finally {
-      setSendingCredentials(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -362,10 +304,10 @@ export default function ClinicRegisterSuccessPage() {
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase text-slate-400">
-                  설명(법인명)
+                  성명
                 </dt>
                 <dd className="mt-1 font-medium text-slate-900">
-                  {clinic?.description ?? "-"}
+                  {clinicFromApi?.doctor_name ?? clinic?.description ?? "-"}
                 </dd>
               </div>
               <div>
@@ -463,147 +405,22 @@ export default function ClinicRegisterSuccessPage() {
                 </p>
               )}
             </div>
-            <div className="mt-8 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowWarningPopup(true);
-                }}
-                disabled={sendingCredentials}
-                className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {sendingCredentials ? "전송 중..." : "저장"}
-              </button>
-            </div>
           </div>
         </section>
+
+        <footer className="mx-auto flex w-full max-w-4xl justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              router.push("/login");
+            }}
+            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          >
+            완료
+          </button>
+        </footer>
       </div>
 
-      {/* POP-UP1: Warning Popup */}
-      {showWarningPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="relative mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => setShowWarningPopup(false)}
-              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-            <div className="flex flex-col items-center gap-4 pt-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 text-yellow-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-              </div>
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-slate-900">주의</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  저장 후에는 병의원,본인 정보를 수정 제한됩니다.
-                </p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
-                  계속하시겠습니까?
-                </p>
-              </div>
-              <div className="mt-4 flex w-full gap-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setShowWarningPopup(false);
-                    await handleSendCredentials();
-                  }}
-                  disabled={sendingCredentials}
-                  className="flex-1 rounded-xl border-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sendingCredentials ? "전송 중..." : "네"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowWarningPopup(false)}
-                  className="flex-1 rounded-xl border-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
-                >
-                  아니다
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* POP-UP2: Password Sent Popup */}
-      {showPasswordSentPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="relative mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => {
-                setShowPasswordSentPopup(false);
-                router.push("/login");
-              }}
-              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-            <div className="flex flex-col items-center gap-4 pt-4">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-slate-900">비밀번호</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  문자로 전송 되었습니다.
-                </p>
-              </div>
-              <div className="mt-4 w-full">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPasswordSentPopup(false);
-                    router.push("/login");
-                  }}
-                  className="w-full rounded-xl border-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
-                >
-                  네
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

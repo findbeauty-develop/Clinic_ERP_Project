@@ -17,9 +17,10 @@ import { KakaoProvider } from "./services/providers/kakao.provider";
 import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
 import { SolapiProvider } from "./services/providers/solapi.provider";
 import { HiraModule } from "../hira/hira.module";
+import { PhoneVerificationService } from "./services/phone-verification.service";
 
 @Module({
-  imports: [HiraModule], // Import HiraModule to use HiraService
+  imports: [HiraModule],
   controllers: [ClinicsController, MembersController],
   providers: [
     ClinicsService,
@@ -37,8 +38,8 @@ import { HiraModule } from "../hira/hira.module";
     KakaoProvider,
     KTCommunisProvider,
     SolapiProvider,
+    PhoneVerificationService,
   ],
-  exports: [MessageService], // Export MessageService so other modules can use it
+  exports: [MessageService],
 })
 export class MemberModule {}
-

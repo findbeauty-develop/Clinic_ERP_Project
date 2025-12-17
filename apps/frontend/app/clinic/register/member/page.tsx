@@ -32,7 +32,7 @@ const normalizeClinicName = (name: string) =>
   name.replace(/[^a-zA-Z0-9]+/g, " ").trim().replace(/\s+/g, "");
 
 export default function ClinicMemberSetupPage() {
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
+  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<string>("");
   const [ownerName, setOwnerName] = useState("");
@@ -45,6 +45,10 @@ export default function ClinicMemberSetupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
+const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+const [isSendingCode, setIsSendingCode] = useState(false);
+const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   useEffect(() => {
     const fetchClinics = async () => {
@@ -60,7 +64,20 @@ export default function ClinicMemberSetupPage() {
           ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
           : `${apiUrl}/iam/members/clinics`;
         
-        const response = await fetch(url);
+        // Get token from localStorage if available
+        const token = typeof window !== "undefined" 
+          ? (localStorage.getItem("erp_access_token") ?? localStorage.getItem("access_token") ?? "")
+          : "";
+        
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(url, { headers });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(
@@ -115,6 +132,74 @@ export default function ClinicMemberSetupPage() {
     fetchClinics();
   }, [apiUrl]);
 
+  const handleSendVerificationCode = async () => {
+    const cleanPhone = ownerPhoneNumber.replace(/[^0-9]/g, "");
+    if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+      alert("올바른 전화번호 형식을 입력하세요 (예: 01012345678)");
+      return;
+    }
+  
+    setIsSendingCode(true);
+    try {
+      const response = await fetch(`${apiUrl}/iam/members/send-phone-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_number: cleanPhone }),
+      });
+      
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "인증번호 전송에 실패했습니다.");
+      }
+      
+      const result = await response.json();
+      alert(result.message || "인증번호가 전송되었습니다.");
+    } catch (err: any) {
+      console.error("Failed to send verification code", err);
+      alert(`인증번호 전송에 실패했습니다: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+  
+  const handleVerifyCode = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      alert("6자리 인증번호를 입력하세요.");
+      return;
+    }
+  
+    const cleanPhone = ownerPhoneNumber.replace(/[^0-9]/g, "");
+    setIsVerifyingCode(true);
+    try {
+      const response = await fetch(`${apiUrl}/iam/members/verify-phone-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone_number: cleanPhone,
+          code: verificationCode,
+        }),
+      });
+      
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "인증에 실패했습니다.");
+      }
+      
+      const result = await response.json();
+      if (result.verified) {
+        setIsPhoneVerified(true);
+        alert("인증이 완료되었습니다.");
+      } else {
+        alert("인증번호가 올바르지 않습니다.");
+      }
+    } catch (err: any) {
+      console.error("Failed to verify code", err);
+      alert(`인증에 실패했습니다: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
   const selectedClinic = clinics.find((clinic) => clinic.id === selectedClinicId);
 
   const clinicSlug = useMemo(() => {
@@ -134,6 +219,10 @@ export default function ClinicMemberSetupPage() {
     }
     if (!ownerName || !ownerPhoneNumber || !ownerIdCardNumber || !ownerAddress) {
       setError("모든 필드를 입력해주세요.");
+      return;
+    }
+    if (!isPhoneVerified) {
+      setError("핸드폰 번호 인증을 완료해주세요.");
       return;
     }
     if (!ownerPassword) {
@@ -271,30 +360,12 @@ export default function ClinicMemberSetupPage() {
         <section className="mx-auto w-full max-w-3xl space-y-8">
           <div className="rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
             <h2 className="text-xl font-semibold text-slate-900">
-              오너 정보 입력
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              입력하신 정보로 오너, 매니저, 일반 계정이 자동 생성됩니다.
-            </p>
+            원장 개인 정보            </h2>
+           
 
             <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
               <div className="grid gap-5 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-600">
-                    클리닉 선택 *
-                  </label>
-                  <select
-                    value={selectedClinicId}
-                    onChange={handleClinicChange}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                  >
-                    {clinics.map((clinic) => (
-                      <option key={clinic.id} value={clinic.id}>
-                        {clinic.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+               
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -304,23 +375,12 @@ export default function ClinicMemberSetupPage() {
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    placeholder="오너 성함을 입력하세요."
+                    placeholder="성함을 입력하세요."
                     required
                   />
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-600">
-                    핸드폰 *
-                  </label>
-                  <input
-                    value={ownerPhoneNumber}
-                    onChange={(e) => setOwnerPhoneNumber(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    placeholder="010-XXXX-XXXX"
-                    required
-                  />
-                </div>
+                
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -334,6 +394,65 @@ export default function ClinicMemberSetupPage() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    핸드폰 *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={ownerPhoneNumber}
+                      onChange={(e) => {
+                        setOwnerPhoneNumber(e.target.value);
+                        setIsPhoneVerified(false); // Reset verification when phone changes
+                        setVerificationCode(""); // Clear code
+                      }}
+                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      placeholder="010-0000-0000"
+                      required
+                      disabled={isPhoneVerified}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendVerificationCode}
+                      disabled={isSendingCode || isPhoneVerified || !ownerPhoneNumber}
+                      className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSendingCode ? "전송 중..." : "인증번호 전송"}
+                    </button>
+                  </div>
+                  {isPhoneVerified && (
+                    <p className="mt-1 text-xs text-green-600">✓ 인증이 완료되었습니다.</p>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    핸드폰 인증번호 *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      placeholder="6자리 인증번호"
+                      maxLength={6}
+                      disabled={isPhoneVerified}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyCode}
+                      disabled={isVerifyingCode || isPhoneVerified || verificationCode.length !== 6}
+                      className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isVerifyingCode ? "인증 중..." : isPhoneVerified ? "인증 완료" : "인증하기"}
+                    </button>
+                  </div>
+                  {isPhoneVerified && (
+                    <p className="mt-1 text-xs text-green-600">✓ 인증이 완료되었습니다.</p>
+                  )}
+                </div>
+
+                
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -343,24 +462,12 @@ export default function ClinicMemberSetupPage() {
                     value={ownerAddress}
                     onChange={(e) => setOwnerAddress(e.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    placeholder="클리닉 주소를 입력하세요."
+                    placeholder="주소를 입력하세요."
                     required
                   />
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-600">
-                    ID
-                  </label>
-                  <input
-                    value={ownerId}
-                    readOnly
-                    className="w-full cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-100 px-5 py-3 text-sm text-slate-500"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    ID는 클리닉 명칭을 기반으로 자동 생성됩니다.
-                  </p>
-                </div>
+               
 
                 <div className="relative">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -377,7 +484,7 @@ export default function ClinicMemberSetupPage() {
                   <button
                     type="button"
                     onClick={() => setShowOwnerPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-4/2 text-slate-400 transition hover:text-slate-600"
                     aria-label={showOwnerPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
                   >
                     {showOwnerPassword ? (

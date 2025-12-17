@@ -34,12 +34,14 @@ export class ClinicsController {
   constructor(private readonly service: ClinicsService) {}
 
   @Get()
-  @UseGuards(JwtTenantGuard)
+  // @UseGuards(JwtTenantGuard) // Removed for registration flow - tenantId from query is sufficient
   @ApiOperation({ summary: "Retrieve clinics for the tenant" })
   getClinics(
     @Tenant() tenantId: string,
     @Query("tenantId") tenantQuery?: string
   ) {
+    // For registration flow, use tenantId from query parameter
+    // For authenticated users, tenantId comes from JWT token via @Tenant() decorator
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
     if (!resolvedTenantId) {
       throw new BadRequestException("tenant_id is required");

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { MembersService } from "../services/members.service";
 import { CreateMembersDto } from "../dto/create-members.dto";
@@ -10,6 +10,7 @@ import { ReqUser } from "../../../common/decorators/req-user.decorator";
 import { MemberLoginDto } from "../dto/member-login.dto";
 import { MessageService } from "../services/message.service";
 import { SendMembersCredentialsDto } from "../dto/send-members-credentials.dto";
+import { PhoneVerificationService } from "../services/phone-verification.service";
 
 @ApiTags("membership")
 @ApiBearerAuth()
@@ -18,7 +19,8 @@ import { SendMembersCredentialsDto } from "../dto/send-members-credentials.dto";
 export class MembersController {
   constructor(
     private readonly service: MembersService,
-    private readonly messageService: MessageService
+    private readonly messageService: MessageService,
+    private readonly phoneVerificationService: PhoneVerificationService,
   ) {}
 
   @Get()
@@ -89,5 +91,25 @@ export class MembersController {
       resolvedTenantId
     );
   }
+
+  @Post('send-phone-verification')
+@ApiOperation({ summary: 'Send phone verification code via SMS' })
+async sendPhoneVerification(@Body() body: { phone_number: string }) {
+  if (!body.phone_number) {
+    throw new BadRequestException('Phone number is required');
+  }
+  return this.phoneVerificationService.sendVerificationCode(body.phone_number);
+}
+
+@Post('verify-phone-code')
+@ApiOperation({summary: 'Verify phone verification code'})
+async verifyPhoneCode(
+  @Body() body: {phone_number: string, code:string}
+) {
+  if(!body.phone_number || !body.code) {
+    throw new BadRequestException('Phone number and code are required')
+  }
+  return this.phoneVerificationService.verifyCode(body.phone_number, body.code)
+}
 }
 

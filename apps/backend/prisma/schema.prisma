@@ -597,3 +597,15 @@ model NewsCache {
   @@index([cache_key])
   @@index([updated_at])
 }
+
+model PhoneVerificationCode {
+  id          String   @id @default(uuid())
+  phone_number String
+  code        String
+  verified    Boolean  @default(false)
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+  
+  @@index([phone_number, verified])
+  @@index([expires_at])
+}

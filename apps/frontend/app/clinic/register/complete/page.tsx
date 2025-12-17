@@ -22,6 +22,17 @@ export default function ClinicRegisterCompletePage() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedToken =
+        window.localStorage.getItem("erp_access_token") ??
+        window.localStorage.getItem("access_token") ??
+        "";
+      setToken(storedToken);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchClinics = async () => {
@@ -33,6 +44,34 @@ export default function ClinicRegisterCompletePage() {
       setLoading(true);
       setError(null);
       try {
+        // First, try to get clinic data from sessionStorage (fallback)
+        const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
+        if (clinicSummaryRaw) {
+          try {
+            const clinicSummary = JSON.parse(clinicSummaryRaw);
+            // Convert sessionStorage data to Clinic format
+            const clinicFromStorage: Clinic = {
+              id: clinicSummary.id || "",
+              name: clinicSummary.name || "",
+              english_name: clinicSummary.englishName || null,
+              category: clinicSummary.category || "",
+              location: clinicSummary.location || "",
+              medical_subjects: clinicSummary.medicalSubjects || "",
+              description: clinicSummary.description || null,
+              license_type: clinicSummary.licenseType || "",
+              license_number: clinicSummary.licenseNumber || "",
+              document_issue_number: clinicSummary.documentIssueNumber || "",
+              document_image_urls: [],
+              created_at: new Date().toISOString(),
+            };
+            setClinics([clinicFromStorage]);
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.error("Failed to parse clinic summary from sessionStorage", e);
+          }
+        }
+
         // Get tenant_id from sessionStorage (saved during registration)
         const tenantId = sessionStorage.getItem("erp_tenant_id");
         console.log("📋 Using tenant_id for fetching clinics:", tenantId);
@@ -42,7 +81,14 @@ export default function ClinicRegisterCompletePage() {
           ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
           : `${apiUrl}/iam/members/clinics`;
         
-        const response = await fetch(url);
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(url, { headers });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(
@@ -66,8 +112,12 @@ export default function ClinicRegisterCompletePage() {
         setLoading(false);
       }
     };
-    fetchClinics();
-  }, [apiUrl]);
+    
+    // Only fetch if token is loaded (or if no token is needed)
+    if (apiUrl) {
+      fetchClinics();
+    }
+  }, [apiUrl, token]);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12 md:px-10">

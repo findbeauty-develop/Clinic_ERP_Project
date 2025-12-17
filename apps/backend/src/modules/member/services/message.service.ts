@@ -45,6 +45,24 @@ export class MessageService {
   }
 
   /**
+   * Send SMS using the configured provider
+   */
+  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+    try {
+      const smsSent = await this.provider.sendSMS(phoneNumber, message);
+      if (smsSent) {
+        this.logger.log(`SMS sent successfully to ${phoneNumber}`);
+      } else {
+        this.logger.warn(`Failed to send SMS to ${phoneNumber}`);
+      }
+      return smsSent;
+    } catch (error: any) {
+      this.logger.error(`Error sending SMS: ${error?.message || 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  /**
    * Member credentials'ni SMS va KakaoTalk orqali yuborish
    */
   async sendMemberCredentials(
