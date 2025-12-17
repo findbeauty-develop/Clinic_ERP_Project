@@ -959,5 +959,73 @@ export class ManagerService {
       message: "문의가 성공적으로 전송되었습니다.",
     };
   }
+
+  /**
+   * Supplier manager'ga bog'langan clinic'larni olish (clinic-backend'dan)
+   */
+  async getClinicsForSupplier(supplierManagerId: string) {
+    const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+    const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+
+    try {
+      const response = await fetch(
+        `${clinicBackendUrl}/supplier/clinics?supplierManagerId=${supplierManagerId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { "x-api-key": apiKey } : {}),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        this.logger.error(`Failed to fetch clinics: ${response.status} - ${errorText}`);
+        throw new BadRequestException("Failed to fetch clinics");
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      this.logger.error(`Error fetching clinics: ${error.message}`);
+      throw new BadRequestException(`Failed to fetch clinics: ${error.message}`);
+    }
+  }
+
+  /**
+   * Clinic uchun memo saqlash (clinic-backend'ga)
+   */
+  async updateClinicMemo(tenantId: string, supplierManagerId: string, memo: string | null) {
+    const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+    const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+
+    try {
+      const response = await fetch(
+        `${clinicBackendUrl}/supplier/clinic/${tenantId}/memo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { "x-api-key": apiKey } : {}),
+          },
+          body: JSON.stringify({
+            supplierManagerId,
+            memo: memo || null,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        this.logger.error(`Failed to update memo: ${response.status} - ${errorText}`);
+        throw new BadRequestException("Failed to update memo");
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      this.logger.error(`Error updating memo: ${error.message}`);
+      throw new BadRequestException(`Failed to update memo: ${error.message}`);
+    }
+  }
 }
 

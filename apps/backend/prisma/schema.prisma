@@ -431,6 +431,7 @@ model ClinicSupplierLink {
   created_at          DateTime        @default(now())
   updated_at          DateTime?
   supplier_manager_id String
+  memo                String? // Supplier tomonidan clinic haqida memo
   supplierManager     SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
 
   @@unique([tenant_id, supplier_manager_id])

@@ -160,5 +160,39 @@ export class SupplierController {
 
     return this.supplierService.deleteClinicManager(managerId, tenantId);
   }
+
+  @Get("clinics")
+  @ApiOperation({
+    summary: "Supplier manager'ga bog'langan clinic'larni olish",
+    description: "Supplier manager ID bo'yicha clinic ma'lumotlarini qaytaradi (supplier-frontend uchun)",
+  })
+  @ApiQuery({
+    name: "supplierManagerId",
+    required: true,
+    type: String,
+    description: "Supplier Manager ID",
+  })
+  async getClinicsForSupplier(@Query("supplierManagerId") supplierManagerId: string) {
+    if (!supplierManagerId) {
+      throw new BadRequestException("supplierManagerId is required");
+    }
+    return this.supplierService.getClinicsForSupplier(supplierManagerId);
+  }
+
+  @Post("clinic/:tenantId/memo")
+  @ApiOperation({
+    summary: "Clinic uchun memo saqlash",
+    description: "ClinicSupplierLink'da memo field'ini yangilaydi",
+  })
+  async updateClinicMemo(
+    @Param("tenantId") tenantId: string,
+    @Body("supplierManagerId") supplierManagerId: string,
+    @Body("memo") memo: string
+  ) {
+    if (!tenantId || !supplierManagerId) {
+      throw new BadRequestException("tenantId and supplierManagerId are required");
+    }
+    return this.supplierService.updateClinicMemo(tenantId, supplierManagerId, memo);
+  }
 }
 

@@ -77,7 +77,7 @@ export class PhoneVerificationService {
     });
 
     // Send SMS
-    const message = `[인증번호] ${code}\n이 번호를 입력하여 전화번호 변경을 완료하세요.`;
+    const message = `[${code}] 인증번호를 입력하여 전화번호 변경을 완료하세요.`;
     const smsSent = await this.solapiProvider.sendSMS(cleanPhone, message);
 
     if (!smsSent) {

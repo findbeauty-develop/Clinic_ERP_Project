@@ -556,5 +556,90 @@ export class SupplierService {
     this.logger.log(`Clinic manager deleted successfully: ${managerId}`);
     return { success: true, message: "담당자가 삭제되었습니다" };
   }
+
+  /**
+   * Supplier manager'ga bog'langan clinic'larni olish
+   * Supplier-frontend uchun
+   */
+  async getClinicsForSupplier(supplierManagerId: string) {
+    this.logger.log(`Getting clinics for supplier manager: ${supplierManagerId}`);
+    
+    // Get ClinicSupplierLink records for this supplier manager
+    const links = await this.prisma.clinicSupplierLink.findMany({
+      where: {
+        supplier_manager_id: supplierManagerId,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
+
+    // Get clinic data for each tenant_id
+    const clinics = await Promise.all(
+      links.map(async (link) => {
+        const clinic = await this.prisma.clinic.findFirst({
+          where: {
+            tenant_id: link.tenant_id,
+          },
+        });
+        return {
+          ...link,
+          clinic: clinic || null,
+        };
+      })
+    );
+
+    // Filter out null clinics and format response
+    const result = clinics
+      .filter((item) => item.clinic !== null)
+      .map((item) => ({
+        tenant_id: item.tenant_id,
+        status: item.status,
+        requested_at: item.requested_at,
+        approved_at: item.approved_at,
+        memo: item.memo,
+        clinic: {
+          id: item.clinic!.id,
+          name: item.clinic!.name,
+          english_name: item.clinic!.english_name,
+          category: item.clinic!.category,
+          location: item.clinic!.location,
+          phone_number: item.clinic!.phone_number,
+          medical_subjects: item.clinic!.medical_subjects,
+          doctor_name: item.clinic!.doctor_name || null, // 성명 (owner's name)
+          license_type: item.clinic!.license_type,
+          license_number: item.clinic!.license_number,
+          document_issue_number: item.clinic!.document_issue_number,
+        },
+      }));
+
+    return result;
+  }
+
+  /**
+   * Clinic uchun memo saqlash
+   */
+  async updateClinicMemo(tenantId: string, supplierManagerId: string, memo: string | null) {
+    this.logger.log(`Updating memo for clinic ${tenantId}, supplier manager ${supplierManagerId}`);
+    
+    const updated = await this.prisma.clinicSupplierLink.updateMany({
+      where: {
+        tenant_id: tenantId,
+        supplier_manager_id: supplierManagerId,
+      },
+      data: {
+        memo: memo || null,
+        updated_at: new Date(),
+      },
+    });
+
+    if (updated.count === 0) {
+      throw new BadRequestException("ClinicSupplierLink not found");
+    }
+
+    return {
+      message: "Memo updated successfully",
+    };
+  }
 }
 

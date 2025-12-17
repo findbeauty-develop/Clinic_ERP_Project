@@ -5,6 +5,7 @@ import {
   Put,
   Delete,
   Body,
+  Param,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -324,6 +325,34 @@ export class ManagerController {
       supplierManagerId,
       body.memo
     );
+  }
+
+  @Get("clinics")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get clinics linked to this supplier manager" })
+  async getClinics(@Req() req: Request & { user: any }) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    return this.managerService.getClinicsForSupplier(supplierManagerId);
+  }
+
+  @Put("clinic/:tenantId/memo")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update memo for a clinic" })
+  async updateClinicMemo(
+    @Param("tenantId") tenantId: string,
+    @Body() body: { memo: string },
+    @Req() req: Request & { user: any }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId || req.user?.id;
+    if (!supplierManagerId) {
+      throw new BadRequestException("Manager ID not found in token");
+    }
+    return this.managerService.updateClinicMemo(tenantId, supplierManagerId, body.memo || null);
   }
 }
 

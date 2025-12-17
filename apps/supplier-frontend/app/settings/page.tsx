@@ -750,7 +750,7 @@ export default function SettingsPage() {
             거래처 데이터 관리
           </h2>
           <button
-            onClick={() => alert("거래처 데이터 관리 기능은 곧 제공될 예정입니다.")}
+            onClick={() => router.push("/settings/clinics")}
             className="flex w-full items-center justify-between rounded-lg border border-slate-200 p-3 text-left text-slate-700 hover:bg-slate-50"
           >
             <span>거래처데이터관리</span>
