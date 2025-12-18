@@ -16,10 +16,12 @@ cp .env.example .env
 
 3. Update `.env` with your database and configuration.
 
-4. Run migrations:
+4. Generate Prisma Client (migrations are managed by clinic-backend):
 ```bash
-pnpm prisma migrate dev
+pnpm prisma generate
 ```
+
+**Important:** This backend shares the database with clinic-backend. Migrations should be run from the clinic-backend only to avoid conflicts. This backend only generates the Prisma Client for database access.
 
 5. Start development server:
 ```bash
