@@ -15,6 +15,7 @@ export class ReturnService {
     filters?: {
       status?: "PENDING" | "ACCEPTED" | "REJECTED" | "ALL";
       isRead?: boolean | null;
+      returnType?: "반품" | "교환"; // Filter by return type: "반품" (return) or "교환" (exchange)
       page?: number;
       limit?: number;
     }
@@ -54,24 +55,7 @@ export class ReturnService {
     }
 
     try {
-      // Total count
-      const total = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.count({
-          where,
-        });
-      });
-
-      // Unread count (pending requests)
-      const unreadCount = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.count({
-          where: {
-            ...where,
-            status: "pending",
-          },
-        });
-      });
-
-      // Return requests
+      // Return requests (we need to fetch all to filter by return_type)
       const returnRequests = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).supplierReturnRequest.findMany({
           where,
@@ -81,50 +65,87 @@ export class ReturnService {
           orderBy: {
             created_at: "desc",
           },
-          skip,
-          take: limit,
         });
       });
 
-      // Format response
-      const formattedNotifications = returnRequests.map((request: any) => {
-        const totalRefund = request.items?.reduce(
-          (sum: number, item: any) => sum + (item.total_price || 0),
-          0
-        ) || 0;
+      // Filter by return_type if specified
+      let filteredRequests = returnRequests;
+      if (filters?.returnType) {
+        filteredRequests = returnRequests.filter((request: any) => {
+          // Check if any item in the request matches the return_type filter
+          return request.items?.some((item: any) => 
+            item.return_type?.includes(filters.returnType)
+          );
+        });
+      }
 
-        return {
-          id: request.id,
-          returnId: request.id,
-          returnNo: request.return_no,
-          clinicName: request.clinic_name,
-          returnManagerName: request.clinic_manager_name,
-          returnDate: request.created_at,
-          totalRefund: totalRefund,
-          items: request.items?.map((item: any) => ({
-            id: item.id,
-            productCode: item.batch_no || item.order_no || "",
-            productName: item.product_name,
-            productBrand: item.brand || "",
-            qty: item.quantity,
-            unitPrice: item.total_price / item.quantity || 0,
-            totalPrice: item.total_price,
-            returnType: item.return_type,
-            memo: item.memo,
-            images: Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []),
-            inboundDate: item.inbound_date,
-            orderNo: item.order_no,
-            batchNo: item.batch_no,
-            status: item.status || "pending",
-          })) || [],
-          status: request.status.toUpperCase(),
-          isRead: request.status !== "pending", // Consider non-pending as read
-          createdAt: request.created_at,
-          confirmedAt: request.confirmed_at,
-          completedAt: request.completed_at,
-          rejectedAt: request.rejected_at,
-        };
-      });
+      // Calculate total count after filtering
+      const total = filteredRequests.length;
+
+      // Unread count (pending requests after filtering)
+      const unreadCount = filteredRequests.filter((request: any) => 
+        request.status === "pending"
+      ).length;
+
+      // Apply pagination after filtering
+      const paginatedRequests = filteredRequests.slice(skip, skip + limit);
+
+      // Format response with return_type filtering
+      const formattedNotifications = paginatedRequests
+        .map((request: any) => {
+          // Filter items by return_type if specified
+          // return_type format: "주문|반품", "주문|교환", "불량|반품", "불량|교환"
+          let filteredItems = request.items || [];
+          if (filters?.returnType) {
+            filteredItems = filteredItems.filter((item: any) => {
+              // Check if return_type contains the filter value (e.g., "반품" or "교환")
+              return item.return_type?.includes(filters.returnType);
+            });
+          }
+
+          // If no items match the filter, skip this request
+          if (filteredItems.length === 0) {
+            return null;
+          }
+
+          const totalRefund = filteredItems.reduce(
+            (sum: number, item: any) => sum + (item.total_price || 0),
+            0
+          );
+
+          return {
+            id: request.id,
+            returnId: request.id,
+            returnNo: request.return_no,
+            clinicName: request.clinic_name,
+            returnManagerName: request.clinic_manager_name,
+            returnDate: request.created_at,
+            totalRefund: totalRefund,
+            items: filteredItems.map((item: any) => ({
+              id: item.id,
+              productCode: item.batch_no || item.order_no || "",
+              productName: item.product_name,
+              productBrand: item.brand || "",
+              qty: item.quantity,
+              unitPrice: item.total_price / item.quantity || 0,
+              totalPrice: item.total_price,
+              returnType: item.return_type,
+              memo: item.memo,
+              images: Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []),
+              inboundDate: item.inbound_date,
+              orderNo: item.order_no,
+              batchNo: item.batch_no,
+              status: item.status || "pending",
+            })),
+            status: request.status.toUpperCase(),
+            isRead: request.status !== "pending", // Consider non-pending as read
+            createdAt: request.created_at,
+            confirmedAt: request.confirmed_at,
+            completedAt: request.completed_at,
+            rejectedAt: request.rejected_at,
+          };
+        })
+        .filter((notif: any) => notif !== null); // Remove null entries
 
       return {
         notifications: formattedNotifications,
@@ -925,4 +946,5 @@ export class ReturnService {
     };
   }
 }
+
 

@@ -656,9 +656,11 @@ export class ReturnService {
       const returnNo = await this.generateReturnNumber();
 
       // Determine return type based on memo
-      let returnType = "반품"; // Default
+      // /returns page'dan kelgan product'lar "불량|반품" format'ida bo'lishi kerak
+      // (chunki bu outbound'dan kelgan defective product'lar)
+      let returnType = "불량|반품"; // Default for /returns page (defective products from outbound)
       if (returnRecord.memo && returnRecord.memo.includes("자동 반납: 빈 박스")) {
-        returnType = "빈 박스";
+        returnType = "불량|반품"; // Empty box is also a return, not exchange
       }
 
       // Get batch inbound date (created_at)

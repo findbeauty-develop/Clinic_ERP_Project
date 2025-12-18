@@ -50,9 +50,16 @@ export class ReturnController {
     type: Number,
     description: "Items per page",
   })
+  @ApiQuery({
+    name: "returnType",
+    required: false,
+    enum: ["반품", "교환"],
+    description: "Filter by return type: '반품' (return) or '교환' (exchange)",
+  })
   async getReturnNotifications(
     @Req() req: any,
     @Query("status") status?: "PENDING" | "ACCEPTED" | "REJECTED" | "ALL",
+    @Query("returnType") returnType?: "반품" | "교환",
     @Query("isRead") isRead?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string
@@ -66,6 +73,7 @@ export class ReturnController {
 
     return this.returnService.getReturnNotifications(supplierManagerId, {
       status: status || "ALL",
+      returnType: returnType, // Filter by return type: "반품" or "교환"
       isRead: isRead === "true" ? true : isRead === "false" ? false : null,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,

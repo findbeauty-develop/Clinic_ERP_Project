@@ -82,6 +82,9 @@ export default function ReturnsPage() {
         params.append("status", "ACCEPTED");
       }
       
+      // Filter by return type: only "반품" (return) items
+      params.append("returnType", "반품");
+      
       params.append("page", page.toString());
       params.append("limit", limit.toString());
 

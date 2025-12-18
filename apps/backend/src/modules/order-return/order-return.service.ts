@@ -294,10 +294,10 @@ export class OrderReturnService {
         updated_at: new Date(),
       };
       
-      // Update return_type if provided
-      if (dto.return_type) {
-        updateData.return_type = dto.return_type;
-      }
+      // IMPORTANT: /order-returns page'dan yuborilgan barcha product'lar /exchanges page'ga kelishi kerak
+      // Shuning uchun return_type ni "주문|교환" qilib majburiy o'rnatamiz
+      // Frontend'dan kelgan return_type ni e'tiborsiz qoldiramiz
+      updateData.return_type = "주문|교환"; // Always "주문|교환" for order-returns page
       
       return (this.prisma as any).orderReturn.update({
         where: { id, tenant_id: tenantId },

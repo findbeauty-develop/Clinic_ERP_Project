@@ -227,11 +227,18 @@ function ReturnCard({ returnItem, members, onRefresh, onRemove, apiUrl, formatRe
     setProcessing(true);
     try {
       const { apiPost } = await import("../../lib/api");
+      
+      // IMPORTANT: /order-returns page'dan yuborilgan barcha product'lar /exchanges page'ga kelishi kerak
+      // Shuning uchun return_type ni "주문|교환" qilib o'rnatamiz
+      const finalReturnType = returnType?.includes("주문") 
+        ? (returnType.includes("교환") ? returnType : "주문|교환")
+        : "주문|교환"; // Default to "주문|교환" for order-returns page
+      
       const response = await apiPost(`${apiUrl}/order-returns/${returnItem.id}/process`, {
         memo: memo || null,
         returnManager: returnItem.return_manager || null,
         images: images,
-        return_type: returnType,
+        return_type: finalReturnType, // Always "주문|교환" for order-returns page
       });
       
       console.log("Process return response:", response);

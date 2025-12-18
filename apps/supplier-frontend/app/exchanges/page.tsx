@@ -65,6 +65,9 @@ export default function ExchangesPage() {
         params.append("status", "ALL");
       }
       
+      // Filter by return type: only "교환" (exchange) items
+      params.append("returnType", "교환");
+      
       params.append("page", page.toString());
       params.append("limit", limit.toString());
 
