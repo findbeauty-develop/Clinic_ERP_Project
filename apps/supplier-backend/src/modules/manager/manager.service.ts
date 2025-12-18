@@ -434,56 +434,14 @@ export class ManagerService {
             },
           });
 
-          // 12a. Create APPROVED trade link for all clinics that have this ClinicSupplierManager
-          // NOTE: ClinicSupplierLink is in clinic-backend database, not supplier-backend
-          // This operation is optional - if it fails, registration continues
-          try {
-            // Find all ClinicSupplierManagers for this supplier
-            const allClinicManagers = await tx.clinicSupplierManager.findMany({
-              where: {
-                supplier_id: supplier.id,
-              },
-              select: {
-                tenant_id: true,
-              },
-            });
-
-            // Create APPROVED trade links for all clinics
-            // IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
-            // NOTE: This model exists in clinic-backend, not supplier-backend
-            // If clinicSupplierLink is not available, skip this step
-            if (tx.clinicSupplierLink && typeof tx.clinicSupplierLink.upsert === 'function') {
-              const uniqueTenantIds = [...new Set(allClinicManagers.map((cm: any) => cm.tenant_id))];
-              for (const tenantId of uniqueTenantIds) {
-                await tx.clinicSupplierLink.upsert({
-                  where: {
-                    tenant_id_supplier_manager_id: {
-                      tenant_id: tenantId,
-                      supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
-                    },
-                  },
-                  update: {
-                    status: "APPROVED", // Auto-approve if clinic already has manager
-                    approved_at: new Date(),
-                    updated_at: new Date(),
-                  },
-                  create: {
-                    tenant_id: tenantId,
-                    supplier_manager_id: manager.id, // Use SupplierManager ID, not Supplier ID
-                    status: "APPROVED",
-                    approved_at: new Date(),
-                  },
-                });
-              }
-              this.logger.log(`Created APPROVED trade links for ${uniqueTenantIds.length} clinic(s)`);
-            } else {
-              this.logger.warn('ClinicSupplierLink model is not available in supplier-backend database. Skipping trade link creation.');
-            }
-          } catch (linkError: any) {
-            // Log error but don't fail registration - trade links can be created later via clinic-backend
-            this.logger.warn(`Failed to create trade links: ${linkError?.message || 'Unknown error'}. Registration will continue.`);
-            this.logger.warn('Trade links can be created later via clinic-backend API if needed.');
-          }
+          // 12a. Trade link creation removed
+          // IMPORTANT: ClinicSupplierLink should NOT be auto-created when supplier registers
+          // Trade links should only be created when:
+          // 1. Clinic creates a product with this supplier (automatic)
+          // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
+          // This ensures that only clinics that have actually done business with the supplier
+          // will see the supplier in primary search results
+          this.logger.log('Skipping auto-approval of trade links. Trade links will be created when clinic creates products or manually approves.');
         }
 
         // 13. Create region tags

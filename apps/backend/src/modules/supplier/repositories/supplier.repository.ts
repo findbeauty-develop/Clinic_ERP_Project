@@ -102,8 +102,11 @@ export class SupplierRepository {
 
     // Add manager filters (managerName only - phoneNumber is NOT allowed in primary search)
     if (managerName) {
-      // Manager name filter: search ONLY in APPROVED SupplierManagers
-      // We need to filter by approvedManagerIds to ensure only approved managers are included
+      // IMPORTANT: Manager name filter matches ONLY by SupplierManager.name
+      // This ensures that primary search only finds suppliers registered on the platform
+      // ClinicSupplierManager.name is NOT used for matching in primary search
+      // Reason: Primary search is for suppliers with APPROVED ClinicSupplierLink,
+      // which links to SupplierManager (platform-registered suppliers)
       baseConditions.push({
         managers: {
           some: {
@@ -163,15 +166,12 @@ export class SupplierRepository {
         clinicManagers: {
           where: {
             tenant_id: tenantId,
+            // NOTE: managerName filter is NOT applied to ClinicSupplierManager
+            // Primary search matches ONLY by SupplierManager.name (approved managers)
+            // ClinicSupplierManager is included only for display purposes
             ...(phoneNumber ? {
               phone_number: {
                 contains: phoneNumber,
-                mode: "insensitive",
-              },
-            } : {}),
-            ...(managerName ? {
-              name: {
-                contains: managerName,
                 mode: "insensitive",
               },
             } : {}),

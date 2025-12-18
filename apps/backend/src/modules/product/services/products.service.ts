@@ -117,11 +117,12 @@ export class ProductsService {
           // Try to find Supplier by supplier_id to get tenant_id and company_name
           let supplierTenantId = null;
           let companyName = null;
+          let supplierRecord = null;
           
           if (s.supplier_id) {
             try {
               // Check if supplier_id is a UUID (Supplier.id)
-              const supplierRecord = await tx.supplier.findUnique({
+              supplierRecord = await tx.supplier.findUnique({
                 where: { id: s.supplier_id },
                 select: { tenant_id: true, company_name: true },
               });
@@ -155,6 +156,51 @@ export class ProductsService {
               contact_email: s.contact_email ?? null,
             } as any,
           });
+
+          // Create ClinicSupplierLink if supplier is registered on platform
+          // This ensures that suppliers with actual business transactions appear in primary search
+          if (supplierRecord && supplierRecord.tenant_id) {
+            try {
+              // Find SupplierManager for this supplier (ACTIVE status)
+              const supplierManager = await tx.supplierManager.findFirst({
+                where: {
+                  supplier_tenant_id: supplierRecord.tenant_id,
+                  status: "ACTIVE",
+                },
+                select: {
+                  id: true,
+                },
+              });
+
+              if (supplierManager) {
+                // Create or update ClinicSupplierLink to APPROVED status
+                // This link will allow the supplier to appear in primary search results
+                await tx.clinicSupplierLink.upsert({
+                  where: {
+                    tenant_id_supplier_manager_id: {
+                      tenant_id: tenantId,
+                      supplier_manager_id: supplierManager.id,
+                    },
+                  },
+                  update: {
+                    status: "APPROVED",
+                    approved_at: new Date(),
+                    updated_at: new Date(),
+                  },
+                  create: {
+                    tenant_id: tenantId,
+                    supplier_manager_id: supplierManager.id,
+                    status: "APPROVED",
+                    approved_at: new Date(),
+                  },
+                });
+              }
+            } catch (linkError: any) {
+              // Log error but don't fail product creation
+              // Trade link creation is optional - product creation should succeed even if link creation fails
+              console.warn(`Failed to create ClinicSupplierLink for supplier ${s.supplier_id}: ${linkError?.message || 'Unknown error'}`);
+            }
+          }
         }
       }
 

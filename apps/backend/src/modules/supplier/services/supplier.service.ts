@@ -94,7 +94,10 @@ export class SupplierService {
       
         // Format response
         return suppliersToReturn.map((supplier: any) => {
+          // IMPORTANT: Primary search matches ONLY by SupplierManager.name
           // Get the first manager (prioritize SupplierManager over ClinicSupplierManager)
+          // SupplierManager is from platform-registered suppliers (has login credentials)
+          // ClinicSupplierManager is from clinic-created suppliers (display only)
           const manager = supplier.managers?.[0] || supplier.clinicManagers?.[0];
 
           return {
@@ -376,26 +379,14 @@ export class SupplierService {
           this.logger.log(`Clinic manager created/updated: ${clinicManager.id}`);
         }
 
-      // 3. Create trade link - ONLY if SupplierManager exists
-      // IMPORTANT: Trade links are now to SupplierManager, not Supplier
-      // If supplier has registered on platform (ACTIVE SupplierManager), create APPROVED link immediately
-      // If supplier hasn't registered on platform yet, there's no SupplierManager, so no link
-      const supplierManager = await this.prisma.supplierManager.findFirst({
-        where: {
-          supplier_tenant_id: supplier.tenant_id!, // Use tenant_id instead of supplier_id
-          status: "ACTIVE",
-        },
-      });
-
-      if (supplierManager) {
-        // Supplier has registered on platform (ACTIVE status), create APPROVED link immediately
-        // This means supplier has completed registration, so clinic can trade with them right away
-        await this.repository.approveTradeLink(tenantId, supplierManager.id);
-        this.logger.log(`Trade link APPROVED for SupplierManager: ${supplierManager.id} (supplier is registered on platform)`);
-      } else {
-        // No SupplierManager yet (manual creation only), link will be created when supplier signs up
-        this.logger.log(`No SupplierManager found for supplier ${supplier.id}, skipping trade link creation`);
-      }
+      // 3. Trade link creation removed
+      // IMPORTANT: ClinicSupplierLink should NOT be auto-created when clinic manually creates supplier
+      // Trade links should only be created when:
+      // 1. Clinic creates a product with this supplier (automatic)
+      // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
+      // This ensures that only clinics that have actually done business with the supplier
+      // will see the supplier in primary search results
+      this.logger.log(`Supplier and ClinicSupplierManager created. Trade link will be created when product is created or manually approved.`);
 
       return {
         supplier: {
@@ -597,7 +588,7 @@ export class SupplierService {
         status: item.status,
         requested_at: item.requested_at,
         approved_at: item.approved_at,
-        memo: item.memo,
+        memo: (item as any).memo ?? null,
         clinic: {
           id: item.clinic!.id,
           name: item.clinic!.name,
@@ -622,14 +613,14 @@ export class SupplierService {
   async updateClinicMemo(tenantId: string, supplierManagerId: string, memo: string | null) {
     this.logger.log(`Updating memo for clinic ${tenantId}, supplier manager ${supplierManagerId}`);
     
-    const updated = await this.prisma.clinicSupplierLink.updateMany({
+    const updated = await (this.prisma.clinicSupplierLink as any).updateMany({
       where: {
         tenant_id: tenantId,
         supplier_manager_id: supplierManagerId,
       },
       data: {
-        memo: memo || null,
         updated_at: new Date(),
+        memo: memo || null,
       },
     });
 
