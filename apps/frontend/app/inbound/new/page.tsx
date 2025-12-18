@@ -1059,12 +1059,12 @@ export default function InboundNewPage() {
                             onChange={(e) => handleInputChange("barcode", e.target.value)}
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
-                          <button
+                          {/* <button
                             type="button"
                             className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           >
                             바코드 스캔
-                          </button>
+                          </button> */}
                         </div>
                       </div>
                     </div>

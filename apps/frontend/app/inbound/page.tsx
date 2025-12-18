@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, ChangeEvent, useCallback } from "react";
+import { useEffect, useMemo, useState, ChangeEvent, useCallback, useRef } from "react";
 import Link from "next/link";
 
 const inboundFilters = [
@@ -54,7 +54,7 @@ export default function InboundPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // Fetch products for "빠른 입고" tab
   useEffect(() => {
@@ -176,10 +176,11 @@ export default function InboundPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
+            {/* CSV 등록 button hide */}
+            {/* <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
               <UploadIcon className="h-5 w-5" />
               CSV로 대량 등록
-            </button>
+            </button> */}
             <Link
               href="/inbound/new"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
@@ -265,10 +266,7 @@ export default function InboundPage() {
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                   총 {products.length.toLocaleString()}개의 제품
                 </h2>
-                <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
-                  <FunnelIcon className="h-4 w-4" />
-                  필터 저장
-                </button>
+              
               </div>
 
               {error && (
@@ -347,17 +345,25 @@ function ProductCard({
     storageLocation: "",
   });
 
+  // Ref to track if we've already initialized from localStorage
+  const hasInitialized = useRef(false);
+
   // Initialize inboundManager from localStorage (current logged-in member)
+  // NOTE: Bu faqat bir marta, component mount bo'lganda ishlaydi.
+  // Foydalanuvchi keyin istalgan nomni kirita oladi va o'chirsa, qayta to'ldirilmaydi.
   useEffect(() => {
+    if (hasInitialized.current) return;
+    
     const memberData = localStorage.getItem("erp_member_data");
-    if (memberData && !batchForm.inboundManager) {
+    if (memberData) {
       const member = JSON.parse(memberData);
       setBatchForm(prev => ({
         ...prev,
         inboundManager: member.full_name || member.member_id || ""
       }));
+      hasInitialized.current = true;
     }
-  }, [batchForm.inboundManager]);
+  }, []); // Empty dependency array
   
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
@@ -452,6 +458,8 @@ function ProductCard({
       const payload: any = {
         qty: batchQuantity,
         expiry_date: batchForm.expiryDate,
+        // IMPORTANT: inbound_manager - Input qilingan nom DB'ga saqlanadi
+        // Product yaratgan odam va batch yaratayotgan odam boshqa bo'lishi mumkin
         inbound_manager: batchForm.inboundManager,
       };
 
@@ -549,22 +557,14 @@ function ProductCard({
       {product.currentStock.toLocaleString()} /{" "}
       {product.minStock.toLocaleString()} {product.unit ?? "EA"}
     </span>
-    <span className="inline-flex items-center gap-1">
-      <WonIcon className="h-4 w-4 text-emerald-500" />
-      구매: ₩{(product.purchasePrice ?? 0).toLocaleString()}
-    </span>
+   
     {product.supplierName && (
       <span className="inline-flex items-center gap-1">
         <TruckIcon className="h-4 w-4 text-indigo-500" />
         {product.supplierName}
       </span>
     )}
-    {product.expiryDate && (
-      <span className="inline-flex items-center gap-1">
-        <CalendarIcon className="h-4 w-4" />
-        {new Date(product.expiryDate).toLocaleDateString()}
-      </span>
-    )}
+    
     {product.storageLocation && (
       <span className="inline-flex items-center gap-1">
         <WarehouseIcon className="h-4 w-4" />
@@ -580,12 +580,14 @@ function ProductCard({
               재고부족
             </span>
           )}
-          <button
-            onClick={handleButtonClick}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
-          >
-            🧾 1개 배치
-          </button>
+          <Link
+                href={`/products/${product.id}`}
+                onClick={handleButtonClick}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+                상세 보기
+              </Link>
           
           <button
             className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
@@ -671,35 +673,35 @@ function ProductCard({
               <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                 새 배치 입고 처리
               </div>
-              <Link
-                href={`/products/${product.id}`}
-                onClick={handleButtonClick}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <PencilIcon className="h-3.5 w-3.5" />
-                상세 보기
-              </Link>
+              
             </div>
 
-            {/* 입고 담당자 - read-only (current logged-in member) */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                입고 담당자: <span className="bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                  {batchForm.inboundManager || "알 수 없음"}
-                </span>
-              </label>
-              <div className="flex items-center gap-3">
-                
-               
-              </div>
-            </div>
+            {/* 입고 담당자 - Editable input field */}
+            <div className="flex items-center gap-1">
+  <label className="w-28 shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
+    입고 담당자 *
+  </label>
+
+  <input
+    type="text"
+    placeholder="입고 담당자 이름을 입력하세요"
+    value={batchForm.inboundManager}
+    onChange={(e) =>
+      setBatchForm({ ...batchForm, inboundManager: e.target.value })
+    }
+    onClick={(e) => e.stopPropagation()}
+    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800
+               focus:border-sky-400 focus:outline-none
+               dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
+               dark:focus:border-sky-500"
+  />
+</div>
+
 
             <div className="grid gap-4 md:grid-cols-2">
-              <InlineField 
-                label="제조일 (선택)" 
-                type="date"
-                value={batchForm.manufactureDate}
-                onChange={(value) => setBatchForm({ ...batchForm, manufactureDate: value })}
+            <QuantityField
+                value={batchQuantity}
+                onChange={setBatchQuantity}
               />
               <InlineField
                 label="구매원가 (원)"
@@ -711,10 +713,7 @@ function ProductCard({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <QuantityField
-                value={batchQuantity}
-                onChange={setBatchQuantity}
-              />
+             
               <div>
                 <InlineField 
                   label="유효 기간 *" 
@@ -728,16 +727,17 @@ function ProductCard({
                   </p>
                 )}
               </div>
-            </div>
-
-            {/* 보관 위치 - to'liq width */}
+               {/* 보관 위치 - to'liq width */}
             <InlineField
-              label="보관 위치 (선택)"
+              label="보관 위치"
               placeholder="예: 창고 A-3, 냉장실 1번"
               value={batchForm.storageLocation}
               onChange={(value) => setBatchForm({ ...batchForm, storageLocation: value })}
             />
 
+            </div>
+
+           
             <div className="flex justify-end">
               <button
                 onClick={handleCreateBatch}
@@ -757,21 +757,64 @@ function ProductCard({
 interface FilterChipProps {
   label: string;
   options: string[] | { label: string; value: string }[];
+  value?: string;
+  onChange?: (value: string) => void;
   defaultValue: string;
 }
 
-function FilterChip({ label, options, defaultValue }: FilterChipProps) {
+function FilterChip({ label, options, value, onChange, defaultValue }: FilterChipProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const resolvedOptions = options.map((option) =>
     typeof option === "string" ? { label: option, value: option } : option
   );
 
+  const displayValue = value || defaultValue;
+  const selectedOption = resolvedOptions.find((opt) => opt.value === displayValue);
+
+  const handleSelect = (optionValue: string) => {
+    if (onChange) {
+      onChange(optionValue);
+    }
+    setIsOpen(false);
+  };
+
   return (
-    <button className="group flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600">
-      <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-        {defaultValue}
-      </span>
-      <ChevronDownIcon className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300" />
-    </button>
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="group flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
+      >
+        <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+          {selectedOption?.label || displayValue}
+        </span>
+        <ChevronDownIcon className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+            <div className="max-h-60 overflow-auto py-1">
+              {resolvedOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelect(option.value)}
+                  className={`w-full px-4 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                    displayValue === option.value
+                      ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+                      : "text-slate-700 dark:text-slate-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

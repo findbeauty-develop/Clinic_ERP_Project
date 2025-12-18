@@ -326,10 +326,6 @@ export default function InboundPage() {
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                   총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
                 </h2>
-                <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white">
-                  <FunnelIcon className="h-4 w-4" />
-                  필터 저장
-                </button>
               </div>
 
               {error && (
@@ -641,12 +637,15 @@ function ProductCard({
               재고부족
             </span>
           )}
-          <button
-            onClick={handleButtonClick}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
-          >
-            🧾 1개 배치
-          </button>
+          {/* RIGHT */}
+  <Link
+    href={`/products/${product.id}`}
+    onClick={handleButtonClick}
+    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+  >
+    <PencilIcon className="h-3.5 w-3.5" />
+    상세 보기
+  </Link>
           
           <button
             className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
@@ -674,15 +673,7 @@ function ProductCard({
     기존 배치 목록
   </div>
 
-  {/* RIGHT */}
-  <Link
-    href={`/products/${product.id}`}
-    onClick={handleButtonClick}
-    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-  >
-    <PencilIcon className="h-3.5 w-3.5" />
-    상세 보기
-  </Link>
+  
 </div>
 
            

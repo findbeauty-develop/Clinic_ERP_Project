@@ -610,8 +610,13 @@ export class ProductsService {
     }
 
     // Product'ning barcha batch'larini olish
+    // IMPORTANT: Faqat qty > 0 bo'lgan batch'larni ko'rsatish (0ga yetgan batch'lar ochib ketadi)
     const batches = await this.prisma.batch.findMany({
-      where: { product_id: productId, tenant_id: tenantId },
+      where: { 
+        product_id: productId, 
+        tenant_id: tenantId,
+        qty: { gt: 0 }, // Faqat qty > 0 bo'lgan batch'lar
+      },
       orderBy: { created_at: "desc" },
       select: {
         id: true,
@@ -861,7 +866,7 @@ export class ProductsService {
     });
 
     // Combine both sources
-    const warehouseNames = new Set(warehouseLocations.map((w) => w.name));
+    const warehouseNames = new Set<string>(warehouseLocations.map((w: any) => w.name));
     const batchStorages = batches
       .map((batch) => batch.storage)
       .filter((storage): storage is string => {
@@ -869,10 +874,10 @@ export class ProductsService {
       });
 
     // Merge and deduplicate
-    const allStorages = new Set([...warehouseNames, ...batchStorages]);
+    const allStorages = new Set<string>([...warehouseNames, ...batchStorages]);
     
     // Sort alphabetically
-    return Array.from(allStorages).sort((a, b) =>
+    return Array.from<string>(allStorages).sort((a: string, b: string) =>
       a.localeCompare(b, "ko", { sensitivity: "base" })
     );
   }
@@ -896,7 +901,7 @@ export class ProductsService {
       },
     });
 
-    return warehouses.map((w) => ({
+    return warehouses.map((w: any) => ({
       id: w.id,
       name: w.name,
       category: w.category,
