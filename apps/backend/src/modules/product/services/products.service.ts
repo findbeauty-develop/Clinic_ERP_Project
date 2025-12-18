@@ -140,11 +140,37 @@ export class ProductsService {
             }
           }
 
+          // Find SupplierManager by contact_phone if available
+          // This allows us to link the product to the correct manager even if supplier is registered on platform
+          let supplierManagerId = null;
+          if (s.contact_phone) {
+            try {
+              // phone_number is unique, so we'll get at most one result
+              const supplierManager = await tx.supplierManager.findFirst({
+                where: {
+                  phone_number: s.contact_phone,
+                  status: "ACTIVE",
+                },
+                select: {
+                  id: true,
+                },
+              });
+
+              if (supplierManager) {
+                supplierManagerId = supplierManager.id;
+              }
+            } catch (e) {
+              // Log but don't fail - supplier might not be registered on platform yet
+              console.warn(`Failed to find SupplierManager by phone ${s.contact_phone}: ${e}`);
+            }
+          }
+
           await tx.supplierProduct.create({
             data: {
               tenant_id: tenantId,
               product_id: product.id,
               supplier_id: s.supplier_id ?? null, // Optional - legacy field
+              supplier_manager_id: supplierManagerId, // SupplierManager ID if supplier is registered on platform
               supplier_tenant_id: supplierTenantId,
               company_name: companyName,
               purchase_price: s.purchase_price ?? null,

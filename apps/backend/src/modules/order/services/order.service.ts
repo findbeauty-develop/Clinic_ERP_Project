@@ -909,6 +909,45 @@ export class OrderService {
       });
     }
 
+    // Collect all supplier_manager_ids from SupplierProducts for batch lookup
+    const supplierManagerIds = new Set<string>();
+    filteredOrders.forEach((order: any) => {
+      if (order.items && order.items.length > 0) {
+        order.items.forEach((item: any) => {
+          if (item.product && item.product.supplierProducts && item.product.supplierProducts.length > 0) {
+            const supplierProduct = item.product.supplierProducts[0];
+            if (supplierProduct.supplier_manager_id) {
+              supplierManagerIds.add(supplierProduct.supplier_manager_id);
+            }
+          }
+        });
+      }
+    });
+
+    // Fetch all SupplierManagers by their IDs
+    const supplierManagersMap = new Map<string, any>();
+    if (supplierManagerIds.size > 0) {
+      const supplierManagers = await (this.prisma as any).supplierManager.findMany({
+        where: {
+          id: {
+            in: Array.from(supplierManagerIds),
+          },
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          name: true,
+          phone_number: true,
+          email1: true,
+          position: true,
+        },
+      });
+
+      supplierManagers.forEach((manager: any) => {
+        supplierManagersMap.set(manager.id, manager);
+      });
+    }
+
     return filteredOrders.map((order: any) => {
       // Supplier va manager ma'lumotlarini topish (items'dan)
       let supplierName = order.supplier_id || "공급업체 없음";
@@ -922,6 +961,15 @@ export class OrderService {
         const firstItem = order.items[0];
         if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
           supplierId = firstItem.product.supplierProducts[0].supplier_id || null;
+        }
+      }
+
+      // Get SupplierProduct from first item
+      let supplierProduct: any = null;
+      if (order.items && order.items.length > 0) {
+        const firstItem = order.items[0];
+        if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
+          supplierProduct = firstItem.product.supplierProducts[0];
         }
       }
 
@@ -939,70 +987,88 @@ export class OrderService {
           businessNumber: supplier.business_number || "",
         };
         
-        // Manager ma'lumotlarini topish
-        if (supplier.managers && supplier.managers.length > 0) {
-          const manager = supplier.managers[0];
+        // Manager ma'lumotlarini topish - Priority: supplier_manager_id > first manager > contact info
+        let manager: any = null;
+        
+        // Variant 1: Use supplier_manager_id from SupplierProduct
+        if (supplierProduct?.supplier_manager_id && supplierManagersMap.has(supplierProduct.supplier_manager_id)) {
+          manager = supplierManagersMap.get(supplierProduct.supplier_manager_id);
+        }
+        
+        // Variant 2: Fallback to first manager from supplier
+        if (!manager && supplier.managers && supplier.managers.length > 0) {
+          manager = supplier.managers[0];
+        }
+        
+        // Variant 3: Use contact info from SupplierProduct
+        if (manager) {
           managerName = manager.name || "";
           supplierDetails.managerName = manager.name || "";
-          supplierDetails.managerPhone = manager.phone_number || manager.phoneNumber || null;
-          supplierDetails.managerEmail = manager.email1 || manager.email || null;
+          supplierDetails.managerPhone = manager.phone_number || null;
+          supplierDetails.managerEmail = manager.email1 || null;
           supplierDetails.position = manager.position || null;
-        } else if (order.items && order.items.length > 0) {
-          const firstItem = order.items[0];
-          if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
-            managerName = firstItem.product.supplierProducts[0].contact_name || "";
-            supplierDetails.managerName = managerName;
-            supplierDetails.managerPhone = firstItem.product.supplierProducts[0].contact_phone || null;
-            supplierDetails.managerEmail = firstItem.product.supplierProducts[0].contact_email || null;
-          }
+        } else if (supplierProduct) {
+          managerName = supplierProduct.contact_name || "";
+          supplierDetails.managerName = managerName;
+          supplierDetails.managerPhone = supplierProduct.contact_phone || null;
+          supplierDetails.managerEmail = supplierProduct.contact_email || null;
         }
       } else {
         // Fallback: try to get from supplierProducts
-        if (order.items && order.items.length > 0) {
-          const firstItem = order.items[0];
-          if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
-            const supplierProduct = firstItem.product.supplierProducts[0];
-            const fallbackSupplierId = supplierProduct.supplier_id;
+        if (supplierProduct) {
+          const fallbackSupplierId = supplierProduct.supplier_id;
+          
+          // Try to find supplier by the fallback ID
+          if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
+            const supplier = suppliersMap.get(fallbackSupplierId);
+            supplierName = supplier.company_name || supplierName;
+            supplierDetails = {
+              id: supplier.id,
+              companyName: supplier.company_name || "",
+              companyAddress: supplier.company_address || null,
+              companyPhone: supplier.company_phone || null,
+              companyEmail: supplier.company_email || null,
+              businessNumber: supplier.business_number || "",
+            };
             
-            // Try to find supplier by the fallback ID
-            if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
-              const supplier = suppliersMap.get(fallbackSupplierId);
-              supplierName = supplier.company_name || supplierName;
-              supplierDetails = {
-                id: supplier.id,
-                companyName: supplier.company_name || "",
-                companyAddress: supplier.company_address || null,
-                companyPhone: supplier.company_phone || null,
-                companyEmail: supplier.company_email || null,
-                businessNumber: supplier.business_number || "",
-              };
-              
-              if (supplier.managers && supplier.managers.length > 0) {
-                const manager = supplier.managers[0];
-                managerName = manager.name || "";
-                supplierDetails.managerName = manager.name || "";
-                supplierDetails.managerPhone = manager.phone_number || null;
-                supplierDetails.managerEmail = manager.email1 || null;
-                supplierDetails.position = manager.position || null;
-              } else {
-                managerName = supplierProduct.contact_name || "";
-                supplierDetails.managerName = managerName;
-                supplierDetails.managerPhone = supplierProduct.contact_phone || null;
-                supplierDetails.managerEmail = supplierProduct.contact_email || null;
-              }
-            } else {
-              // Last resort: use supplierProduct data
-              supplierName = fallbackSupplierId || supplierName;
-              managerName = supplierProduct.contact_name || "";
-              
-              // Create minimal supplierDetails from supplierProduct
-              supplierDetails = {
-                companyName: supplierName,
-                managerName: managerName,
-                managerPhone: supplierProduct.contact_phone || null,
-                managerEmail: supplierProduct.contact_email || null,
-              };
+            // Manager ma'lumotlarini topish - Priority: supplier_manager_id > first manager > contact info
+            let manager: any = null;
+            
+            // Variant 1: Use supplier_manager_id from SupplierProduct
+            if (supplierProduct.supplier_manager_id && supplierManagersMap.has(supplierProduct.supplier_manager_id)) {
+              manager = supplierManagersMap.get(supplierProduct.supplier_manager_id);
             }
+            
+            // Variant 2: Fallback to first manager from supplier
+            if (!manager && supplier.managers && supplier.managers.length > 0) {
+              manager = supplier.managers[0];
+            }
+            
+            // Variant 3: Use contact info from SupplierProduct
+            if (manager) {
+              managerName = manager.name || "";
+              supplierDetails.managerName = manager.name || "";
+              supplierDetails.managerPhone = manager.phone_number || null;
+              supplierDetails.managerEmail = manager.email1 || null;
+              supplierDetails.position = manager.position || null;
+            } else {
+              managerName = supplierProduct.contact_name || "";
+              supplierDetails.managerName = managerName;
+              supplierDetails.managerPhone = supplierProduct.contact_phone || null;
+              supplierDetails.managerEmail = supplierProduct.contact_email || null;
+            }
+          } else {
+            // Last resort: use supplierProduct data
+            supplierName = fallbackSupplierId || supplierName;
+            managerName = supplierProduct.contact_name || "";
+            
+            // Create minimal supplierDetails from supplierProduct
+            supplierDetails = {
+              companyName: supplierName,
+              managerName: managerName,
+              managerPhone: supplierProduct.contact_phone || null,
+              managerEmail: supplierProduct.contact_email || null,
+            };
           }
         }
       }
@@ -1152,60 +1218,165 @@ export class OrderService {
         return;
       }
 
-      const supplierManager = supplier.managers?.[0];
-      
-      // Agar supplierManager yo'q bo'lsa (platformadan ro'yxatdan o'tmagan),
-      // SupplierProduct jadvalidan telefon raqamini olish
+      // Get SupplierProduct to find supplier_manager_id or contact_phone
+      // IMPORTANT: Check ALL items to find the correct supplier_manager_id
+      // If multiple products have different supplier_manager_id, use the most common one
+      let supplierManager: any = null;
       let supplierPhoneNumber: string | null = null;
-      if (!supplierManager) {
-        this.logger.warn(`No active manager found for supplier ${order.supplier_id}, trying to get phone from SupplierProduct`);
-        
-        // Order items'dan birinchi product'ni olish va SupplierProduct'dan telefon raqamini olish
-        if (group.items && group.items.length > 0) {
-          const firstItem = group.items[0];
-          if (firstItem.productId) {
+      let supplierProductRecord: any = null;
+
+      if (group.items && group.items.length > 0) {
+        // Collect all SupplierProducts for all items in this order
+        // IMPORTANT: Use item.supplierId (from draft) instead of order.supplier_id
+        const supplierManagerIdCounts = new Map<string, number>();
+        const supplierProductsByManagerId = new Map<string, any>();
+
+        for (const item of group.items) {
+          if (item.productId) {
+            // Use item.supplierId from draft, fallback to order.supplier_id
+            const itemSupplierId = item.supplierId || order.supplier_id;
+            
+            this.logger.log(`🔍 Checking item: productId=${item.productId}, item.supplierId=${item.supplierId}, order.supplier_id=${order.supplier_id}, using supplierId=${itemSupplierId}`);
+            
             const supplierProduct = await this.prisma.supplierProduct.findFirst({
               where: {
-                product_id: firstItem.productId,
-                supplier_id: order.supplier_id,
+                product_id: item.productId,
+                supplier_id: itemSupplierId, // Use item's supplierId, not order's
               },
               select: {
+                id: true,
+                supplier_manager_id: true,
                 contact_phone: true,
                 contact_name: true,
                 company_name: true,
+                supplier_id: true,
               },
             });
-            
-            if (supplierProduct?.contact_phone) {
-              supplierPhoneNumber = supplierProduct.contact_phone;
-              this.logger.log(`Found phone number from SupplierProduct: ${supplierPhoneNumber}`);
-            } else {
-              // Fallback: supplier_id bo'yicha qidirish (agar product_id topilmasa)
-              const supplierProductBySupplier = await this.prisma.supplierProduct.findFirst({
-                where: {
-                  supplier_id: order.supplier_id,
-                  contact_phone: { not: null },
-                },
-                select: {
-                  contact_phone: true,
-                },
-                orderBy: {
-                  created_at: 'desc',
-                },
-              });
+
+            if (supplierProduct) {
+              this.logger.log(`✅ Found SupplierProduct: id=${supplierProduct.id}, supplier_id=${supplierProduct.supplier_id}, supplier_manager_id=${supplierProduct.supplier_manager_id}, contact_phone=${supplierProduct.contact_phone}, contact_name=${supplierProduct.contact_name}`);
               
-              if (supplierProductBySupplier?.contact_phone) {
-                supplierPhoneNumber = supplierProductBySupplier.contact_phone;
-                this.logger.log(`Found phone number from SupplierProduct (by supplier_id): ${supplierPhoneNumber}`);
+              // Use first product as default (for contact_phone fallback)
+              if (!supplierProductRecord) {
+                supplierProductRecord = supplierProduct;
               }
+
+              // Count supplier_manager_id occurrences
+              if (supplierProduct.supplier_manager_id) {
+                const count = supplierManagerIdCounts.get(supplierProduct.supplier_manager_id) || 0;
+                supplierManagerIdCounts.set(supplierProduct.supplier_manager_id, count + 1);
+                supplierProductsByManagerId.set(supplierProduct.supplier_manager_id, supplierProduct);
+                this.logger.log(`📊 Item ${item.productId}: Found supplier_manager_id ${supplierProduct.supplier_manager_id} for supplier ${itemSupplierId} (count: ${count + 1})`);
+              } else {
+                this.logger.log(`⚠️ Item ${item.productId}: No supplier_manager_id found, contact_phone: ${supplierProduct.contact_phone}, contact_name: ${supplierProduct.contact_name}`);
+              }
+            } else {
+              this.logger.warn(`❌ Item ${item.productId}: No SupplierProduct found for supplier ${itemSupplierId}`);
             }
           }
         }
-        
-        // Agar hali ham telefon raqami topilmasa, supplier-backend API'ga yuborishni o'tkazib yuborish
-        // Lekin SMS yuborishni o'tkazib yuborish (chunki telefon raqami yo'q)
-        if (!supplierPhoneNumber) {
-          this.logger.warn(`No phone number found in SupplierProduct for supplier ${order.supplier_id}, SMS will not be sent`);
+
+        // Find the most common supplier_manager_id (or use the first one if all are unique)
+        let mostCommonManagerId: string | null = null;
+        let maxCount = 0;
+        for (const [managerId, count] of supplierManagerIdCounts.entries()) {
+          if (count > maxCount) {
+            maxCount = count;
+            mostCommonManagerId = managerId;
+          }
+        }
+
+        this.logger.log(`SupplierManager ID counts: ${JSON.stringify(Array.from(supplierManagerIdCounts.entries()))}`);
+        this.logger.log(`Most common supplier_manager_id: ${mostCommonManagerId} (count: ${maxCount})`);
+
+        // Variant 1: If supplier_manager_id exists in SupplierProduct (product was created with registered supplier)
+        if (mostCommonManagerId) {
+          supplierManager = await this.prisma.supplierManager.findUnique({
+            where: { id: mostCommonManagerId },
+            select: {
+              id: true,
+              name: true,
+              phone_number: true,
+              email1: true,
+              position: true,
+            },
+          });
+          if (supplierManager) {
+            this.logger.log(`✅ Found SupplierManager by supplier_manager_id (most common): ${supplierManager.id}, name: ${supplierManager.name}, phone: ${supplierManager.phone_number} (used in ${maxCount} products)`);
+            // Update supplierProductRecord to the one with this manager_id for potential update
+            supplierProductRecord = supplierProductsByManagerId.get(mostCommonManagerId);
+          } else {
+            this.logger.warn(`❌ SupplierManager ${mostCommonManagerId} not found in database`);
+          }
+        } else {
+          this.logger.log(`⚠️ No supplier_manager_id found in any SupplierProduct`);
+        }
+
+        // Variant 2: If supplier_manager_id doesn't exist, try to find by contact_phone
+        // (supplier might have registered on platform after product was created)
+        if (!supplierManager && supplierProductRecord?.contact_phone) {
+          supplierManager = await this.prisma.supplierManager.findFirst({
+            where: {
+              phone_number: supplierProductRecord.contact_phone,
+              status: "ACTIVE",
+            },
+          });
+
+          if (supplierManager) {
+            this.logger.log(`Found SupplierManager by contact_phone: ${supplierManager.id}, updating SupplierProduct`);
+            
+            // Update SupplierProduct with supplier_manager_id for future orders
+            if (supplierProductRecord.id) {
+              try {
+                await this.prisma.supplierProduct.update({
+                  where: { id: supplierProductRecord.id },
+                  data: { supplier_manager_id: supplierManager.id },
+                });
+                this.logger.log(`Updated SupplierProduct ${supplierProductRecord.id} with supplier_manager_id`);
+              } catch (updateError: any) {
+                // Log but don't fail - update is optional
+                this.logger.warn(`Failed to update SupplierProduct with supplier_manager_id: ${updateError?.message}`);
+              }
+            }
+          } else {
+            // No SupplierManager found, use contact_phone for SMS
+            supplierPhoneNumber = supplierProductRecord.contact_phone;
+            this.logger.log(`No SupplierManager found, will use contact_phone for SMS: ${supplierPhoneNumber}`);
+          }
+        }
+      }
+
+      // Variant 3: Fallback - first created SupplierManager (legacy behavior)
+      if (!supplierManager) {
+        const fallbackManager = supplier.managers?.[0];
+        if (fallbackManager) {
+          supplierManager = fallbackManager;
+          this.logger.log(`Using fallback SupplierManager (first created): ${supplierManager.id}`);
+        } else {
+          // Last resort: try to get phone from SupplierProduct by supplier_id
+          if (!supplierPhoneNumber) {
+            const supplierProductBySupplier = await this.prisma.supplierProduct.findFirst({
+              where: {
+                supplier_id: order.supplier_id,
+                contact_phone: { not: null },
+              },
+              select: {
+                contact_phone: true,
+              },
+              orderBy: {
+                created_at: 'desc',
+              },
+            });
+            
+            if (supplierProductBySupplier?.contact_phone) {
+              supplierPhoneNumber = supplierProductBySupplier.contact_phone;
+              this.logger.log(`Found phone number from SupplierProduct (by supplier_id): ${supplierPhoneNumber}`);
+            }
+          }
+
+          if (!supplierPhoneNumber) {
+            this.logger.warn(`No SupplierManager or phone number found for supplier ${order.supplier_id}, SMS will not be sent`);
+          }
         }
       }
 
@@ -1272,7 +1443,7 @@ export class OrderService {
       const supplierOrderData = {
         orderNo: order.order_no,
         supplierTenantId: supplier.tenant_id,
-        supplierManagerId: supplierManager?.id || null, // null bo'lishi mumkin
+        supplierManagerId: supplierManager?.id || null, // From SupplierProduct.supplier_manager_id or contact_phone match
         clinicTenantId: tenantId,
         clinicName: finalClinicName,
         clinicManagerName: clinicManagerName,
@@ -1289,6 +1460,7 @@ export class OrderService {
 
 
       // Prepare supplier phone number for SMS (even if API fails, we can still send SMS)
+      // Priority: supplierManager.phone_number > supplierPhoneNumber (from SupplierProduct) > supplier.company_phone
       const finalSupplierPhoneNumber = 
         supplierManager?.phone_number || 
         supplierPhoneNumber || 

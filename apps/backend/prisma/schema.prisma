@@ -147,6 +147,7 @@ model SupplierProduct {
   tenant_id          String
   product_id         String
   supplier_id        String?
+  supplier_manager_id String? // SupplierManager ID (if supplier is registered on platform)
   purchase_price     Int?
   moq                Int?
   lead_time_days     Int?
@@ -163,6 +164,7 @@ model SupplierProduct {
   @@index([tenant_id])
   @@index([product_id])
   @@index([supplier_id])
+  @@index([supplier_manager_id])
   @@index([supplier_tenant_id])
   @@index([tenant_id, product_id])
 }
