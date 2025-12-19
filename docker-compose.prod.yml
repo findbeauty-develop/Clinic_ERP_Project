@@ -10,6 +10,12 @@ services:
       - "3000:3000"
     env_file:
       - ./apps/backend/.env
+    environment:
+      # Docker container'larida bir-biriga ulanish uchun container nomi ishlatiladi
+      # - SUPPLIER_BACKEND_URL=http://supplier-erp-backend-prod:3002
+      - SUPPLIER_BACKEND_API_KEY=your_secret_api_key_here_34534sdffsd69ds8f8e9sdf89sd4e9e8w9f
+      # yoki agar tashqaridan ochiq bo'lsa:
+      - SUPPLIER_BACKEND_URL=http://72.60.108.46:3002
     networks:
       - clinic-erp-network
     healthcheck:
@@ -36,7 +42,7 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_API_URL=http://72.60.108.46:3000
     env_file:
       - ./apps/frontend/.env.local
     depends_on:

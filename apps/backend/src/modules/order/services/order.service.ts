@@ -391,7 +391,7 @@ export class OrderService {
     expiresAt.setHours(expiresAt.getHours() + this.DRAFT_EXPIRY_HOURS);
 
     this.logger.log(`🔍 DEBUG: Saving draft - sessionId: ${sessionId}, tenantId: ${tenantId}, items count: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Items to save: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, quantity: i.quantity, supplierId: i.supplierId })))}`);
+    this.logger.log(`🔍 DEBUG: Items to save: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, quantity: i.quantity, supplierId: i.supplierId })))}`);
 
     const updatedDraft = await this.orderRepository.createOrUpdateDraft(
       sessionId,
@@ -436,7 +436,7 @@ export class OrderService {
     const items = Array.isArray(draft.items) ? draft.items : [];
 
     this.logger.log(`🔍 DEBUG: Retrieved draft - items count: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, quantity: i.quantity })))}`);
+    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, quantity: i.quantity })))}`);
 
     // Item'ni topish
     const itemIndex = items.findIndex(
@@ -630,7 +630,7 @@ export class OrderService {
     const items = Array.isArray(draft.items) ? draft.items : [];
 
     this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, supplierId: i.supplierId, quantity: i.quantity })))}`);
+    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, supplierId: i.supplierId, quantity: i.quantity })))}`);
 
     if (items.length === 0) {
       throw new BadRequestException("Order must have at least one item");
@@ -674,7 +674,7 @@ export class OrderService {
 
     // Supplier bo'yicha guruhlash
     this.logger.log(`🔍 DEBUG: Starting grouping, total items: ${items.length}`);
-    items.forEach((item, idx) => {
+    items.forEach((item: any, idx: number) => {
       this.logger.log(`🔍 DEBUG: Item ${idx + 1}: productId=${item.productId}, supplierId=${item.supplierId || "unknown"}, quantity=${item.quantity}`);
     });
 
