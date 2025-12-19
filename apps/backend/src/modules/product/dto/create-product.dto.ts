@@ -216,6 +216,10 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  storage?: string;
+
+  @IsOptional()
+  @IsString()
   tenantId?: string;
 
   @IsOptional()

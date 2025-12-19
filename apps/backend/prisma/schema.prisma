@@ -29,6 +29,7 @@ model Product {
   capacity_per_product Int?
   capacity_unit        String?
   usage_capacity       Int?
+    storage              String? 
 
   // Product-level expiry defaults (yangi fieldlar)
   expiry_months Int? // 유통기한 기간 (default for all batches)

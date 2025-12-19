@@ -47,6 +47,7 @@ type ProductListItem = {
   memo?: string | null;
   expiryMonths?: number | null;
   expiryUnit?: string | null;
+  productStorage?: string | null;
 };
 
 export default function InboundPage() {
@@ -483,8 +484,6 @@ function ProductCard({
       const payload: any = {
         qty: batchQuantity,
         expiry_date: batchForm.expiryDate,
-        // IMPORTANT: inbound_manager - Input qilingan nom DB'ga saqlanadi
-        // Product yaratgan odam va batch yaratayotgan odam boshqa bo'lishi mumkin
         inbound_manager: batchForm.inboundManager,
       };
 
@@ -495,8 +494,14 @@ function ProductCard({
       if (batchForm.purchasePrice) {
         payload.purchase_price = parseInt(batchForm.purchasePrice);
       }
-      if (batchForm.storageLocation) {
-        payload.storage = batchForm.storageLocation;
+      
+      // 보관 위치: User input yoki Product level storage (fallback)
+      const storageLocation = batchForm.storageLocation.trim() 
+        ? batchForm.storageLocation 
+        : (product.productStorage || product.storageLocation || null);
+      
+      if (storageLocation) {
+        payload.storage = storageLocation;
       }
 
       const response = await fetch(`${apiUrl}/products/${product.id}/batches`, {
@@ -1235,6 +1240,12 @@ function InlineField({
   value?: string;
   onChange?: (value: string) => void;
 }) {
+  // Number input uchun scroll/spinner'ni yashirish
+  const numberInputClasses =
+    type === "number"
+      ? "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+      : "";
+
   return (
     <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
       <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1245,7 +1256,7 @@ function InlineField({
         placeholder={placeholder}
         value={value || ""}
         onChange={(e) => onChange?.(e.target.value)}
-        className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700"
+        className={`h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 ${numberInputClasses}`}
       />
     </div>
   );

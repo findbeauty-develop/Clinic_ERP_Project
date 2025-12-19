@@ -1719,10 +1719,13 @@ export default function OutboundPage() {
                                         prev.filter(
                                           (f) =>
                                             !(
-                                              f.productId === item.productId &&
-                                              f.batchId === item.batchId &&
-                                              f.isPackageItem ===
-                                                item.isPackageItem // ✅ Package/Product farqi
+                                              (
+                                                f.productId ===
+                                                  item.productId &&
+                                                f.batchId === item.batchId &&
+                                                f.isPackageItem ===
+                                                  item.isPackageItem
+                                              ) // ✅ Package/Product farqi
                                             )
                                         )
                                       );

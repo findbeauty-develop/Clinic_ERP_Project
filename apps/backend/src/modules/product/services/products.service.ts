@@ -44,6 +44,7 @@ export class ProductsService {
           barcode: dto.barcode,
           image_url: imageUrl,
           category: dto.category,
+          storage: dto.storage ?? null, // 보관 위치 (Storage location)
           status: resolvedStatus,
           is_active: resolvedIsActive,
           unit: dto.unit ?? null,
@@ -59,7 +60,8 @@ export class ProductsService {
           expiry_unit: dto.expiryUnit ?? null,
           alert_days: dto.alertDays ?? null,
           // Packaging unit conversion
-          has_different_packaging_quantity: dto.hasDifferentPackagingQuantity ?? false,
+          has_different_packaging_quantity:
+            dto.hasDifferentPackagingQuantity ?? false,
           packaging_from_quantity: dto.packagingFromQuantity ?? null,
           packaging_from_unit: dto.packagingFromUnit ?? null,
           packaging_to_quantity: dto.packagingToQuantity ?? null,
@@ -118,7 +120,7 @@ export class ProductsService {
           let supplierTenantId = null;
           let companyName = null;
           let supplierRecord = null;
-          
+
           if (s.supplier_id) {
             try {
               // Check if supplier_id is a UUID (Supplier.id)
@@ -126,7 +128,7 @@ export class ProductsService {
                 where: { id: s.supplier_id },
                 select: { tenant_id: true, company_name: true },
               });
-              
+
               if (supplierRecord) {
                 supplierTenantId = supplierRecord.tenant_id;
                 companyName = supplierRecord.company_name;
@@ -161,7 +163,9 @@ export class ProductsService {
               }
             } catch (e) {
               // Log but don't fail - supplier might not be registered on platform yet
-              console.warn(`Failed to find SupplierManager by phone ${s.contact_phone}: ${e}`);
+              console.warn(
+                `Failed to find SupplierManager by phone ${s.contact_phone}: ${e}`
+              );
             }
           }
 
@@ -224,7 +228,11 @@ export class ProductsService {
             } catch (linkError: any) {
               // Log error but don't fail product creation
               // Trade link creation is optional - product creation should succeed even if link creation fails
-              console.warn(`Failed to create ClinicSupplierLink for supplier ${s.supplier_id}: ${linkError?.message || 'Unknown error'}`);
+              console.warn(
+                `Failed to create ClinicSupplierLink for supplier ${
+                  s.supplier_id
+                }: ${linkError?.message || "Unknown error"}`
+              );
             }
           }
         }
@@ -292,7 +300,8 @@ export class ProductsService {
       contactPhone: supplierProduct?.contact_phone ?? null,
       contactEmail: supplierProduct?.contact_email ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
-      storageLocation: latestBatch?.storage ?? null,
+      storageLocation: latestBatch?.storage ?? (product as any).storage ?? null, // Batch level yoki Product level
+      productStorage: (product as any).storage ?? null, // Product level storage (fallback uchun)
       memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
@@ -327,7 +336,7 @@ export class ProductsService {
     return products.map((product: any) => {
       const latestBatch = product.batches?.[0];
       const supplierProduct = product.supplierProducts?.[0];
-      
+
       // Get company_name directly from SupplierProduct (denormalized field)
       const companyName = supplierProduct?.company_name ?? null;
 
@@ -369,7 +378,8 @@ export class ProductsService {
         supplierName: companyName, // Company name from Supplier table
         managerName: supplierProduct?.contact_name ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
-        storageLocation: latestBatch?.storage ?? null,
+        storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch yoki Product level
+        productStorage: product.storage ?? null, // Product level storage
         memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
         expiryMonths: product.expiry_months ?? null,
         expiryUnit: product.expiry_unit ?? null,
@@ -438,9 +448,11 @@ export class ProductsService {
           sale_price: dto.salePrice ?? existing.sale_price,
           current_stock: dto.currentStock ?? existing.current_stock,
           min_stock: dto.minStock ?? existing.min_stock,
-          capacity_per_product: dto.capacityPerProduct ?? (existing as any).capacity_per_product,
+          capacity_per_product:
+            dto.capacityPerProduct ?? (existing as any).capacity_per_product,
           capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
           usage_capacity: dto.usageCapacity ?? (existing as any).usage_capacity,
+          storage: dto.storage !== undefined ? dto.storage : undefined, // Update storage
         } as any,
       });
 
@@ -481,7 +493,7 @@ export class ProductsService {
           // Try to find Supplier by supplier_id to get tenant_id and company_name
           let supplierTenantId = null;
           let companyName = null;
-          
+
           if (supplier.supplier_id) {
             try {
               // Check if supplier_id is a UUID (Supplier.id)
@@ -489,7 +501,7 @@ export class ProductsService {
                 where: { id: supplier.supplier_id },
                 select: { tenant_id: true, company_name: true },
               });
-              
+
               if (supplierRecord) {
                 supplierTenantId = supplierRecord.tenant_id;
                 companyName = supplierRecord.company_name;
@@ -612,8 +624,8 @@ export class ProductsService {
     // Product'ning barcha batch'larini olish
     // IMPORTANT: Faqat qty > 0 bo'lgan batch'larni ko'rsatish (0ga yetgan batch'lar ochib ketadi)
     const batches = await this.prisma.batch.findMany({
-      where: { 
-        product_id: productId, 
+      where: {
+        product_id: productId,
         tenant_id: tenantId,
         qty: { gt: 0 }, // Faqat qty > 0 bo'lgan batch'lar
       },
@@ -692,21 +704,28 @@ export class ProductsService {
       // Avtomatik batch_no yaratish
       const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
+      // Product'ni olish (storage uchun)
+      const product = await tx.product.findFirst({
+        where: { id: productId, tenant_id: tenantId },
+        select: { storage: true },
+      });
+
       // Batch yaratish
       const batch = await tx.batch.create({
         data: {
           tenant_id: tenantId,
           product_id: productId,
           batch_no: batchNo,
-          qty: dto.qty, // 입고 수량 (Inbound quantity)
-          expiry_months: dto.expiry_months ?? null, // 유형 기간 (Expiry period)
+          qty: dto.qty,
+          expiry_months: dto.expiry_months ?? null,
           expiry_unit: dto.expiry_unit ?? null,
           manufacture_date: dto.manufacture_date
             ? new Date(dto.manufacture_date)
-            : null, // 제조일 (Manufacture date) - optional
-          storage: dto.storage ?? null, // 보관 위치 (Storage location) - optional
-          purchase_price: dto.purchase_price ?? null, // 구매원가(원) (Purchase price in KRW) - optional
-          inbound_manager: dto.inbound_manager ?? null, // 입고 담당자 (Inbound manager) - optional
+            : null,
+          // 보관 위치: DTO'dan yoki Product level'dan (fallback)
+          storage: dto.storage ?? (product as any)?.storage ?? null,
+          purchase_price: dto.purchase_price ?? null,
+          inbound_manager: dto.inbound_manager ?? null,
           sale_price: dto.sale_price ?? null,
           expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
           alert_days: dto.alert_days ?? (product as any).alert_days ?? null,
@@ -866,16 +885,20 @@ export class ProductsService {
     });
 
     // Combine both sources
-    const warehouseNames = new Set<string>(warehouseLocations.map((w: any) => w.name));
+    const warehouseNames = new Set<string>(
+      warehouseLocations.map((w: any) => w.name)
+    );
     const batchStorages = batches
       .map((batch) => batch.storage)
       .filter((storage): storage is string => {
-        return storage !== null && storage !== undefined && storage.trim() !== "";
+        return (
+          storage !== null && storage !== undefined && storage.trim() !== ""
+        );
       });
 
     // Merge and deduplicate
     const allStorages = new Set<string>([...warehouseNames, ...batchStorages]);
-    
+
     // Sort alphabetically
     return Array.from<string>(allStorages).sort((a: string, b: string) =>
       a.localeCompare(b, "ko", { sensitivity: "base" })

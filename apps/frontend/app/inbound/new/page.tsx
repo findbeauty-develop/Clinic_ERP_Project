@@ -903,6 +903,7 @@ export default function InboundNewPage() {
         isActive: resolvedIsActive,
         currentStock: Number(formData.currentStock) || 0,
         minStock: Number(formData.minStock) || 0,
+        storage: formData.storage || undefined,
       };
       if (formData.unit && formData.unit !== unitOptions[0]) {
         payload.unit = formData.unit;
