@@ -10,14 +10,29 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   $transaction: any;
 
   constructor() {
-    const databaseUrl = process.env.DATABASE_URL;
+    let databaseUrl = process.env.DATABASE_URL;
     
-    // Validate DATABASE_URL format (before super call, use console)
+    // Validate DATABASE_URL format and ensure pgbouncer parameter for connection poolers
     if (databaseUrl) {
       try {
         const url = new URL(databaseUrl);
         if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
           console.warn(`Invalid database protocol: ${url.protocol}. Expected postgresql:// or postgres://`);
+        }
+        
+        // Check if using a connection pooler (Supabase, Neon, etc.)
+        const isPooler = 
+          url.hostname.includes("pooler.supabase.com") ||
+          url.hostname.includes("neon.tech") ||
+          url.port === "6543" || // pgbouncer default port
+          url.searchParams.has("pgbouncer");
+        
+        // Add pgbouncer=true parameter if using a pooler and it's not already there
+        // This disables prepared statements which are not supported by pgbouncer
+        if (isPooler && !url.searchParams.has("pgbouncer")) {
+          url.searchParams.set("pgbouncer", "true");
+          databaseUrl = url.toString();
+          console.log("✅ Added ?pgbouncer=true to DATABASE_URL to disable prepared statements for connection pooling");
         }
         
         // Check if using port 5432 and suggest port 6543 for pgbouncer
@@ -29,7 +44,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       } catch (error) {
         if (error instanceof TypeError) {
           // Invalid URL format
-          console.warn(`DATABASE_URL format might be incorrect: ${databaseUrl.substring(0, 20)}...`);
+          console.warn(`DATABASE_URL format might be incorrect: ${databaseUrl?.substring(0, 20)}...`);
         }
       }
     }
@@ -104,7 +119,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         lastError = error;
         const errorMessage = error?.message || String(error);
         
-        // Check if it's a connection error
+        // Check if it's a connection error or prepared statement error (pgbouncer)
         const isConnectionError = 
           errorMessage.includes("Can't reach database server") ||
           errorMessage.includes("P1001") ||
@@ -113,14 +128,30 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           errorMessage.includes("Connection timeout") ||
           errorMessage.includes("ECONNREFUSED") ||
           errorMessage.includes("ENOTFOUND") ||
+          errorMessage.includes("prepared statement") ||
+          errorMessage.includes("does not exist") ||
           error?.code === "P1001" ||
-          error?.code === "ECONNREFUSED";
+          error?.code === "ECONNREFUSED" ||
+          error?.code === "26000"; // PostgreSQL error code for prepared statement errors
 
         if (isConnectionError && attempt < retries) {
           this.logger.warn(
             `Database connection error (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay / 1000}s...`
           );
           this.isConnected = false; // Mark as disconnected
+          
+          // For prepared statement errors, disconnect and reconnect to get a fresh connection
+          if (errorMessage.includes("prepared statement") || error?.code === "26000") {
+            try {
+              await this.$disconnect();
+              // Small delay before reconnecting
+              await new Promise(resolve => setTimeout(resolve, 500));
+              await this.$connect();
+            } catch (reconnectError) {
+              // Ignore reconnect errors, will retry
+              this.logger.debug("Reconnect attempt failed, will retry operation");
+            }
+          }
           
           // Exponential backoff with jitter
           await new Promise(resolve => setTimeout(resolve, delay));
