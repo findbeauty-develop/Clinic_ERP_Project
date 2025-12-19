@@ -8,10 +8,12 @@ const getApiUrl = () => {
     // Client-side: window.location orqali backend URL'ni aniqlash
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
-    
+
     // Debug log (faqat development'da)
     if (process.env.NODE_ENV === "development") {
-      console.log(`🔍 DEBUG: getApiUrl - hostname: ${hostname}, protocol: ${protocol}`);
+      console.log(
+        `🔍 DEBUG: getApiUrl - hostname: ${hostname}, protocol: ${protocol}`
+      );
     }
 
     // Agar VPS'da ishlayotgan bo'lsa (72.60.108.46), backend port 3000
@@ -29,7 +31,8 @@ const getApiUrl = () => {
     }
 
     // Boshqa holatda: build vaqtidagi environment variable'dan yoki hostname'dan
-    const fallbackUrl = process.env.NEXT_PUBLIC_API_URL || `http://${hostname}:3000`;
+    const fallbackUrl =
+      process.env.NEXT_PUBLIC_API_URL || `http://${hostname}:3000`;
     if (process.env.NODE_ENV === "development") {
       console.log(`🔍 DEBUG: Using fallback API URL: ${fallbackUrl}`);
     }

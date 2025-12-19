@@ -482,6 +482,15 @@ export default function OrderPage() {
       const unitPrice = product.unitPrice || 0;
       const supplierId = product.supplierId || "unknown";
 
+      // ⚠️ MUHIM: existingItem ni optimistic update'dan OLDIN tekshirish
+      // Chunki optimistic update'dan keyin draft state yangilanadi, lekin bu tekshiruv
+      // eski draft state'dan foydalanadi va noto'g'ri natija beradi
+      // Lekin `POST` muvaffaqiyatli bo'lgandan keyin draft yangilanadi, shuning uchun
+      // keyingi `PUT` chaqiruvida `itemExists` hali ham `false` bo'lishi mumkin.
+      // Shuning uchun `PUT` 404 qaytarsa, `POST` qilish kerak (fallback).
+      const existingItem = draft?.items?.find((item) => item.id === itemId);
+      const itemExists = !!existingItem;
+
       // Optimistic update - darhol local state'ni yangilash (itemId va productId ikkalasini ham yangilash)
       setQuantities((prev) => ({
         ...prev,
@@ -561,34 +570,112 @@ export default function OrderPage() {
             ? localStorage.getItem("erp_access_token")
             : null;
 
-        // Check if item already exists in draft
-        const existingItem = draft?.items?.find((item) => item.id === itemId);
-
+        // itemExists ni optimistic update'dan oldin tekshirilgan (yuqorida)
         if (sanitizedQuantity === 0) {
-          // Delete item
-          await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "x-session-id": sessionId,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ quantity: 0 }),
-          });
-        } else if (existingItem) {
+          // Delete item - faqat item mavjud bo'lsa o'chirish
+          if (itemExists) {
+            await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "x-session-id": sessionId,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ quantity: 0 }),
+            });
+          }
+        } else if (itemExists) {
           // UPDATE existing item (PUT to set absolute quantity)
-          await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "x-session-id": sessionId,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ quantity: sanitizedQuantity }),
-          });
+          try {
+            const putResponse = await fetch(
+              `${apiUrl}/order/draft/items/${itemId}`,
+              {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "x-session-id": sessionId,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ quantity: sanitizedQuantity }),
+              }
+            );
+
+            // PUT muvaffaqiyatli bo'lsa, draft'ni yangilash
+            if (putResponse.ok) {
+              const updatedDraft = await fetchDraftSilent();
+              if (updatedDraft) {
+                setDraft((prevDraft) => {
+                  if (!prevDraft) return updatedDraft;
+                  return {
+                    ...updatedDraft,
+                    items: updatedDraft.items || prevDraft.items,
+                  };
+                });
+              }
+            } else if (putResponse.status === 404) {
+              // Agar PUT 404 qaytarsa, item mavjud emas, POST qilish kerak
+              // 404 error'ni silent qilish - console'da ko'rsatmaslik
+              const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "x-session-id": sessionId,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  productId,
+                  batchId,
+                  quantity: sanitizedQuantity,
+                }),
+              });
+
+              if (postResponse.ok) {
+                const updatedDraft = await postResponse.json();
+                setDraft((prevDraft) => {
+                  if (!prevDraft) return updatedDraft;
+                  return {
+                    ...updatedDraft,
+                    items: updatedDraft.items || prevDraft.items,
+                  };
+                });
+              }
+            } else {
+              // Boshqa error'lar uchun faqat warning ko'rsatish
+              console.warn(
+                `PUT failed with status ${putResponse.status} for item ${itemId}`
+              );
+            }
+          } catch (putErr) {
+            // Network error yoki boshqa xatolar uchun POST qilish
+            // Error'ni console'da ko'rsatmaslik - silent fallback
+            const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "x-session-id": sessionId,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                productId,
+                batchId,
+                quantity: sanitizedQuantity,
+              }),
+            });
+
+            if (postResponse.ok) {
+              const updatedDraft = await postResponse.json();
+              setDraft((prevDraft) => {
+                if (!prevDraft) return updatedDraft;
+                return {
+                  ...updatedDraft,
+                  items: updatedDraft.items || prevDraft.items,
+                };
+              });
+            }
+          }
         } else {
           // ADD new item (POST)
-          await fetch(`${apiUrl}/order/draft/items`, {
+          const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${token}`,
@@ -601,13 +688,27 @@ export default function OrderPage() {
               quantity: sanitizedQuantity,
             }),
           });
-        }
 
-        // Background'da draft'ni yangilash (silent, loading ko'rsatmasdan)
-        // Lekin quantities'ni yangilamaymiz, chunki optimistic update allaqachon qilingan
-        // Faqat draft'ni yangilaymiz, quantities'ni emas
-        // fetchDraftSilent ni o'chirib tashladik, chunki u quantity'larni qayta yangilayapti
-        // Optimistic update yetarli
+          // POST muvaffaqiyatli bo'lsa, draft'ni yangilash
+          if (postResponse.ok) {
+            const updatedDraft = await postResponse.json();
+            // Draft state'ni yangilash (lekin quantities'ni emas, chunki optimistic update allaqachon qilingan)
+            // ⚠️ MUHIM: Draft'ni yangilash keyingi `PUT` chaqiruvida `itemExists` to'g'ri bo'lishi uchun kerak
+            setDraft((prevDraft) => {
+              if (!prevDraft) return updatedDraft;
+              return {
+                ...updatedDraft,
+                // Items'ni yangilash, lekin quantities'ni emas
+                items: updatedDraft.items || prevDraft.items,
+              };
+            });
+
+            // Debug: Draft yangilanganini tasdiqlash
+            console.log(
+              `✅ POST successful, draft updated. Item ${itemId} should now exist in draft.`
+            );
+          }
+        }
       } catch (err) {
         console.error("Failed to update draft", err);
         // Error bo'lsa, rollback - server'dan to'g'ri draft'ni olish
@@ -643,7 +744,7 @@ export default function OrderPage() {
         }
       }
     },
-    [apiUrl, sessionId, products, draft]
+    [apiUrl, sessionId, products, draft, fetchDraftSilent]
   );
 
   // Sort and filter products with client-side calculations
