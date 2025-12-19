@@ -494,12 +494,12 @@ function ProductCard({
       if (batchForm.purchasePrice) {
         payload.purchase_price = parseInt(batchForm.purchasePrice);
       }
-      
+
       // 보관 위치: User input yoki Product level storage (fallback)
-      const storageLocation = batchForm.storageLocation.trim() 
-        ? batchForm.storageLocation 
-        : (product.productStorage || product.storageLocation || null);
-      
+      const storageLocation = batchForm.storageLocation.trim()
+        ? batchForm.storageLocation
+        : product.productStorage || product.storageLocation || null;
+
       if (storageLocation) {
         payload.storage = storageLocation;
       }

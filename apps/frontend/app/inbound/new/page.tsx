@@ -52,7 +52,7 @@ export default function InboundNewPage() {
 
   const [selectedBarcodeMethod, setSelectedBarcodeMethod] =
     useState<string>("manual");
-  const [isReturnable, setIsReturnable] = useState<boolean>(true);
+  const [isReturnable, setIsReturnable] = useState<boolean>(false);
   const [selectedManager, setSelectedManager] = useState<string>(""); // Current logged-in member name
   const [loading, setLoading] = useState(false);
   const [supplierManagers, setSupplierManagers] = useState<
@@ -187,8 +187,9 @@ export default function InboundNewPage() {
     minStockUnit: unitOptions[1] || "cc / mL",
     unit: unitOptions[0],
     capacityPerProduct: 0,
-    capacityUnit: unitOptions[1] || "cc / mL",
+    capacityUnit: unitOptions[1] || "cc / mL", // 제품 용량 unit
     usageCapacity: 0,
+    usageCapacityUnit: unitOptions[1] || "cc / mL", // 사용 단위 unit (alohida)
     purchasePrice: "",
     purchasePriceUnit: unitOptions[1] || "cc / mL",
     salePrice: "",
@@ -230,12 +231,48 @@ export default function InboundNewPage() {
     setFormData((prev) => {
       const newData = { ...prev, [field]: value };
 
-      // 현재 재고 unit tanlanganda, boshqa unit'larni avtomatik o'zgartirish
-      if (field === "currentStockUnit") {
-        newData.capacityUnit = value;
-        newData.minStockUnit = value;
-        newData.purchasePriceUnit = value;
-        newData.salePriceUnit = value;
+      // 제품 재고 수량, 최소 제품 재고, 구매가 unit'lari bir-biriga bog'langan
+      const syncedUnitFields = [
+        "currentStockUnit",
+        "minStockUnit",
+        "purchasePriceUnit",
+      ];
+
+      if (syncedUnitFields.includes(field)) {
+        syncedUnitFields.forEach((unitField) => {
+          if (unitField !== field) {
+            (newData as Record<string, any>)[unitField] = value;
+          }
+        });
+      }
+
+      // 제품 용량 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
+      // Faqat "사용 단위" checkbox o'chirilgan bo'lsa
+      if (field === "capacityUnit") {
+        // Agar "사용 단위" checkbox o'chirilgan bo'lsa, 판매가 unit 제품 용량 unit'iga o'zgaradi
+        if (!prev.enableUsageCapacity) {
+          newData.salePriceUnit = value;
+        }
+      }
+
+      // 사용 단위 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
+      // Faqat "사용 단위" checkbox yoqilgan bo'lsa
+      if (field === "usageCapacityUnit") {
+        // Agar "사용 단위" checkbox yoqilgan bo'lsa, 판매가 unit 사용 단위 unit'iga o'zgaradi
+        if (prev.enableUsageCapacity) {
+          newData.salePriceUnit = value;
+        }
+      }
+
+      // 사용 단위 checkbox bosilganda, 판매가 unit mos ravishda o'zgaradi
+      if (field === "enableUsageCapacity") {
+        if (value === true) {
+          // Checkbox yoqilganda, 판매가 unit 사용 단위 unit'iga o'zgaradi
+          newData.salePriceUnit = prev.usageCapacityUnit;
+        } else {
+          // Checkbox o'chirilganda, 판매가 unit 제품 용량 unit'iga qaytadi
+          newData.salePriceUnit = prev.capacityUnit;
+        }
       }
 
       // 제조일, 유통기한 기간 변경 시 자동 계산
@@ -250,7 +287,7 @@ export default function InboundNewPage() {
           field === "expiryMonths" ? value : prev.expiryMonths;
         const expiryUnit = field === "expiryUnit" ? value : prev.expiryUnit;
 
-        if (manufactureDate && expiryMonths) {
+        if (manufactureDate && expiryMonths && expiryUnit) {
           const mfgDate = new Date(manufactureDate);
           let calculatedDate = new Date(mfgDate);
 
@@ -268,14 +305,11 @@ export default function InboundNewPage() {
             );
           }
 
-          // Format: YYYY-MM-DD
-          newData.expiryDate = calculatedDate.toISOString().split("T")[0];
+          const calculatedExpiryDate = calculatedDate
+            .toISOString()
+            .split("T")[0];
+          newData.expiryDate = calculatedExpiryDate;
         }
-      }
-
-      // 유통기한 직접 입력 시 자동 계산 무시
-      if (field === "expiryDate") {
-        newData.expiryDate = value;
       }
 
       return newData;
@@ -1412,136 +1446,6 @@ export default function InboundNewPage() {
             </div>
 
             {/* Packaging Unit Conversion - Outside Grid for Full Width */}
-            <div className="mt-6">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.hasDifferentPackagingQuantity}
-                  onChange={(e) =>
-                    handleInputChange(
-                      "hasDifferentPackagingQuantity",
-                      e.target.checked
-                    )
-                  }
-                  className="
-        h-5 w-5 shrink-0 rounded
-        appearance-none bg-white
-        border border-white-300
-        checked:bg-white-500 checked:border-white-500
-        focus:outline-none focus:ring-2 focus:ring-white-500
-        dark:bg-white
-        relative
-        after:content-['']
-        after:absolute after:left-1/2 after:top-1/2
-        after:h-2.5 after:w-1.5
-        after:-translate-x-1/2 after:-translate-y-1/2
-        after:rotate-45
-        after:border-r-2 after:border-b-2
-        after:border-black
-        after:opacity-0
-        checked:after:opacity-100
-      "
-                />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  포장 단위 내 제품 수량이 다른 경우
-                </span>
-              </label>
-
-              {/* Conversion Interface */}
-              {formData.hasDifferentPackagingQuantity && (
-                <div className="mt-4 flex w-full gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.packagingFromQuantity || ""}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "packagingFromQuantity",
-                        e.target.value ? Number(e.target.value) : 0
-                      )
-                    }
-                    placeholder="0"
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <div className="relative w-28">
-                    <select
-                      value={formData.packagingFromUnit}
-                      onChange={(e) =>
-                        handleInputChange("packagingFromUnit", e.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    >
-                      {unitOptions.slice(1).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <span className="text-lg font-semibold text-slate-700 dark:text-slate-200 flex items-center px-2">
-                    =
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.packagingToQuantity || "0"}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "packagingToQuantity",
-                        e.target.value ? Number(e.target.value) : 0
-                      )
-                    }
-                    placeholder="0"
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <div className="relative w-28">
-                    <select
-                      value={formData.packagingToUnit}
-                      onChange={(e) =>
-                        handleInputChange("packagingToUnit", e.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    >
-                      {unitOptions.slice(1).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
 
             <div className="grid grid-cols-2 gap-4 mt-6">
               {/* Bottom Row - Capacity Fields */}
@@ -1644,9 +1548,9 @@ export default function InboundNewPage() {
                   />
                   <div className="relative w-28">
                     <select
-                      value={formData.capacityUnit}
+                      value={formData.usageCapacityUnit}
                       onChange={(e) =>
-                        handleInputChange("capacityUnit", e.target.value)
+                        handleInputChange("usageCapacityUnit", e.target.value)
                       }
                       disabled={!formData.enableUsageCapacity}
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
@@ -1732,9 +1636,9 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   공급업체로부터 구매하는 가격
-                </div>
+                </div> */}
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -1754,10 +1658,9 @@ export default function InboundNewPage() {
                   <div className="relative w-28">
                     <select
                       value={formData.salePriceUnit}
-                      onChange={(e) =>
-                        handleInputChange("salePriceUnit", e.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      disabled={true} // Readonly
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-8 text-sm text-slate-600 cursor-not-allowed transition dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
+                      title="제품 용량 또는 사용 단위에 따라 자동으로 설정됩니다"
                     >
                       {unitOptions.slice(1).map((option) => (
                         <option key={option} value={option}>
@@ -1782,13 +1685,13 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   고객에게 판매하는 가격
-                </div>
+                </div> */}
               </div>
             </div>
 
-            {/* 사용량에 대한 별도 판매가 - 사용량이 입력된 경우에만 표시 */}
+            {/* 사용량에 대한 별도 판매가 - 사용량이 입력된 경우에만 표시
             {formData.usageCapacity > 0 && (
               <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-700 dark:bg-sky-900/20">
                 <div className="mb-3 flex items-center gap-2">
@@ -1813,27 +1716,27 @@ export default function InboundNewPage() {
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    사용량 단위 판매가 ({formData.capacityUnit})
+                    사용량 단위 판매가 ({formData.usageCapacityUnit})
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       min="0"
                       placeholder="0"
-                      value={formData.salePrice || ""}
+                      value={formData.usageSalePrice || ""}
                       onChange={(e) =>
-                        handleInputChange("purchasePrice", e.target.value)
+                        handleInputChange("usageSalePrice", e.target.value)
                       }
                       className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     />
                     <div className="relative w-28">
                       <select
-                        value={formData.capacityUnit}
+                        value={formData.usageCapacityUnit}
                         disabled
                         className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-100 px-3 pr-8 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       >
-                        <option value={formData.capacityUnit}>
-                          {formData.capacityUnit}
+                        <option value={formData.usageCapacityUnit}>
+                          {formData.usageCapacityUnit}
                         </option>
                       </select>
                       <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
@@ -1854,12 +1757,12 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                    사용량 단위({formData.capacityUnit})에 대한 별도 판매가를
-                    입력하세요
+                    사용량 단위({formData.usageCapacityUnit})에 대한 별도
+                    판매가를 입력하세요
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         </section>
         <section className="space-y-6">
@@ -2324,7 +2227,7 @@ export default function InboundNewPage() {
                             phoneNumber: e.target.value,
                           }))
                         }
-                        placeholder="000-0000-0000"
+                        placeholder="“-”없이 입력해주세요."
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>
