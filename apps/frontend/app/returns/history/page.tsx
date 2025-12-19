@@ -58,7 +58,9 @@ export default function ReturnHistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const searchParam = debouncedSearchQuery ? `&search=${encodeURIComponent(debouncedSearchQuery)}` : "";
+      const searchParam = debouncedSearchQuery
+        ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
+        : "";
       const response = await apiGet<{
         items: any[];
         total: number;
@@ -68,28 +70,37 @@ export default function ReturnHistoryPage() {
       }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}`);
 
       // Format history items
-      const formattedItems: ReturnHistoryItem[] = response.items.map((item: any) => {
-        // Get supplier notification status (latest notification)
-        const latestNotification = item.supplierReturnNotifications?.[0];
-        const supplierStatus = latestNotification?.status || null;
-        
-        return {
-          id: item.id,
-          productId: item.product_id || item.productId,
-          productName: item.product?.name || item.productName || "Unknown",
-          brand: item.product?.brand || item.brand || "",
-          batchNo: item.batch?.batch_no || item.batch_no || "",
-          returnQty: item.return_qty || item.returnQty || 0,
-          refundAmount: item.refund_amount || item.refundAmount || 0,
-          totalRefund: item.total_refund || item.totalRefund || 0,
-          managerName: item.manager_name || item.managerName || "",
-          returnDate: item.return_date || item.returnDate || "",
-          supplierName: item.product?.supplierProducts?.[0]?.supplier_id || item.supplier_id || item.supplier_name || item.supplierName || null,
-          outboundDate: item.outbound?.outbound_date || item.outboundDate || null,
-          outboundManager: item.outbound?.manager_name || item.outboundManager || null,
-          supplierStatus: supplierStatus,
-        };
-      });
+      const formattedItems: ReturnHistoryItem[] = response.items.map(
+        (item: any) => {
+          // Get supplier notification status (latest notification)
+          const latestNotification = item.supplierReturnNotifications?.[0];
+          const supplierStatus = latestNotification?.status || null;
+
+          return {
+            id: item.id,
+            productId: item.product_id || item.productId,
+            productName: item.product?.name || item.productName || "Unknown",
+            brand: item.product?.brand || item.brand || "",
+            batchNo: item.batch?.batch_no || item.batch_no || "",
+            returnQty: item.return_qty || item.returnQty || 0,
+            refundAmount: item.refund_amount || item.refundAmount || 0,
+            totalRefund: item.total_refund || item.totalRefund || 0,
+            managerName: item.manager_name || item.managerName || "",
+            returnDate: item.return_date || item.returnDate || "",
+            supplierName:
+              item.product?.supplierProducts?.[0]?.supplier_id ||
+              item.supplier_id ||
+              item.supplier_name ||
+              item.supplierName ||
+              null,
+            outboundDate:
+              item.outbound?.outbound_date || item.outboundDate || null,
+            outboundManager:
+              item.outbound?.manager_name || item.outboundManager || null,
+            supplierStatus: supplierStatus,
+          };
+        }
+      );
 
       setHistoryData(formattedItems);
       setTotalPages(response.totalPages || 1);
@@ -109,7 +120,7 @@ export default function ReturnHistoryPage() {
       // Agar bir xil return ID bo'lsa, bitta card'da ko'rsatiladi (bir vaqtda return qilingan maxsulotlar)
       // Har bir yangi return transaction yangi card'da ko'rinadi
       const key = item.id; // Use return ID as the grouping key
-      
+
       if (!groups[key]) {
         groups[key] = {
           supplierName: item.supplierName ?? null,
@@ -124,16 +135,16 @@ export default function ReturnHistoryPage() {
       }
       groups[key].items.push(item);
       groups[key].totalAmount += item.totalRefund;
-      
+
       // Update group status: if ANY item is ACCEPTED, show ACCEPTED; otherwise show PENDING if any is PENDING
       const allStatuses = groups[key].items
-        .map(i => i.supplierStatus)
-        .filter(s => s !== null && s !== undefined);
-      
+        .map((i) => i.supplierStatus)
+        .filter((s) => s !== null && s !== undefined);
+
       if (allStatuses.length > 0) {
-        const anyAccepted = allStatuses.some(s => s === "ACCEPTED");
-        const anyPending = allStatuses.some(s => s === "PENDING");
-        
+        const anyAccepted = allStatuses.some((s) => s === "ACCEPTED");
+        const anyPending = allStatuses.some((s) => s === "PENDING");
+
         // Priority: If ANY item is ACCEPTED, show ACCEPTED (완료)
         // Otherwise, if ANY is PENDING, show PENDING (요청중)
         if (anyAccepted) {
@@ -169,12 +180,13 @@ export default function ReturnHistoryPage() {
               </p>
             </div>
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              마지막 업데이트: {new Date().toLocaleString("ko-KR", { 
-                year: "numeric", 
-                month: "2-digit", 
-                day: "2-digit", 
-                hour: "2-digit", 
-                minute: "2-digit" 
+              마지막 업데이트:{" "}
+              {new Date().toLocaleString("ko-KR", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
               })}
             </div>
           </div>
@@ -233,7 +245,9 @@ export default function ReturnHistoryPage() {
           </div>
         ) : groupedHistory.length === 0 ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-slate-500 dark:text-slate-400">반납 내역이 없습니다.</div>
+            <div className="text-slate-500 dark:text-slate-400">
+              반납 내역이 없습니다.
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
@@ -263,7 +277,8 @@ export default function ReturnHistoryPage() {
                 {/* 공급처 va 총 반납 금액 - qarama-qarshi */}
                 <div className="mb-4 flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
                   <div>
-                    공급처: {group.supplierName || "공급처 없음"} {group.managerName || ""}
+                    공급처: {group.supplierName || "공급처 없음"}{" "}
+                    {group.managerName || ""}
                   </div>
                   <div className="flex flex-col items-end gap-4">
                     {/* Status Button - tepada */}
@@ -299,22 +314,22 @@ export default function ReturnHistoryPage() {
                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           {item.productName}
                         </div>
-                        
+
                         {/* Brend */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
                           브랜드: {item.brand}
                         </div>
-                        
+
                         {/* Har birining narxi */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
                           개당 금액: {item.refundAmount.toLocaleString()}
                         </div>
-                        
+
                         {/* Qaytarilish miqdori */}
                         <div className="text-sm text-slate-700 dark:text-slate-300">
                           반납 수량: {item.returnQty}개
                         </div>
-                        
+
                         {/* Qaytarilganda hammasining narxi */}
                         <div className="text-sm font-bold text-slate-900 dark:text-white">
                           총 반납 금액: {item.totalRefund.toLocaleString()}
@@ -354,4 +369,3 @@ export default function ReturnHistoryPage() {
     </div>
   );
 }
-

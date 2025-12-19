@@ -49,10 +49,10 @@ export default function OutboundHistoryPage() {
       }
       queryParams.append("page", currentPage.toString());
       queryParams.append("limit", itemsPerPage.toString());
-      
+
       const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
       console.log("Fetching history from:", url);
-      
+
       const data = await apiGet<{
         items: any[];
         total: number;
@@ -60,7 +60,7 @@ export default function OutboundHistoryPage() {
         limit: number;
         totalPages: number;
       }>(url);
-      
+
       console.log("History API response:", data);
       setHistoryData(data.items || []);
       setTotalPages(data.totalPages || 1);
@@ -76,7 +76,7 @@ export default function OutboundHistoryPage() {
   // Group history by date and manager
   const groupedHistory = useMemo(() => {
     const groups: { [key: string]: any[] } = {};
-    
+
     historyData.forEach((item) => {
       // Backend response uses camelCase: outboundDate, managerName, etc.
       const outboundDateValue = item.outboundDate || item.outbound_date;
@@ -85,7 +85,7 @@ export default function OutboundHistoryPage() {
       }
 
       const outboundDate = new Date(outboundDateValue);
-      
+
       // Check if date is valid
       if (isNaN(outboundDate.getTime())) {
         return; // Skip invalid dates
@@ -98,7 +98,7 @@ export default function OutboundHistoryPage() {
       });
       const manager = item.managerName || item.manager_name || "Unknown";
       const groupKey = `${date} ${time} ${manager}님 출고`;
-      
+
       if (!groups[groupKey]) {
         groups[groupKey] = [];
       }
@@ -115,7 +115,6 @@ export default function OutboundHistoryPage() {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
 
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
@@ -143,7 +142,7 @@ export default function OutboundHistoryPage() {
                   />
                 </svg>
               </Link>
-              
+
               <div>
                 <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
                   출고 내역
@@ -153,7 +152,6 @@ export default function OutboundHistoryPage() {
                 </p>
               </div>
             </div>
-            
           </div>
         </header>
 
@@ -232,7 +230,7 @@ export default function OutboundHistoryPage() {
               {groupedHistory.map(([groupKey, items]) => {
                 const [date, time, managerText] = groupKey.split(" ");
                 const manager = managerText.replace("님 출고", "");
-                
+
                 return (
                   <div
                     key={groupKey}
@@ -246,25 +244,35 @@ export default function OutboundHistoryPage() {
                             {date} {time} {managerText}
                           </h3>
                           {/* 패키지 출고와 단품 출고 구분 표시 */}
-                          {(items[0]?.outboundType || items[0]?.outbound_type) && (
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                              (items[0].outboundType || items[0].outbound_type) === "패키지"
-                                ? "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
-                                : (items[0].outboundType || items[0].outbound_type) === "바코드"
-                                ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
-                                : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
-                            }`}>
-                              {(items[0].outboundType || items[0].outbound_type) === "패키지" 
-                                ? `${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}님 출고` : ''}`
-                                : (items[0].outboundType || items[0].outbound_type) === "바코드" 
-                                ? "바코드 출고" 
-                                : "단품 출고"}
+                          {(items[0]?.outboundType ||
+                            items[0]?.outbound_type) && (
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                (items[0].outboundType ||
+                                  items[0].outbound_type) === "패키지"
+                                  ? "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
+                                  : (items[0].outboundType ||
+                                        items[0].outbound_type) === "바코드"
+                                    ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                    : "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
+                              }`}
+                            >
+                              {(items[0].outboundType ||
+                                items[0].outbound_type) === "패키지"
+                                ? `${items[0]?.packageName || items[0]?.package_name ? `: ${items[0].packageName || items[0].package_name}님 출고` : ""}`
+                                : (items[0].outboundType ||
+                                      items[0].outbound_type) === "바코드"
+                                  ? "바코드 출고"
+                                  : "단품 출고"}
                             </span>
                           )}
                         </div>
-                        {(items[0]?.memo?.includes("교육") || items[0]?.memo?.includes("테스트")) && (
+                        {(items[0]?.memo?.includes("교육") ||
+                          items[0]?.memo?.includes("테스트")) && (
                           <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
-                            {items[0]?.memo?.includes("교육") ? "교육용" : "테스트"}
+                            {items[0]?.memo?.includes("교육")
+                              ? "교육용"
+                              : "테스트"}
                           </span>
                         )}
                       </div>
@@ -276,29 +284,43 @@ export default function OutboundHistoryPage() {
                         const product = item.product;
                         const batch = item.batch;
                         // Backend response uses camelCase
-                        const outboundDateValue = item.outboundDate || item.outbound_date;
-                        const outboundDate = outboundDateValue ? new Date(outboundDateValue) : new Date();
+                        const outboundDateValue =
+                          item.outboundDate || item.outbound_date;
+                        const outboundDate = outboundDateValue
+                          ? new Date(outboundDateValue)
+                          : new Date();
                         // Check if date is valid
                         const isValidDate = !isNaN(outboundDate.getTime());
-                        const month = isValidDate ? outboundDate.getMonth() + 1 : new Date().getMonth() + 1;
-                        const day = isValidDate ? outboundDate.getDate() : new Date().getDate();
-                        const isDamaged = item.isDamaged || item.is_damaged || false;
-                        const isDefective = item.isDefective || item.is_defective || false;
-                        const hasSpecialNote = isDamaged || isDefective || item.memo;
+                        const month = isValidDate
+                          ? outboundDate.getMonth() + 1
+                          : new Date().getMonth() + 1;
+                        const day = isValidDate
+                          ? outboundDate.getDate()
+                          : new Date().getDate();
+                        const isDamaged =
+                          item.isDamaged || item.is_damaged || false;
+                        const isDefective =
+                          item.isDefective || item.is_defective || false;
+                        const hasSpecialNote =
+                          isDamaged || isDefective || item.memo;
                         const specialNote = isDamaged
                           ? "파손"
                           : isDefective
-                          ? "불량"
-                          : item.memo?.includes("떨어뜨림")
-                          ? "떨어뜨림"
-                          : item.memo?.includes("반품")
-                          ? "반품"
-                          : item.memo || null;
+                            ? "불량"
+                            : item.memo?.includes("떨어뜨림")
+                              ? "떨어뜨림"
+                              : item.memo?.includes("반품")
+                                ? "반품"
+                                : item.memo || null;
 
                         // Calculate price (assuming salePrice * quantity)
-                        const outboundQty = item.outboundQty || item.outbound_qty || 0;
-                        const salePrice = product?.salePrice || product?.sale_price || 0;
-                        const price = salePrice ? salePrice * outboundQty : null;
+                        const outboundQty =
+                          item.outboundQty || item.outbound_qty || 0;
+                        const salePrice =
+                          product?.salePrice || product?.sale_price || 0;
+                        const price = salePrice
+                          ? salePrice * outboundQty
+                          : null;
 
                         return (
                           <div
@@ -312,19 +334,24 @@ export default function OutboundHistoryPage() {
                                     {product?.name || "Unknown Product"}
                                   </h4>
                                   {/* 패키지 출고인 경우 패키지명 표시 */}
-                                  {(item.outboundType || item.outbound_type) === "패키지" && (item.packageName || item.package_name) && (
-                                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
-                                      패키지: {item.packageName || item.package_name}
-                                    </span>
-                                  )}
+                                  {(item.outboundType || item.outbound_type) ===
+                                    "패키지" &&
+                                    (item.packageName || item.package_name) && (
+                                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                        패키지:{" "}
+                                        {item.packageName || item.package_name}
+                                      </span>
+                                    )}
                                   {(batch?.batchNo || batch?.batch_no) && (
                                     <span className="text-sm text-slate-500 dark:text-slate-400">
-                                      ({(batch.batchNo || batch.batch_no)})
+                                      ({batch.batchNo || batch.batch_no})
                                     </span>
                                   )}
                                   {hasSpecialNote && (
                                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white">
-                                      <span className="text-xs font-bold">!</span>
+                                      <span className="text-xs font-bold">
+                                        !
+                                      </span>
                                     </div>
                                   )}
                                 </div>
@@ -335,28 +362,34 @@ export default function OutboundHistoryPage() {
                                       {month}월 {day}일
                                     </span>
                                     <span>
-                                      {item.managerName || item.manager_name}에 의한 출고
+                                      {item.managerName || item.manager_name}에
+                                      의한 출고
                                     </span>
                                     {(batch?.batchNo || batch?.batch_no) && (
                                       <span>
-                                        (배치: {batch.batchNo || batch.batch_no})
+                                        (배치: {batch.batchNo || batch.batch_no}
+                                        )
                                       </span>
                                     )}
-                                    {(item.patientName || item.patient_name) && (
+                                    {(item.patientName ||
+                                      item.patient_name) && (
                                       <span>
-                                        - 환자: {item.patientName || item.patient_name}
+                                        - 환자:{" "}
+                                        {item.patientName || item.patient_name}
                                       </span>
                                     )}
-                                    {(item.chartNumber || item.chart_number) && (
+                                    {(item.chartNumber ||
+                                      item.chart_number) && (
                                       <span>
-                                        (차트번호: {item.chartNumber || item.chart_number})
+                                        (차트번호:{" "}
+                                        {item.chartNumber || item.chart_number})
                                       </span>
                                     )}
-                                    {item.memo && !isDamaged && !isDefective && (
-                                      <span>
-                                        - {item.memo}
-                                      </span>
-                                    )}
+                                    {item.memo &&
+                                      !isDamaged &&
+                                      !isDefective && (
+                                        <span>- {item.memo}</span>
+                                      )}
                                     {specialNote && (
                                       <span className="font-semibold text-red-600 dark:text-red-400">
                                         특이사항 {specialNote}
@@ -394,10 +427,15 @@ export default function OutboundHistoryPage() {
               <div className="flex items-center justify-between">
                 {/* Page Info */}
                 <div className="text-sm">
-                  <span className="font-bold text-slate-900 dark:text-white">{currentPage}</span>
-                  <span className="text-slate-500 dark:text-slate-400"> / {totalPages} 페이지</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {currentPage}
+                  </span>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {" "}
+                    / {totalPages} 페이지
+                  </span>
                 </div>
-                
+
                 {/* Navigation Buttons */}
                 <div className="flex items-center gap-2">
                   {/* Previous Button */}
@@ -406,25 +444,37 @@ export default function OutboundHistoryPage() {
                     disabled={currentPage === 1}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
                     </svg>
                   </button>
 
                   {/* Page Numbers */}
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => handlePageChange(page)}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
-                        page === currentPage
-                          ? "bg-blue-500 text-white"
-                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <button
+                        key={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                          page === currentPage
+                            ? "bg-blue-500 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                  )}
 
                   {/* Next Button */}
                   <button
@@ -432,8 +482,18 @@ export default function OutboundHistoryPage() {
                     disabled={currentPage === totalPages}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -445,4 +505,3 @@ export default function OutboundHistoryPage() {
     </main>
   );
 }
-

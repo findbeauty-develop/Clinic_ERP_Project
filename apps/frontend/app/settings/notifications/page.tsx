@@ -9,7 +9,10 @@ type ClinicSettings = {
 };
 
 export default function NotificationSettingsPage() {
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
   const [settings, setSettings] = useState<ClinicSettings>({
     allowCompanySearch: false,
     allowInfoDisclosure: false,
@@ -28,22 +31,29 @@ export default function NotificationSettingsPage() {
     setError(null);
     try {
       const tenantId = getTenantId();
-      
+
       // Fetch clinic settings - returns array, get first one
       const clinics = await apiGet<any[]>(`${apiUrl}/iam/members/clinics`);
-      const clinic = Array.isArray(clinics) && clinics.length > 0 ? clinics[0] : clinics;
-      
+      const clinic =
+        Array.isArray(clinics) && clinics.length > 0 ? clinics[0] : clinics;
+
       // Handle both boolean and string "true"/"false" values
-      const allowCompanySearch = clinic?.allow_company_search === true || clinic?.allow_company_search === "true";
-      const allowInfoDisclosure = clinic?.allow_info_disclosure === true || clinic?.allow_info_disclosure === "true";
-      
+      const allowCompanySearch =
+        clinic?.allow_company_search === true ||
+        clinic?.allow_company_search === "true";
+      const allowInfoDisclosure =
+        clinic?.allow_info_disclosure === true ||
+        clinic?.allow_info_disclosure === "true";
+
       setSettings({
         allowCompanySearch,
         allowInfoDisclosure,
       });
     } catch (err: any) {
       console.error("Failed to load settings", err);
-      setError(`설정 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`);
+      setError(
+        `설정 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`
+      );
     } finally {
       setLoading(false);
     }
@@ -57,7 +67,7 @@ export default function NotificationSettingsPage() {
 
     try {
       const tenantId = getTenantId();
-      
+
       // Update clinic settings - send both fields to preserve the other one
       const updatePayload: any = {};
       if (field === "allowCompanySearch") {
@@ -67,7 +77,7 @@ export default function NotificationSettingsPage() {
         updatePayload.allow_company_search = settings.allowCompanySearch;
         updatePayload.allow_info_disclosure = newValue;
       }
-      
+
       await apiPut(`${apiUrl}/iam/members/clinics`, updatePayload);
 
       setSettings((prev) => ({
@@ -75,8 +85,6 @@ export default function NotificationSettingsPage() {
         [field]: newValue,
       }));
 
-     
-      
       // Refresh settings to ensure we have the latest data from server
       setTimeout(() => {
         fetchSettings();
@@ -146,7 +154,8 @@ export default function NotificationSettingsPage() {
                       기업 측 검색 결과에 내 병원이 노출되도록 허용합니다.
                     </p>
                     <p className="mb-3 text-sm text-slate-500 dark:text-slate-500">
-                      검색 허용을 끄면 기업은 병원 정보를 검색하거나 찾을 수 없습니다.
+                      검색 허용을 끄면 기업은 병원 정보를 검색하거나 찾을 수
+                      없습니다.
                     </p>
                     <a
                       href="#"
@@ -171,7 +180,9 @@ export default function NotificationSettingsPage() {
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          settings.allowCompanySearch ? "translate-x-6" : "translate-x-1"
+                          settings.allowCompanySearch
+                            ? "translate-x-6"
+                            : "translate-x-1"
                         }`}
                       />
                     </button>
@@ -190,10 +201,12 @@ export default function NotificationSettingsPage() {
                       병원 정보를 공개로 설정하면, 인증된 기업 사용자가
                     </p>
                     <p className="mb-2 text-sm text-slate-600 dark:text-slate-400">
-                      병원명, 주소, 담당자 정보, 취급 품목 등을 조회할 수 있습니다.
+                      병원명, 주소, 담당자 정보, 취급 품목 등을 조회할 수
+                      있습니다.
                     </p>
                     <p className="text-sm text-slate-500 dark:text-slate-500">
-                      공개를 활성화하면 더 많은 기업과의 협업 기회를 얻을 수 있습니다.
+                      공개를 활성화하면 더 많은 기업과의 협업 기회를 얻을 수
+                      있습니다.
                     </p>
                   </div>
                   <div className="ml-6 flex-shrink-0">
@@ -208,7 +221,9 @@ export default function NotificationSettingsPage() {
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          settings.allowInfoDisclosure ? "translate-x-6" : "translate-x-1"
+                          settings.allowInfoDisclosure
+                            ? "translate-x-6"
+                            : "translate-x-1"
                         }`}
                       />
                     </button>
@@ -225,21 +240,18 @@ export default function NotificationSettingsPage() {
               <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
                 <li className="flex items-start">
                   <span className="mr-2 text-sky-500">•</span>
-                  <span>
-                    병원 정보는 인증된 기업 사용자에게만 제공됩니다.
-                  </span>
+                  <span>병원 정보는 인증된 기업 사용자에게만 제공됩니다.</span>
                 </li>
                 <li className="flex items-start">
                   <span className="mr-2 text-sky-500">•</span>
                   <span>
-                    민감 정보(개인 연락처, 내부 문서 등)는 자동으로 비공개 처리됩니다.
+                    민감 정보(개인 연락처, 내부 문서 등)는 자동으로 비공개
+                    처리됩니다.
                   </span>
                 </li>
                 <li className="flex items-start">
                   <span className="mr-2 text-sky-500">•</span>
-                  <span>
-                    공개 설정은 언제든지 변경할 수 있습니다.
-                  </span>
+                  <span>공개 설정은 언제든지 변경할 수 있습니다.</span>
                 </li>
               </ul>
             </div>
@@ -249,4 +261,3 @@ export default function NotificationSettingsPage() {
     </div>
   );
 }
-

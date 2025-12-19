@@ -55,22 +55,26 @@ type ScheduledItem = {
 export default function PackageOutboundPage() {
   const pathname = usePathname();
   const isPackageOutbound = pathname === "/outbound/package";
-  
+
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
-  
+
   const [packages, setPackages] = useState<PackageForOutbound[]>([]);
-  const [selectedPackageItems, setSelectedPackageItems] = useState<PackageItemForOutbound[]>([]);
+  const [selectedPackageItems, setSelectedPackageItems] = useState<
+    PackageItemForOutbound[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   // Cache for package expiry info (packageId -> earliest expiry date timestamp)
-  const [packageExpiryCache, setPackageExpiryCache] = useState<Record<string, number | null>>({});
-  
+  const [packageExpiryCache, setPackageExpiryCache] = useState<
+    Record<string, number | null>
+  >({});
+
   // Outbound processing form state
   const [managerName, setManagerName] = useState("");
   const [isDamaged, setIsDamaged] = useState(false);
@@ -79,7 +83,9 @@ export default function PackageOutboundPage() {
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]);
-  const [packageCounts, setPackageCounts] = useState<Record<string, number>>({});
+  const [packageCounts, setPackageCounts] = useState<Record<string, number>>(
+    {}
+  );
 
   useEffect(() => {
     fetchPackages();
@@ -95,17 +101,19 @@ export default function PackageOutboundPage() {
     setError(null);
     try {
       const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
-      
+
       setPackages(data);
-      
+
       // Fetch expiry info for each package in parallel (for sorting)
       const expiryPromises = data.map(async (pkg) => {
         try {
-          const items = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`);
-          
+          const items = await apiGet<PackageItemForOutbound[]>(
+            `${apiUrl}/packages/${pkg.id}/items`
+          );
+
           // Find earliest expiry date from all batches
           let earliestExpiry: number | null = null;
-          
+
           items.forEach((item) => {
             item.batches?.forEach((batch) => {
               if (batch.expiryDate) {
@@ -116,17 +124,20 @@ export default function PackageOutboundPage() {
               }
             });
           });
-          
+
           return { packageId: pkg.id, expiry: earliestExpiry };
         } catch (err) {
-          console.error(`Failed to load expiry info for package ${pkg.id}`, err);
+          console.error(
+            `Failed to load expiry info for package ${pkg.id}`,
+            err
+          );
           return { packageId: pkg.id, expiry: null };
         }
       });
-      
+
       // Wait for all expiry info to load
       const expiryResults = await Promise.all(expiryPromises);
-      
+
       // Update cache
       const newCache: Record<string, number | null> = {};
       expiryResults.forEach(({ packageId, expiry }) => {
@@ -143,7 +154,9 @@ export default function PackageOutboundPage() {
 
   const fetchPackageItems = async (packageId: string) => {
     try {
-      const data = await apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${packageId}/items`);
+      const data = await apiGet<PackageItemForOutbound[]>(
+        `${apiUrl}/packages/${packageId}/items`
+      );
       setSelectedPackageItems(data);
     } catch (err) {
       console.error("Failed to load package items", err);
@@ -157,8 +170,10 @@ export default function PackageOutboundPage() {
 
   const handleAddToOutbound = async (pkg: PackageForOutbound) => {
     // Check if package already exists in scheduled items
-    const existingPackageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
-    
+    const existingPackageItems = scheduledItems.filter(
+      (item) => item.packageId === pkg.id
+    );
+
     if (existingPackageItems.length > 0) {
       // Package already exists, just increment count (don't add duplicate items)
       setPackageCounts((prev) => ({
@@ -168,7 +183,7 @@ export default function PackageOutboundPage() {
       // Don't add more items - just update the count
       return;
     }
-    
+
     // New package - add items immediately (optimistic update)
     if (pkg.items && pkg.items.length > 0) {
       const timestamp = Date.now();
@@ -186,7 +201,7 @@ export default function PackageOutboundPage() {
 
       // Add items to the beginning of the list (newest first)
       setScheduledItems((prev) => [...optimisticItems, ...prev]);
-      
+
       // Update package count immediately
       setPackageCounts((prev) => ({
         ...prev,
@@ -200,11 +215,14 @@ export default function PackageOutboundPage() {
           setScheduledItems((prev) => {
             return prev.map((scheduledItem) => {
               // Find matching optimistic item by packageId and productId
-              if (scheduledItem.packageId === pkg.id && scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)) {
+              if (
+                scheduledItem.packageId === pkg.id &&
+                scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)
+              ) {
                 const itemWithBatch = itemsWithBatches.find(
                   (item) => item.productId === scheduledItem.productId
                 );
-                
+
                 if (itemWithBatch) {
                   const firstBatch = itemWithBatch.batches[0];
                   if (firstBatch && firstBatch.qty > 0) {
@@ -244,7 +262,8 @@ export default function PackageOutboundPage() {
         const newQuantity = Math.max(0, existing.quantity + delta);
         if (newQuantity === 0) {
           return prev.filter(
-            (item) => !(item.productId === productId && item.batchId === batchId)
+            (item) =>
+              !(item.productId === productId && item.batchId === batchId)
           );
         }
         return prev.map((item) =>
@@ -280,16 +299,19 @@ export default function PackageOutboundPage() {
     setSubmitting(true);
     try {
       // Group items by package to multiply quantity by package count
-      const itemsByPackage = scheduledItems.reduce((acc, item) => {
-        const key = `${item.packageId}-${item.productId}-${item.batchId}`;
-        if (!acc[key]) {
-          acc[key] = {
-            ...item,
-            quantity: item.quantity * (packageCounts[item.packageId] || 1), // Multiply by package count
-          };
-        }
-        return acc;
-      }, {} as Record<string, ScheduledItem & { quantity: number }>);
+      const itemsByPackage = scheduledItems.reduce(
+        (acc, item) => {
+          const key = `${item.packageId}-${item.productId}-${item.batchId}`;
+          if (!acc[key]) {
+            acc[key] = {
+              ...item,
+              quantity: item.quantity * (packageCounts[item.packageId] || 1), // Multiply by package count
+            };
+          }
+          return acc;
+        },
+        {} as Record<string, ScheduledItem & { quantity: number }>
+      );
 
       // Use unified outbound API for package outbound
       const payload = {
@@ -305,7 +327,7 @@ export default function PackageOutboundPage() {
       };
 
       const response = await apiPost(`${apiUrl}/outbound/unified`, payload);
-      
+
       // 출고 후 목록 초기화 및 로그 기록
       console.log("패키지 출고 완료:", {
         timestamp: new Date().toISOString(),
@@ -313,18 +335,21 @@ export default function PackageOutboundPage() {
         items: scheduledItems.length,
         itemsDetail: scheduledItems,
       });
-      
+
       // 성공한 항목과 실패한 항목 분리
       if (response && response.failedItems && response.failedItems.length > 0) {
         const failed = scheduledItems.filter((item) =>
           response.failedItems.some(
             (failed: any) =>
-              failed.productId === item.productId && failed.batchId === item.batchId
+              failed.productId === item.productId &&
+              failed.batchId === item.batchId
           )
         );
         setFailedItems(failed);
         const successCount = scheduledItems.length - failed.length;
-        alert(`${successCount}개 항목 출고 완료, ${failed.length}개 항목 실패했습니다.`);
+        alert(
+          `${successCount}개 항목 출고 완료, ${failed.length}개 항목 실패했습니다.`
+        );
       } else {
         alert("패키지 출고가 완료되었습니다.");
         setFailedItems([]);
@@ -336,7 +361,7 @@ export default function PackageOutboundPage() {
         setIsDefective(false);
         setPackageCounts({});
       }
-      
+
       // 성공한 항목만 제거
       if (response && response.failedItems && response.failedItems.length > 0) {
         const failedIds = new Set(
@@ -350,7 +375,10 @@ export default function PackageOutboundPage() {
       }
     } catch (err: any) {
       console.error("Failed to process outbound", err);
-      const errorMessage = err.response?.data?.message || err.message || "출고 처리 중 오류가 발생했습니다.";
+      const errorMessage =
+        err.response?.data?.message ||
+        err.message ||
+        "출고 처리 중 오류가 발생했습니다.";
       alert(errorMessage);
     } finally {
       setSubmitting(false);
@@ -364,17 +392,27 @@ export default function PackageOutboundPage() {
         outboundType: "패키지",
         managerName: managerName.trim(),
         memo: additionalMemo.trim() || undefined,
-        items: [{
-          productId: item.productId,
-          batchId: item.batchId,
-          outboundQty: item.quantity,
-          packageId: item.packageId,
-        }],
+        items: [
+          {
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity,
+            packageId: item.packageId,
+          },
+        ],
       };
 
       await apiPost(`${apiUrl}/outbound/unified`, payload);
-      setFailedItems((prev) => prev.filter((i) => !(i.productId === item.productId && i.batchId === item.batchId)));
-      setScheduledItems((prev) => prev.filter((i) => !(i.productId === item.productId && i.batchId === item.batchId)));
+      setFailedItems((prev) =>
+        prev.filter(
+          (i) => !(i.productId === item.productId && i.batchId === item.batchId)
+        )
+      );
+      setScheduledItems((prev) =>
+        prev.filter(
+          (i) => !(i.productId === item.productId && i.batchId === item.batchId)
+        )
+      );
       alert("재시도 성공");
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || "재시도 실패");
@@ -404,14 +442,24 @@ export default function PackageOutboundPage() {
         const failed = failedItems.filter((item) =>
           response.failedItems.some(
             (failed: any) =>
-              failed.productId === item.productId && failed.batchId === item.batchId
+              failed.productId === item.productId &&
+              failed.batchId === item.batchId
           )
         );
         setFailedItems(failed);
-        alert(`${failedItems.length - failed.length}개 항목 재시도 성공, ${failed.length}개 항목 실패`);
+        alert(
+          `${failedItems.length - failed.length}개 항목 재시도 성공, ${failed.length}개 항목 실패`
+        );
       } else {
         setFailedItems([]);
-        setScheduledItems((prev) => prev.filter((i) => !failedItems.some((f) => f.productId === i.productId && f.batchId === i.batchId)));
+        setScheduledItems((prev) =>
+          prev.filter(
+            (i) =>
+              !failedItems.some(
+                (f) => f.productId === i.productId && f.batchId === i.batchId
+              )
+          )
+        );
         alert("모든 항목 재시도 성공");
       }
     } catch (err: any) {
@@ -423,7 +471,7 @@ export default function PackageOutboundPage() {
 
   const filteredPackages = useMemo(() => {
     let filtered = packages;
-    
+
     // Filter by search query if provided
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -438,21 +486,21 @@ export default function PackageOutboundPage() {
           )
       );
     }
-    
+
     // Sort by expiry date: packages with expiring products first (FEFO)
     return filtered.sort((a, b) => {
       const aExpiry = packageExpiryCache[a.id];
       const bExpiry = packageExpiryCache[b.id];
-      
+
       // Packages with expiry dates come first
       if (aExpiry !== null && bExpiry === null) return -1;
       if (aExpiry === null && bExpiry !== null) return 1;
-      
+
       // Both have expiry dates: sort by earliest expiry (FEFO)
       if (aExpiry !== null && bExpiry !== null) {
         return aExpiry - bExpiry;
       }
-      
+
       // Neither has expiry date: sort by name
       return a.name.localeCompare(b.name);
     });
@@ -468,7 +516,9 @@ export default function PackageOutboundPage() {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">출고 관리</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+            출고 관리
+          </h1>
           <p className="mt-2 text-base text-slate-500 dark:text-slate-300">
             필요한 제품을 바로 출고해보세요.
           </p>
@@ -497,7 +547,7 @@ export default function PackageOutboundPage() {
                       ? "bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
                       : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                   }`}
-                  >
+                >
                   패키지 출고
                 </Link>
               </div>
@@ -542,27 +592,33 @@ export default function PackageOutboundPage() {
               </div>
 
               {loading ? (
-                <div className="py-8 text-center text-slate-500">로딩 중...</div>
+                <div className="py-8 text-center text-slate-500">
+                  로딩 중...
+                </div>
               ) : error ? (
                 <div className="py-8 text-center text-red-500">{error}</div>
               ) : filteredPackages.length === 0 ? (
-                <div className="py-8 text-center text-slate-500">패키지가 없습니다.</div>
+                <div className="py-8 text-center text-slate-500">
+                  패키지가 없습니다.
+                </div>
               ) : (
                 <>
                   <div className="space-y-4">
                     {paginatedPackages.map((pkg) => {
                       // Get package count from state
                       const packageCount = packageCounts[pkg.id] || 0;
-                      
+
                       const handleDecreasePackage = () => {
                         if (packageCount > 0) {
                           // Remove one instance of this package from scheduled items
-                          const packageItems = scheduledItems.filter((item) => item.packageId === pkg.id);
+                          const packageItems = scheduledItems.filter(
+                            (item) => item.packageId === pkg.id
+                          );
                           if (packageItems.length > 0) {
                             // Group items by their unique combination to remove one complete set
                             const itemsToRemove = new Set<string>();
                             const seen = new Set<string>();
-                            
+
                             // Find one complete set of package items to remove
                             packageItems.forEach((item) => {
                               const key = `${item.productId}-${item.batchId}`;
@@ -571,16 +627,22 @@ export default function PackageOutboundPage() {
                                 itemsToRemove.add(key);
                               }
                             });
-                            
+
                             // Remove one instance of each item
                             setScheduledItems((prev) => {
                               const result: ScheduledItem[] = [];
                               const removeCount: Record<string, number> = {};
-                              
+
                               prev.forEach((item) => {
-                                if (item.packageId === pkg.id && itemsToRemove.has(`${item.productId}-${item.batchId}`)) {
+                                if (
+                                  item.packageId === pkg.id &&
+                                  itemsToRemove.has(
+                                    `${item.productId}-${item.batchId}`
+                                  )
+                                ) {
                                   const key = `${item.productId}-${item.batchId}`;
-                                  removeCount[key] = (removeCount[key] || 0) + 1;
+                                  removeCount[key] =
+                                    (removeCount[key] || 0) + 1;
                                   if (removeCount[key] === 1) {
                                     // Remove first occurrence
                                     return; // Skip this item
@@ -588,10 +650,10 @@ export default function PackageOutboundPage() {
                                 }
                                 result.push(item);
                               });
-                              
+
                               return result;
                             });
-                            
+
                             // Update package count
                             setPackageCounts((prev) => ({
                               ...prev,
@@ -600,7 +662,7 @@ export default function PackageOutboundPage() {
                           }
                         }
                       };
-                      
+
                       return (
                         <div
                           key={pkg.id}
@@ -624,13 +686,14 @@ export default function PackageOutboundPage() {
                                   {pkg.items.map((item, idx) => {
                                     // Format: "productName-quantity unit"
                                     // Example: "필러-1cc", "생리식염수-10ml", "주사기 1ml-1개", "니들 27GI-1 개"
-                                    const quantityStr = item.quantity > 0 
-                                      ? `${item.quantity}${item.unit || ""}` 
-                                      : "";
-                                    const itemText = quantityStr 
-                                      ? `${item.productName}-${quantityStr}` 
+                                    const quantityStr =
+                                      item.quantity > 0
+                                        ? `${item.quantity}${item.unit || ""}`
+                                        : "";
+                                    const itemText = quantityStr
+                                      ? `${item.productName}-${quantityStr}`
                                       : item.productName;
-                                    
+
                                     return (
                                       <span key={`${item.productId}-${idx}`}>
                                         {itemText}
@@ -658,7 +721,6 @@ export default function PackageOutboundPage() {
                               >
                                 +
                               </button>
-                             
                             </div>
                           </div>
                         </div>
@@ -672,25 +734,53 @@ export default function PackageOutboundPage() {
                       <div className="flex items-center justify-between">
                         {/* Page Info */}
                         <div className="text-sm">
-                          <span className="font-bold text-slate-900 dark:text-white">{currentPage}</span>
-                          <span className="text-slate-500 dark:text-slate-400"> / {Math.ceil(filteredPackages.length / itemsPerPage)} 페이지</span>
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            {currentPage}
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {" "}
+                            /{" "}
+                            {Math.ceil(
+                              filteredPackages.length / itemsPerPage
+                            )}{" "}
+                            페이지
+                          </span>
                         </div>
-                        
+
                         {/* Navigation Buttons */}
                         <div className="flex items-center gap-2">
                           {/* Previous Button */}
                           <button
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            onClick={() =>
+                              setCurrentPage((p) => Math.max(1, p - 1))
+                            }
                             disabled={currentPage === 1}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 19l-7-7 7-7"
+                              />
                             </svg>
                           </button>
 
                           {/* Page Numbers */}
-                          {Array.from({ length: Math.ceil(filteredPackages.length / itemsPerPage) }, (_, i) => i + 1).map((page) => (
+                          {Array.from(
+                            {
+                              length: Math.ceil(
+                                filteredPackages.length / itemsPerPage
+                              ),
+                            },
+                            (_, i) => i + 1
+                          ).map((page) => (
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
@@ -706,12 +796,34 @@ export default function PackageOutboundPage() {
 
                           {/* Next Button */}
                           <button
-                            onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPackages.length / itemsPerPage), p + 1))}
-                            disabled={currentPage >= Math.ceil(filteredPackages.length / itemsPerPage)}
+                            onClick={() =>
+                              setCurrentPage((p) =>
+                                Math.min(
+                                  Math.ceil(
+                                    filteredPackages.length / itemsPerPage
+                                  ),
+                                  p + 1
+                                )
+                              )
+                            }
+                            disabled={
+                              currentPage >=
+                              Math.ceil(filteredPackages.length / itemsPerPage)
+                            }
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
                             </svg>
                           </button>
                         </div>
@@ -792,7 +904,9 @@ export default function PackageOutboundPage() {
                           </svg>
                         )}
                       </div>
-                      <span className="text-sm text-slate-700 dark:text-slate-200">파손</span>
+                      <span className="text-sm text-slate-700 dark:text-slate-200">
+                        파손
+                      </span>
                     </label>
                     <label className="flex items-center gap-2">
                       <div className="relative">
@@ -818,7 +932,9 @@ export default function PackageOutboundPage() {
                           </svg>
                         )}
                       </div>
-                      <span className="text-sm text-slate-700 dark:text-slate-200">불량</span>
+                      <span className="text-sm text-slate-700 dark:text-slate-200">
+                        불량
+                      </span>
                     </label>
                   </div>
                 </div>
@@ -850,46 +966,66 @@ export default function PackageOutboundPage() {
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                       {(() => {
                         // Group items by package
-                        const groupedByPackage = scheduledItems.reduce((acc, item) => {
-                          const key = item.packageId || 'single';
-                          if (!acc[key]) {
-                            acc[key] = {
-                              packageId: item.packageId,
-                              packageName: item.packageName || item.productName,
-                              items: [],
-                            };
-                          }
-                          acc[key].items.push(item);
-                          return acc;
-                        }, {} as Record<string, { packageId: string; packageName: string; items: ScheduledItem[] }>);
+                        const groupedByPackage = scheduledItems.reduce(
+                          (acc, item) => {
+                            const key = item.packageId || "single";
+                            if (!acc[key]) {
+                              acc[key] = {
+                                packageId: item.packageId,
+                                packageName:
+                                  item.packageName || item.productName,
+                                items: [],
+                              };
+                            }
+                            acc[key].items.push(item);
+                            return acc;
+                          },
+                          {} as Record<
+                            string,
+                            {
+                              packageId: string;
+                              packageName: string;
+                              items: ScheduledItem[];
+                            }
+                          >
+                        );
 
                         // Get packages in order (newest first) based on when they were added
                         // Since we add new items to the beginning of scheduledItems array,
                         // the first occurrence of each packageId represents the newest package
                         const packageOrder: string[] = [];
                         scheduledItems.forEach((item) => {
-                          if (item.packageId && !packageOrder.includes(item.packageId)) {
+                          if (
+                            item.packageId &&
+                            !packageOrder.includes(item.packageId)
+                          ) {
                             packageOrder.push(item.packageId);
                           }
                         });
-                        
+
                         // packageOrder already has newest first (because scheduledItems has newest items first)
                         // So we don't need to reverse - just map in the same order
-                        const orderedPackages = packageOrder.map((pkgId) => groupedByPackage[pkgId]).filter(Boolean);
+                        const orderedPackages = packageOrder
+                          .map((pkgId) => groupedByPackage[pkgId])
+                          .filter(Boolean);
 
                         return orderedPackages.map((group, groupIdx) => {
                           // Count packages - use packageCounts to show how many times package was added
-                          const packageCount = packageCounts[group.packageId] || 1;
+                          const packageCount =
+                            packageCounts[group.packageId] || 1;
                           // Show only unique items (first occurrence of each product-batch combination)
-                          const uniqueItems = group.items.reduce((acc, item) => {
-                            const key = `${item.productId}-${item.batchId}`;
-                            if (!acc[key]) {
-                              acc[key] = item;
-                            }
-                            return acc;
-                          }, {} as Record<string, ScheduledItem>);
+                          const uniqueItems = group.items.reduce(
+                            (acc, item) => {
+                              const key = `${item.productId}-${item.batchId}`;
+                              if (!acc[key]) {
+                                acc[key] = item;
+                              }
+                              return acc;
+                            },
+                            {} as Record<string, ScheduledItem>
+                          );
                           const firstItem = group.items[0];
-                          const unit = firstItem.unit || '세트';
+                          const unit = firstItem.unit || "세트";
 
                           return (
                             <div
@@ -905,13 +1041,17 @@ export default function PackageOutboundPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                                    {packageCount}{unit}
+                                    {packageCount}
+                                    {unit}
                                   </span>
                                   <button
                                     onClick={() => {
                                       // Remove all items from this package
                                       setScheduledItems((prev) =>
-                                        prev.filter((item) => item.packageId !== group.packageId)
+                                        prev.filter(
+                                          (item) =>
+                                            item.packageId !== group.packageId
+                                        )
                                       );
                                       setPackageCounts((prev) => ({
                                         ...prev,
@@ -920,8 +1060,18 @@ export default function PackageOutboundPage() {
                                     }}
                                     className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                                   >
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                    <svg
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M20 12H4"
+                                      />
                                     </svg>
                                   </button>
                                 </div>
@@ -930,25 +1080,30 @@ export default function PackageOutboundPage() {
                               {/* Package Items (Components) */}
                               {Object.values(uniqueItems).length > 0 && (
                                 <div className="mt-2 ml-2 space-y-1">
-                                  {Object.values(uniqueItems).map((item, itemIdx) => (
-                                    <div
-                                      key={`${item.productId}-${item.batchId}-${itemIdx}`}
-                                      className="flex items-center justify-between text-sm"
-                                    >
-                                      <div className="flex items-center gap-2 flex-1">
-                                        <span className="text-slate-600 dark:text-slate-400">-</span>
-                                        <span className="text-slate-700 dark:text-slate-300">
-                                          {item.productName}
-                                        </span>
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                          {item.batchNo}
+                                  {Object.values(uniqueItems).map(
+                                    (item, itemIdx) => (
+                                      <div
+                                        key={`${item.productId}-${item.batchId}-${itemIdx}`}
+                                        className="flex items-center justify-between text-sm"
+                                      >
+                                        <div className="flex items-center gap-2 flex-1">
+                                          <span className="text-slate-600 dark:text-slate-400">
+                                            -
+                                          </span>
+                                          <span className="text-slate-700 dark:text-slate-300">
+                                            {item.productName}
+                                          </span>
+                                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                            {item.batchNo}
+                                          </span>
+                                        </div>
+                                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                                          {item.quantity * packageCount}
+                                          {item.unit}
                                         </span>
                                       </div>
-                                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                                        {item.quantity * packageCount}{item.unit}
-                                      </span>
-                                    </div>
-                                  ))}
+                                    )
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -962,7 +1117,11 @@ export default function PackageOutboundPage() {
                 {/* Submit Button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={submitting || scheduledItems.length === 0 || !managerName.trim()}
+                  disabled={
+                    submitting ||
+                    scheduledItems.length === 0 ||
+                    !managerName.trim()
+                  }
                   className="w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? "처리 중..." : "출고 처리"}
@@ -1010,4 +1169,3 @@ export default function PackageOutboundPage() {
     </main>
   );
 }
-

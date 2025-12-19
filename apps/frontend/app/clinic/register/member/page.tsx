@@ -29,10 +29,16 @@ type CreatedMember = {
 };
 
 const normalizeClinicName = (name: string) =>
-  name.replace(/[^a-zA-Z0-9]+/g, " ").trim().replace(/\s+/g, "");
+  name
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "");
 
 export default function ClinicMemberSetupPage() {
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<string>("");
   const [ownerName, setOwnerName] = useState("");
@@ -46,9 +52,9 @@ export default function ClinicMemberSetupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
-const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-const [isSendingCode, setIsSendingCode] = useState(false);
-const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   useEffect(() => {
     const fetchClinics = async () => {
@@ -60,23 +66,26 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
       try {
         // Get tenant_id from sessionStorage (saved during clinic registration)
         const tenantId = sessionStorage.getItem("erp_tenant_id");
-        const url = tenantId 
+        const url = tenantId
           ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
           : `${apiUrl}/iam/members/clinics`;
-        
+
         // Get token from localStorage if available
-        const token = typeof window !== "undefined" 
-          ? (localStorage.getItem("erp_access_token") ?? localStorage.getItem("access_token") ?? "")
-          : "";
-        
+        const token =
+          typeof window !== "undefined"
+            ? (localStorage.getItem("erp_access_token") ??
+              localStorage.getItem("access_token") ??
+              "")
+            : "";
+
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
         };
-        
+
         if (token) {
           headers.Authorization = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(url, { headers });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -88,7 +97,7 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
         }
         const data = (await response.json()) as Clinic[];
         setClinics(data);
-        
+
         // Check if we're in edit mode (clinic ID from success page)
         const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
         if (editingClinicId) {
@@ -96,7 +105,7 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
           const matchedClinic = data.find((c) => c.id === editingClinicId);
           if (matchedClinic) {
             setSelectedClinicId(matchedClinic.id);
-            
+
             // Load owner info from sessionStorage
             const ownerProfileRaw = sessionStorage.getItem("erp_owner_profile");
             if (ownerProfileRaw) {
@@ -107,10 +116,14 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                   ownerIdCardNumber?: string;
                   ownerAddress?: string;
                 };
-                if (ownerProfile.ownerName) setOwnerName(ownerProfile.ownerName);
-                if (ownerProfile.ownerPhoneNumber) setOwnerPhoneNumber(ownerProfile.ownerPhoneNumber);
-                if (ownerProfile.ownerIdCardNumber) setOwnerIdCardNumber(ownerProfile.ownerIdCardNumber);
-                if (ownerProfile.ownerAddress) setOwnerAddress(ownerProfile.ownerAddress);
+                if (ownerProfile.ownerName)
+                  setOwnerName(ownerProfile.ownerName);
+                if (ownerProfile.ownerPhoneNumber)
+                  setOwnerPhoneNumber(ownerProfile.ownerPhoneNumber);
+                if (ownerProfile.ownerIdCardNumber)
+                  setOwnerIdCardNumber(ownerProfile.ownerIdCardNumber);
+                if (ownerProfile.ownerAddress)
+                  setOwnerAddress(ownerProfile.ownerAddress);
               } catch (err) {
                 console.error("Failed to parse owner profile", err);
               }
@@ -123,7 +136,9 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
         }
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "클리닉 정보를 불러오지 못했습니다."
+          err instanceof Error
+            ? err.message
+            : "클리닉 정보를 불러오지 못했습니다."
         );
       } finally {
         setLoading(false);
@@ -138,20 +153,23 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
       alert("올바른 전화번호 형식을 입력하세요 (예: 01012345678)");
       return;
     }
-  
+
     setIsSendingCode(true);
     try {
-      const response = await fetch(`${apiUrl}/iam/members/send-phone-verification`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_number: cleanPhone }),
-      });
-      
+      const response = await fetch(
+        `${apiUrl}/iam/members/send-phone-verification`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone_number: cleanPhone }),
+        }
+      );
+
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.message || "인증번호 전송에 실패했습니다.");
       }
-      
+
       const result = await response.json();
       alert(result.message || "인증번호가 전송되었습니다.");
     } catch (err: any) {
@@ -161,13 +179,13 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
       setIsSendingCode(false);
     }
   };
-  
+
   const handleVerifyCode = async () => {
     if (!verificationCode || verificationCode.length !== 6) {
       alert("6자리 인증번호를 입력하세요.");
       return;
     }
-  
+
     const cleanPhone = ownerPhoneNumber.replace(/[^0-9]/g, "");
     setIsVerifyingCode(true);
     try {
@@ -179,12 +197,12 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
           code: verificationCode,
         }),
       });
-      
+
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.message || "인증에 실패했습니다.");
       }
-      
+
       const result = await response.json();
       if (result.verified) {
         setIsPhoneVerified(true);
@@ -200,7 +218,9 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
     }
   };
 
-  const selectedClinic = clinics.find((clinic) => clinic.id === selectedClinicId);
+  const selectedClinic = clinics.find(
+    (clinic) => clinic.id === selectedClinicId
+  );
 
   const clinicSlug = useMemo(() => {
     if (!selectedClinic) return "";
@@ -217,7 +237,12 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
       setError("클리닉 정보가 올바르지 않습니다.");
       return;
     }
-    if (!ownerName || !ownerPhoneNumber || !ownerIdCardNumber || !ownerAddress) {
+    if (
+      !ownerName ||
+      !ownerPhoneNumber ||
+      !ownerIdCardNumber ||
+      !ownerAddress
+    ) {
       setError("모든 필드를 입력해주세요.");
       return;
     }
@@ -294,10 +319,7 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
             ownerAddress,
           })
         );
-        sessionStorage.setItem(
-          "erp_created_members",
-          JSON.stringify(result)
-        );
+        sessionStorage.setItem("erp_created_members", JSON.stringify(result));
         // Clear editing clinic ID after successful submission
         sessionStorage.removeItem("erp_editing_clinic_id");
         window.location.href = "/clinic/register/success";
@@ -340,8 +362,8 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                   step === 3
                     ? "border-indigo-500 bg-indigo-500 text-white"
                     : step < 3
-                    ? "border-indigo-200 bg-indigo-50 text-indigo-400"
-                    : "border-slate-200 bg-white text-slate-400"
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-400"
+                      : "border-slate-200 bg-white text-slate-400"
                 }`}
               >
                 {step}
@@ -360,13 +382,11 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
         <section className="mx-auto w-full max-w-3xl space-y-8">
           <div className="rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
             <h2 className="text-xl font-semibold text-slate-900">
-            원장 개인 정보            </h2>
-           
+              원장 개인 정보{" "}
+            </h2>
 
             <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
               <div className="grid gap-5 md:grid-cols-2">
-               
-
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     성함 *
@@ -379,8 +399,6 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                     required
                   />
                 </div>
-
-                
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -414,17 +432,21 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                     <button
                       type="button"
                       onClick={handleSendVerificationCode}
-                      disabled={isSendingCode || isPhoneVerified || !ownerPhoneNumber}
+                      disabled={
+                        isSendingCode || isPhoneVerified || !ownerPhoneNumber
+                      }
                       className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isSendingCode ? "전송 중..." : "인증번호 전송"}
                     </button>
                   </div>
                   {isPhoneVerified && (
-                    <p className="mt-1 text-xs text-green-600">✓ 인증이 완료되었습니다.</p>
+                    <p className="mt-1 text-xs text-green-600">
+                      ✓ 인증이 완료되었습니다.
+                    </p>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     핸드폰 인증번호 *
@@ -432,7 +454,11 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                   <div className="flex gap-2">
                     <input
                       value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                      onChange={(e) =>
+                        setVerificationCode(
+                          e.target.value.replace(/[^0-9]/g, "").slice(0, 6)
+                        )
+                      }
                       className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                       placeholder="6자리 인증번호"
                       maxLength={6}
@@ -441,18 +467,26 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                     <button
                       type="button"
                       onClick={handleVerifyCode}
-                      disabled={isVerifyingCode || isPhoneVerified || verificationCode.length !== 6}
+                      disabled={
+                        isVerifyingCode ||
+                        isPhoneVerified ||
+                        verificationCode.length !== 6
+                      }
                       className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isVerifyingCode ? "인증 중..." : isPhoneVerified ? "인증 완료" : "인증하기"}
+                      {isVerifyingCode
+                        ? "인증 중..."
+                        : isPhoneVerified
+                          ? "인증 완료"
+                          : "인증하기"}
                     </button>
                   </div>
                   {isPhoneVerified && (
-                    <p className="mt-1 text-xs text-green-600">✓ 인증이 완료되었습니다.</p>
+                    <p className="mt-1 text-xs text-green-600">
+                      ✓ 인증이 완료되었습니다.
+                    </p>
                   )}
                 </div>
-
-                
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -466,8 +500,6 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                     required
                   />
                 </div>
-
-               
 
                 <div className="relative">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
@@ -485,7 +517,9 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                     type="button"
                     onClick={() => setShowOwnerPassword((prev) => !prev)}
                     className="absolute right-3 top-1/2 -translate-y-4/2 text-slate-400 transition hover:text-slate-600"
-                    aria-label={showOwnerPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                    aria-label={
+                      showOwnerPassword ? "비밀번호 숨기기" : "비밀번호 표시"
+                    }
                   >
                     {showOwnerPassword ? (
                       <svg
@@ -548,7 +582,11 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
                       type="button"
                       onClick={() => setShowConfirmPassword((prev) => !prev)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-                      aria-label={showConfirmPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                      aria-label={
+                        showConfirmPassword
+                          ? "비밀번호 숨기기"
+                          : "비밀번호 표시"
+                      }
                     >
                       {showConfirmPassword ? (
                         <svg
@@ -613,10 +651,8 @@ const [isVerifyingCode, setIsVerifyingCode] = useState(false);
               </div>
             </form>
           </div>
-
         </section>
       </div>
     </div>
   );
 }
-

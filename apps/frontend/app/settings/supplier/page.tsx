@@ -33,7 +33,10 @@ type Supplier = {
 };
 
 export default function SupplierManagementPage() {
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +55,17 @@ export default function SupplierManagementPage() {
     try {
       const tenantId = getTenantId();
       console.log("Fetching suppliers, tenantId:", tenantId);
-      
+
       // Fetch all approved suppliers
-      const data = await apiGet<Supplier[]>(
-        `${apiUrl}/supplier/list`
-      );
-      
+      const data = await apiGet<Supplier[]>(`${apiUrl}/supplier/list`);
+
       console.log("Suppliers data:", data);
       setSuppliers(data || []);
     } catch (err: any) {
       console.error("Failed to load suppliers", err);
-      setError(`공급업체 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`);
+      setError(
+        `공급업체 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`
+      );
     } finally {
       setLoading(false);
     }
@@ -70,13 +73,14 @@ export default function SupplierManagementPage() {
 
   const filteredSuppliers = useMemo(() => {
     if (!searchQuery.trim()) return suppliers;
-    
+
     const query = searchQuery.toLowerCase();
     return suppliers.filter((supplier) => {
       const companyMatch = supplier.companyName?.toLowerCase().includes(query);
-      const managerMatch = [...supplier.managers, ...supplier.clinicManagers].some(
-        (m) => m.name?.toLowerCase().includes(query)
-      );
+      const managerMatch = [
+        ...supplier.managers,
+        ...supplier.clinicManagers,
+      ].some((m) => m.name?.toLowerCase().includes(query));
       return companyMatch || managerMatch;
     });
   }, [suppliers, searchQuery]);
@@ -86,9 +90,7 @@ export default function SupplierManagementPage() {
       // TODO: Implement notes save API
       // For now, just update local state
       setSuppliers((prev) =>
-        prev.map((s) =>
-          s.id === supplierId ? { ...s, notes: notesValue } : s
-        )
+        prev.map((s) => (s.id === supplierId ? { ...s, notes: notesValue } : s))
       );
       setEditingNotes(null);
       setNotesValue("");
@@ -100,7 +102,7 @@ export default function SupplierManagementPage() {
 
   const handleDeleteContact = async (supplierId: string, contactId: string) => {
     if (!confirm("담당자를 삭제하시겠습니까?")) return;
-    
+
     try {
       // Faqat ClinicSupplierManager'ni o'chirish mumkin (id field bor bo'lsa)
       // SupplierManager'ni o'chirib bo'lmaydi (managerId bor bo'lsa)
@@ -111,9 +113,13 @@ export default function SupplierManagementPage() {
       }
 
       // Contact'ni topish - avval clinicManagers'da, keyin managers'da
-      const clinicManager = supplier.clinicManagers.find((m) => m.id === contactId);
-      const supplierManager = supplier.managers.find((m) => m.managerId === contactId || m.id === contactId);
-      
+      const clinicManager = supplier.clinicManagers.find(
+        (m) => m.id === contactId
+      );
+      const supplierManager = supplier.managers.find(
+        (m) => m.managerId === contactId || m.id === contactId
+      );
+
       // Faqat ClinicSupplierManager'ni o'chirish mumkin
       if (!clinicManager && supplierManager) {
         alert("이 담당자는 삭제할 수 없습니다. (공급업체 플랫폼 담당자)");
@@ -126,19 +132,21 @@ export default function SupplierManagementPage() {
       }
 
       await apiDelete(`${apiUrl}/supplier/manager/${contactId}`);
-      
+
       // Local state'ni yangilash
       setSuppliers((prev) =>
         prev.map((supplier) =>
           supplier.id === supplierId
             ? {
                 ...supplier,
-                clinicManagers: supplier.clinicManagers.filter((m) => m.id !== contactId),
+                clinicManagers: supplier.clinicManagers.filter(
+                  (m) => m.id !== contactId
+                ),
               }
             : supplier
         )
       );
-      
+
       alert("담당자가 삭제되었습니다");
     } catch (err: any) {
       console.error("Failed to delete contact", err);
@@ -245,7 +253,9 @@ export default function SupplierManagementPage() {
                       </h3>
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">비고:</span>
+                          <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                            비고:
+                          </span>
                           <select
                             value={supplier.notes || ""}
                             onChange={(e) => {
@@ -258,7 +268,9 @@ export default function SupplierManagementPage() {
                           >
                             <option value="">비고 없음</option>
                             {supplier.notes && (
-                              <option value={supplier.notes}>{supplier.notes}</option>
+                              <option value={supplier.notes}>
+                                {supplier.notes}
+                              </option>
                             )}
                           </select>
                         </div>
@@ -376,7 +388,8 @@ export default function SupplierManagementPage() {
                                     담당 제품:
                                   </span>{" "}
                                   <span className="text-slate-900 dark:text-slate-100">
-                                    {contact.responsibleProducts?.join(", ") || "—"}
+                                    {contact.responsibleProducts?.join(", ") ||
+                                      "—"}
                                   </span>
                                 </div>
                                 <div>
@@ -430,4 +443,3 @@ export default function SupplierManagementPage() {
     </div>
   );
 }
-

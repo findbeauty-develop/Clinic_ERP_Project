@@ -33,8 +33,11 @@ type Member = {
 
 export default function AccountManagementPage() {
   const router = useRouter();
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
-  
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
+
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +58,17 @@ export default function AccountManagementPage() {
         const tenantId = getTenantId();
 
         // Fetch clinic data
-        const clinicsData = await apiGet<Clinic[]>(`${apiUrl}/iam/members/clinics${tenantId ? `?tenantId=${tenantId}` : ""}`);
+        const clinicsData = await apiGet<Clinic[]>(
+          `${apiUrl}/iam/members/clinics${tenantId ? `?tenantId=${tenantId}` : ""}`
+        );
         if (clinicsData && clinicsData.length > 0) {
           setClinic(clinicsData[0]);
         }
 
         // Fetch members data
-        const membersData = await apiGet<Member[]>(`${apiUrl}/iam/members${tenantId ? `?tenantId=${tenantId}` : ""}`);
+        const membersData = await apiGet<Member[]>(
+          `${apiUrl}/iam/members${tenantId ? `?tenantId=${tenantId}` : ""}`
+        );
         if (membersData) {
           setMembers(membersData);
         }
@@ -130,7 +137,9 @@ export default function AccountManagementPage() {
 
   const getRoleNumber = (role: string, members: Member[]) => {
     const sameRole = members.filter((m) => m.role === role);
-    const index = sameRole.findIndex((m) => m.member_id === members.find((mem) => mem.role === role)?.member_id);
+    const index = sameRole.findIndex(
+      (m) => m.member_id === members.find((mem) => mem.role === role)?.member_id
+    );
     return sameRole.length > 1 ? index + 1 : "";
   };
 
@@ -166,7 +175,9 @@ export default function AccountManagementPage() {
         {/* Header */}
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">계정 관리</h1>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+              계정 관리
+            </h1>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               병의원 정보, 원장 정보 및 계정 정보를 관리할 수 있습니다.
             </p>
@@ -183,7 +194,11 @@ export default function AccountManagementPage() {
               stroke="currentColor"
               className="h-4 w-4"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              />
             </svg>
             돌아가기
           </Link>
@@ -191,52 +206,70 @@ export default function AccountManagementPage() {
 
         {/* 병의원 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">병의원 정보</h2>
+          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            병의원 정보
+          </h2>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">명칭</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                명칭
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.name || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">종류</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                종류
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.category || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">소재지</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                소재지
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.location || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">진료과목</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                진료과목
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.medical_subjects || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">설명(법인명)</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                설명(법인명)
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.doctor_name || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">면허종류</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                면허종류
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.license_type || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">면허번호</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                면허번호
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.license_number || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">문서발급번호</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                문서발급번호
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {clinic?.document_issue_number || "—"}
               </div>
@@ -246,28 +279,38 @@ export default function AccountManagementPage() {
 
         {/* 원장 개인 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">원장 개인 정보</h2>
+          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            원장 개인 정보
+          </h2>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">성함</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                성함
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {director?.full_name || clinic?.doctor_name || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">신분증번호</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                신분증번호
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {director?.id_card_number || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">핸드폰</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                핸드폰
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {director?.phone_number || "—"}
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">거주주소</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                거주주소
+              </label>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {director?.address || "—"}
               </div>
@@ -277,7 +320,9 @@ export default function AccountManagementPage() {
 
         {/* 계정 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">계정 정보</h2>
+          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            계정 정보
+          </h2>
           <div className="space-y-4">
             {members.map((member) => (
               <div
@@ -294,7 +339,9 @@ export default function AccountManagementPage() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">비밀번호</label>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    비밀번호
+                  </label>
                   {editingPassword === member.id ? (
                     <div className="space-y-2">
                       <input
@@ -362,4 +409,3 @@ export default function AccountManagementPage() {
     </main>
   );
 }
-

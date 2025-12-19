@@ -6,12 +6,14 @@ const getApiUrl = () => {
   // Next.js'da NEXT_PUBLIC_* environment variable'lar build vaqtida o'qiladi
   // va hem client-side'da ham server-side'da mavjud bo'ladi
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  
+
   if (!apiUrl) {
     console.error("❌ NEXT_PUBLIC_API_URL is not configured in .env.local");
-    throw new Error("API base URL is not configured. Please set NEXT_PUBLIC_API_URL in .env.local file");
+    throw new Error(
+      "API base URL is not configured. Please set NEXT_PUBLIC_API_URL in .env.local file"
+    );
   }
-  
+
   return apiUrl;
 };
 
@@ -77,7 +79,9 @@ export const apiRequest = async (
     });
   } catch (networkError: any) {
     // Handle network errors (CORS, connection refused, etc.)
-    throw new Error(`Network error: ${networkError.message || "Failed to fetch"}`);
+    throw new Error(
+      `Network error: ${networkError.message || "Failed to fetch"}`
+    );
   }
 };
 
@@ -99,7 +103,10 @@ export const apiPost = async <T = any>(
     let errorMessage = "Request failed";
     try {
       const error = await response.json();
-      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+      errorMessage =
+        typeof error?.message === "string"
+          ? error.message
+          : `HTTP ${response.status}: ${response.statusText}`;
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
     }
@@ -127,7 +134,10 @@ export const apiPut = async <T = any>(
     let errorMessage = "Request failed";
     try {
       const error = await response.json();
-      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+      errorMessage =
+        typeof error?.message === "string"
+          ? error.message
+          : `HTTP ${response.status}: ${response.statusText}`;
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
     }
@@ -153,7 +163,10 @@ export const apiGet = async <T = any>(
     let errorMessage = "Request failed";
     try {
       const error = await response.json();
-      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+      errorMessage =
+        typeof error?.message === "string"
+          ? error.message
+          : `HTTP ${response.status}: ${response.statusText}`;
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
     }
@@ -179,7 +192,10 @@ export const apiDelete = async <T = any>(
     let errorMessage = "Request failed";
     try {
       const error = await response.json();
-      errorMessage = typeof error?.message === "string" ? error.message : `HTTP ${response.status}: ${response.statusText}`;
+      errorMessage =
+        typeof error?.message === "string"
+          ? error.message
+          : `HTTP ${response.status}: ${response.statusText}`;
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
     }
@@ -188,4 +204,3 @@ export const apiDelete = async <T = any>(
 
   return response.json();
 };
-

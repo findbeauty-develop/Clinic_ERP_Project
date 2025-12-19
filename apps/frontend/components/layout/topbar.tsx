@@ -13,7 +13,7 @@ export function Topbar() {
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("erp_access_token");
       const memberData = localStorage.getItem("erp_member_data");
-      
+
       if (token && memberData) {
         setIsLoggedIn(true);
         try {
@@ -33,18 +33,18 @@ export function Topbar() {
 
   useEffect(() => {
     loadUserInfo();
-    
+
     // Listen for storage changes
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'erp_member_data' || e.key === 'erp_access_token') {
+      if (e.key === "erp_member_data" || e.key === "erp_access_token") {
         loadUserInfo();
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
+
+    window.addEventListener("storage", handleStorageChange);
+
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
@@ -53,12 +53,12 @@ export function Topbar() {
       // State'ni darhol tozalash
       setUserName("");
       setIsLoggedIn(false);
-      
+
       // Barcha localStorage ma'lumotlarini tozalash
       localStorage.removeItem("erp_access_token");
       localStorage.removeItem("erp_member_data");
       localStorage.removeItem("erp_tenant_id");
-      
+
       // Login sahifasiga yo'naltirish
       router.push("/login");
     }
@@ -67,7 +67,9 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-50 h-16 w-full flex-shrink-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 dark:bg-gray-900/95 dark:border-gray-800 flex items-center justify-between px-6 shadow-sm">
       <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">뷰티재고 관리</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+          뷰티재고 관리
+        </h1>
       </div>
       <div className="flex items-center gap-4">
         {isLoggedIn && userName ? (
@@ -113,4 +115,3 @@ export function Topbar() {
     </header>
   );
 }
-

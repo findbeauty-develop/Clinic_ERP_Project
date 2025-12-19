@@ -59,7 +59,8 @@ export default function ClinicRegisterPage() {
   const [isLoadingClinic, setIsLoadingClinic] = useState(true);
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [isVerifyingCertificate, setIsVerifyingCertificate] = useState(false);
-  const [certificateVerificationError, setCertificateVerificationError] = useState<string | null>(null);
+  const [certificateVerificationError, setCertificateVerificationError] =
+    useState<string | null>(null);
   const [isCertificateVerified, setIsCertificateVerified] = useState(false);
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
 
@@ -80,17 +81,20 @@ export default function ClinicRegisterPage() {
       // Check if we're in edit mode first
       const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
       const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
-      
+
       // If NOT in edit mode, clear any old localStorage data to prevent showing other users' data
       if (!editingClinicId && !clinicSummaryRaw) {
         console.log("🔄 New registration - clearing old localStorage data");
         localStorage.removeItem("clinic_register_form");
       }
-      
+
       // Load from sessionStorage (preferred) or localStorage (fallback for edit mode)
-      const savedForm = sessionStorage.getItem("clinic_register_form") || 
-                       (editingClinicId || clinicSummaryRaw ? localStorage.getItem("clinic_register_form") : null);
-      
+      const savedForm =
+        sessionStorage.getItem("clinic_register_form") ||
+        (editingClinicId || clinicSummaryRaw
+          ? localStorage.getItem("clinic_register_form")
+          : null);
+
       if (savedForm) {
         try {
           const parsed = JSON.parse(savedForm);
@@ -110,7 +114,9 @@ export default function ClinicRegisterPage() {
             doctorName: parsed.doctorName || "",
           });
           setIsCertificateVerified(parsed.isCertificateVerified || false);
-          setCertificateVerificationError(parsed.certificateVerificationError || null);
+          setCertificateVerificationError(
+            parsed.certificateVerificationError || null
+          );
           console.log("✅ Loaded form data from storage");
         } catch (error) {
           console.error("Error loading saved form data:", error);
@@ -131,13 +137,15 @@ export default function ClinicRegisterPage() {
         // Check if we're in edit mode (clinic ID from success page)
         const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
         console.log("Editing clinic ID from sessionStorage:", editingClinicId);
-        
+
         // Get clinic name from sessionStorage (from success page)
         const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
-        
+
         // Only load from API if we're in edit mode
         if (!editingClinicId && !clinicSummaryRaw) {
-          console.log("No edit mode - skipping API load, using localStorage data");
+          console.log(
+            "No edit mode - skipping API load, using localStorage data"
+          );
           setIsLoadingClinic(false);
           return;
         }
@@ -150,7 +158,7 @@ export default function ClinicRegisterPage() {
         }
 
         const clinics = (await response.json()) as Clinic[];
-        
+
         // Find clinic by ID (if editing) or by name
         let matchedClinic: Clinic | undefined;
         if (editingClinicId) {
@@ -165,7 +173,11 @@ export default function ClinicRegisterPage() {
 
         if (matchedClinic) {
           // Store clinic ID for update mode
-          console.log("Found clinic for editing:", matchedClinic.id, matchedClinic.name);
+          console.log(
+            "Found clinic for editing:",
+            matchedClinic.id,
+            matchedClinic.name
+          );
           setClinicId(matchedClinic.id);
 
           // Convert image URLs to absolute URLs if they are relative
@@ -180,7 +192,9 @@ export default function ClinicRegisterPage() {
                 return url;
               }
               // If relative URL, prepend API URL
-              return url.startsWith("/") ? `${apiUrl}${url}` : `${apiUrl}/${url}`;
+              return url.startsWith("/")
+                ? `${apiUrl}${url}`
+                : `${apiUrl}/${url}`;
             }
           );
 
@@ -196,10 +210,12 @@ export default function ClinicRegisterPage() {
             licenseNumber: matchedClinic.license_number || "",
             documentIssueNumber: matchedClinic.document_issue_number || "",
             documentImageUrls: imageUrls,
-            openDate: matchedClinic.open_date ? new Date(matchedClinic.open_date).toISOString().split('T')[0] : "",
+            openDate: matchedClinic.open_date
+              ? new Date(matchedClinic.open_date).toISOString().split("T")[0]
+              : "",
             doctorName: matchedClinic.doctor_name || "",
           });
-          
+
           // In edit mode, assume certificate is already verified
           setIsCertificateVerified(true);
           setCertificateVerificationError(null);
@@ -221,7 +237,8 @@ export default function ClinicRegisterPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       // Skip saving if form is still in initial state (to avoid overwriting on first render)
-      const hasFormData = form.name || form.location || form.documentImageUrls.length > 0;
+      const hasFormData =
+        form.name || form.location || form.documentImageUrls.length > 0;
       if (hasFormData) {
         const formData = {
           ...form,
@@ -229,13 +246,19 @@ export default function ClinicRegisterPage() {
           certificateVerificationError,
         };
         // Save to sessionStorage (primary) - cleared when tab closes
-        sessionStorage.setItem("clinic_register_form", JSON.stringify(formData));
-        
+        sessionStorage.setItem(
+          "clinic_register_form",
+          JSON.stringify(formData)
+        );
+
         // Also save to localStorage if in edit mode (for persistence across tabs)
         const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
         const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
         if (editingClinicId || clinicSummaryRaw) {
-          localStorage.setItem("clinic_register_form", JSON.stringify(formData));
+          localStorage.setItem(
+            "clinic_register_form",
+            JSON.stringify(formData)
+          );
         }
         console.log("💾 Saved form data to sessionStorage");
       }
@@ -259,7 +282,6 @@ export default function ClinicRegisterPage() {
     }
   };
 
-
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -273,13 +295,16 @@ export default function ClinicRegisterPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${apiUrl}/iam/members/clinics/verify-certificate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      const response = await fetch(
+        `${apiUrl}/iam/members/clinics/verify-certificate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -289,8 +314,8 @@ export default function ClinicRegisterPage() {
 
       // Add the uploaded file URL or convert to base64
       if (data.fileUrl) {
-        const fullUrl = data.fileUrl.startsWith("http") 
-          ? data.fileUrl 
+        const fullUrl = data.fileUrl.startsWith("http")
+          ? data.fileUrl
           : `${apiUrl}${data.fileUrl}`;
         setForm((prev) => ({
           ...prev,
@@ -316,10 +341,12 @@ export default function ClinicRegisterPage() {
             name: data.mappedData.name || prev.name,
             category: data.mappedData.category || prev.category,
             location: data.mappedData.location || prev.location,
-            medicalSubjects: data.mappedData.medicalSubjects || prev.medicalSubjects,
+            medicalSubjects:
+              data.mappedData.medicalSubjects || prev.medicalSubjects,
             licenseType: data.mappedData.licenseType || prev.licenseType,
             licenseNumber: data.mappedData.licenseNumber || prev.licenseNumber,
-            documentIssueNumber: data.mappedData.documentIssueNumber || prev.documentIssueNumber,
+            documentIssueNumber:
+              data.mappedData.documentIssueNumber || prev.documentIssueNumber,
             openDate: data.mappedData.openDate || prev.openDate,
             doctorName: data.mappedData.doctorName || prev.doctorName,
             description: data.mappedData.doctorName || prev.description, // Fill 성명 (법인명) from OCR
@@ -333,7 +360,8 @@ export default function ClinicRegisterPage() {
             location: data.fields.address || prev.location,
             medicalSubjects: data.fields.department || prev.medicalSubjects,
             licenseNumber: data.fields.doctorLicenseNo || prev.licenseNumber,
-            documentIssueNumber: data.fields.reportNumber || prev.documentIssueNumber,
+            documentIssueNumber:
+              data.fields.reportNumber || prev.documentIssueNumber,
             openDate: data.fields.openDate || prev.openDate,
             doctorName: data.fields.doctorName || prev.doctorName,
             description: data.fields.doctorName || prev.description, // Fill 성명 (법인명) from OCR
@@ -344,25 +372,31 @@ export default function ClinicRegisterPage() {
         // Mark certificate as verified
         setIsCertificateVerified(true);
         setCertificateVerificationError(null);
-        
+
         // Show success message
-        window.alert("인증서가 성공적으로 인식되었습니다. 필드가 자동으로 채워졌습니다.");
+        window.alert(
+          "인증서가 성공적으로 인식되었습니다. 필드가 자동으로 채워졌습니다."
+        );
       } else {
         // Check if HIRA verification failed
-        const hiraFailed = data.hiraVerification && !data.hiraVerification.isValid;
-        const notFoundInHIRA = data.warnings?.some((w: string | string[]) => 
-          typeof w === 'string' && (w.includes('not found in HIRA database') || 
-          w.includes('이 의료기관은 국가에서 인정하지 않은 병원'))
+        const hiraFailed =
+          data.hiraVerification && !data.hiraVerification.isValid;
+        const notFoundInHIRA = data.warnings?.some(
+          (w: string | string[]) =>
+            typeof w === "string" &&
+            (w.includes("not found in HIRA database") ||
+              w.includes("이 의료기관은 국가에서 인정하지 않은 병원"))
         );
-        
-        const errorMessage = hiraFailed || notFoundInHIRA
-          ? '이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요.'
-          : '인증서 검증에 실패했습니다. 다시 시도해주세요.';
-        
+
+        const errorMessage =
+          hiraFailed || notFoundInHIRA
+            ? "이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요."
+            : "인증서 검증에 실패했습니다. 다시 시도해주세요.";
+
         // Set error message to display below image uploader
         setCertificateVerificationError(errorMessage);
         setIsCertificateVerified(false);
-        
+
         // Still try to fill what we can from fields or mappedData
         if (data.mappedData) {
           setForm((prev) => ({
@@ -370,10 +404,12 @@ export default function ClinicRegisterPage() {
             name: data.mappedData.name || prev.name,
             category: data.mappedData.category || prev.category,
             location: data.mappedData.location || prev.location,
-            medicalSubjects: data.mappedData.medicalSubjects || prev.medicalSubjects,
+            medicalSubjects:
+              data.mappedData.medicalSubjects || prev.medicalSubjects,
             licenseType: data.mappedData.licenseType || prev.licenseType,
             licenseNumber: data.mappedData.licenseNumber || prev.licenseNumber,
-            documentIssueNumber: data.mappedData.documentIssueNumber || prev.documentIssueNumber,
+            documentIssueNumber:
+              data.mappedData.documentIssueNumber || prev.documentIssueNumber,
             openDate: data.mappedData.openDate || prev.openDate,
             doctorName: data.mappedData.doctorName || prev.doctorName,
             description: data.mappedData.doctorName || prev.description, // Fill 성명 (법인명) from OCR
@@ -386,7 +422,8 @@ export default function ClinicRegisterPage() {
             location: data.fields.address || prev.location,
             medicalSubjects: data.fields.department || prev.medicalSubjects,
             licenseNumber: data.fields.doctorLicenseNo || prev.licenseNumber,
-            documentIssueNumber: data.fields.reportNumber || prev.documentIssueNumber,
+            documentIssueNumber:
+              data.fields.reportNumber || prev.documentIssueNumber,
             openDate: data.fields.openDate || prev.openDate,
             doctorName: data.fields.doctorName || prev.doctorName,
             description: data.fields.doctorName || prev.description, // Fill 성명 (법인명) from OCR
@@ -396,10 +433,11 @@ export default function ClinicRegisterPage() {
       }
     } catch (error) {
       console.error("Certificate verification error:", error);
-      const errorMessage = "인증서 검증 중 오류가 발생했습니다. 수동으로 입력해주세요.";
+      const errorMessage =
+        "인증서 검증 중 오류가 발생했습니다. 수동으로 입력해주세요.";
       setCertificateVerificationError(errorMessage);
       setIsCertificateVerified(false);
-      
+
       // Still add the image to documentImageUrls even if verification fails
       const reader = new FileReader();
       reader.onload = () => {
@@ -450,7 +488,12 @@ export default function ClinicRegisterPage() {
 
       // If clinicId exists, update existing clinic; otherwise create new one
       const isUpdateMode = clinicId !== null;
-      console.log("Submit mode:", isUpdateMode ? "UPDATE" : "CREATE", "Clinic ID:", clinicId);
+      console.log(
+        "Submit mode:",
+        isUpdateMode ? "UPDATE" : "CREATE",
+        "Clinic ID:",
+        clinicId
+      );
       const url = isUpdateMode
         ? `${apiUrl}/iam/members/clinics/${clinicId}`
         : `${apiUrl}/iam/members/clinics`;
@@ -465,12 +508,13 @@ export default function ClinicRegisterPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        const errorMessage = typeof result?.message === "string"
-          ? result.message
-          : isUpdateMode
-          ? "클리닉 수정 중 오류가 발생했습니다."
-          : "클리닉 등록 중 오류가 발생했습니다.";
-        
+        const errorMessage =
+          typeof result?.message === "string"
+            ? result.message
+            : isUpdateMode
+              ? "클리닉 수정 중 오류가 발생했습니다."
+              : "클리닉 등록 중 오류가 발생했습니다.";
+
         // Show alert for duplicate registration
         window.alert(errorMessage);
         throw new Error(errorMessage);
@@ -482,16 +526,16 @@ export default function ClinicRegisterPage() {
         // Clear form data from both sessionStorage and localStorage after successful submission
         sessionStorage.removeItem("clinic_register_form");
         localStorage.removeItem("clinic_register_form");
-        
+
         // Clear editing clinic ID
         sessionStorage.removeItem("erp_editing_clinic_id");
-        
+
         // Save tenant_id for use in complete page and member creation
         if (result && result.tenant_id) {
           sessionStorage.setItem("erp_tenant_id", result.tenant_id);
           console.log("✅ Saved tenant_id:", result.tenant_id);
         }
-        
+
         // Update sessionStorage with new clinic data
         sessionStorage.setItem(
           "erp_clinic_summary",
@@ -514,10 +558,12 @@ export default function ClinicRegisterPage() {
     } catch (error) {
       // Error message is already shown in the if (!response.ok) block
       // Only show alert here if it's a network error or other unexpected error
-      if (error instanceof Error && !error.message.includes("클리닉 등록 중 오류가 발생했습니다") && !error.message.includes("이미 등록된 클리닉")) {
-        window.alert(
-          error.message || "클리닉 등록 중 오류가 발생했습니다."
-        );
+      if (
+        error instanceof Error &&
+        !error.message.includes("클리닉 등록 중 오류가 발생했습니다") &&
+        !error.message.includes("이미 등록된 클리닉")
+      ) {
+        window.alert(error.message || "클리닉 등록 중 오류가 발생했습니다.");
       }
     } finally {
       setLoading(false);
@@ -650,8 +696,8 @@ export default function ClinicRegisterPage() {
                       className="absolute inset-0 cursor-pointer"
                       title="다른 파일로 교체하려면 클릭하세요."
                     >
-                      {form.documentImageUrls[0].startsWith("data:image") || 
-                       form.documentImageUrls[0].startsWith("http") ? (
+                      {form.documentImageUrls[0].startsWith("data:image") ||
+                      form.documentImageUrls[0].startsWith("http") ? (
                         <img
                           src={form.documentImageUrls[0]}
                           alt="업로드된 이미지 미리보기"
@@ -842,7 +888,6 @@ export default function ClinicRegisterPage() {
                   required
                 />
               </div>
-
             </div>
 
             <div className="md:col-span-2 flex flex-col items-end gap-2">
@@ -865,4 +910,3 @@ export default function ClinicRegisterPage() {
     </div>
   );
 }
-

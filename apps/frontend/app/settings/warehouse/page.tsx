@@ -14,7 +14,10 @@ type WarehouseCategory = {
 };
 
 export default function WarehouseManagementPage() {
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
   const [warehouses, setWarehouses] = useState<WarehouseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,24 +35,36 @@ export default function WarehouseManagementPage() {
     setError(null);
     try {
       const tenantId = getTenantId();
-      
+
       // Fetch warehouse locations from WarehouseLocation table
-      const warehouseLocations = await apiGet<any[]>(`${apiUrl}/products/warehouses/list`).catch(() => []);
+      const warehouseLocations = await apiGet<any[]>(
+        `${apiUrl}/products/warehouses/list`
+      ).catch(() => []);
       console.log("Warehouse locations from API:", warehouseLocations);
-      
+
       // Also fetch storage locations from Batch table (for backward compatibility)
-      const storages = await apiGet<string[]>(`${apiUrl}/products/storages/list`).catch(() => []);
-      
+      const storages = await apiGet<string[]>(
+        `${apiUrl}/products/storages/list`
+      ).catch(() => []);
+
       // Fetch inventory by location to get items (for batch-based storages)
-      const inventoryByLocation = await apiGet<any[]>(`${apiUrl}/inventory/by-location`).catch(() => []);
-      
+      const inventoryByLocation = await apiGet<any[]>(
+        `${apiUrl}/inventory/by-location`
+      ).catch(() => []);
+
       // Organize warehouses by category
-      const organized = organizeWarehouses(warehouseLocations, storages, inventoryByLocation);
+      const organized = organizeWarehouses(
+        warehouseLocations,
+        storages,
+        inventoryByLocation
+      );
       console.log("Organized warehouses:", organized);
       setWarehouses(organized);
     } catch (err: any) {
       console.error("Failed to load warehouses", err);
-      setError(`창고 위치 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`);
+      setError(
+        `창고 위치 정보를 불러오지 못했습니다: ${err?.message || "Unknown error"}`
+      );
     } finally {
       setLoading(false);
     }
@@ -59,13 +74,13 @@ export default function WarehouseManagementPage() {
     // Try to extract items from location name
     // For example: "수면실 A 침대, B 침대" -> ["A 침대", "B 침대"]
     const items: string[] = [];
-    
+
     // Check if location name contains bed positions (A, B, C, etc.)
     const bedMatches = locationName.match(/([A-Z]\s*침대)/g);
     if (bedMatches) {
       return bedMatches;
     }
-    
+
     // If no specific items found, return empty array
     return items;
   };
@@ -77,20 +92,21 @@ export default function WarehouseManagementPage() {
   ): WarehouseCategory[] => {
     // Create a map of location to items from inventory
     const locationItemsMap = new Map<string, string[]>();
-    
+
     inventoryByLocation.forEach((loc) => {
-      const items = loc.items?.map((item: any) => {
-        return item.productName || item.batchNo || "항목";
-      }) || [];
+      const items =
+        loc.items?.map((item: any) => {
+          return item.productName || item.batchNo || "항목";
+        }) || [];
       locationItemsMap.set(loc.location, items);
     });
 
     // Categorize locations
     const categories: Record<string, WarehouseLocation[]> = {
-      "수면실": [],
+      수면실: [],
       "레이저 실": [],
-      "창고": [],
-      "기타": [],
+      창고: [],
+      기타: [],
     };
 
     // Process warehouse locations from WarehouseLocation table
@@ -98,11 +114,15 @@ export default function WarehouseManagementPage() {
       console.log("Processing warehouse:", warehouse);
       const category = warehouse.category || "기타";
       const categoryKey = category in categories ? category : "기타";
-      
+
       // Ensure items is an array
-      const items = Array.isArray(warehouse.items) ? warehouse.items : (warehouse.items ? [warehouse.items] : []);
+      const items = Array.isArray(warehouse.items)
+        ? warehouse.items
+        : warehouse.items
+          ? [warehouse.items]
+          : [];
       console.log("Warehouse items:", items);
-      
+
       categories[categoryKey].push({
         name: warehouse.name,
         items: items,
@@ -110,8 +130,10 @@ export default function WarehouseManagementPage() {
     });
 
     // Process batch-based storages (for backward compatibility)
-    const processedWarehouseNames = new Set(warehouseLocations.map((w) => w.name));
-    
+    const processedWarehouseNames = new Set(
+      warehouseLocations.map((w) => w.name)
+    );
+
     storages.forEach((storage) => {
       // Skip if already processed from WarehouseLocation table
       if (processedWarehouseNames.has(storage)) {
@@ -119,7 +141,7 @@ export default function WarehouseManagementPage() {
       }
 
       const items = locationItemsMap.get(storage) || [];
-      
+
       // Categorize based on storage name
       if (storage.includes("수면") || storage.includes("침대")) {
         categories["수면실"].push({ name: storage, items });
@@ -134,7 +156,7 @@ export default function WarehouseManagementPage() {
 
     // Convert to array format and filter empty categories
     const result: WarehouseCategory[] = [];
-    
+
     Object.entries(categories).forEach(([category, locations]) => {
       if (locations.length > 0) {
         result.push({ category, locations });
@@ -183,7 +205,7 @@ export default function WarehouseManagementPage() {
       setNewWarehouseName("");
       setNewCategory("");
       setNewItems("");
-      
+
       // Refresh warehouse list
       fetchWarehouses();
     } catch (err: any) {
@@ -260,12 +282,20 @@ export default function WarehouseManagementPage() {
                   <div className="space-y-4">
                     {category.locations.map((location, idx) => {
                       // Use items from database
-                      console.log("Location:", location.name, "Items:", location.items);
-                      const displayItems = location.items && Array.isArray(location.items) && location.items.length > 0 
-                        ? location.items 
-                        : [];
+                      console.log(
+                        "Location:",
+                        location.name,
+                        "Items:",
+                        location.items
+                      );
+                      const displayItems =
+                        location.items &&
+                        Array.isArray(location.items) &&
+                        location.items.length > 0
+                          ? location.items
+                          : [];
                       console.log("Display items:", displayItems);
-                      
+
                       return (
                         <div
                           key={`${location.name}-${idx}`}
@@ -277,13 +307,12 @@ export default function WarehouseManagementPage() {
                             </span>{" "}
                             {displayItems.length > 0 ? (
                               <span className="text-slate-900 dark:text-slate-100">
-                                {displayItems
-                                  .map((item, itemIdx) => (
-                                    <span key={itemIdx}>
-                                      {item}
-                                      {itemIdx < displayItems.length - 1 && " | "}
-                                    </span>
-                                  ))}
+                                {displayItems.map((item, itemIdx) => (
+                                  <span key={itemIdx}>
+                                    {item}
+                                    {itemIdx < displayItems.length - 1 && " | "}
+                                  </span>
+                                ))}
                               </span>
                             ) : (
                               <span className="text-slate-400">항목 없음</span>
@@ -362,4 +391,3 @@ export default function WarehouseManagementPage() {
     </div>
   );
 }
-

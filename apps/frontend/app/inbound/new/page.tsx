@@ -31,7 +31,7 @@ const unitOptions = [
   "ea",
   "box",
   "set",
-  "roll"
+  "roll",
 ];
 const positionOptions = [
   "직함 선택",
@@ -40,21 +40,33 @@ const positionOptions = [
   "대리",
   "과장",
   "차장",
-  "부장"
+  "부장",
 ];
 
 export default function InboundNewPage() {
   const router = useRouter();
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000", []);
-  
-  const [selectedBarcodeMethod, setSelectedBarcodeMethod] = useState<string>("manual");
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    []
+  );
+
+  const [selectedBarcodeMethod, setSelectedBarcodeMethod] =
+    useState<string>("manual");
   const [isReturnable, setIsReturnable] = useState<boolean>(true);
   const [selectedManager, setSelectedManager] = useState<string>(""); // Current logged-in member name
   const [loading, setLoading] = useState(false);
-  const [supplierManagers, setSupplierManagers] = useState<Array<{ id: string; name: string; clinicName?: string; fullName?: string; displayName: string }>>([]);
+  const [supplierManagers, setSupplierManagers] = useState<
+    Array<{
+      id: string;
+      name: string;
+      clinicName?: string;
+      fullName?: string;
+      displayName: string;
+    }>
+  >([]);
   const [inboundDate, setInboundDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    return today.toISOString().split("T")[0]; // YYYY-MM-DD format
   });
   const [storageOptions, setStorageOptions] = useState<string[]>([]);
 
@@ -87,30 +99,36 @@ export default function InboundNewPage() {
 
     fetchStorages();
   }, []);
-  
+
   // Supplier search states
-  const [supplierSearchCompanyName, setSupplierSearchCompanyName] = useState("");
-  const [supplierSearchManagerName, setSupplierSearchManagerName] = useState("");
-  const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] = useState("");
-  const [supplierSearchResults, setSupplierSearchResults] = useState<Array<{
-    id?: string; // Supplier ID (UUID)
-    supplierId?: string; // Supplier ID (alias)
-    companyName: string;
-    companyAddress: string | null;
-    businessNumber: string;
-    companyPhone: string | null;
-    companyEmail: string;
-    managerId: string;
-    managerName: string;
-    position: string | null;
-    phoneNumber: string;
-    email1: string | null;
-    email2: string | null;
-    responsibleProducts: string[];
-  }>>([]);
+  const [supplierSearchCompanyName, setSupplierSearchCompanyName] =
+    useState("");
+  const [supplierSearchManagerName, setSupplierSearchManagerName] =
+    useState("");
+  const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] =
+    useState("");
+  const [supplierSearchResults, setSupplierSearchResults] = useState<
+    Array<{
+      id?: string; // Supplier ID (UUID)
+      supplierId?: string; // Supplier ID (alias)
+      companyName: string;
+      companyAddress: string | null;
+      businessNumber: string;
+      companyPhone: string | null;
+      companyEmail: string;
+      managerId: string;
+      managerName: string;
+      position: string | null;
+      phoneNumber: string;
+      email1: string | null;
+      email2: string | null;
+      responsibleProducts: string[];
+    }>
+  >([]);
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
   const [supplierSearchFallback, setSupplierSearchFallback] = useState(false); // For fallback search
-  const [showSupplierConfirmModal, setShowSupplierConfirmModal] = useState(false); // Modal for confirming supplier without transaction history
+  const [showSupplierConfirmModal, setShowSupplierConfirmModal] =
+    useState(false); // Modal for confirming supplier without transaction history
   const [showManualEntryForm, setShowManualEntryForm] = useState(false); // Manual entry form
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>(""); // Phone number for manual entry
   const [pendingSupplier, setPendingSupplier] = useState<{
@@ -130,7 +148,9 @@ export default function InboundNewPage() {
     isRegisteredOnPlatform?: boolean;
     supplierId?: string; // Supplier company ID for approval
   } | null>(null);
-  const [selectedSupplierResult, setSelectedSupplierResult] = useState<number | null>(null);
+  const [selectedSupplierResult, setSelectedSupplierResult] = useState<
+    number | null
+  >(null);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     id?: string; // Supplier ID (UUID)
     supplierId?: string; // Supplier ID (alias)
@@ -147,7 +167,7 @@ export default function InboundNewPage() {
     email2: string | null;
     responsibleProducts: string[];
   } | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     // Product info
@@ -160,7 +180,7 @@ export default function InboundNewPage() {
     category: "",
     status: statusOptions[0],
     isActive: true,
-    isUrgent: false, 
+    isUrgent: false,
     currentStock: 0,
     currentStockUnit: unitOptions[1] || "cc / mL", // Default to first real unit
     minStock: 0,
@@ -209,7 +229,7 @@ export default function InboundNewPage() {
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => {
       const newData = { ...prev, [field]: value };
-      
+
       // 현재 재고 unit tanlanganda, boshqa unit'larni avtomatik o'zgartirish
       if (field === "currentStockUnit") {
         newData.capacityUnit = value;
@@ -217,35 +237,47 @@ export default function InboundNewPage() {
         newData.purchasePriceUnit = value;
         newData.salePriceUnit = value;
       }
-      
+
       // 제조일, 유통기한 기간 변경 시 자동 계산
-      if (field === "manufactureDate" || field === "expiryMonths" || field === "expiryUnit") {
-        const manufactureDate = field === "manufactureDate" ? value : prev.manufactureDate;
-        const expiryMonths = field === "expiryMonths" ? value : prev.expiryMonths;
+      if (
+        field === "manufactureDate" ||
+        field === "expiryMonths" ||
+        field === "expiryUnit"
+      ) {
+        const manufactureDate =
+          field === "manufactureDate" ? value : prev.manufactureDate;
+        const expiryMonths =
+          field === "expiryMonths" ? value : prev.expiryMonths;
         const expiryUnit = field === "expiryUnit" ? value : prev.expiryUnit;
-        
+
         if (manufactureDate && expiryMonths) {
           const mfgDate = new Date(manufactureDate);
           let calculatedDate = new Date(mfgDate);
-          
+
           if (expiryUnit === "months") {
-            calculatedDate.setMonth(calculatedDate.getMonth() + Number(expiryMonths));
+            calculatedDate.setMonth(
+              calculatedDate.getMonth() + Number(expiryMonths)
+            );
           } else if (expiryUnit === "days") {
-            calculatedDate.setDate(calculatedDate.getDate() + Number(expiryMonths));
+            calculatedDate.setDate(
+              calculatedDate.getDate() + Number(expiryMonths)
+            );
           } else if (expiryUnit === "years") {
-            calculatedDate.setFullYear(calculatedDate.getFullYear() + Number(expiryMonths));
+            calculatedDate.setFullYear(
+              calculatedDate.getFullYear() + Number(expiryMonths)
+            );
           }
-          
+
           // Format: YYYY-MM-DD
-          newData.expiryDate = calculatedDate.toISOString().split('T')[0];
+          newData.expiryDate = calculatedDate.toISOString().split("T")[0];
         }
       }
-      
+
       // 유통기한 직접 입력 시 자동 계산 무시
       if (field === "expiryDate") {
         newData.expiryDate = value;
       }
-      
+
       return newData;
     });
   };
@@ -262,7 +294,9 @@ export default function InboundNewPage() {
     }
   };
 
-  const handleAdditionalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAdditionalImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -275,7 +309,11 @@ export default function InboundNewPage() {
   };
 
   // Supplier search function
-  const searchSuppliers = async (companyName?: string, managerName?: string, phoneNumber?: string) => {
+  const searchSuppliers = async (
+    companyName?: string,
+    managerName?: string,
+    phoneNumber?: string
+  ) => {
     if (!companyName && !managerName && !phoneNumber) {
       setSupplierSearchResults([]);
       setSupplierSearchFallback(false);
@@ -286,22 +324,29 @@ export default function InboundNewPage() {
     setSupplierSearchFallback(false);
     try {
       // Use correct localStorage keys (same as login page)
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
-      
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
+
       const params = new URLSearchParams();
       if (companyName) params.append("companyName", companyName);
       if (managerName) params.append("managerName", managerName);
       if (phoneNumber) params.append("phoneNumber", phoneNumber);
 
-      const response = await fetch(`${apiUrl}/supplier/search?${params.toString()}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Tenant-Id": tenantId || "",
-        },
-      });
+      const response = await fetch(
+        `${apiUrl}/supplier/search?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Tenant-Id": tenantId || "",
+          },
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -321,7 +366,7 @@ export default function InboundNewPage() {
           supplierId: item.supplierId || item.id || null, // Supplier company ID
         }));
         setSupplierSearchResults(results);
-        
+
         // If no results and we have companyName + managerName, show fallback option
         if (results.length === 0 && companyName && managerName) {
           setSupplierSearchFallback(true);
@@ -352,7 +397,7 @@ export default function InboundNewPage() {
 
     // Clean phone number: remove spaces, dashes, and other formatting
     const cleanPhoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, "").trim();
-    
+
     if (!cleanPhoneNumber) {
       setSupplierSearchResults([]);
       return;
@@ -362,34 +407,44 @@ export default function InboundNewPage() {
     setSupplierSearchFallback(false);
     try {
       // Use correct localStorage keys (same as login page)
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
 
       console.log("Searching suppliers by phone:", cleanPhoneNumber); // Debug log
 
-      const response = await fetch(`${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(cleanPhoneNumber)}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Tenant-Id": tenantId || "",
-        },
-      });
+      const response = await fetch(
+        `${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(cleanPhoneNumber)}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Tenant-Id": tenantId || "",
+          },
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
         console.log("Phone search response:", data); // Debug log
-        
+
         // Handle both array and single object responses
-        const dataArray = Array.isArray(data) ? data : (data ? [data] : []);
-        
+        const dataArray = Array.isArray(data) ? data : data ? [data] : [];
+
         const results = dataArray.map((item: any) => {
           // Get supplierManagerId from multiple possible sources
-          const supplierManagerId = item.supplierManagerId 
-            || item.managers?.[0]?.id 
-            || (item.managers && item.managers.length > 0 ? item.managers[0].id : null)
-            || null;
-          
+          const supplierManagerId =
+            item.supplierManagerId ||
+            item.managers?.[0]?.id ||
+            (item.managers && item.managers.length > 0
+              ? item.managers[0].id
+              : null) ||
+            null;
+
           return {
             companyName: item.companyName || "",
             companyAddress: item.companyAddress || null,
@@ -400,31 +455,46 @@ export default function InboundNewPage() {
             supplierManagerId: supplierManagerId, // Database ID of SupplierManager
             managerName: item.managerName || item.managers?.[0]?.name || "",
             position: item.position || item.managers?.[0]?.position || null,
-            phoneNumber: item.phoneNumber || item.managers?.[0]?.phoneNumber || "",
+            phoneNumber:
+              item.phoneNumber || item.managers?.[0]?.phoneNumber || "",
             email1: item.email1 || item.managers?.[0]?.email1 || null,
             email2: item.email2 || item.managers?.[0]?.email2 || null,
-            responsibleProducts: item.responsibleProducts || item.managers?.[0]?.responsibleProducts || [],
-            isRegisteredOnPlatform: item.isRegisteredOnPlatform === true || item.isRegisteredOnPlatform === "true" || false,
+            responsibleProducts:
+              item.responsibleProducts ||
+              item.managers?.[0]?.responsibleProducts ||
+              [],
+            isRegisteredOnPlatform:
+              item.isRegisteredOnPlatform === true ||
+              item.isRegisteredOnPlatform === "true" ||
+              false,
             supplierId: item.supplierId || item.id || null, // Get supplier ID from response
           };
         });
-        
+
         console.log("Processed results:", results); // Debug log
         console.log("First result:", results[0]); // Debug log
-        console.log("First result isRegisteredOnPlatform:", results[0]?.isRegisteredOnPlatform); // Debug log
-        console.log("First result supplierManagerId:", results[0]?.supplierManagerId); // Debug log
+        console.log(
+          "First result isRegisteredOnPlatform:",
+          results[0]?.isRegisteredOnPlatform
+        ); // Debug log
+        console.log(
+          "First result supplierManagerId:",
+          results[0]?.supplierManagerId
+        ); // Debug log
         console.log("First result supplierId:", results[0]?.supplierId); // Debug log
-        
+
         // If results found from fallback search, show confirmation modal
         // Check if supplier is registered on platform (has isRegisteredOnPlatform flag)
         if (results.length > 0) {
           const supplier = results[0];
           console.log("Supplier found:", supplier); // Debug log
-          
+
           // Check if supplier is registered on platform
           // SupplierManager with ACTIVE status means registered on platform
           if (supplier.isRegisteredOnPlatform) {
-            console.log("Supplier is registered on platform - showing approval modal"); // Debug log
+            console.log(
+              "Supplier is registered on platform - showing approval modal"
+            ); // Debug log
             // Supplier is registered on platform - show approval modal with supplier info
             setPendingSupplier(supplier); // Show modal for first result
             setShowSupplierConfirmModal(true);
@@ -463,7 +533,11 @@ export default function InboundNewPage() {
   // Handle search button click - requires both companyName and managerName
   const handleSupplierSearch = () => {
     if (supplierSearchCompanyName && supplierSearchManagerName) {
-      searchSuppliers(supplierSearchCompanyName, supplierSearchManagerName, undefined);
+      searchSuppliers(
+        supplierSearchCompanyName,
+        supplierSearchManagerName,
+        undefined
+      );
     } else {
       setSupplierSearchResults([]);
     }
@@ -498,8 +572,12 @@ export default function InboundNewPage() {
     if (pendingSupplier.isRegisteredOnPlatform && pendingSupplier.supplierId) {
       try {
         // Use correct localStorage keys (same as login page)
-        const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-        const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+        const token =
+          localStorage.getItem("erp_access_token") ||
+          localStorage.getItem("token");
+        const tenantId =
+          localStorage.getItem("erp_tenant_id") ||
+          localStorage.getItem("tenantId");
 
         // Check if token and tenantId exist
         if (!token) {
@@ -529,26 +607,28 @@ export default function InboundNewPage() {
         if (!response.ok) {
           const errorText = await response.text();
           console.error("Error response:", errorText);
-          
+
           if (response.status === 401) {
             alert("인증이 만료되었습니다. 다시 로그인해주세요.");
             // Optionally redirect to login
             // window.location.href = "/login";
             return;
           }
-          
+
           throw new Error(`거래 관계 승인에 실패했습니다: ${response.status}`);
         }
 
         // Success - trade link approved
         const result = await response.json();
         console.log("Trade link approved:", result);
-        
+
         // Show success message
         alert("거래 관계가 승인되었습니다. 담당자 정보가 추가되었습니다.");
       } catch (error: any) {
         console.error("Error approving trade link:", error);
-        alert(`거래 관계 승인 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+        alert(
+          `거래 관계 승인 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`
+        );
         return;
       }
     }
@@ -571,14 +651,14 @@ export default function InboundNewPage() {
       email2: pendingSupplier.email2,
       responsibleProducts: pendingSupplier.responsibleProducts || [],
     });
-    
+
     // Also update form fields
     handleInputChange("supplierId", pendingSupplier.supplierId || ""); // ✅ Use Supplier.id
     handleInputChange("supplierName", pendingSupplier.companyName);
     handleInputChange("supplierContactName", pendingSupplier.managerName);
     handleInputChange("supplierContactPhone", pendingSupplier.phoneNumber);
     handleInputChange("supplierEmail", pendingSupplier.email1 || "");
-    
+
     // Close modal and clear pending supplier
     setShowSupplierConfirmModal(false);
     setPendingSupplier(null);
@@ -623,7 +703,9 @@ export default function InboundNewPage() {
   }, [showManualEntryForm, pendingSupplierPhone]);
 
   // Handle certificate upload
-  const handleCertificateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCertificateUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -642,16 +724,22 @@ export default function InboundNewPage() {
     setUploadingCertificate(true);
     try {
       // Use correct localStorage keys (same as login page)
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
 
       // Use supplier-backend API for certificate upload
-      const supplierApiUrl = process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
-      const response = await fetch(`${supplierApiUrl}/supplier/manager/upload-certificate`, {
-        method: "POST",
-        body: formData,
-      });
+      const supplierApiUrl =
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
+      const response = await fetch(
+        `${supplierApiUrl}/supplier/manager/upload-certificate`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         throw new Error("파일 업로드에 실패했습니다");
@@ -690,7 +778,6 @@ export default function InboundNewPage() {
       return;
     }
 
-
     // Validate phone number format
     const phoneNumber = manualEntryForm.phoneNumber.replace(/-/g, "");
     if (!/^010\d{8}$/.test(phoneNumber)) {
@@ -700,9 +787,11 @@ export default function InboundNewPage() {
 
     setSavingManualEntry(true);
     try {
-      const token = typeof window !== "undefined" 
-        ? localStorage.getItem("erp_access_token") || localStorage.getItem("token")
-        : null;
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("erp_access_token") ||
+            localStorage.getItem("token")
+          : null;
 
       // Validate business number format if provided
       let businessNumber = manualEntryForm.businessNumber.trim();
@@ -805,7 +894,7 @@ export default function InboundNewPage() {
       // Map isUrgent checkbox to status: if checked (단종), set to "단종", otherwise "활성"
       const resolvedStatus = formData.isUrgent ? "단종" : "활성";
       const resolvedIsActive = formData.isUrgent ? false : true;
-      
+
       const payload: any = {
         name: formData.name,
         brand: formData.brand,
@@ -833,15 +922,24 @@ export default function InboundNewPage() {
       if (formData.salePrice) {
         payload.salePrice = Number(formData.salePrice);
       }
-      if (formData.usageSalePrice && formData.usageCapacity && formData.usageCapacity > 0) {
+      if (
+        formData.usageSalePrice &&
+        formData.usageCapacity &&
+        formData.usageCapacity > 0
+      ) {
         payload.usageSalePrice = Number(formData.usageSalePrice);
       }
 
       // Add packaging unit conversion if enabled
       if (formData.hasDifferentPackagingQuantity) {
         payload.hasDifferentPackagingQuantity = true;
-        if (formData.packagingFromQuantity && formData.packagingFromQuantity > 0) {
-          payload.packagingFromQuantity = Number(formData.packagingFromQuantity);
+        if (
+          formData.packagingFromQuantity &&
+          formData.packagingFromQuantity > 0
+        ) {
+          payload.packagingFromQuantity = Number(
+            formData.packagingFromQuantity
+          );
         }
         if (formData.packagingFromUnit) {
           payload.packagingFromUnit = formData.packagingFromUnit;
@@ -863,7 +961,9 @@ export default function InboundNewPage() {
       if (isReturnable) {
         payload.returnPolicy = {
           is_returnable: true,
-          refund_amount: formData.refundAmount ? Number(formData.refundAmount) : undefined,
+          refund_amount: formData.refundAmount
+            ? Number(formData.refundAmount)
+            : undefined,
           return_storage: formData.returnStorage || undefined,
           note: formData.returnNote || undefined,
         };
@@ -875,32 +975,48 @@ export default function InboundNewPage() {
           {
             batch_no: formData.batchNo || undefined, // Backend will auto-generate in format: 123456789-001
             storage: formData.storage || undefined,
-            purchase_price: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
-            sale_price: formData.salePrice ? Number(formData.salePrice) : undefined,
+            purchase_price: formData.purchasePrice
+              ? Number(formData.purchasePrice)
+              : undefined,
+            sale_price: formData.salePrice
+              ? Number(formData.salePrice)
+              : undefined,
             manufacture_date: formData.manufactureDate || undefined,
-            expiry_date: formData.noExpiryPeriod ? null : (formData.expiryDate || undefined),
-            expiry_months: formData.noExpiryPeriod ? null : (formData.expiryMonths || undefined),
-            expiry_unit: formData.noExpiryPeriod ? null : (formData.expiryUnit || undefined),
+            expiry_date: formData.noExpiryPeriod
+              ? null
+              : formData.expiryDate || undefined,
+            expiry_months: formData.noExpiryPeriod
+              ? null
+              : formData.expiryMonths || undefined,
+            expiry_unit: formData.noExpiryPeriod
+              ? null
+              : formData.expiryUnit || undefined,
             qty: Number(formData.currentStock) || 0,
             alert_days: formData.alertDays || undefined,
-            inbound_manager: selectedManager !== "성함 선택" ? selectedManager : undefined,
+            inbound_manager:
+              selectedManager !== "성함 선택" ? selectedManager : undefined,
           },
         ];
       }
 
       // Add supplier if supplier info is provided
       // Use selectedSupplierDetails if available (has Supplier UUID)
-      const supplierUUID = selectedSupplierDetails?.supplierId 
-        || selectedSupplierDetails?.id 
-        || formData.supplierId;
-      
+      const supplierUUID =
+        selectedSupplierDetails?.supplierId ||
+        selectedSupplierDetails?.id ||
+        formData.supplierId;
+
       if (supplierUUID || formData.supplierName) {
         payload.suppliers = [
           {
             supplier_id: supplierUUID || formData.supplierName, // ✅ Use Supplier.id (UUID)
-            purchase_price: formData.purchasePrice ? Number(formData.purchasePrice) : undefined,
+            purchase_price: formData.purchasePrice
+              ? Number(formData.purchasePrice)
+              : undefined,
             moq: formData.moq ? Number(formData.moq) : undefined,
-            lead_time_days: formData.leadTimeDays ? Number(formData.leadTimeDays) : undefined,
+            lead_time_days: formData.leadTimeDays
+              ? Number(formData.leadTimeDays)
+              : undefined,
             note: formData.supplierNote || undefined,
             contact_name: formData.supplierContactName || undefined,
             contact_phone: formData.supplierContactPhone || undefined,
@@ -913,12 +1029,14 @@ export default function InboundNewPage() {
       const { apiPost } = await import("../../../lib/api");
       const result = await apiPost("/products", payload);
       console.log("Product created:", result);
-      
+
       // Redirect to inbound list page
       router.push("/inbound");
     } catch (error) {
       console.error("Error creating product:", error);
-      alert(error instanceof Error ? error.message : "제품 저장에 실패했습니다.");
+      alert(
+        error instanceof Error ? error.message : "제품 저장에 실패했습니다."
+      );
     } finally {
       setLoading(false);
     }
@@ -939,34 +1057,32 @@ export default function InboundNewPage() {
               >
                 <ArrowLeftIcon className="h-5 w-5" />
               </Link>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">제품 정보 입력</h1>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
+                제품 정보 입력
+              </h1>
             </div>
-            <p className="max-w-3xl text-base text-slate-500 dark:text-slate-300">
-            
-            </p>
+            <p className="max-w-3xl text-base text-slate-500 dark:text-slate-300"></p>
           </div>
           <div className="flex flex-col items-end gap-3">
             <div className="flex items-center gap-2 text-base font-medium text-slate-700 dark:text-slate-200">
               <span>입고날짜</span>
               <span className="font-mono text-slate-900 dark:text-white">
                 {inboundDate
-                  .split('-')
+                  .split("-")
                   .map((part, i) => (i === 0 ? part.slice(2) : part))
-                  .join('-')}
+                  .join("-")}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-             
-           
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <SaveIcon className="h-5 w-5" />
-              {loading ? "저장 중..." : "제품 저장"}
-            </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <SaveIcon className="h-5 w-5" />
+                {loading ? "저장 중..." : "제품 저장"}
+              </button>
             </div>
           </div>
         </header>
@@ -986,9 +1102,18 @@ export default function InboundNewPage() {
                   <div className="relative flex h-96 flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-0 overflow-hidden transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
                     {formData.image ? (
                       <>
-                        <img src={formData.image} alt="Preview" className="h-full w-full object-cover rounded-xl" />
+                        <img
+                          src={formData.image}
+                          alt="Preview"
+                          className="h-full w-full object-cover rounded-xl"
+                        />
                         <label className="absolute inset-0 cursor-pointer">
-                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="hidden"
+                          />
                         </label>
                         <button
                           type="button"
@@ -998,23 +1123,49 @@ export default function InboundNewPage() {
                           }}
                           className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white hover:bg-red-600 transition z-10"
                         >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
                           </svg>
                         </button>
                       </>
                     ) : (
                       <label className="flex flex-col items-center justify-center gap-2 cursor-pointer w-full h-full p-6">
-                        <svg className="h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        <svg
+                          className="h-12 w-12 text-slate-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
                         </svg>
-                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">사진 첨부</span>
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                          사진 첨부
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
                       </label>
                     )}
                   </div>
                   {/* Small Additional Image Placeholder */}
-                  
                 </div>
 
                 {/* Right Side - Form Fields + Small Image Placeholder */}
@@ -1027,13 +1178,17 @@ export default function InboundNewPage() {
                         label="제품명"
                         placeholder="이름"
                         value={formData.name}
-                        onChange={(e) => handleInputChange("name", e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("name", e.target.value)
+                        }
                       />
                       <InputField
                         label="카테고리"
                         placeholder="물광"
                         value={formData.category}
-                        onChange={(e) => handleInputChange("category", e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("category", e.target.value)
+                        }
                       />
                     </div>
 
@@ -1043,7 +1198,9 @@ export default function InboundNewPage() {
                         label="브랜드"
                         placeholder="브랜트"
                         value={formData.brand}
-                        onChange={(e) => handleInputChange("brand", e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("brand", e.target.value)
+                        }
                       />
                       <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -1056,7 +1213,9 @@ export default function InboundNewPage() {
                             pattern="[0-9]*"
                             placeholder="바코드 입력"
                             value={formData.barcode}
-                            onChange={(e) => handleInputChange("barcode", e.target.value)}
+                            onChange={(e) =>
+                              handleInputChange("barcode", e.target.value)
+                            }
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                           {/* <button
@@ -1069,56 +1228,74 @@ export default function InboundNewPage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Small Additional Image Placeholder */}
                   <div className="relative flex h-48 w-[200px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 cursor-pointer transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800">
-  {formData.additionalImage ? (
-    <>
-      <img
-        src={formData.additionalImage}
-        alt="Additional Preview"
-        className="h-full w-full object-cover rounded-lg"
-      />
-      <label className="absolute inset-0 cursor-pointer">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleAdditionalImageUpload}
-          className="hidden"
-        />
-      </label>
+                    {formData.additionalImage ? (
+                      <>
+                        <img
+                          src={formData.additionalImage}
+                          alt="Additional Preview"
+                          className="h-full w-full object-cover rounded-lg"
+                        />
+                        <label className="absolute inset-0 cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleAdditionalImageUpload}
+                            className="hidden"
+                          />
+                        </label>
 
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          handleInputChange("additionalImage", "");
-        }}
-        className="absolute top-1 right-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600 transition"
-      >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </>
-  ) : (
-    <label className="flex h-full w-full cursor-pointer items-center justify-center">
-      <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-      </svg>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={handleAdditionalImageUpload}
-        className="hidden"
-      />
-    </label>
-  )}
-</div>
-
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInputChange("additionalImage", "");
+                          }}
+                          className="absolute top-1 right-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600 transition"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </>
+                    ) : (
+                      <label className="flex h-full w-full cursor-pointer items-center justify-center">
+                        <svg
+                          className="h-6 w-6 text-slate-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 4v16m8-8H4"
+                          />
+                        </svg>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAdditionalImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
-
             </div>
           </div>
         </section>
@@ -1133,21 +1310,28 @@ export default function InboundNewPage() {
               {/* Top Row - Stock Fields */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                제품 재고 수량
+                  제품 재고 수량
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     min="0"
                     value={formData.currentStock || ""}
-                    onChange={(e) => handleInputChange("currentStock", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "currentStock",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="0"
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.currentStockUnit}
-                      onChange={(e) => handleInputChange("currentStockUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("currentStockUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1157,8 +1341,18 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1166,21 +1360,28 @@ export default function InboundNewPage() {
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                최소 제품 재고
+                  최소 제품 재고
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     min="0"
                     value={formData.minStock || ""}
-                    onChange={(e) => handleInputChange("minStock", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "minStock",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="0"
-                   className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.minStockUnit}
-                      onChange={(e) => handleInputChange("minStockUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("minStockUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1190,22 +1391,37 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             {/* Packaging Unit Conversion - Outside Grid for Full Width */}
             <div className="mt-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.hasDifferentPackagingQuantity}
-                  onChange={(e) => handleInputChange("hasDifferentPackagingQuantity", e.target.checked)}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "hasDifferentPackagingQuantity",
+                      e.target.checked
+                    )
+                  }
                   className="
         h-5 w-5 shrink-0 rounded
         appearance-none bg-white
@@ -1229,7 +1445,7 @@ export default function InboundNewPage() {
                   포장 단위 내 제품 수량이 다른 경우
                 </span>
               </label>
-              
+
               {/* Conversion Interface */}
               {formData.hasDifferentPackagingQuantity && (
                 <div className="mt-4 flex w-full gap-2">
@@ -1237,14 +1453,21 @@ export default function InboundNewPage() {
                     type="number"
                     min="0"
                     value={formData.packagingFromQuantity || ""}
-                    onChange={(e) => handleInputChange("packagingFromQuantity", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "packagingFromQuantity",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="0"
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.packagingFromUnit}
-                      onChange={(e) => handleInputChange("packagingFromUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("packagingFromUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1254,24 +1477,43 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
-                  <span className="text-lg font-semibold text-slate-700 dark:text-slate-200 flex items-center px-2">=</span>
+                  <span className="text-lg font-semibold text-slate-700 dark:text-slate-200 flex items-center px-2">
+                    =
+                  </span>
                   <input
                     type="number"
                     min="0"
                     value={formData.packagingToQuantity || "0"}
-                    onChange={(e) => handleInputChange("packagingToQuantity", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "packagingToQuantity",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="0"
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.packagingToUnit}
-                      onChange={(e) => handleInputChange("packagingToUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("packagingToUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1281,34 +1523,51 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 mt-6">
               {/* Bottom Row - Capacity Fields */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                제품 용량
+                  제품 용량
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     min="0"
                     value={formData.capacityPerProduct || ""}
-                    onChange={(e) => handleInputChange("capacityPerProduct", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "capacityPerProduct",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="0"
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.capacityUnit}
-                      onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("capacityUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1318,8 +1577,18 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1331,7 +1600,9 @@ export default function InboundNewPage() {
                   <input
                     type="checkbox"
                     checked={formData.enableUsageCapacity}
-                    onChange={(e) => handleInputChange("enableUsageCapacity", e.target.checked)}
+                    onChange={(e) =>
+                      handleInputChange("enableUsageCapacity", e.target.checked)
+                    }
                     className="
         h-5 w-5 shrink-0 rounded
         appearance-none bg-white
@@ -1360,7 +1631,12 @@ export default function InboundNewPage() {
                     type="number"
                     min="0"
                     value={formData.usageCapacity || ""}
-                    onChange={(e) => handleInputChange("usageCapacity", e.target.value ? Number(e.target.value) : 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "usageCapacity",
+                        e.target.value ? Number(e.target.value) : 0
+                      )
+                    }
                     placeholder="전제 사용 아닌 경우,실제 사용량을 입력하세요"
                     disabled={!formData.enableUsageCapacity}
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1368,7 +1644,9 @@ export default function InboundNewPage() {
                   <div className="relative w-28">
                     <select
                       value={formData.capacityUnit}
-                      onChange={(e) => handleInputChange("capacityUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("capacityUnit", e.target.value)
+                      }
                       disabled={!formData.enableUsageCapacity}
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     >
@@ -1379,8 +1657,18 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1407,13 +1695,17 @@ export default function InboundNewPage() {
                     min="0"
                     placeholder="0"
                     value={formData.purchasePrice}
-                    onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("purchasePrice", e.target.value)
+                    }
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.purchasePriceUnit}
-                      onChange={(e) => handleInputChange("purchasePriceUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("purchasePriceUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1423,8 +1715,18 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1443,13 +1745,17 @@ export default function InboundNewPage() {
                     min="0"
                     placeholder="0"
                     value={formData.salePrice}
-                    onChange={(e) => handleInputChange("salePrice", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("salePrice", e.target.value)
+                    }
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
                   <div className="relative w-28">
                     <select
                       value={formData.salePriceUnit}
-                      onChange={(e) => handleInputChange("salePriceUnit", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("salePriceUnit", e.target.value)
+                      }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       {unitOptions.slice(1).map((option) => (
@@ -1459,8 +1765,18 @@ export default function InboundNewPage() {
                       ))}
                     </select>
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <svg
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1470,14 +1786,24 @@ export default function InboundNewPage() {
                 </div>
               </div>
             </div>
-            
+
             {/* 사용량에 대한 별도 판매가 - 사용량이 입력된 경우에만 표시 */}
-            {  formData.usageCapacity > 0 && (
+            {formData.usageCapacity > 0 && (
               <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-700 dark:bg-sky-900/20">
                 <div className="mb-3 flex items-center gap-2">
                   <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white">
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                   </div>
                   <span className="text-sm font-semibold text-sky-700 dark:text-sky-300">
@@ -1489,31 +1815,46 @@ export default function InboundNewPage() {
                     사용량 단위 판매가 ({formData.capacityUnit})
                   </label>
                   <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={formData.salePrice || ""}
-                    onChange={(e) => handleInputChange("purchasePrice", e.target.value)}
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={formData.salePrice || ""}
+                      onChange={(e) =>
+                        handleInputChange("purchasePrice", e.target.value)
+                      }
+                      className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
                     <div className="relative w-28">
                       <select
                         value={formData.capacityUnit}
                         disabled
                         className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-100 px-3 pr-8 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       >
-                        <option value={formData.capacityUnit}>{formData.capacityUnit}</option>
+                        <option value={formData.capacityUnit}>
+                          {formData.capacityUnit}
+                        </option>
                       </select>
                       <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <svg
+                          className="h-4 w-4 text-slate-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
                         </svg>
                       </div>
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                    사용량 단위({formData.capacityUnit})에 대한 별도 판매가를 입력하세요
+                    사용량 단위({formData.capacityUnit})에 대한 별도 판매가를
+                    입력하세요
                   </div>
                 </div>
               </div>
@@ -1521,27 +1862,27 @@ export default function InboundNewPage() {
           </div>
         </section>
         <section className="space-y-6">
-  <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-    <RefreshIcon className="h-5 w-5 text-amber-500" />
-    반납 관리
-  </h2>
+          <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <RefreshIcon className="h-5 w-5 text-amber-500" />
+            반납 관리
+          </h2>
 
-  <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
-  <label className="flex items-center gap-3">
-    <input
-      type="checkbox"
-      checked={isReturnable}
-      onChange={() => {
-        setIsReturnable((prev) => {
-          const next = !prev;
-          if (!next) {
-            handleInputChange("refundAmount", "");
-            handleInputChange("returnStorage", "");
-          }
-          return next;
-        });
-      }}
-      className="
+          <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={isReturnable}
+                onChange={() => {
+                  setIsReturnable((prev) => {
+                    const next = !prev;
+                    if (!next) {
+                      handleInputChange("refundAmount", "");
+                      handleInputChange("returnStorage", "");
+                    }
+                    return next;
+                  });
+                }}
+                className="
         h-5 w-5 shrink-0 rounded
         appearance-none bg-white
         border border-amber-300
@@ -1559,31 +1900,35 @@ export default function InboundNewPage() {
         after:opacity-0
         checked:after:opacity-100
       "
-    />
-    <span className="text-sm text-amber-700 dark:text-amber-200">
-      이 제품은 반납 가능한 제품입니다. 반납 정책을 입력하면 자동으로 시스템에 반영됩니다.
-    </span>
-  </label>
+              />
+              <span className="text-sm text-amber-700 dark:text-amber-200">
+                이 제품은 반납 가능한 제품입니다. 반납 정책을 입력하면 자동으로
+                시스템에 반영됩니다.
+              </span>
+            </label>
 
-  {isReturnable && (
-    <div className="mt-6 grid gap-5 lg:grid-cols-2">
-      <InputField
-        label="반납 시 할인 금액 (개당, 원)"
-        placeholder="예: 5000"
-        value={formData.refundAmount}
-        onChange={(e) => handleInputChange("refundAmount", e.target.value)}
-      />
-      <InputField
-        label="반납품 보관 위치"
-        placeholder="보관 위치 입력하거나 선택하세요"
-        value={formData.returnStorage}
-        onChange={(e) => handleInputChange("returnStorage", e.target.value)}
-      />
-    </div>
-  )}
-</div>
-
-</section>
+            {isReturnable && (
+              <div className="mt-6 grid gap-5 lg:grid-cols-2">
+                <InputField
+                  label="반납 시 할인 금액 (개당, 원)"
+                  placeholder="예: 5000"
+                  value={formData.refundAmount}
+                  onChange={(e) =>
+                    handleInputChange("refundAmount", e.target.value)
+                  }
+                />
+                <InputField
+                  label="반납품 보관 위치"
+                  placeholder="보관 위치 입력하거나 선택하세요"
+                  value={formData.returnStorage}
+                  onChange={(e) =>
+                    handleInputChange("returnStorage", e.target.value)
+                  }
+                />
+              </div>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -1595,7 +1940,9 @@ export default function InboundNewPage() {
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한</label>
+                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      유통기한
+                    </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1627,26 +1974,34 @@ export default function InboundNewPage() {
         checked:after:opacity-100
       "
                       />
-                      <span className="text-sm text-slate-600 dark:text-slate-300">유통기간 없음</span>
+                      <span className="text-sm text-slate-600 dark:text-slate-300">
+                        유통기간 없음
+                      </span>
                     </label>
                   </div>
                   <div className="relative">
                     <CalendarIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                     <input
                       type="date"
-                      value={formData.expiryDate} 
-                      onChange={(e) => handleInputChange("expiryDate", e.target.value)}
+                      value={formData.expiryDate}
+                      onChange={(e) =>
+                        handleInputChange("expiryDate", e.target.value)
+                      }
                       disabled={formData.noExpiryPeriod}
                       className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">유통기한 임박 알림 기준</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    유통기한 임박 알림 기준
+                  </label>
                   <div className="relative">
                     <select
                       value={formData.alertDays || ""}
-                      onChange={(e) => handleInputChange("alertDays", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("alertDays", e.target.value)
+                      }
                       className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       <option value="">선택(30일전/60일전/90일전)</option>
@@ -1671,12 +2026,7 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                 </div>
-             
               </div>
-
-     
-
-            
             </div>
           </div>
         </section>
@@ -1690,75 +2040,98 @@ export default function InboundNewPage() {
             {selectedSupplierDetails ? (
               /* Full Supplier Details Card */
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">공급업체 상세 정보</h3>
-                
+                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                  공급업체 상세 정보
+                </h3>
+
                 <div className="grid gap-6 md:grid-cols-2">
                   {/* Left Column */}
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사명</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        회사명
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.companyName}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사 주소</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        회사 주소
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.companyAddress || "-"}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이름</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        이름
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.managerName}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">직함</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        직함
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.position || "-"}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">이메일 1</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        이메일 1
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.email1 || "-"}
                       </div>
                     </div>
-                    
                   </div>
 
                   {/* Right Column */}
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">사업자 등록번호</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        사업자 등록번호
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.businessNumber}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">회사 전화번호</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        회사 전화번호
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.companyPhone || "-"}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">담당자 ID</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        담당자 ID
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.managerId}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">핸드폰 번호</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        핸드폰 번호
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.phoneNumber}
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">담당 제품</label>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        담당 제품
+                      </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.responsibleProducts.length > 0 
-                          ? selectedSupplierDetails.responsibleProducts.join(", ")
+                        {selectedSupplierDetails.responsibleProducts.length > 0
+                          ? selectedSupplierDetails.responsibleProducts.join(
+                              ", "
+                            )
                           : "-"}
                       </div>
                     </div>
@@ -1767,11 +2140,15 @@ export default function InboundNewPage() {
 
                 {/* 메모 - Full Width */}
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">메모</label>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    메모
+                  </label>
                   <textarea
                     rows={4}
                     value={formData.supplierNote}
-                    onChange={(e) => handleInputChange("supplierNote", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("supplierNote", e.target.value)
+                    }
                     placeholder="메모를 입력하세요"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
                   />
@@ -1793,8 +2170,18 @@ export default function InboundNewPage() {
                 {/* Header with back button */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
-                    <svg className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <p className="text-sm text-amber-800 dark:text-amber-300">
                       담당자님 정보 없습니다. 입력 부탁드립니다.
@@ -1826,7 +2213,10 @@ export default function InboundNewPage() {
                           type="text"
                           value={manualEntryForm.managerName}
                           onChange={(e) =>
-                            setManualEntryForm((prev) => ({ ...prev, managerName: e.target.value }))
+                            setManualEntryForm((prev) => ({
+                              ...prev,
+                              managerName: e.target.value,
+                            }))
                           }
                           placeholder="성함"
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1834,12 +2224,18 @@ export default function InboundNewPage() {
                         <select
                           value={manualEntryForm.position}
                           onChange={(e) =>
-                            setManualEntryForm((prev) => ({ ...prev, position: e.target.value }))
+                            setManualEntryForm((prev) => ({
+                              ...prev,
+                              position: e.target.value,
+                            }))
                           }
                           className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                         >
                           {positionOptions.map((option) => (
-                            <option key={option} value={option === "직함 선택" ? "" : option}>
+                            <option
+                              key={option}
+                              value={option === "직함 선택" ? "" : option}
+                            >
                               {option}
                             </option>
                           ))}
@@ -1872,20 +2268,34 @@ export default function InboundNewPage() {
                               }}
                               className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
                               </svg>
                             </button>
                           </div>
                         ) : (
                           <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
                             <div className="text-center">
-                              <p className="text-sm text-slate-500 dark:text-slate-400">이미지를 업로드하세요</p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                이미지를 업로드하세요
+                              </p>
                             </div>
                           </div>
                         )}
                         <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                          {uploadingCertificate ? "업로드 중..." : "사업자등록증 업데이트"}
+                          {uploadingCertificate
+                            ? "업로드 중..."
+                            : "사업자등록증 업데이트"}
                           <input
                             type="file"
                             accept="image/*"
@@ -1908,7 +2318,10 @@ export default function InboundNewPage() {
                         type="tel"
                         value={manualEntryForm.phoneNumber}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, phoneNumber: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            phoneNumber: e.target.value,
+                          }))
                         }
                         placeholder="000-0000-0000"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1923,7 +2336,10 @@ export default function InboundNewPage() {
                         type="text"
                         value={manualEntryForm.companyName}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, companyName: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            companyName: e.target.value,
+                          }))
                         }
                         placeholder="회사명"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1938,7 +2354,10 @@ export default function InboundNewPage() {
                         type="text"
                         value={manualEntryForm.companyAddress}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, companyAddress: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            companyAddress: e.target.value,
+                          }))
                         }
                         placeholder="주소를 압력햐주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1953,7 +2372,10 @@ export default function InboundNewPage() {
                         type="text"
                         value={manualEntryForm.businessNumber}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, businessNumber: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            businessNumber: e.target.value,
+                          }))
                         }
                         placeholder="00-000-0000"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1968,7 +2390,10 @@ export default function InboundNewPage() {
                         type="tel"
                         value={manualEntryForm.companyPhone}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, companyPhone: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            companyPhone: e.target.value,
+                          }))
                         }
                         placeholder="00-0000-0000"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1983,7 +2408,10 @@ export default function InboundNewPage() {
                         type="email"
                         value={manualEntryForm.email1}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, email1: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            email1: e.target.value,
+                          }))
                         }
                         placeholder="이메일을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -1998,7 +2426,10 @@ export default function InboundNewPage() {
                         type="email"
                         value={manualEntryForm.email2}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, email2: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            email2: e.target.value,
+                          }))
                         }
                         placeholder="이메일을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -2013,7 +2444,10 @@ export default function InboundNewPage() {
                         type="text"
                         value={manualEntryForm.responsibleProducts}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, responsibleProducts: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            responsibleProducts: e.target.value,
+                          }))
                         }
                         placeholder="제품을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -2027,7 +2461,10 @@ export default function InboundNewPage() {
                       <textarea
                         value={manualEntryForm.memo}
                         onChange={(e) =>
-                          setManualEntryForm((prev) => ({ ...prev, memo: e.target.value }))
+                          setManualEntryForm((prev) => ({
+                            ...prev,
+                            memo: e.target.value,
+                          }))
                         }
                         rows={3}
                         placeholder="메모를 입력하세요"
@@ -2042,7 +2479,11 @@ export default function InboundNewPage() {
                   <button
                     type="button"
                     onClick={handleManualEntrySubmit}
-                    disabled={savingManualEntry || !manualEntryForm.managerName || !manualEntryForm.phoneNumber}
+                    disabled={
+                      savingManualEntry ||
+                      !manualEntryForm.managerName ||
+                      !manualEntryForm.phoneNumber
+                    }
                     className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
                   >
                     {savingManualEntry ? "저장 중..." : "저장 및 등록"}
@@ -2060,9 +2501,15 @@ export default function InboundNewPage() {
                     <input
                       type="text"
                       value={supplierSearchCompanyName}
-                      onChange={(e) => setSupplierSearchCompanyName(e.target.value)}
+                      onChange={(e) =>
+                        setSupplierSearchCompanyName(e.target.value)
+                      }
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                        if (
+                          e.key === "Enter" &&
+                          supplierSearchCompanyName &&
+                          supplierSearchManagerName
+                        ) {
                           handleSupplierSearch();
                         }
                       }}
@@ -2077,9 +2524,15 @@ export default function InboundNewPage() {
                     <input
                       type="text"
                       value={supplierSearchManagerName}
-                      onChange={(e) => setSupplierSearchManagerName(e.target.value)}
+                      onChange={(e) =>
+                        setSupplierSearchManagerName(e.target.value)
+                      }
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && supplierSearchCompanyName && supplierSearchManagerName) {
+                        if (
+                          e.key === "Enter" &&
+                          supplierSearchCompanyName &&
+                          supplierSearchManagerName
+                        ) {
                           handleSupplierSearch();
                         }
                       }}
@@ -2091,14 +2544,34 @@ export default function InboundNewPage() {
                     <button
                       type="button"
                       onClick={handleSupplierSearch}
-                      disabled={supplierSearchLoading || !supplierSearchCompanyName || !supplierSearchManagerName}
+                      disabled={
+                        supplierSearchLoading ||
+                        !supplierSearchCompanyName ||
+                        !supplierSearchManagerName
+                      }
                       className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
                       title="검색"
                     >
                       {supplierSearchLoading ? (
-                        <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <svg
+                          className="h-5 w-5 animate-spin"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                       ) : (
                         <SearchIcon className="h-5 w-5" />
@@ -2113,11 +2586,21 @@ export default function InboundNewPage() {
                     <table className="w-full border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">회사명</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">이름</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">직함</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">핸드폰 번호</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">담당자 ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            회사명
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            이름
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            직함
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            핸드폰 번호
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            담당자 ID
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2126,14 +2609,26 @@ export default function InboundNewPage() {
                             key={index}
                             onClick={() => handleSupplierResultSelect(index)}
                             className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
-                              selectedSupplierResult === index ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                              selectedSupplierResult === index
+                                ? "bg-blue-50 dark:bg-blue-900/20"
+                                : ""
                             }`}
                           >
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.companyName}</td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerName}</td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.position || "-"}</td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.phoneNumber}</td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{result.managerId}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                              {result.companyName}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                              {result.managerName}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                              {result.position || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                              {result.phoneNumber}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                              {result.managerId}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2142,27 +2637,35 @@ export default function InboundNewPage() {
                 )}
 
                 {/* No Results Message with Fallback Option */}
-                {!supplierSearchLoading && supplierSearchResults.length === 0 && supplierSearchFallback && (
-                  <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 text-amber-600 dark:text-amber-400">ℹ️</span>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                          거래 이력이 있는 공급업체를 찾을 수 없습니다.
-                        </p>
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                          등록된 공급업체를 찾으려면 아래에서 핸드폰 번호로 검색해보세요.
-                        </p>
+                {!supplierSearchLoading &&
+                  supplierSearchResults.length === 0 &&
+                  supplierSearchFallback && (
+                    <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 text-amber-600 dark:text-amber-400">
+                          ℹ️
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                            거래 이력이 있는 공급업체를 찾을 수 없습니다.
+                          </p>
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                            등록된 공급업체를 찾으려면 아래에서 핸드폰 번호로
+                            검색해보세요.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Phone Number Search Section */}
                 <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
                   <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
                     <span className="mt-0.5">▲</span>
-                    <span>담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해 보세요.</span>
+                    <span>
+                      담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해
+                      보세요.
+                    </span>
                   </div>
                   <div className="flex gap-3">
                     <div className="flex-1">
@@ -2172,7 +2675,9 @@ export default function InboundNewPage() {
                       <input
                         type="tel"
                         value={supplierSearchPhoneNumber}
-                        onChange={(e) => setSupplierSearchPhoneNumber(e.target.value)}
+                        onChange={(e) =>
+                          setSupplierSearchPhoneNumber(e.target.value)
+                        }
                         placeholder="000-0000-0000"
                         className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
@@ -2181,7 +2686,9 @@ export default function InboundNewPage() {
                       <button
                         type="button"
                         onClick={handlePhoneNumberSearch}
-                        disabled={supplierSearchLoading || !supplierSearchPhoneNumber}
+                        disabled={
+                          supplierSearchLoading || !supplierSearchPhoneNumber
+                        }
                         className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
                       >
                         {supplierSearchLoading ? "검색 중..." : "검색하기"}
@@ -2193,10 +2700,6 @@ export default function InboundNewPage() {
             )}
           </div>
         </section>
-
-
-
-        
 
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -2216,43 +2719,41 @@ export default function InboundNewPage() {
         </section>
 
         <footer className="">
-  <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
-    {/* LEFT: 보관 위치 */}
-    <div className="flex-1">
-      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-        보관 위치
-      </label>
-      <div className="relative">
-        <input
-          type="text"
-          list="storage-options"
-          placeholder="보관 위치를 입력하거나 선택하세요"
-          value={formData.storage}
-          onChange={(e) => handleInputChange("storage", e.target.value)}
-          className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        />
-        <datalist id="storage-options">
-          {storageOptions.map((storage, index) => (
-            <option key={index} value={storage} />
-          ))}
-        </datalist>
-      </div>
-     
-    </div>
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
+            {/* LEFT: 보관 위치 */}
+            <div className="flex-1">
+              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                보관 위치
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  list="storage-options"
+                  placeholder="보관 위치를 입력하거나 선택하세요"
+                  value={formData.storage}
+                  onChange={(e) => handleInputChange("storage", e.target.value)}
+                  className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+                <datalist id="storage-options">
+                  {storageOptions.map((storage, index) => (
+                    <option key={index} value={storage} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
 
-    {/* RIGHT: 버튼 */}
-    <button
-      type="button"
-      onClick={handleSubmit}
-      disabled={loading}
-      className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      <SaveIcon className="h-5 w-5" />
-      {loading ? "저장 중..." : "제품 저장"}
-    </button>
-  </div>
-</footer>
-
+            {/* RIGHT: 버튼 */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <SaveIcon className="h-5 w-5" />
+              {loading ? "저장 중..." : "제품 저장"}
+            </button>
+          </div>
+        </footer>
       </div>
 
       {/* Supplier Confirmation Modal */}
@@ -2269,8 +2770,18 @@ export default function InboundNewPage() {
               }}
               className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
 
@@ -2295,7 +2806,8 @@ export default function InboundNewPage() {
                         {pendingSupplier?.companyName}
                       </p>
                       <p className="text-slate-600 dark:text-slate-400">
-                        {pendingSupplier?.managerName} ({pendingSupplier?.phoneNumber})
+                        {pendingSupplier?.managerName} (
+                        {pendingSupplier?.phoneNumber})
                       </p>
                     </div>
                   </div>
@@ -2346,7 +2858,6 @@ export default function InboundNewPage() {
           </div>
         </div>
       )}
-
     </main>
   );
 }
@@ -2370,7 +2881,9 @@ function InputField({
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {label}
+      </span>
       <div className="relative flex items-center">
         <input
           {...inputProps}
@@ -2379,10 +2892,16 @@ function InputField({
           disabled={disabled}
           placeholder={placeholder}
           className={`h-11 w-full rounded-xl border bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 ${
-            disabled ? "border-dashed opacity-60 dark:border-slate-700" : "border-slate-200"
+            disabled
+              ? "border-dashed opacity-60 dark:border-slate-700"
+              : "border-slate-200"
           }`}
         />
-        {suffix ? <div className="absolute inset-y-0 right-2 flex items-center">{suffix}</div> : null}
+        {suffix ? (
+          <div className="absolute inset-y-0 right-2 flex items-center">
+            {suffix}
+          </div>
+        ) : null}
       </div>
     </label>
   );
@@ -2405,7 +2924,9 @@ function TextareaField({
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {label}
+      </span>
       <textarea
         rows={rows}
         value={value}
@@ -2413,7 +2934,9 @@ function TextareaField({
         disabled={disabled}
         placeholder={placeholder}
         className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 ${
-          disabled ? "border-dashed opacity-60 dark:border-slate-700" : "border-slate-200"
+          disabled
+            ? "border-dashed opacity-60 dark:border-slate-700"
+            : "border-slate-200"
         }`}
       />
     </label>
@@ -2435,13 +2958,17 @@ function SelectField({
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {label}
+      </span>
       <select
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
         disabled={disabled}
         className={`h-11 w-full rounded-xl border bg-white px-4 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 ${
-          disabled ? "border-dashed opacity-60 dark:border-slate-700" : "border-slate-200"
+          disabled
+            ? "border-dashed opacity-60 dark:border-slate-700"
+            : "border-slate-200"
         }`}
       >
         {options.map((option) => (
@@ -2477,7 +3004,9 @@ function NumberField({
 
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {label}
+      </span>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -2515,21 +3044,39 @@ function UploadDropzone({
     <div className="relative flex h-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-6 text-center transition hover:border-sky-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
       {imagePreview ? (
         <>
-          <img src={imagePreview} alt="Preview" className="h-full w-full object-contain rounded-xl" />
+          <img
+            src={imagePreview}
+            alt="Preview"
+            className="h-full w-full object-contain rounded-xl"
+          />
           <label className="absolute inset-0 cursor-pointer">
-            <input type="file" accept="image/*" onChange={onFileSelect} className="hidden" />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={onFileSelect}
+              className="hidden"
+            />
           </label>
         </>
       ) : (
         <>
           <UploadIcon className="h-10 w-10 text-sky-500" />
           <div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">컴퓨터에서 이미지 선택</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">JPG, PNG, 최대 5MB</p>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              컴퓨터에서 이미지 선택
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              JPG, PNG, 최대 5MB
+            </p>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sky-400 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-600 transition hover:bg-sky-500/20 dark:border-sky-500 dark:text-sky-300 dark:hover:bg-sky-500/10">
             파일 선택
-            <input type="file" accept="image/*" onChange={onFileSelect} className="hidden" />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={onFileSelect}
+              className="hidden"
+            />
           </label>
         </>
       )}
@@ -2539,58 +3086,143 @@ function UploadDropzone({
 
 function UploadIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+      />
     </svg>
   );
 }
 
 function SaveIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 21v-7.5H7.5V21M4.5 7.5l7.5-5.25L19.5 7.5M12 2.25v9" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.5 21v-7.5H7.5V21M4.5 7.5l7.5-5.25L19.5 7.5M12 2.25v9"
+      />
     </svg>
   );
 }
 
 function SearchIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1115 6.75a7.5 7.5 0 011.65 9.9z" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1115 6.75a7.5 7.5 0 011.65 9.9z"
+      />
     </svg>
   );
 }
 
 function InfoIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25h1.5v5.25h-1.5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75h.008v.008H12z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M11.25 11.25h1.5v5.25h-1.5z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6.75h.008v.008H12z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 21a9 9 0 100-18 9 9 0 000 18z"
+      />
     </svg>
   );
 }
 
 function BarcodeIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 6v12M7.5 6v12M12 6v12M15 6v12M18 6v12" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.5 6v12M7.5 6v12M12 6v12M15 6v12M18 6v12"
+      />
     </svg>
   );
 }
 
 function DollarIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18m4.5-13.5A3.75 3.75 0 0012 3.75h-.75a3.75 3.75 0 000 7.5h1.5a3.75 3.75 0 010 7.5H12a3.75 3.75 0 01-4.5-3.75" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v18m4.5-13.5A3.75 3.75 0 0012 3.75h-.75a3.75 3.75 0 000 7.5h1.5a3.75 3.75 0 010 7.5H12a3.75 3.75 0 01-4.5-3.75"
+      />
     </svg>
   );
 }
 
 function ScanIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 7.5V4.875A1.125 1.125 0 014.875 3.75H7.5M3.75 16.5v2.625c0 .621.504 1.125 1.125 1.125H7.5M16.5 3.75h2.625c.621 0 1.125.504 1.125 1.125V7.5M16.5 21h2.625c.621 0 1.125-.504 1.125-1.125V16.5" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 7.5V4.875A1.125 1.125 0 014.875 3.75H7.5M3.75 16.5v2.625c0 .621.504 1.125 1.125 1.125H7.5M16.5 3.75h2.625c.621 0 1.125.504 1.125 1.125V7.5M16.5 21h2.625c.621 0 1.125-.504 1.125-1.125V16.5"
+      />
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 12h7.5" />
     </svg>
   );
@@ -2598,9 +3230,24 @@ function ScanIcon({ className }: { className?: string }) {
 
 function TruckIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75V5.25A2.25 2.25 0 014.5 3h11.25v12H3.75a1.5 1.5 0 01-1.5-1.5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 7.5H19.5c.621 0 1.125.504 1.125 1.125V15.75M15.75 12H21" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 15.75V5.25A2.25 2.25 0 014.5 3h11.25v12H3.75a1.5 1.5 0 01-1.5-1.5z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 7.5H19.5c.621 0 1.125.504 1.125 1.125V15.75M15.75 12H21"
+      />
       <circle cx="6" cy="18" r="1.5" />
       <circle cx="18" cy="18" r="1.5" />
     </svg>
@@ -2609,34 +3256,86 @@ function TruckIcon({ className }: { className?: string }) {
 
 function RefreshIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 0113.3-4.7L21 6M4.5 12a7.5 7.5 0 0013.3 4.7L21 18" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 6v3h-3M21 18v-3h-3" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.5 12a7.5 7.5 0 0113.3-4.7L21 6M4.5 12a7.5 7.5 0 0013.3 4.7L21 18"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 6v3h-3M21 18v-3h-3"
+      />
     </svg>
   );
 }
 
 function CalendarIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+      />
     </svg>
   );
 }
 
 function LightbulbIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m4.5 0a12.06 12.06 0 00-4.5 0m0 0a8.97 8.97 0 01-3.25-.55m3.25.55a8.97 8.97 0 00-3.25-.55m0 0a9 9 0 0113.5-12.297M15.75 2.25a9 9 0 00-9 9c0 1.507.18 2.97.54 4.35M15.75 2.25A8.97 8.97 0 0118 2.25c2.34 0 4.5.9 6.12 2.38M15.75 2.25a8.97 8.97 0 00-2.25 1.5m0 0a9 9 0 00-9 9m9-9v.001" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m4.5 0a12.06 12.06 0 00-4.5 0m0 0a8.97 8.97 0 01-3.25-.55m3.25.55a8.97 8.97 0 00-3.25-.55m0 0a9 9 0 0113.5-12.297M15.75 2.25a9 9 0 00-9 9c0 1.507.18 2.97.54 4.35M15.75 2.25A8.97 8.97 0 0118 2.25c2.34 0 4.5.9 6.12 2.38M15.75 2.25a8.97 8.97 0 00-2.25 1.5m0 0a9 9 0 00-9 9m9-9v.001"
+      />
     </svg>
   );
 }
 
 function ClipboardIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5V6h6V4.5a1.5 1.5 0 00-1.5-1.5h-3A1.5 1.5 0 009 4.5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 6.75A2.25 2.25 0 016.75 4.5h10.5a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0117.25 20.25H6.75A2.25 2.25 0 014.5 18V6.75z" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 4.5V6h6V4.5a1.5 1.5 0 00-1.5-1.5h-3A1.5 1.5 0 009 4.5z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.5 6.75A2.25 2.25 0 016.75 4.5h10.5a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0117.25 20.25H6.75A2.25 2.25 0 014.5 18V6.75z"
+      />
     </svg>
   );
 }
@@ -2651,7 +3350,9 @@ function InfoBadge({ children }: { children: React.ReactNode }) {
 
 function Avatar({ color }: { color: string }) {
   return (
-    <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-sm font-semibold text-white ${color}`}>
+    <span
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-sm font-semibold text-white ${color}`}
+    >
       Y
     </span>
   );
@@ -2664,20 +3365,30 @@ function ManagerSelectField({
   onChange,
 }: {
   label: string;
-  options: Array<{ id: string; member_id: string; role: string; full_name: string | null }>;
+  options: Array<{
+    id: string;
+    member_id: string;
+    role: string;
+    full_name: string | null;
+  }>;
   value: string;
   onChange: (value: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   // Display name: show member_id (and full_name if available)
-  const getDisplayName = (member: { id: string; member_id: string; role: string; full_name: string | null }) => {
+  const getDisplayName = (member: {
+    id: string;
+    member_id: string;
+    role: string;
+    full_name: string | null;
+  }) => {
     if (member.full_name) {
       return `${member.member_id} (${member.full_name})`;
     }
     return member.member_id;
   };
-  
+
   const displayValue = value === "성함 선택" ? "성함 선택" : value;
 
   return (
@@ -2736,7 +3447,9 @@ function ManagerSelectField({
                 <div className="flex flex-col">
                   <span className="font-medium">{member.member_id}</span>
                   {member.full_name && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{member.full_name}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {member.full_name}
+                    </span>
                   )}
                 </div>
               </button>
@@ -2785,4 +3498,3 @@ function ArrowLeftIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

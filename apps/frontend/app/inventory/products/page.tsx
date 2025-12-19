@@ -68,7 +68,7 @@ export default function InboundPage() {
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
-  
+
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,8 +86,6 @@ export default function InboundPage() {
 
   // Fetch products for "빠른 입고" tab
   useEffect(() => {
-   
-
     const fetchProducts = async () => {
       setLoading(true);
       setError(null);
@@ -138,17 +136,18 @@ export default function InboundPage() {
     };
 
     fetchProducts();
-  }, [apiUrl, ]);
+  }, [apiUrl]);
 
   // Fetch pending orders function
   const fetchPendingOrders = useCallback(async () => {
-   
     setLoading(true);
     setError(null);
     try {
       const { apiGet } = await import("../../../lib/api");
-      const groupedData = await apiGet<any[]>(`${apiUrl}/order/pending-inbound`);
-      
+      const groupedData = await apiGet<any[]>(
+        `${apiUrl}/order/pending-inbound`
+      );
+
       // Flatten grouped data: each supplier group has an array of orders
       const flatOrders: any[] = [];
       groupedData.forEach((supplierGroup: any) => {
@@ -160,7 +159,7 @@ export default function InboundPage() {
           });
         });
       });
-      
+
       setPendingOrders(flatOrders);
     } catch (err) {
       console.error("Failed to load pending orders", err);
@@ -168,7 +167,7 @@ export default function InboundPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, ]);
+  }, [apiUrl]);
 
   // Fetch pending orders for "입고 대기" tab
   useEffect(() => {
@@ -233,7 +232,14 @@ export default function InboundPage() {
     }
 
     return filtered;
-  }, [products, searchQuery, sortBy, selectedCategory, selectedStatus, selectedSupplier]);
+  }, [
+    products,
+    searchQuery,
+    sortBy,
+    selectedCategory,
+    selectedStatus,
+    selectedSupplier,
+  ]);
 
   const totalPages = Math.ceil(filteredAndSortedProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -260,121 +266,110 @@ export default function InboundPage() {
         <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
-            전체 제품
+              전체 제품
             </h1>
-            
           </div>
-         
         </header>
 
-       
-     
-
-        
-          <>
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-900/70">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-1 items-center rounded-xl border border-transparent bg-slate-100 px-4 py-3 transition focus-within:border-sky-400 focus-within:bg-white dark:bg-slate-800 dark:focus-within:border-sky-500 dark:focus-within:bg-slate-900">
-                  <SearchIcon className="mr-3 h-5 w-5 text-slate-400" />
-                  <input
-                    aria-label="제품 검색"
-                    placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
-                  />
-                </div>
-                <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto">
-                  <FilterChip
-                    label="정렬"
-                    options={inboundFilters}
-                    value={sortBy}
-                    onChange={(value) => setSortBy(value)}
-                    defaultValue="최근 업데이트순"
-                  />
-                  <FilterChip
-                    label="카테고리"
-                    options={getCategories(products)}
-                    value={selectedCategory}
-                    onChange={(value) => setSelectedCategory(value)}
-                    defaultValue="전체 카테고리"
-                  />
-                  <FilterChip
-                    label="상태"
-                    options={getStatuses(products)}
-                    value={selectedStatus}
-                    onChange={(value) => setSelectedStatus(value)}
-                    defaultValue="전체 상태"
-                  />
-                  <FilterChip
-                    label="공급업체"
-                    options={getSuppliers(products)}
-                    value={selectedSupplier}
-                    onChange={(value) => setSelectedSupplier(value)}
-                    defaultValue="전체 공급업체"
-                  />
-                </div>
+        <>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-1 items-center rounded-xl border border-transparent bg-slate-100 px-4 py-3 transition focus-within:border-sky-400 focus-within:bg-white dark:bg-slate-800 dark:focus-within:border-sky-500 dark:focus-within:bg-slate-900">
+                <SearchIcon className="mr-3 h-5 w-5 text-slate-400" />
+                <input
+                  aria-label="제품 검색"
+                  placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
+                />
+              </div>
+              <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto">
+                <FilterChip
+                  label="정렬"
+                  options={inboundFilters}
+                  value={sortBy}
+                  onChange={(value) => setSortBy(value)}
+                  defaultValue="최근 업데이트순"
+                />
+                <FilterChip
+                  label="카테고리"
+                  options={getCategories(products)}
+                  value={selectedCategory}
+                  onChange={(value) => setSelectedCategory(value)}
+                  defaultValue="전체 카테고리"
+                />
+                <FilterChip
+                  label="상태"
+                  options={getStatuses(products)}
+                  value={selectedStatus}
+                  onChange={(value) => setSelectedStatus(value)}
+                  defaultValue="전체 상태"
+                />
+                <FilterChip
+                  label="공급업체"
+                  options={getSuppliers(products)}
+                  value={selectedSupplier}
+                  onChange={(value) => setSelectedSupplier(value)}
+                  defaultValue="전체 공급업체"
+                />
               </div>
             </div>
-          </>
-       
+          </div>
+        </>
 
         <section className="space-y-4">
-         
-            <>
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
-                </h2>
-              </div>
+          <>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
+              </h2>
+            </div>
 
-              {error && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
-                  {error}
+            {error && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {loading ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                  불러오는 중...
                 </div>
+              ) : products.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                  등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
+                </div>
+              ) : (
+                <>
+                  {currentProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      isExpanded={expandedCardId === product.id}
+                      onToggle={() => handleCardToggle(product.id)}
+                    />
+                  ))}
+                  {totalPages > 1 && (
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={handlePageChange}
+                    />
+                  )}
+                </>
               )}
+            </div>
+          </>
 
-              <div className="space-y-3">
-                {loading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                    불러오는 중...
-                  </div>
-                ) : products.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                    등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
-                  </div>
-                ) : (
-                  <>
-                    {currentProducts.map((product) => (
-                      <ProductCard
-                        key={product.id}
-                        product={product}
-                        isExpanded={expandedCardId === product.id}
-                        onToggle={() => handleCardToggle(product.id)}
-                      />
-                    ))}
-                    {totalPages > 1 && (
-                      <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={handlePageChange}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </>
-         
-
-         
-            <PendingOrdersList
-              orders={pendingOrders}
-              loading={loading}
-              error={error}
-              apiUrl={apiUrl}
-              onRefresh={fetchPendingOrders}
-            />
-      
+          <PendingOrdersList
+            orders={pendingOrders}
+            loading={loading}
+            error={error}
+            apiUrl={apiUrl}
+            onRefresh={fetchPendingOrders}
+          />
         </section>
       </section>
     </main>
@@ -394,7 +389,7 @@ function ProductCard({
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [submittingBatch, setSubmittingBatch] = useState(false);
-  
+
   // Batch form state
   const [batchForm, setBatchForm] = useState({
     inboundManager: "", // Will be auto-filled from localStorage
@@ -409,13 +404,13 @@ function ProductCard({
     const memberData = localStorage.getItem("erp_member_data");
     if (memberData && !batchForm.inboundManager) {
       const member = JSON.parse(memberData);
-      setBatchForm(prev => ({
+      setBatchForm((prev) => ({
         ...prev,
-        inboundManager: member.full_name || member.member_id || ""
+        inboundManager: member.full_name || member.member_id || "",
       }));
     }
   }, [batchForm.inboundManager]);
-  
+
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -446,24 +441,37 @@ function ProductCard({
 
   // Calculate expiry date when manufacture date changes
   useEffect(() => {
-    if (batchForm.manufactureDate && product.expiryMonths && product.expiryUnit) {
+    if (
+      batchForm.manufactureDate &&
+      product.expiryMonths &&
+      product.expiryUnit
+    ) {
       const mfgDate = new Date(batchForm.manufactureDate);
       let calculatedDate = new Date(mfgDate);
-      
+
       if (product.expiryUnit === "months") {
-        calculatedDate.setMonth(calculatedDate.getMonth() + Number(product.expiryMonths));
+        calculatedDate.setMonth(
+          calculatedDate.getMonth() + Number(product.expiryMonths)
+        );
       } else if (product.expiryUnit === "days") {
-        calculatedDate.setDate(calculatedDate.getDate() + Number(product.expiryMonths));
+        calculatedDate.setDate(
+          calculatedDate.getDate() + Number(product.expiryMonths)
+        );
       } else if (product.expiryUnit === "years") {
-        calculatedDate.setFullYear(calculatedDate.getFullYear() + Number(product.expiryMonths));
+        calculatedDate.setFullYear(
+          calculatedDate.getFullYear() + Number(product.expiryMonths)
+        );
       }
-      
+
       // Format: YYYY-MM-DD
-      const calculatedExpiryDate = calculatedDate.toISOString().split('T')[0];
-      
+      const calculatedExpiryDate = calculatedDate.toISOString().split("T")[0];
+
       // Only update if expiry date is empty or was previously calculated
-      if (!batchForm.expiryDate || batchForm.expiryDate === calculatedExpiryDate) {
-        setBatchForm(prev => ({ ...prev, expiryDate: calculatedExpiryDate }));
+      if (
+        !batchForm.expiryDate ||
+        batchForm.expiryDate === calculatedExpiryDate
+      ) {
+        setBatchForm((prev) => ({ ...prev, expiryDate: calculatedExpiryDate }));
       }
     }
   }, [batchForm.manufactureDate, product.expiryMonths, product.expiryUnit]);
@@ -479,18 +487,18 @@ function ProductCard({
   // Handle batch creation
   const handleCreateBatch = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     // Validation
     if (!batchForm.inboundManager.trim()) {
       alert("입고 담당자 이름을 입력해주세요.");
       return;
     }
-    
+
     if (!batchForm.expiryDate) {
       alert("유효 기간을 입력해주세요.");
       return;
     }
-    
+
     if (batchQuantity < 1) {
       alert("입고 수량은 1개 이상이어야 합니다.");
       return;
@@ -498,8 +506,12 @@ function ProductCard({
 
     setSubmittingBatch(true);
     try {
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다. 다시 로그인해주세요.");
@@ -561,7 +573,9 @@ function ProductCard({
       alert("배치가 성공적으로 추가되었습니다.");
     } catch (error: any) {
       console.error("Error creating batch:", error);
-      alert(`배치 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+      alert(
+        `배치 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`
+      );
     } finally {
       setSubmittingBatch(false);
     }
@@ -588,48 +602,48 @@ function ProductCard({
             )}
           </div>
           <div>
-  <div className="flex items-center gap-2">
-    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-      {product.category}
-    </span>
-  </div>
-  <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
-    {product.productName}
-  </p>
-  <p className="text-sm text-slate-500 dark:text-slate-400">
-    {product.brand}
-  </p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {product.category}
+              </span>
+            </div>
+            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
+              {product.productName}
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {product.brand}
+            </p>
 
-  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-    <span className="inline-flex items-center gap-1">
-      <BoxIcon className="h-4 w-4" />
-      {product.currentStock.toLocaleString()} /{" "}
-      {product.minStock.toLocaleString()} {product.unit ?? "EA"}
-    </span>
-    <span className="inline-flex items-center gap-1">
-      <WonIcon className="h-4 w-4 text-emerald-500" />
-      구매: ₩{(product.purchasePrice ?? 0).toLocaleString()}
-    </span>
-    {product.supplierName && (
-      <span className="inline-flex items-center gap-1">
-        <TruckIcon className="h-4 w-4 text-indigo-500" />
-        {product.supplierName}
-      </span>
-    )}
-    {product.expiryDate && (
-      <span className="inline-flex items-center gap-1">
-        <CalendarIcon className="h-4 w-4" />
-        {new Date(product.expiryDate).toLocaleDateString()}
-      </span>
-    )}
-    {product.storageLocation && (
-      <span className="inline-flex items-center gap-1">
-        <WarehouseIcon className="h-4 w-4" />
-        {product.storageLocation}
-      </span>
-    )}
-  </div>
-</div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1">
+                <BoxIcon className="h-4 w-4" />
+                {product.currentStock.toLocaleString()} /{" "}
+                {product.minStock.toLocaleString()} {product.unit ?? "EA"}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <WonIcon className="h-4 w-4 text-emerald-500" />
+                구매: ₩{(product.purchasePrice ?? 0).toLocaleString()}
+              </span>
+              {product.supplierName && (
+                <span className="inline-flex items-center gap-1">
+                  <TruckIcon className="h-4 w-4 text-indigo-500" />
+                  {product.supplierName}
+                </span>
+              )}
+              {product.expiryDate && (
+                <span className="inline-flex items-center gap-1">
+                  <CalendarIcon className="h-4 w-4" />
+                  {new Date(product.expiryDate).toLocaleDateString()}
+                </span>
+              )}
+              {product.storageLocation && (
+                <span className="inline-flex items-center gap-1">
+                  <WarehouseIcon className="h-4 w-4" />
+                  {product.storageLocation}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {isLowStock && (
@@ -638,15 +652,15 @@ function ProductCard({
             </span>
           )}
           {/* RIGHT */}
-  <Link
-    href={`/products/${product.id}`}
-    onClick={handleButtonClick}
-    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-  >
-    <PencilIcon className="h-3.5 w-3.5" />
-    상세 보기
-  </Link>
-          
+          <Link
+            href={`/products/${product.id}`}
+            onClick={handleButtonClick}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+            상세 보기
+          </Link>
+
           <button
             className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
             onClick={(e) => {
@@ -666,17 +680,14 @@ function ProductCard({
       {isExpanded && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-          <div className="mb-3 flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-100">
-  {/* LEFT */}
-  <div className="flex items-center gap-2">
-    <BoxIcon className="h-4 w-4" />
-    기존 배치 목록
-  </div>
+            <div className="mb-3 flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-100">
+              {/* LEFT */}
+              <div className="flex items-center gap-2">
+                <BoxIcon className="h-4 w-4" />
+                기존 배치 목록
+              </div>
+            </div>
 
-  
-</div>
-
-           
             {loadingBatches ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 불러오는 중...
@@ -696,7 +707,7 @@ function ProductCard({
                       {batch.batch_no}
                     </span>
                   </div>
-                  
+
                   {/* Barcha ma'lumotlar bitta row'da */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     {batch.보관위치 && (
@@ -732,8 +743,6 @@ function ProductCard({
               </p>
             )}
           </div>
-
-         
         </div>
       )}
     </div>
@@ -748,14 +757,22 @@ interface FilterChipProps {
   defaultValue: string;
 }
 
-function FilterChip({ label, options, value, onChange, defaultValue }: FilterChipProps) {
+function FilterChip({
+  label,
+  options,
+  value,
+  onChange,
+  defaultValue,
+}: FilterChipProps) {
   const [isOpen, setIsOpen] = useState(false);
   const resolvedOptions = options.map((option) =>
     typeof option === "string" ? { label: option, value: option } : option
   );
 
   const displayValue = value || defaultValue;
-  const selectedOption = resolvedOptions.find((opt) => opt.value === displayValue);
+  const selectedOption = resolvedOptions.find(
+    (opt) => opt.value === displayValue
+  );
 
   const handleSelect = (optionValue: string) => {
     if (onChange) {
@@ -773,7 +790,9 @@ function FilterChip({ label, options, value, onChange, defaultValue }: FilterChi
         <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
           {selectedOption?.label || displayValue}
         </span>
-        <ChevronDownIcon className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDownIcon
+          className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
       {isOpen && (
         <>
@@ -1301,12 +1320,12 @@ function PendingOrdersList({
         // Use original ordered quantity from clinic (not supplier's confirmed qty)
         const originalQty = item.orderedQuantity;
         const finalPrice = item.confirmedPrice || item.orderedPrice;
-        
+
         initialEdits[item.id] = {
           quantity: "",
           expiryDate: "",
           storageLocation: "",
-          purchasePrice: "", 
+          purchasePrice: "",
         };
       });
     });
@@ -1330,8 +1349,12 @@ function PendingOrdersList({
 
     setProcessing(order.orderId);
     try {
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다.");
@@ -1340,11 +1363,12 @@ function PendingOrdersList({
 
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../../lib/api");
-      
+
       // Get current member info for inbound_manager
       const memberData = localStorage.getItem("erp_member_data");
       const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager = memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
+      const inboundManager =
+        memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -1373,29 +1397,30 @@ function PendingOrdersList({
 
       // Create batches and returns for each product
       const returnItems: any[] = [];
-      
+
       for (const [productId, items] of itemsByProduct.entries()) {
         // Use edited quantity from form
         const inboundQty = items.reduce((sum: number, item: any) => {
           const edited = editedItems[item.id];
           return sum + (edited?.quantity || 0);
         }, 0);
-        
+
         // Use edited values from first item
         const firstItem = items[0];
         const editedFirstItem = editedItems[firstItem.id];
-        
+
         // Get confirmed quantity from supplier
-        const confirmedQty = firstItem.confirmedQuantity || firstItem.orderedQuantity;
-        
+        const confirmedQty =
+          firstItem.confirmedQuantity || firstItem.orderedQuantity;
+
         // Calculate excess (ortiqcha)
         const excessQty = confirmedQty - inboundQty;
-        
+
         // Get expiry info from product
         const expiryMonths = firstItem.expiryMonths;
         const expiryUnit = firstItem.expiryUnit || "months";
         const alertDays = firstItem.alertDays;
-        
+
         // Calculate manufacture date
         let manufactureDate = null;
         if (editedFirstItem?.expiryDate && expiryMonths) {
@@ -1407,7 +1432,7 @@ function PendingOrdersList({
           }
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
-        
+
         const batchPayload: any = {
           qty: inboundQty,
           purchase_price: editedFirstItem?.purchasePrice || 0,
@@ -1419,15 +1444,19 @@ function PendingOrdersList({
         if (expiryMonths) batchPayload.expiry_months = expiryMonths;
         if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
         if (alertDays) batchPayload.alert_days = alertDays;
-        if (editedFirstItem?.storageLocation) batchPayload.storage = editedFirstItem.storageLocation;
+        if (editedFirstItem?.storageLocation)
+          batchPayload.storage = editedFirstItem.storageLocation;
 
         // Create batch
-        const createdBatch = await apiPost<any>(`${apiUrl}/products/${productId}/batches`, batchPayload);
-        
+        const createdBatch = await apiPost<any>(
+          `${apiUrl}/products/${productId}/batches`,
+          batchPayload
+        );
+
         // Get batch_no from the created batch
         // Backend returns batch object directly with batch_no
         const batchNo = createdBatch.batch_no || "";
-        
+
         // If excess, prepare return item
         if (excessQty > 0) {
           returnItems.push({
@@ -1441,7 +1470,7 @@ function PendingOrdersList({
           });
         }
       }
-      
+
       // Create returns if any excess
       if (returnItems.length > 0) {
         try {
@@ -1454,7 +1483,9 @@ function PendingOrdersList({
         } catch (returnError: any) {
           console.error(`Failed to create returns:`, returnError);
           // Don't throw - continue with order completion even if returns fail
-          alert(`반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`);
+          alert(
+            `반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`
+          );
         }
       }
 
@@ -1463,27 +1494,38 @@ function PendingOrdersList({
         await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
       } catch (completeError: any) {
         console.error(`Failed to complete order:`, completeError);
-        throw new Error(`주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`);
+        throw new Error(
+          `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
+        );
       }
 
       // Show success message and optionally redirect to order-returns if returns were created
       if (returnItems.length > 0) {
-        if (confirm(`입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`)) {
+        if (
+          confirm(
+            `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`
+          )
+        ) {
           window.location.href = "/order-returns";
           return; // Exit early to prevent onRefresh() call
         }
       } else {
         alert("입고 처리가 완료되었습니다.");
       }
-      
+
       onRefresh();
     } catch (err: any) {
       console.error("Failed to process order:", err);
       const errorMessage = err.message || "알 수 없는 오류";
-      
+
       // Check if it's a network error
-      if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
-        alert(`네트워크 오류가 발생했습니다.\n서버에 연결할 수 없습니다.\n\n오류: ${errorMessage}\n\n다시 시도해주세요.`);
+      if (
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("NetworkError")
+      ) {
+        alert(
+          `네트워크 오류가 발생했습니다.\n서버에 연결할 수 없습니다.\n\n오류: ${errorMessage}\n\n다시 시도해주세요.`
+        );
       } else {
         alert(`입고 처리 중 오류가 발생했습니다: ${errorMessage}`);
       }
@@ -1507,7 +1549,4 @@ function PendingOrdersList({
       </div>
     );
   }
-
-
-
 }

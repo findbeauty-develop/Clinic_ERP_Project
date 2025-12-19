@@ -117,16 +117,21 @@ export default function InventoryPage() {
     try {
       const { start, end } = getDateRange();
 
-      const [summaryData, riskyData, depletionData, topValueData, locationData] =
-        await Promise.all([
-          apiGet<InventorySummary>(
-            `${apiUrl}/inventory/summary?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-          ),
-          apiGet<RiskyItem[]>(`${apiUrl}/inventory/risky`),
-          apiGet<DepletionItem[]>(`${apiUrl}/inventory/depletion`),
-          apiGet<TopValueProduct[]>(`${apiUrl}/inventory/top-value?limit=8`),
-          apiGet<LocationInventory[]>(`${apiUrl}/inventory/by-location`),
-        ]);
+      const [
+        summaryData,
+        riskyData,
+        depletionData,
+        topValueData,
+        locationData,
+      ] = await Promise.all([
+        apiGet<InventorySummary>(
+          `${apiUrl}/inventory/summary?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
+        ),
+        apiGet<RiskyItem[]>(`${apiUrl}/inventory/risky`),
+        apiGet<DepletionItem[]>(`${apiUrl}/inventory/depletion`),
+        apiGet<TopValueProduct[]>(`${apiUrl}/inventory/top-value?limit=8`),
+        apiGet<LocationInventory[]>(`${apiUrl}/inventory/by-location`),
+      ]);
 
       setSummary(summaryData);
       setRiskyItems(riskyData);
@@ -154,7 +159,9 @@ export default function InventoryPage() {
     return `${year}.${month}.${day} ${hours}:${minutes}`;
   };
 
-  const formatImageUrl = (imageUrl: string | null | undefined): string | null => {
+  const formatImageUrl = (
+    imageUrl: string | null | undefined
+  ): string | null => {
     if (!imageUrl) return null;
     // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
@@ -314,23 +321,22 @@ export default function InventoryPage() {
 
             {dateRange === "other" && (
               <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
                            [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
-              />
-              <span className="text-slate-500">~</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                />
+                <span className="text-slate-500">~</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
                            [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
-              />
-            </div>
-            
+                />
+              </div>
             )}
           </div>
 
@@ -519,17 +525,17 @@ export default function InventoryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 재고 가치 상위 제품 */}
           <section className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-          <div className="flex justify-between items-center mb-4">
-  <h2 className="text-lg font-semibold text-slate-900">
-    재고 가치 상위 제품
-  </h2>
-  <Link 
-    href="/inventory/products"
-    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-  >
-    전체 제품
-  </Link>
-</div>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-slate-900">
+                재고 가치 상위 제품
+              </h2>
+              <Link
+                href="/inventory/products"
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                전체 제품
+              </Link>
+            </div>
             {loading ? (
               <p className="text-slate-500 text-center py-8">로딩 중...</p>
             ) : topValueProducts.length === 0 ? (
@@ -593,22 +599,22 @@ export default function InventoryPage() {
               </p>
             ) : (
               <div className="space-y-4">
-              <select
-  value={selectedLocation}
-  onChange={(e) => setSelectedLocation(e.target.value)}
-  className="w-full px-3 py-2 mb-2 rounded-lg text-sm
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="w-full px-3 py-2 mb-2 rounded-lg text-sm
              border border-slate-300
              bg-white text-slate-900
              [color-scheme:light]
              dark:bg-white dark:text-slate-900 dark:border-slate-300"
->
-  <option value="">위치를 선택하세요</option>
-  {locations.map((loc) => (
-    <option key={loc.location} value={loc.location}>
-      {loc.location} 제품종류 {loc.productCount}종
-    </option>
-  ))}
-</select>
+                >
+                  <option value="">위치를 선택하세요</option>
+                  {locations.map((loc) => (
+                    <option key={loc.location} value={loc.location}>
+                      {loc.location} 제품종류 {loc.productCount}종
+                    </option>
+                  ))}
+                </select>
 
                 {selectedLocationData && (
                   <div className="mt-2 space-y-1">
@@ -633,4 +639,3 @@ export default function InventoryPage() {
     </main>
   );
 }
-

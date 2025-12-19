@@ -40,22 +40,32 @@ export default function DashboardPage() {
     },
   ];
 
-  const newsTabs = ["의료·헬스케어", "카테크", "웹툰", "패션뷰티", "리빙푸드", "책방", "지식", "건강", "게임"];
-  
+  const newsTabs = [
+    "의료·헬스케어",
+    "카테크",
+    "웹툰",
+    "패션뷰티",
+    "리빙푸드",
+    "책방",
+    "지식",
+    "건강",
+    "게임",
+  ];
+
   // Category to keywords mapping
   // Category to keywords mapping
-const categoryKeywords: Record<string, string[]> = {
-  "의료·헬스케어": ["의료", "헬스케어", "건강"],
-  "제약·바이오": ["제약", "바이오", "약품"],
-  "의료기기": ["의료기기", "의료장비"],
-  "병원·클리닉 운영": ["병원", "클리닉", "의원"],
-  "정책·규제": ["의료정책", "보건정책", "규제"],
-  "보험·수가": ["건강보험", "수가", "의료보험"],
-  "보안·개인정보": ["의료정보", "개인정보", "보안"],
-  "AI·기술": ["의료AI", "디지털헬스", "의료기술"],
-  "리콜·안전": ["의료기기리콜", "안전"],
-  "시장·산업 동향": ["의료시장", "헬스케어산업"],
-};
+  const categoryKeywords: Record<string, string[]> = {
+    "의료·헬스케어": ["의료", "헬스케어", "건강"],
+    "제약·바이오": ["제약", "바이오", "약품"],
+    의료기기: ["의료기기", "의료장비"],
+    "병원·클리닉 운영": ["병원", "클리닉", "의원"],
+    "정책·규제": ["의료정책", "보건정책", "규제"],
+    "보험·수가": ["건강보험", "수가", "의료보험"],
+    "보안·개인정보": ["의료정보", "개인정보", "보안"],
+    "AI·기술": ["의료AI", "디지털헬스", "의료기술"],
+    "리콜·안전": ["의료기기리콜", "안전"],
+    "시장·산업 동향": ["의료시장", "헬스케어산업"],
+  };
 
   const newsArticles = [
     {
@@ -214,31 +224,79 @@ const categoryKeywords: Record<string, string[]> = {
     return () => clearInterval(interval);
   }, []);
 
-   // Fetch news by category
-   useEffect(() => {
+  // Fetch news by category
+  useEffect(() => {
     const fetchNews = async () => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:218',message:'fetchNews started',data:{apiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      fetch(
+        "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "page.tsx:218",
+            message: "fetchNews started",
+            data: { apiUrl },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            runId: "run1",
+            hypothesisId: "H1",
+          }),
+        }
+      ).catch(() => {});
       // #endregion
       setLoadingNews(true);
       try {
         // Barcha category'lardan news olish
         const allKeywords: string[] = [];
-        Object.values(categoryKeywords).forEach(keywords => {
+        Object.values(categoryKeywords).forEach((keywords) => {
           allKeywords.push(...keywords);
         });
 
         // Unique keywords
         const uniqueKeywords = [...new Set(allKeywords)];
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:230',message:'Before API call',data:{uniqueKeywords:uniqueKeywords.length,apiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:230",
+              message: "Before API call",
+              data: { uniqueKeywords: uniqueKeywords.length, apiUrl },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H1",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
-        
+
         const response = await apiGet<any[]>(
-          `${apiUrl}/news/search?keywords=${uniqueKeywords.join(',')}&limit=20`
+          `${apiUrl}/news/search?keywords=${uniqueKeywords.join(",")}&limit=20`
         );
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:234',message:'API response received',data:{responseLength:response?.length,responseType:typeof response},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:234",
+              message: "API response received",
+              data: {
+                responseLength: response?.length,
+                responseType: typeof response,
+              },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H1",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
 
         // Format news articles
@@ -246,10 +304,12 @@ const categoryKeywords: Record<string, string[]> = {
           // Category'ni aniqlash
           let category = "의료·헬스케어";
           for (const [cat, keywords] of Object.entries(categoryKeywords)) {
-            if (keywords.some(kw => 
-              article.title?.includes(kw) || 
-              article.summary?.includes(kw)
-            )) {
+            if (
+              keywords.some(
+                (kw) =>
+                  article.title?.includes(kw) || article.summary?.includes(kw)
+              )
+            ) {
               category = cat;
               break;
             }
@@ -259,29 +319,97 @@ const categoryKeywords: Record<string, string[]> = {
             id: article.id || index + 1,
             title: article.title || "제목 없음",
             source: article.source || "알 수 없음",
-            image: article.image || `bg-gradient-to-br from-green-400 to-emerald-600`,
+            image:
+              article.image ||
+              `bg-gradient-to-br from-green-400 to-emerald-600`,
             category: category,
             url: article.url,
             publishedAt: article.publishedAt,
           };
         });
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:258',message:'Before setState',data:{formattedNewsLength:formattedNews.length,setNewsArticlesStateType:typeof setNewsArticlesState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:258",
+              message: "Before setState",
+              data: {
+                formattedNewsLength: formattedNews.length,
+                setNewsArticlesStateType: typeof setNewsArticlesState,
+              },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H1",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
 
         setNewsArticlesState(formattedNews);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:260',message:'After setState',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:260",
+              message: "After setState",
+              data: { success: true },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H1",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
       } catch (error) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:262',message:'Error caught',data:{errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:262",
+              message: "Error caught",
+              data: {
+                errorMessage:
+                  error instanceof Error ? error.message : String(error),
+              },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H2",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
         console.error("Failed to fetch news", error);
         // Fallback to mock data
         setNewsArticlesState(newsArticles);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:264',message:'Fallback to mock data',data:{mockDataLength:newsArticles.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "page.tsx:264",
+              message: "Fallback to mock data",
+              data: { mockDataLength: newsArticles.length },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              runId: "run1",
+              hypothesisId: "H2",
+            }),
+          }
+        ).catch(() => {});
         // #endregion
       } finally {
         setLoadingNews(false);
@@ -296,57 +424,73 @@ const categoryKeywords: Record<string, string[]> = {
   };
 
   const prevBannerSlide = () => {
-    setCurrentBannerSlide((prev) => (prev - 1 + bannerSlides.length) % bannerSlides.length);
+    setCurrentBannerSlide(
+      (prev) => (prev - 1 + bannerSlides.length) % bannerSlides.length
+    );
   };
 
   const nextProductSlide = () => {
-    setCurrentProductSlide((prev) => (prev + 1) % productRecommendations.length);
+    setCurrentProductSlide(
+      (prev) => (prev + 1) % productRecommendations.length
+    );
   };
 
   const prevProductSlide = () => {
-    setCurrentProductSlide((prev) => (prev - 1 + productRecommendations.length) % productRecommendations.length);
+    setCurrentProductSlide(
+      (prev) =>
+        (prev - 1 + productRecommendations.length) %
+        productRecommendations.length
+    );
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">대시보드</h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400">클리닉의 재고 현황을 한눈에 확인하세요</p>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          대시보드
+        </h1>
+        <p className="text-lg text-gray-600 dark:text-gray-400">
+          클리닉의 재고 현황을 한눈에 확인하세요
+        </p>
       </div>
 
       {/* Top Banner Carousel */}
       <div className="relative mb-6 h-64 rounded-2xl overflow-hidden shadow-lg">
         <div className="relative h-full">
-        {bannerSlides.map((slide, index) => (
-  <div
-    key={slide.id}
-    className={`absolute inset-0 transition-opacity duration-500 ${
-      index === currentBannerSlide ? "opacity-100" : "opacity-0"
-    }`}
-  >
-    {/* Background Image */}
-    {slide.imageUrl ? (
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url(${slide.imageUrl})` }}
-      ></div>
-    ) : (
-      <div className={`absolute inset-0 ${slide.bgImage}`}></div>
-    )}
-    
-    {/* Overlay */}
-    <div className="absolute inset-0 bg-black/30"></div>
-    
-    {/* Content */}
-    <div className="relative h-full flex items-center justify-start px-12">
-      <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-xl p-6 max-w-md">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{slide.title}</h2>
-        <p className="text-gray-700 dark:text-gray-300">{slide.subtitle}</p>
-      </div>
-    </div>
-  </div>
-))}
+          {bannerSlides.map((slide, index) => (
+            <div
+              key={slide.id}
+              className={`absolute inset-0 transition-opacity duration-500 ${
+                index === currentBannerSlide ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              {/* Background Image */}
+              {slide.imageUrl ? (
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${slide.imageUrl})` }}
+                ></div>
+              ) : (
+                <div className={`absolute inset-0 ${slide.bgImage}`}></div>
+              )}
+
+              {/* Overlay */}
+              <div className="absolute inset-0 bg-black/30"></div>
+
+              {/* Content */}
+              <div className="relative h-full flex items-center justify-start px-12">
+                <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-xl p-6 max-w-md">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    {slide.title}
+                  </h2>
+                  <p className="text-gray-700 dark:text-gray-300">
+                    {slide.subtitle}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Navigation Arrows */}
@@ -354,16 +498,38 @@ const categoryKeywords: Record<string, string[]> = {
           onClick={prevBannerSlide}
           className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg transition-all"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            className="w-6 h-6"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 19.5L8.25 12l7.5-7.5"
+            />
           </svg>
         </button>
         <button
           onClick={nextBannerSlide}
           className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg transition-all"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            className="w-6 h-6"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8.25 4.5l7.5 7.5-7.5 7.5"
+            />
           </svg>
         </button>
 
@@ -374,7 +540,9 @@ const categoryKeywords: Record<string, string[]> = {
               key={index}
               onClick={() => setCurrentBannerSlide(index)}
               className={`h-2 rounded-full transition-all ${
-                index === currentBannerSlide ? "w-8 bg-white" : "w-2 bg-white/50"
+                index === currentBannerSlide
+                  ? "w-8 bg-white"
+                  : "w-2 bg-white/50"
               }`}
             />
           ))}
@@ -404,7 +572,10 @@ const categoryKeywords: Record<string, string[]> = {
                   </button>
                 ))}
               </div>
-              <a href="#" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap">
+              <a
+                href="#"
+                className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
+              >
                 구독홈 &gt;
               </a>
             </div>
@@ -413,11 +584,33 @@ const categoryKeywords: Record<string, string[]> = {
             <div className="grid grid-cols-2 gap-4">
               {/* #region agent log */}
               {(() => {
-                fetch('http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:393',message:'Rendering news articles',data:{newsArticlesStateLength:newsArticlesState.length,newsArticlesLength:newsArticles.length,usingState:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+                fetch(
+                  "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      location: "page.tsx:393",
+                      message: "Rendering news articles",
+                      data: {
+                        newsArticlesStateLength: newsArticlesState.length,
+                        newsArticlesLength: newsArticles.length,
+                        usingState: true,
+                      },
+                      timestamp: Date.now(),
+                      sessionId: "debug-session",
+                      runId: "run1",
+                      hypothesisId: "H3",
+                    }),
+                  }
+                ).catch(() => {});
                 return null;
               })()}
               {/* #endregion */}
-              {(newsArticlesState.length > 0 ? newsArticlesState : newsArticles).map((article) => (
+              {(newsArticlesState.length > 0
+                ? newsArticlesState
+                : newsArticles
+              ).map((article) => (
                 <div
                   key={article.id}
                   className="group cursor-pointer rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800 hover:shadow-lg transition-all"
@@ -426,7 +619,12 @@ const categoryKeywords: Record<string, string[]> = {
                     {article.isVideo && (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="bg-black/50 rounded-full p-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" className="w-6 h-6">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="white"
+                            viewBox="0 0 24 24"
+                            className="w-6 h-6"
+                          >
                             <path d="M8 5v14l11-7z" />
                           </svg>
                         </div>
@@ -445,9 +643,14 @@ const categoryKeywords: Record<string, string[]> = {
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       {article.title}
                     </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{article.source}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {article.source}
+                    </p>
                     {article.isAd && (
-                      <a href="#" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-2 inline-block">
+                      <a
+                        href="#"
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-2 inline-block"
+                      >
                         더 알아보기 &gt;
                       </a>
                     )}
@@ -460,22 +663,32 @@ const categoryKeywords: Record<string, string[]> = {
           {/* Product Recommendations (Ads) */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">주목할 만한 상품 추천</h2>
-              <span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded">AD</span>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                주목할 만한 상품 추천
+              </h2>
+              <span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded">
+                AD
+              </span>
             </div>
 
             <div className="relative">
               <div className="overflow-hidden rounded-xl">
                 <div
                   className="flex transition-transform duration-300 ease-in-out"
-                  style={{ transform: `translateX(-${currentProductSlide * 100}%)` }}
+                  style={{
+                    transform: `translateX(-${currentProductSlide * 100}%)`,
+                  }}
                 >
                   {productRecommendations.map((product) => (
                     <div key={product.id} className="min-w-full flex-shrink-0">
                       <div className="flex gap-4 items-center bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-xl p-4">
-                        <div className={`w-24 h-24 ${product.image} rounded-lg flex-shrink-0`}></div>
+                        <div
+                          className={`w-24 h-24 ${product.image} rounded-lg flex-shrink-0`}
+                        ></div>
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 dark:text-white">{product.name}</h3>
+                          <h3 className="font-semibold text-gray-900 dark:text-white">
+                            {product.name}
+                          </h3>
                         </div>
                       </div>
                     </div>
@@ -488,16 +701,38 @@ const categoryKeywords: Record<string, string[]> = {
                 onClick={prevProductSlide}
                 className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.75 19.5L8.25 12l7.5-7.5"
+                  />
                 </svg>
               </button>
               <button
                 onClick={nextProductSlide}
                 className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                  />
                 </svg>
               </button>
             </div>
@@ -510,8 +745,12 @@ const categoryKeywords: Record<string, string[]> = {
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-4xl font-bold text-gray-900 dark:text-white">{weatherData.current}°</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">{weatherData.condition}</div>
+                <div className="text-4xl font-bold text-gray-900 dark:text-white">
+                  {weatherData.current}°
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {weatherData.condition}
+                </div>
               </div>
               <div className="text-4xl">☁️</div>
             </div>
@@ -523,19 +762,27 @@ const categoryKeywords: Record<string, string[]> = {
             <div className="space-y-2 mb-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600 dark:text-gray-400">미세</span>
-                <span className="text-green-600 dark:text-green-400 font-medium">{weatherData.airQuality.fine}</span>
+                <span className="text-green-600 dark:text-green-400 font-medium">
+                  {weatherData.airQuality.fine}
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600 dark:text-gray-400">초미세</span>
-                <span className="text-green-600 dark:text-green-400 font-medium">{weatherData.airQuality.ultrafine}</span>
+                <span className="text-green-600 dark:text-green-400 font-medium">
+                  {weatherData.airQuality.ultrafine}
+                </span>
               </div>
             </div>
             <div className="flex gap-2 overflow-x-auto scrollbar-hide pt-2 border-t border-gray-200 dark:border-gray-700">
               {weatherData.hourly.map((hour, index) => (
                 <div key={index} className="flex-shrink-0 text-center">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{hour.time}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    {hour.time}
+                  </div>
                   <div className="text-lg mb-1">☁️</div>
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">{hour.temp}°</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {hour.temp}°
+                  </div>
                 </div>
               ))}
             </div>
@@ -544,7 +791,9 @@ const categoryKeywords: Record<string, string[]> = {
           {/* Calendar/Schedule */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">일정</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                일정
+              </h2>
               <div className="flex gap-2">
                 <select className="text-sm bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1 border-0">
                   <option>프로젝트 일정</option>
@@ -557,14 +806,38 @@ const categoryKeywords: Record<string, string[]> = {
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 19.5L8.25 12l7.5-7.5"
+                    />
                   </svg>
                 </button>
-                <div className="font-semibold text-gray-900 dark:text-white">2025 - 12월</div>
+                <div className="font-semibold text-gray-900 dark:text-white">
+                  2025 - 12월
+                </div>
                 <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                    />
                   </svg>
                 </button>
               </div>
@@ -596,14 +869,30 @@ const categoryKeywords: Record<string, string[]> = {
             </div>
             <div className="space-y-2">
               {scheduleEvents.map((event) => (
-                <div key={event.id} className="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                <div
+                  key={event.id}
+                  className="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg"
+                >
                   <div className="text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-5 h-5"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+                      />
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold text-gray-900 dark:text-white">{event.title}</div>
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                      {event.title}
+                    </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">
                       {event.date} ({event.day}), {event.time}
                     </div>
@@ -615,7 +904,9 @@ const categoryKeywords: Record<string, string[]> = {
 
           {/* Messages/Notifications */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">쪽지함</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+              쪽지함
+            </h2>
             <div className="space-y-2">
               {messages.map((message) => (
                 <div
@@ -629,8 +920,12 @@ const categoryKeywords: Record<string, string[]> = {
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 dark:text-white truncate">{message.clinic}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{message.sender}</div>
+                      <div className="font-medium text-gray-900 dark:text-white truncate">
+                        {message.clinic}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                        {message.sender}
+                      </div>
                     </div>
                   </div>
                   {message.unread > 0 && (

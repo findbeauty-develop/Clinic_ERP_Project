@@ -68,26 +68,29 @@ export default function ClinicRegisterCompletePage() {
             setLoading(false);
             return;
           } catch (e) {
-            console.error("Failed to parse clinic summary from sessionStorage", e);
+            console.error(
+              "Failed to parse clinic summary from sessionStorage",
+              e
+            );
           }
         }
 
         // Get tenant_id from sessionStorage (saved during registration)
         const tenantId = sessionStorage.getItem("erp_tenant_id");
         console.log("📋 Using tenant_id for fetching clinics:", tenantId);
-        
+
         // Build URL with tenantId query parameter
-        const url = tenantId 
+        const url = tenantId
           ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
           : `${apiUrl}/iam/members/clinics`;
-        
+
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
         };
         if (token) {
           headers.Authorization = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(url, { headers });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -106,13 +109,15 @@ export default function ClinicRegisterCompletePage() {
         setClinics(sortedClinics.slice(0, 1)); // Show only the most recent clinic
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "클리닉 정보를 불러오지 못했습니다."
+          err instanceof Error
+            ? err.message
+            : "클리닉 정보를 불러오지 못했습니다."
         );
       } finally {
         setLoading(false);
       }
     };
-    
+
     // Only fetch if token is loaded (or if no token is needed)
     if (apiUrl) {
       fetchClinics();
@@ -203,30 +208,33 @@ export default function ClinicRegisterCompletePage() {
 
                   <dl className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
                     <div>
-                      <dt className="font-medium text-slate-500">소재지: {clinic.location}</dt>
-                      
+                      <dt className="font-medium text-slate-500">
+                        소재지: {clinic.location}
+                      </dt>
                     </div>
                     <div>
-                      <dt className="font-medium text-slate-500">진료과목: {clinic.medical_subjects}</dt>
-                
+                      <dt className="font-medium text-slate-500">
+                        진료과목: {clinic.medical_subjects}
+                      </dt>
                     </div>
                     {clinic.description && (
                       <div className="md:col-span-2">
-                        <dt className="font-medium text-slate-500">설명 (법인명): {clinic.description}</dt>
-                        
+                        <dt className="font-medium text-slate-500">
+                          설명 (법인명): {clinic.description}
+                        </dt>
                       </div>
                     )}
                     <div>
-                      <dt className="font-medium text-slate-500">면허번호: {clinic.license_number}</dt>
-                    
+                      <dt className="font-medium text-slate-500">
+                        면허번호: {clinic.license_number}
+                      </dt>
                     </div>
                     <div>
-                      <dt className="font-medium text-slate-500">문서발급번호: {clinic.document_issue_number}</dt>
-                   
+                      <dt className="font-medium text-slate-500">
+                        문서발급번호: {clinic.document_issue_number}
+                      </dt>
                     </div>
                   </dl>
-
-                 
                 </article>
               ))}
             </div>
@@ -243,7 +251,11 @@ export default function ClinicRegisterCompletePage() {
               strokeWidth="1.5"
               className="h-5 w-5"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4.5 12.75l6 6 9-13.5"
+              />
             </svg>
             클리닉 인증 완료
           </div>
@@ -261,4 +273,3 @@ export default function ClinicRegisterCompletePage() {
     </div>
   );
 }
-

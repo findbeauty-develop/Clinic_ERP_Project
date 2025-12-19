@@ -36,7 +36,9 @@ export default function PackageNewPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [packageName, setPackageName] = useState("");
-  const [packageNameSuggestions, setPackageNameSuggestions] = useState<string[]>([]);
+  const [packageNameSuggestions, setPackageNameSuggestions] = useState<
+    string[]
+  >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
@@ -49,14 +51,18 @@ export default function PackageNewPage() {
       if (packageId) {
         setEditingPackageId(packageId);
         setIsEditMode(true);
-        
+
         try {
           // Load package details
-          const packageData = await apiGet<any>(`${apiUrl}/packages/${packageId}`);
+          const packageData = await apiGet<any>(
+            `${apiUrl}/packages/${packageId}`
+          );
           setPackageName(packageData.name || "");
-          
+
           // Load package items
-          const itemsData = await apiGet<any[]>(`${apiUrl}/packages/${packageId}/items`);
+          const itemsData = await apiGet<any[]>(
+            `${apiUrl}/packages/${packageId}/items`
+          );
           const formattedItems = itemsData.map((item: any) => ({
             productId: item.productId || item.product_id,
             productName: item.productName || item.product?.name || "",
@@ -71,9 +77,9 @@ export default function PackageNewPage() {
         }
       }
     };
-    
+
     loadPackageForEdit();
-    
+
     // Cleanup: Clear sessionStorage when component unmounts
     return () => {
       // Only clear if not redirecting to outbound
@@ -103,7 +109,7 @@ export default function PackageNewPage() {
       // Fetch all products for package creation
       // Use getAllProducts endpoint which returns products with all necessary fields
       const data = await apiGet<any[]>(`${apiUrl}/products`);
-      
+
       // Format products
       const formattedProducts = data.map((product: any) => ({
         id: product.id,
@@ -114,7 +120,7 @@ export default function PackageNewPage() {
         unit: product.unit || "개",
         currentStock: product.currentStock || product.current_stock || 0,
       }));
-      
+
       setProducts(formattedProducts);
     } catch (err) {
       console.error("Failed to load products", err);
@@ -160,7 +166,10 @@ export default function PackageNewPage() {
 
       if (existingIndex >= 0) {
         const updated = [...prev];
-        updated[existingIndex] = { ...updated[existingIndex], quantity: newQuantity };
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: newQuantity,
+        };
         return updated;
       }
 
@@ -236,7 +245,9 @@ export default function PackageNewPage() {
         });
 
         if (nameCheck.exists) {
-          alert("동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요.");
+          alert(
+            "동일한 이름의 패키지를 생성할 수 없습니다. 다른 패키지 이름을 입력해주세요."
+          );
           setSubmitting(false);
           return;
         }
@@ -281,16 +292,18 @@ export default function PackageNewPage() {
         await apiPost(`${apiUrl}/packages`, payload);
         alert("패키지가 성공적으로 등록되었습니다.");
       }
-      
+
       // Clear sessionStorage
       sessionStorage.removeItem("editing_package_id");
-      
+
       // Redirect to outbound page with package outbound tab
       router.push("/outbound?type=package");
     } catch (err: any) {
       console.error("Failed to save package", err);
       const errorMessage =
-        err.response?.data?.message || err.message || "패키지 저장 중 오류가 발생했습니다.";
+        err.response?.data?.message ||
+        err.message ||
+        "패키지 저장 중 오류가 발생했습니다.";
       alert(`패키지 저장 실패: ${errorMessage}`);
     } finally {
       setSubmitting(false);
@@ -366,7 +379,9 @@ export default function PackageNewPage() {
 
               {/* Product List */}
               {loading ? (
-                <div className="py-8 text-center text-slate-500">로딩 중...</div>
+                <div className="py-8 text-center text-slate-500">
+                  로딩 중...
+                </div>
               ) : error ? (
                 <div className="py-8 text-center text-red-500">{error}</div>
               ) : filteredProducts.length === 0 ? (
@@ -482,7 +497,9 @@ export default function PackageNewPage() {
                   className="h-11 w-full rounded-xl border-2 border-red-500 bg-white px-4 text-sm text-slate-700 transition focus:border-red-600 focus:outline-none dark:border-red-500 dark:bg-slate-900 dark:text-slate-200"
                 />
                 {showSuggestions && packageNameSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">                    {packageNameSuggestions.map((suggestion, idx) => (
+                  <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                    {" "}
+                    {packageNameSuggestions.map((suggestion, idx) => (
                       <button
                         key={idx}
                         onClick={() => handlePackageNameSelect(suggestion)}
@@ -547,13 +564,20 @@ export default function PackageNewPage() {
               {/* Register Button */}
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !packageName.trim() || selectedItems.length === 0}
+                disabled={
+                  submitting ||
+                  !packageName.trim() ||
+                  selectedItems.length === 0
+                }
                 className="mt-6 w-full rounded-xl border-2 border-red-500 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-red-500/10"
               >
-                {submitting 
-                  ? (isEditMode ? "수정 중..." : "등록 중...") 
-                  : (isEditMode ? "패키지 수정하기" : "패키지 등록하기")
-                }
+                {submitting
+                  ? isEditMode
+                    ? "수정 중..."
+                    : "등록 중..."
+                  : isEditMode
+                    ? "패키지 수정하기"
+                    : "패키지 등록하기"}
               </button>
             </div>
           </div>
@@ -562,4 +586,3 @@ export default function PackageNewPage() {
     </main>
   );
 }
-

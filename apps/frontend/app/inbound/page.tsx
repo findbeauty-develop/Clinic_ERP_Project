@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, ChangeEvent, useCallback, useRef } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  ChangeEvent,
+  useCallback,
+  useRef,
+} from "react";
 import Link from "next/link";
 
 const inboundFilters = [
@@ -120,8 +127,10 @@ export default function InboundPage() {
     setError(null);
     try {
       const { apiGet } = await import("../../lib/api");
-      const groupedData = await apiGet<any[]>(`${apiUrl}/order/pending-inbound`);
-      
+      const groupedData = await apiGet<any[]>(
+        `${apiUrl}/order/pending-inbound`
+      );
+
       // Flatten grouped data: each supplier group has an array of orders
       const flatOrders: any[] = [];
       groupedData.forEach((supplierGroup: any) => {
@@ -133,7 +142,7 @@ export default function InboundPage() {
           });
         });
       });
-      
+
       setPendingOrders(flatOrders);
     } catch (err) {
       console.error("Failed to load pending orders", err);
@@ -266,7 +275,6 @@ export default function InboundPage() {
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                   총 {products.length.toLocaleString()}개의 제품
                 </h2>
-              
               </div>
 
               {error && (
@@ -335,7 +343,7 @@ function ProductCard({
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [submittingBatch, setSubmittingBatch] = useState(false);
-  
+
   // Batch form state
   const [batchForm, setBatchForm] = useState({
     inboundManager: "", // Will be auto-filled from localStorage
@@ -353,18 +361,18 @@ function ProductCard({
   // Foydalanuvchi keyin istalgan nomni kirita oladi va o'chirsa, qayta to'ldirilmaydi.
   useEffect(() => {
     if (hasInitialized.current) return;
-    
+
     const memberData = localStorage.getItem("erp_member_data");
     if (memberData) {
       const member = JSON.parse(memberData);
-      setBatchForm(prev => ({
+      setBatchForm((prev) => ({
         ...prev,
-        inboundManager: member.full_name || member.member_id || ""
+        inboundManager: member.full_name || member.member_id || "",
       }));
       hasInitialized.current = true;
     }
   }, []); // Empty dependency array
-  
+
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -395,24 +403,37 @@ function ProductCard({
 
   // Calculate expiry date when manufacture date changes
   useEffect(() => {
-    if (batchForm.manufactureDate && product.expiryMonths && product.expiryUnit) {
+    if (
+      batchForm.manufactureDate &&
+      product.expiryMonths &&
+      product.expiryUnit
+    ) {
       const mfgDate = new Date(batchForm.manufactureDate);
       let calculatedDate = new Date(mfgDate);
-      
+
       if (product.expiryUnit === "months") {
-        calculatedDate.setMonth(calculatedDate.getMonth() + Number(product.expiryMonths));
+        calculatedDate.setMonth(
+          calculatedDate.getMonth() + Number(product.expiryMonths)
+        );
       } else if (product.expiryUnit === "days") {
-        calculatedDate.setDate(calculatedDate.getDate() + Number(product.expiryMonths));
+        calculatedDate.setDate(
+          calculatedDate.getDate() + Number(product.expiryMonths)
+        );
       } else if (product.expiryUnit === "years") {
-        calculatedDate.setFullYear(calculatedDate.getFullYear() + Number(product.expiryMonths));
+        calculatedDate.setFullYear(
+          calculatedDate.getFullYear() + Number(product.expiryMonths)
+        );
       }
-      
+
       // Format: YYYY-MM-DD
-      const calculatedExpiryDate = calculatedDate.toISOString().split('T')[0];
-      
+      const calculatedExpiryDate = calculatedDate.toISOString().split("T")[0];
+
       // Only update if expiry date is empty or was previously calculated
-      if (!batchForm.expiryDate || batchForm.expiryDate === calculatedExpiryDate) {
-        setBatchForm(prev => ({ ...prev, expiryDate: calculatedExpiryDate }));
+      if (
+        !batchForm.expiryDate ||
+        batchForm.expiryDate === calculatedExpiryDate
+      ) {
+        setBatchForm((prev) => ({ ...prev, expiryDate: calculatedExpiryDate }));
       }
     }
   }, [batchForm.manufactureDate, product.expiryMonths, product.expiryUnit]);
@@ -428,18 +449,18 @@ function ProductCard({
   // Handle batch creation
   const handleCreateBatch = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     // Validation
     if (!batchForm.inboundManager.trim()) {
       alert("입고 담당자 이름을 입력해주세요.");
       return;
     }
-    
+
     if (!batchForm.expiryDate) {
       alert("유효 기간을 입력해주세요.");
       return;
     }
-    
+
     if (batchQuantity < 1) {
       alert("입고 수량은 1개 이상이어야 합니다.");
       return;
@@ -447,8 +468,12 @@ function ProductCard({
 
     setSubmittingBatch(true);
     try {
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다. 다시 로그인해주세요.");
@@ -512,7 +537,9 @@ function ProductCard({
       alert("배치가 성공적으로 추가되었습니다.");
     } catch (error: any) {
       console.error("Error creating batch:", error);
-      alert(`배치 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`);
+      alert(
+        `배치 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`
+      );
     } finally {
       setSubmittingBatch(false);
     }
@@ -539,40 +566,40 @@ function ProductCard({
             )}
           </div>
           <div>
-  <div className="flex items-center gap-2">
-    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-      {product.category}
-    </span>
-  </div>
-  <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
-    {product.productName}
-  </p>
-  <p className="text-sm text-slate-500 dark:text-slate-400">
-    {product.brand}
-  </p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {product.category}
+              </span>
+            </div>
+            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
+              {product.productName}
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {product.brand}
+            </p>
 
-  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-    <span className="inline-flex items-center gap-1">
-      <BoxIcon className="h-4 w-4" />
-      {product.currentStock.toLocaleString()} /{" "}
-      {product.minStock.toLocaleString()} {product.unit ?? "EA"}
-    </span>
-   
-    {product.supplierName && (
-      <span className="inline-flex items-center gap-1">
-        <TruckIcon className="h-4 w-4 text-indigo-500" />
-        {product.supplierName}
-      </span>
-    )}
-    
-    {product.storageLocation && (
-      <span className="inline-flex items-center gap-1">
-        <WarehouseIcon className="h-4 w-4" />
-        {product.storageLocation}
-      </span>
-    )}
-  </div>
-</div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1">
+                <BoxIcon className="h-4 w-4" />
+                {product.currentStock.toLocaleString()} /{" "}
+                {product.minStock.toLocaleString()} {product.unit ?? "EA"}
+              </span>
+
+              {product.supplierName && (
+                <span className="inline-flex items-center gap-1">
+                  <TruckIcon className="h-4 w-4 text-indigo-500" />
+                  {product.supplierName}
+                </span>
+              )}
+
+              {product.storageLocation && (
+                <span className="inline-flex items-center gap-1">
+                  <WarehouseIcon className="h-4 w-4" />
+                  {product.storageLocation}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {isLowStock && (
@@ -581,14 +608,14 @@ function ProductCard({
             </span>
           )}
           <Link
-                href={`/products/${product.id}`}
-                onClick={handleButtonClick}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <PencilIcon className="h-3.5 w-3.5" />
-                상세 보기
-              </Link>
-          
+            href={`/products/${product.id}`}
+            onClick={handleButtonClick}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+            상세 보기
+          </Link>
+
           <button
             className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
             onClick={(e) => {
@@ -631,7 +658,7 @@ function ProductCard({
                       {batch.batch_no}
                     </span>
                   </div>
-                  
+
                   {/* Barcha ma'lumotlar bitta row'da */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     {batch.보관위치 && (
@@ -673,33 +700,31 @@ function ProductCard({
               <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                 새 배치 입고 처리
               </div>
-              
             </div>
 
             {/* 입고 담당자 - Editable input field */}
             <div className="flex items-center gap-1">
-  <label className="w-28 shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
-    입고 담당자 *
-  </label>
+              <label className="w-28 shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
+                입고 담당자 *
+              </label>
 
-  <input
-    type="text"
-    placeholder="입고 담당자 이름을 입력하세요"
-    value={batchForm.inboundManager}
-    onChange={(e) =>
-      setBatchForm({ ...batchForm, inboundManager: e.target.value })
-    }
-    onClick={(e) => e.stopPropagation()}
-    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800
+              <input
+                type="text"
+                placeholder="입고 담당자 이름을 입력하세요"
+                value={batchForm.inboundManager}
+                onChange={(e) =>
+                  setBatchForm({ ...batchForm, inboundManager: e.target.value })
+                }
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800
                focus:border-sky-400 focus:outline-none
                dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
                dark:focus:border-sky-500"
-  />
-</div>
-
+              />
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-            <QuantityField
+              <QuantityField
                 value={batchQuantity}
                 onChange={setBatchQuantity}
               />
@@ -708,36 +733,41 @@ function ProductCard({
                 placeholder="구매원가를 입력하세요"
                 type="number"
                 value={batchForm.purchasePrice}
-                onChange={(value) => setBatchForm({ ...batchForm, purchasePrice: value })}
+                onChange={(value) =>
+                  setBatchForm({ ...batchForm, purchasePrice: value })
+                }
               />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-             
               <div>
-                <InlineField 
-                  label="유효 기간 *" 
+                <InlineField
+                  label="유효 기간 *"
                   type="date"
                   value={batchForm.expiryDate}
-                  onChange={(value) => setBatchForm({ ...batchForm, expiryDate: value })}
+                  onChange={(value) =>
+                    setBatchForm({ ...batchForm, expiryDate: value })
+                  }
                 />
-                {batchForm.manufactureDate && product.expiryMonths && product.expiryUnit && (
-                  <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
-                    계산된 유통기한: {batchForm.expiryDate || "계산 중..."}
-                  </p>
-                )}
+                {batchForm.manufactureDate &&
+                  product.expiryMonths &&
+                  product.expiryUnit && (
+                    <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
+                      계산된 유통기한: {batchForm.expiryDate || "계산 중..."}
+                    </p>
+                  )}
               </div>
-               {/* 보관 위치 - to'liq width */}
-            <InlineField
-              label="보관 위치"
-              placeholder="예: 창고 A-3, 냉장실 1번"
-              value={batchForm.storageLocation}
-              onChange={(value) => setBatchForm({ ...batchForm, storageLocation: value })}
-            />
-
+              {/* 보관 위치 - to'liq width */}
+              <InlineField
+                label="보관 위치"
+                placeholder="예: 창고 A-3, 냉장실 1번"
+                value={batchForm.storageLocation}
+                onChange={(value) =>
+                  setBatchForm({ ...batchForm, storageLocation: value })
+                }
+              />
             </div>
 
-           
             <div className="flex justify-end">
               <button
                 onClick={handleCreateBatch}
@@ -762,14 +792,22 @@ interface FilterChipProps {
   defaultValue: string;
 }
 
-function FilterChip({ label, options, value, onChange, defaultValue }: FilterChipProps) {
+function FilterChip({
+  label,
+  options,
+  value,
+  onChange,
+  defaultValue,
+}: FilterChipProps) {
   const [isOpen, setIsOpen] = useState(false);
   const resolvedOptions = options.map((option) =>
     typeof option === "string" ? { label: option, value: option } : option
   );
 
   const displayValue = value || defaultValue;
-  const selectedOption = resolvedOptions.find((opt) => opt.value === displayValue);
+  const selectedOption = resolvedOptions.find(
+    (opt) => opt.value === displayValue
+  );
 
   const handleSelect = (optionValue: string) => {
     if (onChange) {
@@ -787,7 +825,9 @@ function FilterChip({ label, options, value, onChange, defaultValue }: FilterChi
         <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">
           {selectedOption?.label || displayValue}
         </span>
-        <ChevronDownIcon className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDownIcon
+          className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
       {isOpen && (
         <>
@@ -1315,12 +1355,12 @@ function PendingOrdersList({
         // Use original ordered quantity from clinic (not supplier's confirmed qty)
         const originalQty = item.orderedQuantity;
         const finalPrice = item.confirmedPrice || item.orderedPrice;
-        
+
         initialEdits[item.id] = {
           quantity: "",
           expiryDate: "",
           storageLocation: "",
-          purchasePrice: "", 
+          purchasePrice: "",
         };
       });
     });
@@ -1344,8 +1384,12 @@ function PendingOrdersList({
 
     setProcessing(order.orderId);
     try {
-      const token = localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-      const tenantId = localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다.");
@@ -1354,11 +1398,12 @@ function PendingOrdersList({
 
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../lib/api");
-      
+
       // Get current member info for inbound_manager
       const memberData = localStorage.getItem("erp_member_data");
       const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager = memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
+      const inboundManager =
+        memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -1387,29 +1432,30 @@ function PendingOrdersList({
 
       // Create batches and returns for each product
       const returnItems: any[] = [];
-      
+
       for (const [productId, items] of itemsByProduct.entries()) {
         // Use edited quantity from form
         const inboundQty = items.reduce((sum: number, item: any) => {
           const edited = editedItems[item.id];
           return sum + (edited?.quantity || 0);
         }, 0);
-        
+
         // Use edited values from first item
         const firstItem = items[0];
         const editedFirstItem = editedItems[firstItem.id];
-        
+
         // Get confirmed quantity from supplier
-        const confirmedQty = firstItem.confirmedQuantity || firstItem.orderedQuantity;
-        
+        const confirmedQty =
+          firstItem.confirmedQuantity || firstItem.orderedQuantity;
+
         // Calculate excess (ortiqcha)
         const excessQty = confirmedQty - inboundQty;
-        
+
         // Get expiry info from product
         const expiryMonths = firstItem.expiryMonths;
         const expiryUnit = firstItem.expiryUnit || "months";
         const alertDays = firstItem.alertDays;
-        
+
         // Calculate manufacture date
         let manufactureDate = null;
         if (editedFirstItem?.expiryDate && expiryMonths) {
@@ -1421,7 +1467,7 @@ function PendingOrdersList({
           }
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
-        
+
         const batchPayload: any = {
           qty: inboundQty,
           purchase_price: editedFirstItem?.purchasePrice || 0,
@@ -1433,15 +1479,19 @@ function PendingOrdersList({
         if (expiryMonths) batchPayload.expiry_months = expiryMonths;
         if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
         if (alertDays) batchPayload.alert_days = alertDays;
-        if (editedFirstItem?.storageLocation) batchPayload.storage = editedFirstItem.storageLocation;
+        if (editedFirstItem?.storageLocation)
+          batchPayload.storage = editedFirstItem.storageLocation;
 
         // Create batch
-        const createdBatch = await apiPost<any>(`${apiUrl}/products/${productId}/batches`, batchPayload);
-        
+        const createdBatch = await apiPost<any>(
+          `${apiUrl}/products/${productId}/batches`,
+          batchPayload
+        );
+
         // Get batch_no from the created batch
         // Backend returns batch object directly with batch_no
         const batchNo = createdBatch.batch_no || "";
-        
+
         // If excess, prepare return item
         if (excessQty > 0) {
           returnItems.push({
@@ -1455,7 +1505,7 @@ function PendingOrdersList({
           });
         }
       }
-      
+
       // Create returns if any excess
       if (returnItems.length > 0) {
         try {
@@ -1468,7 +1518,9 @@ function PendingOrdersList({
         } catch (returnError: any) {
           console.error(`Failed to create returns:`, returnError);
           // Don't throw - continue with order completion even if returns fail
-          alert(`반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`);
+          alert(
+            `반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`
+          );
         }
       }
 
@@ -1477,27 +1529,38 @@ function PendingOrdersList({
         await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
       } catch (completeError: any) {
         console.error(`Failed to complete order:`, completeError);
-        throw new Error(`주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`);
+        throw new Error(
+          `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
+        );
       }
 
       // Show success message and optionally redirect to order-returns if returns were created
       if (returnItems.length > 0) {
-        if (confirm(`입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`)) {
+        if (
+          confirm(
+            `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`
+          )
+        ) {
           window.location.href = "/order-returns";
           return; // Exit early to prevent onRefresh() call
         }
       } else {
         alert("입고 처리가 완료되었습니다.");
       }
-      
+
       onRefresh();
     } catch (err: any) {
       console.error("Failed to process order:", err);
       const errorMessage = err.message || "알 수 없는 오류";
-      
+
       // Check if it's a network error
-      if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
-        alert(`네트워크 오류가 발생했습니다.\n서버에 연결할 수 없습니다.\n\n오류: ${errorMessage}\n\n다시 시도해주세요.`);
+      if (
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("NetworkError")
+      ) {
+        alert(
+          `네트워크 오류가 발생했습니다.\n서버에 연결할 수 없습니다.\n\n오류: ${errorMessage}\n\n다시 시도해주세요.`
+        );
       } else {
         alert(`입고 처리 중 오류가 발생했습니다: ${errorMessage}`);
       }
@@ -1541,9 +1604,13 @@ function PendingOrdersList({
       <div className="space-y-4">
         {orders.map((order) => {
           // Get current member info for inbound manager
-          const memberData = typeof window !== 'undefined' ? localStorage.getItem("erp_member_data") : null;
+          const memberData =
+            typeof window !== "undefined"
+              ? localStorage.getItem("erp_member_data")
+              : null;
           const memberInfo = memberData ? JSON.parse(memberData) : {};
-          const inboundManagerName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
+          const inboundManagerName =
+            memberInfo.full_name || memberInfo.member_id || "알 수 없음";
 
           // Determine order status
           const isPending = order.status === "pending";
@@ -1556,22 +1623,52 @@ function PendingOrdersList({
               <div className="flex items-start">
                 {isPending ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     주문 요청
                   </span>
                 ) : isRejected ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                     주문 거절
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     주문 진행
                   </span>
@@ -1580,195 +1677,229 @@ function PendingOrdersList({
 
               {/* Card */}
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-
-              {/* Order Info - 3 Columns */}
-              <div className="mb-4 grid grid-cols-1 gap-4 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
-                {/* Left: 공급업체 + Manager */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <TruckIcon className="h-5 w-5 text-indigo-500" />
-                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                      {order.supplierName || "알 수 없음"}
-                    </h3>
+                {/* Order Info - 3 Columns */}
+                <div className="mb-4 grid grid-cols-1 gap-4 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
+                  {/* Left: 공급업체 + Manager */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <TruckIcon className="h-5 w-5 text-indigo-500" />
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                        {order.supplierName || "알 수 없음"}
+                      </h3>
+                    </div>
+                    {order.managerName && (
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        담당자: {order.managerName}
+                      </p>
+                    )}
                   </div>
-                  {order.managerName && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      담당자: {order.managerName}
-                    </p>
-                  )}
-                </div>
 
-                {/* Center: 주문번호 */}
-                <div className="flex items-center justify-center">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">주문번호</span>
-                    <span className="text-base font-bold text-sky-600 dark:text-sky-400">
-                      {order.orderNo}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Right: 확인일/거절일 + 주문자 */}
-                <div className="space-y-2 lg:text-right">
-                  {isSupplierConfirmed && order.confirmedAt && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-emerald-400" />
-                      <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                        확인일: {new Date(order.confirmedAt).toLocaleDateString()}
+                  {/* Center: 주문번호 */}
+                  <div className="flex items-center justify-center">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        주문번호
+                      </span>
+                      <span className="text-base font-bold text-sky-600 dark:text-sky-400">
+                        {order.orderNo}
                       </span>
                     </div>
-                  )}
-                  {isRejected && order.confirmedAt && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-red-400" />
-                      <span className="text-sm text-red-600 dark:text-red-400">
-                        거절일: {new Date(order.confirmedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                  {isPending && order.orderDate && (
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <CalendarIcon className="h-4 w-4 text-slate-400" />
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        주문일: {new Date(order.orderDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 lg:justify-end">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      주문자: {order.createdByName || "알 수 없음"}
-                    </span>
                   </div>
-                </div>
-              </div>
 
-            {/* Order Items - Editable Form */}
-            <div className="space-y-4">
-              {order.items?.map((item: any, index: number) => {
-                const edited = editedItems[item.id] || {};
-                const hasQtyChange = item.confirmedQuantity !== item.orderedQuantity;
-                const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
-
-                return (
-                  <div
-                    key={index}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
-                  >
-                    {/* Product Name + Reasons */}
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-base font-semibold text-slate-900 dark:text-white">
-                          {item.productName || "알 수 없음"}
-                        </h4>
-                        {item.brand && (
-                          <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {item.brand}
-                          </span>
-                        )}
+                  {/* Right: 확인일/거절일 + 주문자 */}
+                  <div className="space-y-2 lg:text-right">
+                    {isSupplierConfirmed && order.confirmedAt && (
+                      <div className="flex items-center gap-2 lg:justify-end">
+                        <CalendarIcon className="h-4 w-4 text-emerald-400" />
+                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                          확인일:{" "}
+                          {new Date(order.confirmedAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      {(isSupplierConfirmed || isRejected) && (
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {item.quantityReason && (
-                            <span className="text-xs text-rose-600 dark:text-rose-400">
-                              ⚠ 수량 변경: {item.quantityReason}
-                            </span>
-                          )}
-                          {item.priceReason && (
-                            <span className="text-xs text-amber-600 dark:text-amber-400">
-                              💰 가격 변경: {item.priceReason}
-                            </span>
-                          )}
-                          {isRejected && item.memo && (
-                            <span className="text-xs text-red-600 dark:text-red-400">
-                              ❌ 거절 사유: {item.memo}
-                            </span>
+                    )}
+                    {isRejected && order.confirmedAt && (
+                      <div className="flex items-center gap-2 lg:justify-end">
+                        <CalendarIcon className="h-4 w-4 text-red-400" />
+                        <span className="text-sm text-red-600 dark:text-red-400">
+                          거절일:{" "}
+                          {new Date(order.confirmedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {isPending && order.orderDate && (
+                      <div className="flex items-center gap-2 lg:justify-end">
+                        <CalendarIcon className="h-4 w-4 text-slate-400" />
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          주문일:{" "}
+                          {new Date(order.orderDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 lg:justify-end">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        주문자: {order.createdByName || "알 수 없음"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Items - Editable Form */}
+                <div className="space-y-4">
+                  {order.items?.map((item: any, index: number) => {
+                    const edited = editedItems[item.id] || {};
+                    const hasQtyChange =
+                      item.confirmedQuantity !== item.orderedQuantity;
+                    const hasPriceChange =
+                      item.confirmedPrice !== item.orderedPrice;
+
+                    return (
+                      <div
+                        key={index}
+                        className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
+                      >
+                        {/* Product Name + Reasons */}
+                        <div className="mb-3">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                              {item.productName || "알 수 없음"}
+                            </h4>
+                            {item.brand && (
+                              <span className="text-sm text-slate-500 dark:text-slate-400">
+                                {item.brand}
+                              </span>
+                            )}
+                          </div>
+                          {(isSupplierConfirmed || isRejected) && (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              {item.quantityReason && (
+                                <span className="text-xs text-rose-600 dark:text-rose-400">
+                                  ⚠ 수량 변경: {item.quantityReason}
+                                </span>
+                              )}
+                              {item.priceReason && (
+                                <span className="text-xs text-amber-600 dark:text-amber-400">
+                                  💰 가격 변경: {item.priceReason}
+                                </span>
+                              )}
+                              {isRejected && item.memo && (
+                                <span className="text-xs text-red-600 dark:text-red-400">
+                                  ❌ 거절 사유: {item.memo}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Editable Fields - Read-only for pending orders */}
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {/* 입고수량 (Editable with original qty shown) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          입고수량:
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={edited.quantity || ""}
-                            onChange={(e) => updateItemField(item.id, "quantity", parseInt(e.target.value) || 0)}
-                            disabled={isPending || isRejected}
-                            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                          />
-                          <span className="text-sm text-slate-400">|</span>
-                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {item.orderedQuantity}개
-                          </span>
+                        {/* Editable Fields - Read-only for pending orders */}
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {/* 입고수량 (Editable with original qty shown) */}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              입고수량:
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                value={edited.quantity || ""}
+                                onChange={(e) =>
+                                  updateItemField(
+                                    item.id,
+                                    "quantity",
+                                    parseInt(e.target.value) || 0
+                                  )
+                                }
+                                disabled={isPending || isRejected}
+                                className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                              />
+                              <span className="text-sm text-slate-400">|</span>
+                              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                                {item.orderedQuantity}개
+                              </span>
+                            </div>
+                            {(isSupplierConfirmed || isRejected) &&
+                              hasQtyChange && (
+                                <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
+                                  공급업체 조정: {item.confirmedQuantity}개
+                                </p>
+                              )}
+                          </div>
+
+                          {/* 유통기간: (Editable) */}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              유통기간:
+                            </label>
+                            <input
+                              type="date"
+                              value={edited.expiryDate || ""}
+                              onChange={(e) =>
+                                updateItemField(
+                                  item.id,
+                                  "expiryDate",
+                                  e.target.value
+                                )
+                              }
+                              disabled={isPending || isRejected}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                            />
+                          </div>
+
+                          {/* 보관위치 (Editable) */}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              보관위치
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="창고 A-3, 냉장실 선반 1"
+                              value={edited.storageLocation || ""}
+                              onChange={(e) =>
+                                updateItemField(
+                                  item.id,
+                                  "storageLocation",
+                                  e.target.value
+                                )
+                              }
+                              disabled={isPending || isRejected}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                            />
+                          </div>
+
+                          {/* 이번 구매가 (Editable) */}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              이번 구매가
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="구매가 입력"
+                              value={edited.purchasePrice || ""}
+                              onChange={(e) =>
+                                updateItemField(
+                                  item.id,
+                                  "purchasePrice",
+                                  parseInt(e.target.value) || ""
+                                )
+                              }
+                              disabled={isPending || isRejected}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                            />
+                            {(isSupplierConfirmed || isRejected) &&
+                              hasPriceChange && (
+                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                                  공급업체 조정:{" "}
+                                  {item.orderedPrice.toLocaleString()}원 →{" "}
+                                  {item.confirmedPrice.toLocaleString()}원
+                                </p>
+                              )}
+                          </div>
                         </div>
-                        {(isSupplierConfirmed || isRejected) && hasQtyChange && (
-                          <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                            공급업체 조정: {item.confirmedQuantity}개
-                          </p>
-                        )}
                       </div>
-
-                      {/* 유통기간: (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          유통기간:
-                        </label>
-                        <input
-                          type="date"
-                          value={edited.expiryDate || ""}
-                          onChange={(e) => updateItemField(item.id, "expiryDate", e.target.value)}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                      </div>
-
-                      {/* 보관위치 (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          보관위치
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="창고 A-3, 냉장실 선반 1"
-                          value={edited.storageLocation || ""}
-                          onChange={(e) => updateItemField(item.id, "storageLocation", e.target.value)}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                      </div>
-
-                      {/* 이번 구매가 (Editable) */}
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                          이번 구매가
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="구매가 입력"
-                          value={edited.purchasePrice || ""}
-                          onChange={(e) => updateItemField(item.id, "purchasePrice", parseInt(e.target.value) || "")}
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                        {(isSupplierConfirmed || isRejected) && hasPriceChange && (
-                          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                            공급업체 조정: {item.orderedPrice.toLocaleString()}원 → {item.confirmedPrice.toLocaleString()}원
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
 
                 {/* Footer - 입고 담당자 + Button */}
                 <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
@@ -1792,22 +1923,38 @@ function PendingOrdersList({
                   ) : isRejected ? (
                     <button
                       onClick={async () => {
-                        if (!confirm(`주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`)) {
+                        if (
+                          !confirm(
+                            `주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`
+                          )
+                        ) {
                           return;
                         }
 
                         try {
                           const { apiPost } = await import("../../lib/api");
-                          const memberData = typeof window !== 'undefined' ? localStorage.getItem("erp_member_data") : null;
-                          const memberInfo = memberData ? JSON.parse(memberData) : {};
-                          const memberName = memberInfo.full_name || memberInfo.member_id || "알 수 없음";
+                          const memberData =
+                            typeof window !== "undefined"
+                              ? localStorage.getItem("erp_member_data")
+                              : null;
+                          const memberInfo = memberData
+                            ? JSON.parse(memberData)
+                            : {};
+                          const memberName =
+                            memberInfo.full_name ||
+                            memberInfo.member_id ||
+                            "알 수 없음";
 
                           // Prepare items array with product info
-                          const items = order.items?.map((item: any) => ({
-                            productName: item.productName || "알 수 없음",
-                            productBrand: item.brand || null,
-                            qty: item.orderedQuantity || item.confirmedQuantity || 0,
-                          })) || [];
+                          const items =
+                            order.items?.map((item: any) => ({
+                              productName: item.productName || "알 수 없음",
+                              productBrand: item.brand || null,
+                              qty:
+                                item.orderedQuantity ||
+                                item.confirmedQuantity ||
+                                0,
+                            })) || [];
 
                           const endpoint = `${apiUrl}/order/rejected-order/confirm`;
                           console.log("Calling endpoint:", endpoint);
@@ -1826,14 +1973,18 @@ function PendingOrdersList({
                             onRefresh();
                           }
                           // Trigger a custom event to notify order page to refresh rejected orders
-                          window.dispatchEvent(new CustomEvent('rejectedOrderConfirmed', { 
-                            detail: { orderNo: order.orderNo } 
-                          }));
+                          window.dispatchEvent(
+                            new CustomEvent("rejectedOrderConfirmed", {
+                              detail: { orderNo: order.orderNo },
+                            })
+                          );
                           // Also trigger a page visibility refresh to ensure data is updated
-                          window.dispatchEvent(new Event('visibilitychange'));
+                          window.dispatchEvent(new Event("visibilitychange"));
                         } catch (err: any) {
                           console.error("Failed to confirm rejection:", err);
-                          alert(`거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
+                          alert(
+                            `거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`
+                          );
                         }
                       }}
                       className="ml-auto inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
@@ -1846,7 +1997,9 @@ function PendingOrdersList({
                       disabled={processing === order.orderId}
                       className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+                      {processing === order.orderId
+                        ? "처리 중..."
+                        : "✓ 입고 처리"}
                     </button>
                   )}
                 </div>

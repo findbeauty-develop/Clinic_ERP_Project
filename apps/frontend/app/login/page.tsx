@@ -52,7 +52,10 @@ export default function LoginPage() {
           localStorage.setItem("erp_access_token", result.token);
         }
         if (result.member) {
-          localStorage.setItem("erp_member_data", JSON.stringify(result.member));
+          localStorage.setItem(
+            "erp_member_data",
+            JSON.stringify(result.member)
+          );
           localStorage.setItem("erp_tenant_id", result.member.tenant_id);
         }
       }
@@ -80,7 +83,7 @@ export default function LoginPage() {
   const handleClinicSignup = (e?: React.MouseEvent<HTMLButtonElement>) => {
     e?.preventDefault();
     e?.stopPropagation();
-    
+
     if (typeof window !== "undefined") {
       // Clear all registration-related data from sessionStorage and localStorage
       // to ensure a fresh start for new clinic registration
@@ -105,7 +108,7 @@ export default function LoginPage() {
 
   const handlePasswordChange = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    
+
     if (!currentPassword || !newPassword || !confirmPassword) {
       window.alert("모든 필드를 입력해주세요.");
       return;
@@ -147,7 +150,7 @@ export default function LoginPage() {
 
       window.alert("비밀번호가 성공적으로 변경되었습니다.");
       setShowPasswordChangeModal(false);
-      
+
       // Dashboard'ga o'tish
       // Use window.location.href for full page reload to update sidebar state
       if (typeof window !== "undefined") {
@@ -219,7 +222,9 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword((prev) => !prev)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600"
-                  aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                  aria-label={
+                    showPassword ? "비밀번호 숨기기" : "비밀번호 표시"
+                  }
                 >
                   {showPassword ? (
                     <svg
@@ -276,7 +281,7 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-          
+
           <div className="flex flex-col gap-4">
             <button
               type="button"
@@ -388,4 +393,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

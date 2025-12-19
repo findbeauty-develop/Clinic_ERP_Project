@@ -47,7 +47,10 @@ type CreatedMember = {
 };
 
 const normalizeClinicName = (name: string) =>
-  name.replace(/[^a-zA-Z0-9]+/g, " ").trim().replace(/\s+/g, "");
+  name
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "");
 
 const STEP_ITEMS = [
   { step: 1, label: "클리닉 인증" },
@@ -110,10 +113,10 @@ export default function ClinicRegisterSuccessPage() {
           try {
             // Get tenant_id from sessionStorage
             const tenantId = sessionStorage.getItem("erp_tenant_id");
-            const url = tenantId 
+            const url = tenantId
               ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
               : `${apiUrl}/iam/members/clinics`;
-            
+
             const response = await fetch(url);
             if (response.ok) {
               const clinics = (await response.json()) as Clinic[];
@@ -177,7 +180,8 @@ export default function ClinicRegisterSuccessPage() {
           관리자: "manager1",
           직원: "member1",
         };
-        const roleLabel = roleToLabel[member.role.toLowerCase()] || member.role.toLowerCase();
+        const roleLabel =
+          roleToLabel[member.role.toLowerCase()] || member.role.toLowerCase();
         const newMemberId = `${roleLabel}@${clinicSlug}`;
         return {
           ...member,
@@ -198,7 +202,6 @@ export default function ClinicRegisterSuccessPage() {
     ],
     [owner]
   );
-
 
   if (loading) {
     return (
@@ -234,8 +237,8 @@ export default function ClinicRegisterSuccessPage() {
                   step === 4
                     ? "border-indigo-500 bg-indigo-500 text-white"
                     : step < 4
-                    ? "border-indigo-200 bg-indigo-50 text-indigo-400"
-                    : "border-slate-200 bg-white text-slate-400"
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-400"
+                      : "border-slate-200 bg-white text-slate-400"
                 }`}
               >
                 {step}
@@ -254,13 +257,18 @@ export default function ClinicRegisterSuccessPage() {
         <section className="mx-auto flex w-full max-w-4xl flex-col gap-6">
           <div className="rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
             <div className="flex items-start justify-between gap-4">
-              <h2 className="text-xl font-semibold text-slate-900">병의원 인증</h2>
+              <h2 className="text-xl font-semibold text-slate-900">
+                병의원 인증
+              </h2>
               <button
                 type="button"
                 onClick={() => {
                   // Store clinic ID for edit mode
                   if (clinicFromApi?.id) {
-                    sessionStorage.setItem("erp_editing_clinic_id", clinicFromApi.id);
+                    sessionStorage.setItem(
+                      "erp_editing_clinic_id",
+                      clinicFromApi.id
+                    );
                   }
                   router.push("/clinic/register");
                 }}
@@ -347,7 +355,10 @@ export default function ClinicRegisterSuccessPage() {
                 onClick={() => {
                   // Store clinic ID for edit mode
                   if (clinicFromApi?.id) {
-                    sessionStorage.setItem("erp_editing_clinic_id", clinicFromApi.id);
+                    sessionStorage.setItem(
+                      "erp_editing_clinic_id",
+                      clinicFromApi.id
+                    );
                   }
                   router.push("/clinic/register/member");
                 }}
@@ -370,7 +381,9 @@ export default function ClinicRegisterSuccessPage() {
 
           <div className="rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
             <div className="flex items-start justify-between gap-4">
-              <h2 className="text-xl font-semibold text-slate-900">계정 정보</h2>
+              <h2 className="text-xl font-semibold text-slate-900">
+                계정 정보
+              </h2>
             </div>
             <div className="mt-6 space-y-4">
               {displayMembers.length > 0 ? (
@@ -420,8 +433,6 @@ export default function ClinicRegisterSuccessPage() {
           </button>
         </footer>
       </div>
-
     </div>
   );
 }
-
