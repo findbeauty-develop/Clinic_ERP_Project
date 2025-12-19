@@ -353,9 +353,12 @@ export class OrderService {
 
     if (existingItemIndex >= 0) {
       // Mavjud item'ni yangilash
+      // ⚠️ MUHIM: Quantity'ni qo'shmaslik, balki to'g'ridan-to'g'ri o'rnatish
+      // Frontend'da `PUT` chaqiruvida quantity to'g'ridan-to'g'ri o'rnatiladi
+      // Agar `PUT` 404 qaytarsa va `POST` fallback ishlatilsa, quantity qo'shilmasligi kerak
       const oldQty = items[existingItemIndex].quantity;
-      const newQty = oldQty + dto.quantity;
-      this.logger.log(`🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Adding: ${dto.quantity}, New: ${newQty}`);
+      const newQty = dto.quantity; // To'g'ridan-to'g'ri o'rnatish (qo'shmaslik)
+      this.logger.log(`🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Setting to: ${dto.quantity}, New: ${newQty}`);
       
       items[existingItemIndex] = {
         ...items[existingItemIndex],
