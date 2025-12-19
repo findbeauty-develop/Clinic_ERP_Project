@@ -390,12 +390,17 @@ export class OrderService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + this.DRAFT_EXPIRY_HOURS);
 
+    this.logger.log(`🔍 DEBUG: Saving draft - sessionId: ${sessionId}, tenantId: ${tenantId}, items count: ${items.length}`);
+    this.logger.log(`🔍 DEBUG: Items to save: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, quantity: i.quantity, supplierId: i.supplierId })))}`);
+
     const updatedDraft = await this.orderRepository.createOrUpdateDraft(
       sessionId,
       tenantId,
       { items, total_amount: totalAmount },
       expiresAt
     );
+
+    this.logger.log(`🔍 DEBUG: Draft saved successfully - items count in saved draft: ${Array.isArray(updatedDraft.items) ? updatedDraft.items.length : 0}`);
 
     // Yangi qo'shilgan item'ni highlight qilish
     const highlightItemIds = [itemId];
@@ -416,16 +421,22 @@ export class OrderService {
       throw new BadRequestException("Tenant ID and Session ID are required");
     }
 
+    this.logger.log(`🔍 DEBUG: updateDraftItem - sessionId: ${sessionId}, tenantId: ${tenantId}, itemId: ${itemId}`);
+
     const draft = await this.orderRepository.findDraftBySession(
       sessionId,
       tenantId
     );
 
     if (!draft) {
+      this.logger.warn(`🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`);
       throw new NotFoundException("Draft not found");
     }
 
     const items = Array.isArray(draft.items) ? draft.items : [];
+
+    this.logger.log(`🔍 DEBUG: Retrieved draft - items count: ${items.length}`);
+    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, quantity: i.quantity })))}`);
 
     // Item'ni topish
     const itemIndex = items.findIndex(
@@ -604,16 +615,22 @@ export class OrderService {
     }
 
     // Draft'ni olish
+    this.logger.log(`🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`);
+
     const draft = await this.orderRepository.findDraftBySession(
       sessionId,
       tenantId
     );
 
     if (!draft) {
+      this.logger.warn(`🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`);
       throw new NotFoundException("Draft not found");
     }
 
     const items = Array.isArray(draft.items) ? draft.items : [];
+
+    this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
+    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map(i => ({ id: i.id, productId: i.productId, supplierId: i.supplierId, quantity: i.quantity })))}`);
 
     if (items.length === 0) {
       throw new BadRequestException("Order must have at least one item");
@@ -656,6 +673,11 @@ export class OrderService {
     }
 
     // Supplier bo'yicha guruhlash
+    this.logger.log(`🔍 DEBUG: Starting grouping, total items: ${items.length}`);
+    items.forEach((item, idx) => {
+      this.logger.log(`🔍 DEBUG: Item ${idx + 1}: productId=${item.productId}, supplierId=${item.supplierId || "unknown"}, quantity=${item.quantity}`);
+    });
+
     const groupedBySupplier: Record<string, any> = {};
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
@@ -668,6 +690,11 @@ export class OrderService {
       }
       groupedBySupplier[supplierId].items.push(item);
       groupedBySupplier[supplierId].totalAmount += item.totalPrice;
+    }
+
+    this.logger.log(`🔍 DEBUG: Grouped into ${Object.keys(groupedBySupplier).length} suppliers`);
+    for (const [supplierId, group] of Object.entries(groupedBySupplier)) {
+      this.logger.log(`🔍 DEBUG: Supplier ${supplierId}: ${group.items.length} items`);
     }
 
     // Har bir supplier uchun alohida order yaratish
@@ -718,6 +745,8 @@ export class OrderService {
       });
 
       createdOrders.push(await this.orderRepository.findById(order.id, tenantId));
+      
+      this.logger.log(`🔍 DEBUG: Sending order ${order.order_no} to supplier ${supplierId} with ${group.items.length} items`);
       
       // Send order to supplier-backend (SupplierOrder table)
       await this.sendOrderToSupplier(order, group, tenantId, createdBy);
@@ -1226,6 +1255,12 @@ export class OrderService {
       let supplierProductRecord: any = null;
 
       if (group.items && group.items.length > 0) {
+        this.logger.log(`🔍 DEBUG: sendOrderToSupplier - group.items.length: ${group.items.length}`);
+        this.logger.log(`🔍 DEBUG: sendOrderToSupplier - First item: ${JSON.stringify(group.items[0])}`);
+        if (group.items.length > 1) {
+          this.logger.log(`🔍 DEBUG: sendOrderToSupplier - Last item: ${JSON.stringify(group.items[group.items.length - 1])}`);
+        }
+
         // Collect all SupplierProducts for all items in this order
         // IMPORTANT: Use item.supplierId (from draft) instead of order.supplier_id
         const supplierManagerIdCounts = new Map<string, number>();
