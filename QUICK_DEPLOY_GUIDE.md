@@ -235,7 +235,9 @@ docker compose -f docker-compose.prod.yml down
 docker stop clinic-erp-backend-prod clinic-erp-frontend-prod supplier-erp-backend-prod supplier-erp-frontend-prod 2>/dev/null
 docker rm clinic-erp-backend-prod clinic-erp-frontend-prod supplier-erp-backend-prod supplier-erp-frontend-prod 2>/dev/null
 ```
+docker stop clinic-erp-frontend-prod 2>/dev/null
 
+docker rm clinic-erp-frontend-prod 2>/dev/null
 ### 10.2. Yangi Container'larni Ishga Tushirish
 
 ```bash

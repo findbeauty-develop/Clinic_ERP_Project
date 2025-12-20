@@ -29,9 +29,7 @@ export class OrderService {
   /**
    * Mahsulotlar ro'yxatini olish (barcha productlar)
    */
-  async getProductsForOrder(
-    tenantId: string
-  ): Promise<any[]> {
+  async getProductsForOrder(tenantId: string): Promise<any[]> {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
@@ -78,10 +76,7 @@ export class OrderService {
   /**
    * Order draft'ni olish yoki yaratish
    */
-  async getOrCreateDraft(
-    sessionId: string,
-    tenantId: string
-  ): Promise<any> {
+  async getOrCreateDraft(sessionId: string, tenantId: string): Promise<any> {
     if (!tenantId || !sessionId) {
       throw new BadRequestException("Tenant ID and Session ID are required");
     }
@@ -358,8 +353,10 @@ export class OrderService {
       // Agar `PUT` 404 qaytarsa va `POST` fallback ishlatilsa, quantity qo'shilmasligi kerak
       const oldQty = items[existingItemIndex].quantity;
       const newQty = dto.quantity; // To'g'ridan-to'g'ri o'rnatish (qo'shmaslik)
-      this.logger.log(`🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Setting to: ${dto.quantity}, New: ${newQty}`);
-      
+      this.logger.log(
+        `🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Setting to: ${dto.quantity}, New: ${newQty}`
+      );
+
       items[existingItemIndex] = {
         ...items[existingItemIndex],
         quantity: newQty,
@@ -370,14 +367,17 @@ export class OrderService {
     } else {
       // Yangi item qo'shish
       items.push(newItem);
-      this.logger.log(`➕ Added NEW item: ${dto.productId} - Qty: ${dto.quantity}`);
+      this.logger.log(
+        `➕ Added NEW item: ${dto.productId} - Qty: ${dto.quantity}`
+      );
     }
 
     this.logger.log(`📝 Draft now has ${items.length} unique items`);
     this.logger.log(`📊 Total quantities by product:`);
     const qtyByProduct: Record<string, number> = {};
     items.forEach((item: any) => {
-      qtyByProduct[item.productId] = (qtyByProduct[item.productId] || 0) + item.quantity;
+      qtyByProduct[item.productId] =
+        (qtyByProduct[item.productId] || 0) + item.quantity;
     });
     Object.entries(qtyByProduct).forEach(([prodId, qty]) => {
       this.logger.log(`  - ${prodId}: ${qty}개`);
@@ -393,8 +393,19 @@ export class OrderService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + this.DRAFT_EXPIRY_HOURS);
 
-    this.logger.log(`🔍 DEBUG: Saving draft - sessionId: ${sessionId}, tenantId: ${tenantId}, items count: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Items to save: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, quantity: i.quantity, supplierId: i.supplierId })))}`);
+    this.logger.log(
+      `🔍 DEBUG: Saving draft - sessionId: ${sessionId}, tenantId: ${tenantId}, items count: ${items.length}`
+    );
+    this.logger.log(
+      `🔍 DEBUG: Items to save: ${JSON.stringify(
+        items.map((i: any) => ({
+          id: i.id,
+          productId: i.productId,
+          quantity: i.quantity,
+          supplierId: i.supplierId,
+        }))
+      )}`
+    );
 
     const updatedDraft = await this.orderRepository.createOrUpdateDraft(
       sessionId,
@@ -403,7 +414,11 @@ export class OrderService {
       expiresAt
     );
 
-    this.logger.log(`🔍 DEBUG: Draft saved successfully - items count in saved draft: ${Array.isArray(updatedDraft.items) ? updatedDraft.items.length : 0}`);
+    this.logger.log(
+      `🔍 DEBUG: Draft saved successfully - items count in saved draft: ${
+        Array.isArray(updatedDraft.items) ? updatedDraft.items.length : 0
+      }`
+    );
 
     // Yangi qo'shilgan item'ni highlight qilish
     const highlightItemIds = [itemId];
@@ -424,7 +439,9 @@ export class OrderService {
       throw new BadRequestException("Tenant ID and Session ID are required");
     }
 
-    this.logger.log(`🔍 DEBUG: updateDraftItem - sessionId: ${sessionId}, tenantId: ${tenantId}, itemId: ${itemId}`);
+    this.logger.log(
+      `🔍 DEBUG: updateDraftItem - sessionId: ${sessionId}, tenantId: ${tenantId}, itemId: ${itemId}`
+    );
 
     const draft = await this.orderRepository.findDraftBySession(
       sessionId,
@@ -432,28 +449,40 @@ export class OrderService {
     );
 
     if (!draft) {
-      this.logger.warn(`🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`);
+      this.logger.warn(
+        `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
+      );
       throw new NotFoundException("Draft not found");
     }
 
     const items = Array.isArray(draft.items) ? draft.items : [];
 
     this.logger.log(`🔍 DEBUG: Retrieved draft - items count: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, quantity: i.quantity })))}`);
+    this.logger.log(
+      `🔍 DEBUG: Draft items: ${JSON.stringify(
+        items.map((i: any) => ({
+          id: i.id,
+          productId: i.productId,
+          quantity: i.quantity,
+        }))
+      )}`
+    );
 
     // Item'ni topish
-    const itemIndex = items.findIndex(
-      (item: any) => item.id === itemId
-    );
+    const itemIndex = items.findIndex((item: any) => item.id === itemId);
 
     if (itemIndex < 0) {
       // Debug: draft'dagi barcha item ID'larni ko'rsatish
       const availableItemIds = items.map((item: any) => item.id);
       this.logger.warn(
-        `Item not found. Looking for: ${itemId}, Available items: ${JSON.stringify(availableItemIds)}`
+        `Item not found. Looking for: ${itemId}, Available items: ${JSON.stringify(
+          availableItemIds
+        )}`
       );
       throw new NotFoundException(
-        `Item not found in draft. Looking for: ${itemId}, Available item IDs: ${availableItemIds.join(", ")}`
+        `Item not found in draft. Looking for: ${itemId}, Available item IDs: ${availableItemIds.join(
+          ", "
+        )}`
       );
     }
 
@@ -516,9 +545,7 @@ export class OrderService {
         });
 
         if (!product) {
-          throw new NotFoundException(
-            `Product not found: ${item.productId}`
-          );
+          throw new NotFoundException(`Product not found: ${item.productId}`);
         }
 
         let unitPrice = item.unitPrice;
@@ -618,7 +645,9 @@ export class OrderService {
     }
 
     // Draft'ni olish
-    this.logger.log(`🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`);
+    this.logger.log(
+      `🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`
+    );
 
     const draft = await this.orderRepository.findDraftBySession(
       sessionId,
@@ -626,14 +655,25 @@ export class OrderService {
     );
 
     if (!draft) {
-      this.logger.warn(`🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`);
+      this.logger.warn(
+        `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
+      );
       throw new NotFoundException("Draft not found");
     }
 
     const items = Array.isArray(draft.items) ? draft.items : [];
 
     this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
-    this.logger.log(`🔍 DEBUG: Draft items: ${JSON.stringify(items.map((i: any) => ({ id: i.id, productId: i.productId, supplierId: i.supplierId, quantity: i.quantity })))}`);
+    this.logger.log(
+      `🔍 DEBUG: Draft items: ${JSON.stringify(
+        items.map((i: any) => ({
+          id: i.id,
+          productId: i.productId,
+          supplierId: i.supplierId,
+          quantity: i.quantity,
+        }))
+      )}`
+    );
 
     if (items.length === 0) {
       throw new BadRequestException("Order must have at least one item");
@@ -676,9 +716,15 @@ export class OrderService {
     }
 
     // Supplier bo'yicha guruhlash
-    this.logger.log(`🔍 DEBUG: Starting grouping, total items: ${items.length}`);
+    this.logger.log(
+      `🔍 DEBUG: Starting grouping, total items: ${items.length}`
+    );
     items.forEach((item: any, idx: number) => {
-      this.logger.log(`🔍 DEBUG: Item ${idx + 1}: productId=${item.productId}, supplierId=${item.supplierId || "unknown"}, quantity=${item.quantity}`);
+      this.logger.log(
+        `🔍 DEBUG: Item ${idx + 1}: productId=${item.productId}, supplierId=${
+          item.supplierId || "unknown"
+        }, quantity=${item.quantity}`
+      );
     });
 
     const groupedBySupplier: Record<string, any> = {};
@@ -695,9 +741,15 @@ export class OrderService {
       groupedBySupplier[supplierId].totalAmount += item.totalPrice;
     }
 
-    this.logger.log(`🔍 DEBUG: Grouped into ${Object.keys(groupedBySupplier).length} suppliers`);
+    this.logger.log(
+      `🔍 DEBUG: Grouped into ${
+        Object.keys(groupedBySupplier).length
+      } suppliers`
+    );
     for (const [supplierId, group] of Object.entries(groupedBySupplier)) {
-      this.logger.log(`🔍 DEBUG: Supplier ${supplierId}: ${group.items.length} items`);
+      this.logger.log(
+        `🔍 DEBUG: Supplier ${supplierId}: ${group.items.length} items`
+      );
     }
 
     // Har bir supplier uchun alohida order yaratish
@@ -747,10 +799,14 @@ export class OrderService {
         return order;
       });
 
-      createdOrders.push(await this.orderRepository.findById(order.id, tenantId));
-      
-      this.logger.log(`🔍 DEBUG: Sending order ${order.order_no} to supplier ${supplierId} with ${group.items.length} items`);
-      
+      createdOrders.push(
+        await this.orderRepository.findById(order.id, tenantId)
+      );
+
+      this.logger.log(
+        `🔍 DEBUG: Sending order ${order.order_no} to supplier ${supplierId} with ${group.items.length} items`
+      );
+
       // Send order to supplier-backend (SupplierOrder table)
       await this.sendOrderToSupplier(order, group, tenantId, createdBy);
     }
@@ -798,10 +854,10 @@ export class OrderService {
     const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
     const day = String(date.getDate()).padStart(2, "0"); // DD
     const dateStr = `${year}${month}${day}`; // YYMMDD
-    
+
     // Random 6 digits
     const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     return `${dateStr}${randomDigits}`;
   }
 
@@ -862,23 +918,30 @@ export class OrderService {
     });
 
     // Filter out rejected orders that haven't been confirmed yet (don't have RejectedOrder records)
-    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(async () => {
-      const confirmedRejected = await (this.prisma as any).rejectedOrder.findMany({
-        where: {
-          tenant_id: tenantId,
-        },
-        select: {
-          order_id: true,
-        },
-        distinct: ["order_id"],
-      });
-      return new Set(confirmedRejected.map((ro: any) => ro.order_id));
-    });
+    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
+      async () => {
+        const confirmedRejected = await (
+          this.prisma as any
+        ).rejectedOrder.findMany({
+          where: {
+            tenant_id: tenantId,
+          },
+          select: {
+            order_id: true,
+          },
+          distinct: ["order_id"],
+        });
+        return new Set(confirmedRejected.map((ro: any) => ro.order_id));
+      }
+    );
 
     // Filter out rejected orders that haven't been confirmed
     const filteredOrders = orders.filter((order: any) => {
       // If order is rejected but not confirmed, exclude it from order history
-      if (order.status === "rejected" && !confirmedRejectedOrderIds.has(order.id)) {
+      if (
+        order.status === "rejected" &&
+        !confirmedRejectedOrderIds.has(order.id)
+      ) {
         return false;
       }
       return true;
@@ -890,7 +953,11 @@ export class OrderService {
     filteredOrders.forEach((order: any) => {
       if (order.items && order.items.length > 0) {
         order.items.forEach((item: any) => {
-          if (item.product && item.product.supplierProducts && item.product.supplierProducts.length > 0) {
+          if (
+            item.product &&
+            item.product.supplierProducts &&
+            item.product.supplierProducts.length > 0
+          ) {
             const supplierProduct = item.product.supplierProducts[0];
             if (supplierProduct.supplier_id) {
               supplierIds.add(supplierProduct.supplier_id);
@@ -946,7 +1013,11 @@ export class OrderService {
     filteredOrders.forEach((order: any) => {
       if (order.items && order.items.length > 0) {
         order.items.forEach((item: any) => {
-          if (item.product && item.product.supplierProducts && item.product.supplierProducts.length > 0) {
+          if (
+            item.product &&
+            item.product.supplierProducts &&
+            item.product.supplierProducts.length > 0
+          ) {
             const supplierProduct = item.product.supplierProducts[0];
             if (supplierProduct.supplier_manager_id) {
               supplierManagerIds.add(supplierProduct.supplier_manager_id);
@@ -959,7 +1030,9 @@ export class OrderService {
     // Fetch all SupplierManagers by their IDs
     const supplierManagersMap = new Map<string, any>();
     if (supplierManagerIds.size > 0) {
-      const supplierManagers = await (this.prisma as any).supplierManager.findMany({
+      const supplierManagers = await (
+        this.prisma as any
+      ).supplierManager.findMany({
         where: {
           id: {
             in: Array.from(supplierManagerIds),
@@ -988,11 +1061,16 @@ export class OrderService {
 
       // Get supplier ID from order or items
       let supplierId: string | null = order.supplier_id || null;
-      
+
       if (!supplierId && order.items && order.items.length > 0) {
         const firstItem = order.items[0];
-        if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
-          supplierId = firstItem.product.supplierProducts[0].supplier_id || null;
+        if (
+          firstItem.product &&
+          firstItem.product.supplierProducts &&
+          firstItem.product.supplierProducts.length > 0
+        ) {
+          supplierId =
+            firstItem.product.supplierProducts[0].supplier_id || null;
         }
       }
 
@@ -1000,7 +1078,11 @@ export class OrderService {
       let supplierProduct: any = null;
       if (order.items && order.items.length > 0) {
         const firstItem = order.items[0];
-        if (firstItem.product && firstItem.product.supplierProducts && firstItem.product.supplierProducts.length > 0) {
+        if (
+          firstItem.product &&
+          firstItem.product.supplierProducts &&
+          firstItem.product.supplierProducts.length > 0
+        ) {
           supplierProduct = firstItem.product.supplierProducts[0];
         }
       }
@@ -1009,7 +1091,7 @@ export class OrderService {
       if (supplierId && suppliersMap.has(supplierId)) {
         const supplier = suppliersMap.get(supplierId);
         supplierName = supplier.company_name || supplierName;
-        
+
         supplierDetails = {
           id: supplier.id,
           companyName: supplier.company_name || "",
@@ -1018,20 +1100,25 @@ export class OrderService {
           companyEmail: supplier.company_email || null,
           businessNumber: supplier.business_number || "",
         };
-        
+
         // Manager ma'lumotlarini topish - Priority: supplier_manager_id > first manager > contact info
         let manager: any = null;
-        
+
         // Variant 1: Use supplier_manager_id from SupplierProduct
-        if (supplierProduct?.supplier_manager_id && supplierManagersMap.has(supplierProduct.supplier_manager_id)) {
-          manager = supplierManagersMap.get(supplierProduct.supplier_manager_id);
+        if (
+          supplierProduct?.supplier_manager_id &&
+          supplierManagersMap.has(supplierProduct.supplier_manager_id)
+        ) {
+          manager = supplierManagersMap.get(
+            supplierProduct.supplier_manager_id
+          );
         }
-        
+
         // Variant 2: Fallback to first manager from supplier
         if (!manager && supplier.managers && supplier.managers.length > 0) {
           manager = supplier.managers[0];
         }
-        
+
         // Variant 3: Use contact info from SupplierProduct
         if (manager) {
           managerName = manager.name || "";
@@ -1049,7 +1136,7 @@ export class OrderService {
         // Fallback: try to get from supplierProducts
         if (supplierProduct) {
           const fallbackSupplierId = supplierProduct.supplier_id;
-          
+
           // Try to find supplier by the fallback ID
           if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
             const supplier = suppliersMap.get(fallbackSupplierId);
@@ -1062,20 +1149,25 @@ export class OrderService {
               companyEmail: supplier.company_email || null,
               businessNumber: supplier.business_number || "",
             };
-            
+
             // Manager ma'lumotlarini topish - Priority: supplier_manager_id > first manager > contact info
             let manager: any = null;
-            
+
             // Variant 1: Use supplier_manager_id from SupplierProduct
-            if (supplierProduct.supplier_manager_id && supplierManagersMap.has(supplierProduct.supplier_manager_id)) {
-              manager = supplierManagersMap.get(supplierProduct.supplier_manager_id);
+            if (
+              supplierProduct.supplier_manager_id &&
+              supplierManagersMap.has(supplierProduct.supplier_manager_id)
+            ) {
+              manager = supplierManagersMap.get(
+                supplierProduct.supplier_manager_id
+              );
             }
-            
+
             // Variant 2: Fallback to first manager from supplier
             if (!manager && supplier.managers && supplier.managers.length > 0) {
               manager = supplier.managers[0];
             }
-            
+
             // Variant 3: Use contact info from SupplierProduct
             if (manager) {
               managerName = manager.name || "";
@@ -1086,14 +1178,16 @@ export class OrderService {
             } else {
               managerName = supplierProduct.contact_name || "";
               supplierDetails.managerName = managerName;
-              supplierDetails.managerPhone = supplierProduct.contact_phone || null;
-              supplierDetails.managerEmail = supplierProduct.contact_email || null;
+              supplierDetails.managerPhone =
+                supplierProduct.contact_phone || null;
+              supplierDetails.managerEmail =
+                supplierProduct.contact_email || null;
             }
           } else {
             // Last resort: use supplierProduct data
             supplierName = fallbackSupplierId || supplierName;
             managerName = supplierProduct.contact_name || "";
-            
+
             // Create minimal supplierDetails from supplierProduct
             supplierDetails = {
               companyName: supplierName,
@@ -1156,7 +1250,7 @@ export class OrderService {
 
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
-      
+
       // Item ID mapping
       const itemId = item.id;
       itemIdMap[itemId] = {
@@ -1167,8 +1261,8 @@ export class OrderService {
       };
 
       // Highlight flag (yangi qo'shilgan yoki highlightItemIds'da bo'lsa)
-      const isHighlighted = 
-        item.isNewlyAdded || 
+      const isHighlighted =
+        item.isNewlyAdded ||
         (highlightItemIds && highlightItemIds.includes(itemId));
 
       if (!supplierGroups[supplierId]) {
@@ -1195,8 +1289,8 @@ export class OrderService {
       sessionId: draft.session_id,
       items: items.map((item: any) => ({
         ...item,
-        isHighlighted: 
-          item.isNewlyAdded || 
+        isHighlighted:
+          item.isNewlyAdded ||
           (highlightItemIds && highlightItemIds.includes(item.id)),
       })),
       totalAmount: totalAmount,
@@ -1229,7 +1323,9 @@ export class OrderService {
   ): Promise<void> {
     try {
       if (!order.supplier_id) {
-        this.logger.warn(`Order ${order.order_no} has no supplier_id, skipping supplier notification`);
+        this.logger.warn(
+          `Order ${order.order_no} has no supplier_id, skipping supplier notification`
+        );
         return;
       }
 
@@ -1246,7 +1342,9 @@ export class OrderService {
       });
 
       if (!supplier || !supplier.tenant_id) {
-        this.logger.warn(`Supplier ${order.supplier_id} not found or has no tenant_id`);
+        this.logger.warn(
+          `Supplier ${order.supplier_id} not found or has no tenant_id`
+        );
         return;
       }
 
@@ -1258,10 +1356,20 @@ export class OrderService {
       let supplierProductRecord: any = null;
 
       if (group.items && group.items.length > 0) {
-        this.logger.log(`🔍 DEBUG: sendOrderToSupplier - group.items.length: ${group.items.length}`);
-        this.logger.log(`🔍 DEBUG: sendOrderToSupplier - First item: ${JSON.stringify(group.items[0])}`);
+        this.logger.log(
+          `🔍 DEBUG: sendOrderToSupplier - group.items.length: ${group.items.length}`
+        );
+        this.logger.log(
+          `🔍 DEBUG: sendOrderToSupplier - First item: ${JSON.stringify(
+            group.items[0]
+          )}`
+        );
         if (group.items.length > 1) {
-          this.logger.log(`🔍 DEBUG: sendOrderToSupplier - Last item: ${JSON.stringify(group.items[group.items.length - 1])}`);
+          this.logger.log(
+            `🔍 DEBUG: sendOrderToSupplier - Last item: ${JSON.stringify(
+              group.items[group.items.length - 1]
+            )}`
+          );
         }
 
         // Collect all SupplierProducts for all items in this order
@@ -1273,27 +1381,33 @@ export class OrderService {
           if (item.productId) {
             // Use item.supplierId from draft, fallback to order.supplier_id
             const itemSupplierId = item.supplierId || order.supplier_id;
-            
-            this.logger.log(`🔍 Checking item: productId=${item.productId}, item.supplierId=${item.supplierId}, order.supplier_id=${order.supplier_id}, using supplierId=${itemSupplierId}`);
-            
-            const supplierProduct = await this.prisma.supplierProduct.findFirst({
-              where: {
-                product_id: item.productId,
-                supplier_id: itemSupplierId, // Use item's supplierId, not order's
-              },
-              select: {
-                id: true,
-                supplier_manager_id: true,
-                contact_phone: true,
-                contact_name: true,
-                company_name: true,
-                supplier_id: true,
-              },
-            });
+
+            this.logger.log(
+              `🔍 Checking item: productId=${item.productId}, item.supplierId=${item.supplierId}, order.supplier_id=${order.supplier_id}, using supplierId=${itemSupplierId}`
+            );
+
+            const supplierProduct = await this.prisma.supplierProduct.findFirst(
+              {
+                where: {
+                  product_id: item.productId,
+                  supplier_id: itemSupplierId, // Use item's supplierId, not order's
+                },
+                select: {
+                  id: true,
+                  supplier_manager_id: true,
+                  contact_phone: true,
+                  contact_name: true,
+                  company_name: true,
+                  supplier_id: true,
+                },
+              }
+            );
 
             if (supplierProduct) {
-              this.logger.log(`✅ Found SupplierProduct: id=${supplierProduct.id}, supplier_id=${supplierProduct.supplier_id}, supplier_manager_id=${supplierProduct.supplier_manager_id}, contact_phone=${supplierProduct.contact_phone}, contact_name=${supplierProduct.contact_name}`);
-              
+              this.logger.log(
+                `✅ Found SupplierProduct: id=${supplierProduct.id}, supplier_id=${supplierProduct.supplier_id}, supplier_manager_id=${supplierProduct.supplier_manager_id}, contact_phone=${supplierProduct.contact_phone}, contact_name=${supplierProduct.contact_name}`
+              );
+
               // Use first product as default (for contact_phone fallback)
               if (!supplierProductRecord) {
                 supplierProductRecord = supplierProduct;
@@ -1301,15 +1415,32 @@ export class OrderService {
 
               // Count supplier_manager_id occurrences
               if (supplierProduct.supplier_manager_id) {
-                const count = supplierManagerIdCounts.get(supplierProduct.supplier_manager_id) || 0;
-                supplierManagerIdCounts.set(supplierProduct.supplier_manager_id, count + 1);
-                supplierProductsByManagerId.set(supplierProduct.supplier_manager_id, supplierProduct);
-                this.logger.log(`📊 Item ${item.productId}: Found supplier_manager_id ${supplierProduct.supplier_manager_id} for supplier ${itemSupplierId} (count: ${count + 1})`);
+                const count =
+                  supplierManagerIdCounts.get(
+                    supplierProduct.supplier_manager_id
+                  ) || 0;
+                supplierManagerIdCounts.set(
+                  supplierProduct.supplier_manager_id,
+                  count + 1
+                );
+                supplierProductsByManagerId.set(
+                  supplierProduct.supplier_manager_id,
+                  supplierProduct
+                );
+                this.logger.log(
+                  `📊 Item ${item.productId}: Found supplier_manager_id ${
+                    supplierProduct.supplier_manager_id
+                  } for supplier ${itemSupplierId} (count: ${count + 1})`
+                );
               } else {
-                this.logger.log(`⚠️ Item ${item.productId}: No supplier_manager_id found, contact_phone: ${supplierProduct.contact_phone}, contact_name: ${supplierProduct.contact_name}`);
+                this.logger.log(
+                  `⚠️ Item ${item.productId}: No supplier_manager_id found, contact_phone: ${supplierProduct.contact_phone}, contact_name: ${supplierProduct.contact_name}`
+                );
               }
             } else {
-              this.logger.warn(`❌ Item ${item.productId}: No SupplierProduct found for supplier ${itemSupplierId}`);
+              this.logger.warn(
+                `❌ Item ${item.productId}: No SupplierProduct found for supplier ${itemSupplierId}`
+              );
             }
           }
         }
@@ -1324,8 +1455,14 @@ export class OrderService {
           }
         }
 
-        this.logger.log(`SupplierManager ID counts: ${JSON.stringify(Array.from(supplierManagerIdCounts.entries()))}`);
-        this.logger.log(`Most common supplier_manager_id: ${mostCommonManagerId} (count: ${maxCount})`);
+        this.logger.log(
+          `SupplierManager ID counts: ${JSON.stringify(
+            Array.from(supplierManagerIdCounts.entries())
+          )}`
+        );
+        this.logger.log(
+          `Most common supplier_manager_id: ${mostCommonManagerId} (count: ${maxCount})`
+        );
 
         // Variant 1: If supplier_manager_id exists in SupplierProduct (product was created with registered supplier)
         if (mostCommonManagerId) {
@@ -1340,14 +1477,21 @@ export class OrderService {
             },
           });
           if (supplierManager) {
-            this.logger.log(`✅ Found SupplierManager by supplier_manager_id (most common): ${supplierManager.id}, name: ${supplierManager.name}, phone: ${supplierManager.phone_number} (used in ${maxCount} products)`);
+            this.logger.log(
+              `✅ Found SupplierManager by supplier_manager_id (most common): ${supplierManager.id}, name: ${supplierManager.name}, phone: ${supplierManager.phone_number} (used in ${maxCount} products)`
+            );
             // Update supplierProductRecord to the one with this manager_id for potential update
-            supplierProductRecord = supplierProductsByManagerId.get(mostCommonManagerId);
+            supplierProductRecord =
+              supplierProductsByManagerId.get(mostCommonManagerId);
           } else {
-            this.logger.warn(`❌ SupplierManager ${mostCommonManagerId} not found in database`);
+            this.logger.warn(
+              `❌ SupplierManager ${mostCommonManagerId} not found in database`
+            );
           }
         } else {
-          this.logger.log(`⚠️ No supplier_manager_id found in any SupplierProduct`);
+          this.logger.log(
+            `⚠️ No supplier_manager_id found in any SupplierProduct`
+          );
         }
 
         // Variant 2: If supplier_manager_id doesn't exist, try to find by contact_phone
@@ -1361,8 +1505,10 @@ export class OrderService {
           });
 
           if (supplierManager) {
-            this.logger.log(`Found SupplierManager by contact_phone: ${supplierManager.id}, updating SupplierProduct`);
-            
+            this.logger.log(
+              `Found SupplierManager by contact_phone: ${supplierManager.id}, updating SupplierProduct`
+            );
+
             // Update SupplierProduct with supplier_manager_id for future orders
             if (supplierProductRecord.id) {
               try {
@@ -1370,16 +1516,22 @@ export class OrderService {
                   where: { id: supplierProductRecord.id },
                   data: { supplier_manager_id: supplierManager.id },
                 });
-                this.logger.log(`Updated SupplierProduct ${supplierProductRecord.id} with supplier_manager_id`);
+                this.logger.log(
+                  `Updated SupplierProduct ${supplierProductRecord.id} with supplier_manager_id`
+                );
               } catch (updateError: any) {
                 // Log but don't fail - update is optional
-                this.logger.warn(`Failed to update SupplierProduct with supplier_manager_id: ${updateError?.message}`);
+                this.logger.warn(
+                  `Failed to update SupplierProduct with supplier_manager_id: ${updateError?.message}`
+                );
               }
             }
           } else {
             // No SupplierManager found, use contact_phone for SMS
             supplierPhoneNumber = supplierProductRecord.contact_phone;
-            this.logger.log(`No SupplierManager found, will use contact_phone for SMS: ${supplierPhoneNumber}`);
+            this.logger.log(
+              `No SupplierManager found, will use contact_phone for SMS: ${supplierPhoneNumber}`
+            );
           }
         }
       }
@@ -1389,31 +1541,38 @@ export class OrderService {
         const fallbackManager = supplier.managers?.[0];
         if (fallbackManager) {
           supplierManager = fallbackManager;
-          this.logger.log(`Using fallback SupplierManager (first created): ${supplierManager.id}`);
+          this.logger.log(
+            `Using fallback SupplierManager (first created): ${supplierManager.id}`
+          );
         } else {
           // Last resort: try to get phone from SupplierProduct by supplier_id
           if (!supplierPhoneNumber) {
-            const supplierProductBySupplier = await this.prisma.supplierProduct.findFirst({
-              where: {
-                supplier_id: order.supplier_id,
-                contact_phone: { not: null },
-              },
-              select: {
-                contact_phone: true,
-              },
-              orderBy: {
-                created_at: 'desc',
-              },
-            });
-            
+            const supplierProductBySupplier =
+              await this.prisma.supplierProduct.findFirst({
+                where: {
+                  supplier_id: order.supplier_id,
+                  contact_phone: { not: null },
+                },
+                select: {
+                  contact_phone: true,
+                },
+                orderBy: {
+                  created_at: "desc",
+                },
+              });
+
             if (supplierProductBySupplier?.contact_phone) {
               supplierPhoneNumber = supplierProductBySupplier.contact_phone;
-              this.logger.log(`Found phone number from SupplierProduct (by supplier_id): ${supplierPhoneNumber}`);
+              this.logger.log(
+                `Found phone number from SupplierProduct (by supplier_id): ${supplierPhoneNumber}`
+              );
             }
           }
 
           if (!supplierPhoneNumber) {
-            this.logger.warn(`No SupplierManager or phone number found for supplier ${order.supplier_id}, SMS will not be sent`);
+            this.logger.warn(
+              `No SupplierManager or phone number found for supplier ${order.supplier_id}, SMS will not be sent`
+            );
           }
         }
       }
@@ -1423,16 +1582,16 @@ export class OrderService {
       const clinic = await this.prisma.clinic.findFirst({
         where: { tenant_id: tenantId },
       });
-      
+
       // Get member info (created_by) - also used for clinic name fallback
       let clinicManagerName = createdBy || "담당자";
       let clinicNameFallback = null;
-      
+
       if (createdBy) {
         const member = await this.prisma.member.findFirst({
-          where: { 
+          where: {
             id: createdBy,
-            tenant_id: tenantId 
+            tenant_id: tenantId,
           },
         });
         if (member) {
@@ -1440,11 +1599,16 @@ export class OrderService {
           clinicNameFallback = member.clinic_name; // Fallback clinic name from member
         }
       }
-      
+
       // Use clinic.name or fallback to member.clinic_name
-      const finalClinicName = clinic?.name || clinicNameFallback || "알 수 없음";
-      
-      this.logger.log(`Found clinic: ${finalClinicName} (from ${clinic ? 'Clinic table' : 'Member fallback'})`);
+      const finalClinicName =
+        clinic?.name || clinicNameFallback || "알 수 없음";
+
+      this.logger.log(
+        `Found clinic: ${finalClinicName} (from ${
+          clinic ? "Clinic table" : "Member fallback"
+        })`
+      );
 
       // Get product details for items
       const itemsWithDetails = await Promise.all(
@@ -1490,35 +1654,41 @@ export class OrderService {
         items: itemsWithDetails,
       };
 
-      this.logger.log(`Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${clinicManagerName}`);
+      this.logger.log(
+        `Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${clinicManagerName}`
+      );
       this.logger.log(`📦 Order items count: ${itemsWithDetails.length}`);
       itemsWithDetails.forEach((item, idx) => {
-        this.logger.log(`  Item ${idx + 1}: ${item.productName} - Qty: ${item.quantity}`);
+        this.logger.log(
+          `  Item ${idx + 1}: ${item.productName} - Qty: ${item.quantity}`
+        );
       });
-
 
       // Prepare supplier phone number for SMS (even if API fails, we can still send SMS)
       // Priority: supplierManager.phone_number > supplierPhoneNumber (from SupplierProduct) > supplier.company_phone
-      const finalSupplierPhoneNumber = 
-        supplierManager?.phone_number || 
-        supplierPhoneNumber || 
+      const finalSupplierPhoneNumber =
+        supplierManager?.phone_number ||
+        supplierPhoneNumber ||
         supplier.company_phone;
 
       // Call supplier-backend API
-      const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const supplierApiUrl =
+        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
-      
+
       let supplierBackendSuccess = false;
-      
+
       if (!apiKey) {
-        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier-backend API call');
+        this.logger.warn(
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping supplier-backend API call"
+        );
       } else {
         let timeoutId: NodeJS.Timeout | null = null;
         try {
           // Create AbortController for timeout
           const controller = new AbortController();
           timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
-          
+
           const response = await fetch(`${supplierApiUrl}/supplier/orders`, {
             method: "POST",
             headers: {
@@ -1528,18 +1698,24 @@ export class OrderService {
             body: JSON.stringify(supplierOrderData),
             signal: controller.signal,
           });
-          
+
           if (timeoutId) {
             clearTimeout(timeoutId);
             timeoutId = null;
           }
 
           if (!response.ok) {
-            const errorText = await response.text().catch(() => "Unknown error");
-            this.logger.error(`Failed to send order to supplier-backend: ${response.status} ${errorText}`);
+            const errorText = await response
+              .text()
+              .catch(() => "Unknown error");
+            this.logger.error(
+              `Failed to send order to supplier-backend: ${response.status} ${errorText}`
+            );
           } else {
             const result: any = await response.json();
-            this.logger.log(`Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`);
+            this.logger.log(
+              `Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`
+            );
             supplierBackendSuccess = true;
           }
         } catch (fetchError: any) {
@@ -1547,23 +1723,39 @@ export class OrderService {
           if (timeoutId) {
             clearTimeout(timeoutId);
           }
-          
+
           // Network error (connection refused, timeout, etc.)
           const errorMessage = fetchError?.message || String(fetchError);
-          const errorName = fetchError?.name || '';
-          
-          if (errorName === 'AbortError' || errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
-            this.logger.error(`Supplier-backend API request timed out after 10 seconds. URL: ${supplierApiUrl}`);
-          } else if (errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
-            this.logger.error(`Cannot connect to supplier-backend at ${supplierApiUrl}. Is supplier-backend running? Error: ${errorMessage}`);
-            this.logger.error(`Please check: 1) Supplier-backend is running, 2) SUPPLIER_BACKEND_URL is correct in .env`);
+          const errorName = fetchError?.name || "";
+
+          if (
+            errorName === "AbortError" ||
+            errorMessage.includes("aborted") ||
+            errorMessage.includes("timeout")
+          ) {
+            this.logger.error(
+              `Supplier-backend API request timed out after 10 seconds. URL: ${supplierApiUrl}`
+            );
+          } else if (
+            errorMessage.includes("fetch failed") ||
+            errorMessage.includes("ECONNREFUSED") ||
+            errorMessage.includes("ENOTFOUND")
+          ) {
+            this.logger.error(
+              `Cannot connect to supplier-backend at ${supplierApiUrl}. Is supplier-backend running? Error: ${errorMessage}`
+            );
+            this.logger.error(
+              `Please check: 1) Supplier-backend is running, 2) SUPPLIER_BACKEND_URL is correct in .env`
+            );
           } else {
-            this.logger.error(`Error calling supplier-backend API: ${errorMessage}`);
+            this.logger.error(
+              `Error calling supplier-backend API: ${errorMessage}`
+            );
           }
           // Continue - we'll still try to send SMS even if API call failed
         }
       }
-      
+
       // Send SMS notification to supplier manager
       // SMS yuborish supplier-backend API muvaffaqiyatli bo'lgan yoki bo'lmaganidan qat'iy nazar
       // (chunki telefon raqami mavjud bo'lsa, SMS yuborish kerak)
@@ -1574,12 +1766,15 @@ export class OrderService {
             productName: item.productName || "제품",
             brand: item.brand || "",
           }));
-          
+
           // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
-          const totalQuantity = itemsWithDetails.reduce((sum: number, item: any) => {
-            return sum + (item.quantity || 0);
-          }, 0);
-          
+          const totalQuantity = itemsWithDetails.reduce(
+            (sum: number, item: any) => {
+              return sum + (item.quantity || 0);
+            },
+            0
+          );
+
           await this.messageService.sendOrderNotification(
             finalSupplierPhoneNumber,
             finalClinicName,
@@ -1589,21 +1784,32 @@ export class OrderService {
             clinicManagerName,
             products
           );
-          const phoneSource = supplierManager?.phone_number 
-            ? 'SupplierManager' 
-            : supplierPhoneNumber 
-            ? 'SupplierProduct' 
-            : 'Supplier.company_phone';
-          this.logger.log(`Order notification SMS sent to supplier: ${finalSupplierPhoneNumber} (source: ${phoneSource})`);
+          const phoneSource = supplierManager?.phone_number
+            ? "SupplierManager"
+            : supplierPhoneNumber
+            ? "SupplierProduct"
+            : "Supplier.company_phone";
+          this.logger.log(
+            `Order notification SMS sent to supplier: ${finalSupplierPhoneNumber} (source: ${phoneSource})`
+          );
         } catch (smsError: any) {
           // Log error but don't fail the order creation
-          this.logger.error(`Failed to send SMS notification to supplier: ${smsError?.message || 'Unknown error'}`);
+          this.logger.error(
+            `Failed to send SMS notification to supplier: ${
+              smsError?.message || "Unknown error"
+            }`
+          );
         }
       } else {
-        this.logger.warn(`No phone number found for supplier ${order.supplier_id} (checked SupplierManager, SupplierProduct, and Supplier.company_phone), skipping SMS notification`);
+        this.logger.warn(
+          `No phone number found for supplier ${order.supplier_id} (checked SupplierManager, SupplierProduct, and Supplier.company_phone), skipping SMS notification`
+        );
       }
     } catch (error: any) {
-      this.logger.error(`Error sending order to supplier-backend: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error sending order to supplier-backend: ${error.message}`,
+        error.stack
+      );
       // Don't throw - order already created in clinic DB, supplier notification is optional
     }
   }
@@ -1612,10 +1818,21 @@ export class OrderService {
    * Update order from supplier confirmation callback
    */
   async updateOrderFromSupplier(dto: any) {
-    const { orderNo, clinicTenantId, status, confirmedAt, adjustments, updatedItems, totalAmount, rejectionReasons } = dto;
+    const {
+      orderNo,
+      clinicTenantId,
+      status,
+      confirmedAt,
+      adjustments,
+      updatedItems,
+      totalAmount,
+      rejectionReasons,
+    } = dto;
 
     if (!orderNo || !clinicTenantId) {
-      throw new BadRequestException("Order number and clinic tenant ID are required");
+      throw new BadRequestException(
+        "Order number and clinic tenant ID are required"
+      );
     }
 
     // Find order by order_no with items
@@ -1651,7 +1868,7 @@ export class OrderService {
       adjustments: adjustments || [],
       updatedAt: new Date().toISOString(),
     };
-    
+
     await this.prisma.executeWithRetry(async () => {
       // Update order
       await (this.prisma as any).order.update({
@@ -1671,14 +1888,14 @@ export class OrderService {
           // Find matching order item by productId, productName, quantity, and unitPrice
           // This ensures we match the correct item even if productId is null
           let orderItem = null;
-          
+
           if (updatedItem.productId) {
             // First try to match by productId
-            orderItem = order.items.find((item: any) => 
-              item.product_id === updatedItem.productId
+            orderItem = order.items.find(
+              (item: any) => item.product_id === updatedItem.productId
             );
           }
-          
+
           // If not found by productId, try matching by productName, quantity, and unitPrice
           if (!orderItem && updatedItem.productName) {
             orderItem = order.items.find((item: any) => {
@@ -1703,6 +1920,52 @@ export class OrderService {
         }
       }
     });
+
+    // 🆕 Notification: Log supplier order confirmation for clinic
+    try {
+      const statusText =
+        status === "supplier_confirmed"
+          ? "✅ Supplier confirmed"
+          : status === "rejected"
+          ? "❌ Supplier rejected"
+          : `📋 Status updated: ${status}`;
+
+      const adjustmentCount = adjustments?.length || 0;
+      const adjustmentInfo =
+        adjustmentCount > 0 ? ` (${adjustmentCount} adjustments)` : "";
+
+      this.logger.log(
+        `🔔 [Clinic Notification] Order ${orderNo} - ${statusText}${adjustmentInfo} | ` +
+          `Total: ${(
+            totalAmount || order.total_amount
+          )?.toLocaleString()}원 | ` +
+          `Tenant: ${clinicTenantId}`
+      );
+
+      // If there are adjustments, log them for visibility
+      if (adjustmentCount > 0) {
+        adjustments.forEach((adj: any, idx: number) => {
+          const product = order.items.find(
+            (item: any) => item.id === adj.itemId
+          )?.product;
+          const productName = product?.name || adj.productName || "Unknown";
+
+          this.logger.log(
+            `  📝 Adjustment ${idx + 1}: ${productName} | ` +
+              `Original: ${adj.originalQuantity} → Confirmed: ${adj.confirmedQuantity} | ` +
+              `Reason: ${adj.reason || "N/A"}`
+          );
+        });
+      }
+
+      // TODO: Create in-app notification table entry for clinic user
+      // await this.createClinicOrderNotification(order, status, adjustments);
+    } catch (notificationError: any) {
+      this.logger.error(
+        `Failed to create notification for order ${orderNo}: ${notificationError.message}`
+      );
+      // Don't throw - order update is more important than notification
+    }
 
     return { success: true, orderId: order.id };
   }
@@ -1740,42 +2003,45 @@ export class OrderService {
             },
           },
         },
-        orderBy: [
-          { confirmed_at: "desc" },
-          { order_date: "desc" },
-        ],
+        orderBy: [{ confirmed_at: "desc" }, { order_date: "desc" }],
       });
     });
 
     // Filter out rejected orders that have already been confirmed (have RejectedOrder records)
-    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(async () => {
-      const confirmedRejected = await (this.prisma as any).rejectedOrder.findMany({
-        where: {
-          tenant_id: tenantId,
-        },
-        select: {
-          order_id: true,
-        },
-        distinct: ["order_id"],
-      });
-      return new Set(confirmedRejected.map((ro: any) => ro.order_id));
-    });
+    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
+      async () => {
+        const confirmedRejected = await (
+          this.prisma as any
+        ).rejectedOrder.findMany({
+          where: {
+            tenant_id: tenantId,
+          },
+          select: {
+            order_id: true,
+          },
+          distinct: ["order_id"],
+        });
+        return new Set(confirmedRejected.map((ro: any) => ro.order_id));
+      }
+    );
 
     // Filter out orders that are rejected and already confirmed
     const filteredOrders = orders.filter((order: any) => {
-      if (order.status === "rejected" && confirmedRejectedOrderIds.has(order.id)) {
+      if (
+        order.status === "rejected" &&
+        confirmedRejectedOrderIds.has(order.id)
+      ) {
         return false; // Exclude this rejected order as it's already been confirmed
       }
       return true;
     });
-
 
     // Group by supplier
     const grouped: Record<string, any> = {};
 
     for (const order of filteredOrders) {
       const supplierId = order.supplier_id || "unknown";
-      
+
       if (!grouped[supplierId]) {
         // Get supplier info
         let supplierInfo = { companyName: "알 수 없음", managerName: "" };
@@ -1808,15 +2074,17 @@ export class OrderService {
       const adjustments = Array.isArray(order.supplier_adjustments)
         ? order.supplier_adjustments
         : order.supplier_adjustments?.adjustments || [];
-      
+
       const formattedItems = order.items.map((item: any) => {
         // Find adjustment for this item
         // Try matching by itemId first (if supplier-backend sends clinic ItemId)
         let adjustment = adjustments.find((adj: any) => adj.itemId === item.id);
-        
+
         // If not found, try matching by productId (fallback)
         if (!adjustment) {
-          adjustment = adjustments.find((adj: any) => adj.productId === item.product_id);
+          adjustment = adjustments.find(
+            (adj: any) => adj.productId === item.product_id
+          );
         }
 
         return {
@@ -1873,10 +2141,21 @@ export class OrderService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const { orderId, orderNo, companyName, managerName, memberName, items } = dto;
+    const { orderId, orderNo, companyName, managerName, memberName, items } =
+      dto;
 
-    if (!orderId || !orderNo || !companyName || !managerName || !memberName || !items || !Array.isArray(items)) {
-      throw new BadRequestException("All fields are required: orderId, orderNo, companyName, managerName, memberName, items");
+    if (
+      !orderId ||
+      !orderNo ||
+      !companyName ||
+      !managerName ||
+      !memberName ||
+      !items ||
+      !Array.isArray(items)
+    ) {
+      throw new BadRequestException(
+        "All fields are required: orderId, orderNo, companyName, managerName, memberName, items"
+      );
     }
 
     // Create RejectedOrder records for each item
@@ -1927,7 +2206,7 @@ export class OrderService {
 
     // Get unique order IDs to fetch supplier details
     const orderIds = [...new Set(rejectedOrders.map((ro: any) => ro.order_id))];
-    
+
     // Fetch orders to get supplier information
     const orders = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findMany({
@@ -1981,7 +2260,10 @@ export class OrderService {
     const supplierPositionMap = new Map<string, string | null>();
     suppliers.forEach((supplier: any) => {
       if (supplier.managers && supplier.managers.length > 0) {
-        supplierPositionMap.set(supplier.id, supplier.managers[0].position || null);
+        supplierPositionMap.set(
+          supplier.id,
+          supplier.managers[0].position || null
+        );
       }
     });
 
@@ -2068,13 +2350,23 @@ export class OrderService {
         });
 
         if (supplier && supplier.tenant_id) {
-          this.logger.log(`Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplier.tenant_id}, clinicTenantId=${tenantId}`);
-          await this.notifySupplierOrderCompleted(order.order_no, supplier.tenant_id, tenantId);
+          this.logger.log(
+            `Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplier.tenant_id}, clinicTenantId=${tenantId}`
+          );
+          await this.notifySupplierOrderCompleted(
+            order.order_no,
+            supplier.tenant_id,
+            tenantId
+          );
         } else {
-          this.logger.warn(`Supplier ${order.supplier_id} not found or missing tenant_id, skipping notification`);
+          this.logger.warn(
+            `Supplier ${order.supplier_id} not found or missing tenant_id, skipping notification`
+          );
         }
       } catch (error: any) {
-        this.logger.error(`Failed to notify supplier-backend of order completion: ${error.message}`);
+        this.logger.error(
+          `Failed to notify supplier-backend of order completion: ${error.message}`
+        );
         // Don't throw - order is already completed in clinic DB
       }
     }
@@ -2094,36 +2386,49 @@ export class OrderService {
     clinicTenantId: string
   ) {
     try {
-      const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const supplierApiUrl =
+        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
 
       if (!apiKey) {
-        this.logger.warn('SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification');
+        this.logger.warn(
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification"
+        );
         return;
       }
 
-      const response = await fetch(`${supplierApiUrl}/supplier/orders/complete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          orderNo,
-          supplierTenantId,
-          clinicTenantId,
-          completedAt: new Date().toISOString(),
-        }),
-      });
+      const response = await fetch(
+        `${supplierApiUrl}/supplier/orders/complete`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            orderNo,
+            supplierTenantId,
+            clinicTenantId,
+            completedAt: new Date().toISOString(),
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
-        this.logger.error(`Failed to notify supplier-backend of completion: ${response.status} ${errorText}`);
+        this.logger.error(
+          `Failed to notify supplier-backend of completion: ${response.status} ${errorText}`
+        );
       } else {
-        this.logger.log(`Order ${orderNo} completion notified to supplier-backend successfully`);
+        this.logger.log(
+          `Order ${orderNo} completion notified to supplier-backend successfully`
+        );
       }
     } catch (error: any) {
-      this.logger.error(`Error notifying supplier-backend of completion: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error notifying supplier-backend of completion: ${error.message}`,
+        error.stack
+      );
       throw error;
     }
   }
@@ -2155,7 +2460,9 @@ export class OrderService {
 
     // Check if order can be cancelled (only pending orders can be cancelled)
     if (order.status !== "pending") {
-      throw new BadRequestException(`Order with status "${order.status}" cannot be cancelled. Only pending orders can be cancelled.`);
+      throw new BadRequestException(
+        `Order with status "${order.status}" cannot be cancelled. Only pending orders can be cancelled.`
+      );
     }
 
     // Update status to cancelled
@@ -2203,4 +2510,3 @@ export class OrderService {
     return { success: true, message: "Order deleted successfully" };
   }
 }
-

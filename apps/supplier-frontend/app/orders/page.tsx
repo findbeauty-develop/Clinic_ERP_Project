@@ -776,7 +776,8 @@ export default function OrdersPage() {
       setUpdating(true);
       try {
         // Prepare adjustments array
-        const adjustments = Object.values(itemAdjustments).map((adj) => ({
+        // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
+        let adjustments = Object.values(itemAdjustments).map((adj) => ({
           itemId: adj.itemId,
           actualQuantity: adj.actualQuantity,
           actualPrice: adj.actualPrice,
@@ -785,6 +786,19 @@ export default function OrdersPage() {
           priceChangeReason: adj.priceChangeReason || null,
           priceChangeNote: adj.priceChangeNote || null,
         }));
+
+        // If no adjustments were made, create default adjustments (all items confirmed as ordered)
+        if (adjustments.length === 0 && confirmOrder?.items) {
+          adjustments = confirmOrder.items.map((item: any) => ({
+            itemId: item.id,
+            actualQuantity: item.quantity,
+            actualPrice: item.unitPrice,
+            quantityChangeReason: null,
+            quantityChangeNote: null,
+            priceChangeReason: null,
+            priceChangeNote: null,
+          }));
+        }
 
         // Call API to update status with adjustments
         await apiPut(`/supplier/orders/${confirmOrder.id}/status`, {

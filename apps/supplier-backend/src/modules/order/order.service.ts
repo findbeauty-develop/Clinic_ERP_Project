@@ -235,13 +235,20 @@ export class OrderService {
       });
     });
 
+    this.logger.log(`📋 [Order Status Update] Order ${order.order_no} status changed to: ${dto.status}`);
+    this.logger.log(`   Adjustments count: ${dto.adjustments?.length || 0}`);
+
     // If status is "confirmed", notify clinic-backend
-    if (dto.status === "confirmed" && dto.adjustments) {
-      await this.notifyClinicBackend(updated, dto.adjustments);
+    // ✅ FIX: Notify even if adjustments is empty/undefined (no adjustments = all items confirmed as ordered)
+    if (dto.status === "confirmed") {
+      const adjustments = dto.adjustments || [];
+      this.logger.log(`🔔 [Order Confirmed] Notifying clinic-backend about order ${order.order_no} (adjustments: ${adjustments.length})`);
+      await this.notifyClinicBackend(updated, adjustments);
     }
 
     // If status is "rejected", notify clinic-backend
     if (dto.status === "rejected") {
+      this.logger.log(`❌ [Order Rejected] Notifying clinic-backend about order ${order.order_no}`);
       await this.notifyClinicBackendRejection(updated, dto.rejectionReasons);
     }
 
@@ -255,8 +262,13 @@ export class OrderService {
     try {
       const clinicApiUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+      
+      this.logger.log(`📤 [Supplier→Clinic] Attempting to notify clinic about order ${order.order_no}`);
+      this.logger.log(`   Clinic API: ${clinicApiUrl}`);
+      this.logger.log(`   API Key configured: ${apiKey ? 'YES' : 'NO'}`);
+      
       if (!apiKey) {
-        this.logger.warn("API_KEY_SECRET not configured, skipping clinic notification");
+        this.logger.warn("⚠️  API_KEY_SECRET not configured, skipping clinic notification");
         return;
       }
 
@@ -288,6 +300,9 @@ export class OrderService {
         totalAmount: order.total_amount,
       };
 
+      this.logger.log(`   Sending to: POST ${clinicApiUrl}/order/supplier-confirmed`);
+      this.logger.log(`   Payload: orderNo=${payload.orderNo}, tenantId=${payload.clinicTenantId}, adjustments=${adjustmentsWithProductId.length}`);
+
       const response = await fetch(`${clinicApiUrl}/order/supplier-confirmed`, {
         method: "POST",
         headers: {
@@ -299,10 +314,14 @@ export class OrderService {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        this.logger.error(`Failed to notify clinic-backend: ${response.status} - ${errorText}`);
+        this.logger.error(`❌ Failed to notify clinic-backend: ${response.status} - ${errorText}`);
+        this.logger.error(`   Response status: ${response.status} ${response.statusText}`);
+      } else {
+        this.logger.log(`✅ Successfully notified clinic-backend about order ${order.order_no}`);
       }
     } catch (error: any) {
-      this.logger.error(`Error notifying clinic-backend: ${error.message}`);
+      this.logger.error(`❌ Error notifying clinic-backend: ${error.message}`);
+      this.logger.error(`   Stack: ${error.stack}`);
       // Don't throw - order is already confirmed in supplier DB
     }
   }
