@@ -463,13 +463,7 @@ export default function OrderPage() {
 
   // Quantity o'zgartirish (Optimistic update bilan)
   const handleQuantityChange = useCallback(
-    async (
-      productId: string,
-      batchId: string | undefined,
-      newQuantity: number
-    ) => {
-      if (!sessionId) return; // SessionId tayyor bo'lmaguncha kutish
-
+    (productId: string, batchId: string | undefined, newQuantity: number) => {
       // Sanitize quantity - faqat musbat butun son bo'lishi kerak
       const sanitizedQuantity = Math.max(0, Math.floor(newQuantity));
       if (isNaN(sanitizedQuantity) || sanitizedQuantity < 0) return;
@@ -482,25 +476,55 @@ export default function OrderPage() {
       const unitPrice = product.unitPrice || 0;
       const supplierId = product.supplierId || "unknown";
 
-      // ⚠️ MUHIM: existingItem ni optimistic update'dan OLDIN tekshirish
-      // Chunki optimistic update'dan keyin draft state yangilanadi, lekin bu tekshiruv
-      // eski draft state'dan foydalanadi va noto'g'ri natija beradi
-      // Lekin `POST` muvaffaqiyatli bo'lgandan keyin draft yangilanadi, shuning uchun
-      // keyingi `PUT` chaqiruvida `itemExists` hali ham `false` bo'lishi mumkin.
-      // Shuning uchun `PUT` 404 qaytarsa, `POST` qilish kerak (fallback).
-      const existingItem = draft?.items?.find((item) => item.id === itemId);
-      const itemExists = !!existingItem;
-
-      // Optimistic update - darhol local state'ni yangilash (itemId va productId ikkalasini ham yangilash)
+      // Local state update - darhol quantities'ni yangilash
       setQuantities((prev) => ({
         ...prev,
         [productId]: sanitizedQuantity, // Product card uchun
         [itemId]: sanitizedQuantity, // Draft item uchun
       }));
 
-      // Optimistic draft update
+      // Local draft state update - "주문 요약" uchun
       setDraft((prevDraft) => {
-        if (!prevDraft) return prevDraft;
+        // Agar draft yo'q bo'lsa, yangi draft yaratish
+        if (!prevDraft) {
+          if (sanitizedQuantity === 0) return null;
+
+          return {
+            id: "local-draft",
+            sessionId: "local",
+            items: [
+              {
+                id: itemId,
+                productId,
+                batchId,
+                supplierId,
+                quantity: sanitizedQuantity,
+                unitPrice,
+                totalPrice: sanitizedQuantity * unitPrice,
+                isHighlighted: true,
+              },
+            ],
+            totalAmount: sanitizedQuantity * unitPrice,
+            groupedBySupplier: [
+              {
+                supplierId,
+                items: [
+                  {
+                    id: itemId,
+                    productId,
+                    batchId,
+                    supplierId,
+                    quantity: sanitizedQuantity,
+                    unitPrice,
+                    totalPrice: sanitizedQuantity * unitPrice,
+                  },
+                ],
+                totalAmount: sanitizedQuantity * unitPrice,
+              },
+            ],
+            itemIdMap: {},
+          };
+        }
 
         const items = [...(prevDraft.items || [])];
         const existingItemIndex = items.findIndex((item) => item.id === itemId);
@@ -563,188 +587,10 @@ export default function OrderPage() {
         };
       });
 
-      // Background'da API call (silent)
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("erp_access_token")
-            : null;
-
-        // itemExists ni optimistic update'dan oldin tekshirilgan (yuqorida)
-        if (sanitizedQuantity === 0) {
-          // Delete item - faqat item mavjud bo'lsa o'chirish
-          if (itemExists) {
-            await fetch(`${apiUrl}/order/draft/items/${itemId}`, {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "x-session-id": sessionId,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ quantity: 0 }),
-            });
-          }
-        } else if (itemExists) {
-          // UPDATE existing item (PUT to set absolute quantity)
-          try {
-            const putResponse = await fetch(
-              `${apiUrl}/order/draft/items/${itemId}`,
-              {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "x-session-id": sessionId,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ quantity: sanitizedQuantity }),
-              }
-            );
-
-            // PUT muvaffaqiyatli bo'lsa, draft'ni yangilash
-            if (putResponse.ok) {
-              const updatedDraft = await fetchDraftSilent();
-              if (updatedDraft) {
-                setDraft((prevDraft) => {
-                  if (!prevDraft) return updatedDraft;
-                  return {
-                    ...updatedDraft,
-                    items: updatedDraft.items || prevDraft.items,
-                  };
-                });
-              }
-            } else if (putResponse.status === 404) {
-              // Agar PUT 404 qaytarsa, item mavjud emas, POST qilish kerak
-              // 404 error'ni silent qilish - console'da ko'rsatmaslik
-              const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "x-session-id": sessionId,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  productId,
-                  batchId,
-                  quantity: sanitizedQuantity,
-                }),
-              });
-
-              if (postResponse.ok) {
-                const updatedDraft = await postResponse.json();
-                setDraft((prevDraft) => {
-                  if (!prevDraft) return updatedDraft;
-                  return {
-                    ...updatedDraft,
-                    items: updatedDraft.items || prevDraft.items,
-                  };
-                });
-              }
-            } else {
-              // Boshqa error'lar uchun faqat warning ko'rsatish
-              console.warn(
-                `PUT failed with status ${putResponse.status} for item ${itemId}`
-              );
-            }
-          } catch (putErr) {
-            // Network error yoki boshqa xatolar uchun POST qilish
-            // Error'ni console'da ko'rsatmaslik - silent fallback
-            const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "x-session-id": sessionId,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                productId,
-                batchId,
-                quantity: sanitizedQuantity,
-              }),
-            });
-
-            if (postResponse.ok) {
-              const updatedDraft = await postResponse.json();
-              setDraft((prevDraft) => {
-                if (!prevDraft) return updatedDraft;
-                return {
-                  ...updatedDraft,
-                  items: updatedDraft.items || prevDraft.items,
-                };
-              });
-            }
-          }
-        } else {
-          // ADD new item (POST)
-          const postResponse = await fetch(`${apiUrl}/order/draft/items`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "x-session-id": sessionId,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              productId,
-              batchId,
-              quantity: sanitizedQuantity,
-            }),
-          });
-
-          // POST muvaffaqiyatli bo'lsa, draft'ni yangilash
-          if (postResponse.ok) {
-            const updatedDraft = await postResponse.json();
-            // Draft state'ni yangilash (lekin quantities'ni emas, chunki optimistic update allaqachon qilingan)
-            // ⚠️ MUHIM: Draft'ni yangilash keyingi `PUT` chaqiruvida `itemExists` to'g'ri bo'lishi uchun kerak
-            setDraft((prevDraft) => {
-              if (!prevDraft) return updatedDraft;
-              return {
-                ...updatedDraft,
-                // Items'ni yangilash, lekin quantities'ni emas
-                items: updatedDraft.items || prevDraft.items,
-              };
-            });
-
-            // Debug: Draft yangilanganini tasdiqlash
-            console.log(
-              `✅ POST successful, draft updated. Item ${itemId} should now exist in draft.`
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Failed to update draft", err);
-        // Error bo'lsa, rollback - server'dan to'g'ri draft'ni olish
-        try {
-          const token =
-            typeof window !== "undefined"
-              ? localStorage.getItem("erp_access_token")
-              : null;
-
-          const response = await fetch(`${apiUrl}/order/draft`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "x-session-id": sessionId,
-            },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setDraft(data);
-            // Error bo'lganda quantities'ni ham yangilaymiz
-            const newQuantities: Record<string, number> = {};
-            data.items?.forEach((item: DraftItem) => {
-              const itemId = item.batchId
-                ? `${item.productId}-${item.batchId}`
-                : item.productId;
-              newQuantities[itemId] = item.quantity;
-              newQuantities[item.productId] = item.quantity;
-            });
-            setQuantities(newQuantities);
-          }
-        } catch (fetchErr) {
-          console.error("Failed to fetch draft on error", fetchErr);
-        }
-      }
+      // ESKI BACKEND CALL'LAR O'CHIRILDI - Faqat local state ishlaydi
+      // Backend'ga faqat "주문서 생성" tugmasi bosilganda yuboriladi
     },
-    [apiUrl, sessionId, products, draft, fetchDraftSilent]
+    [products]
   );
 
   // Sort and filter products with client-side calculations
@@ -993,7 +839,6 @@ export default function OrderPage() {
                                   <input
                                     type="number"
                                     min="0"
-                                    value={currentQty}
                                     onChange={(e) => {
                                       const val = Math.max(
                                         0,
@@ -2436,7 +2281,8 @@ export default function OrderPage() {
                               ? localStorage.getItem("erp_access_token")
                               : null;
 
-                          await fetch(`${apiUrl}/order`, {
+                          // Local draft'dan order yaratish
+                          const response = await fetch(`${apiUrl}/order`, {
                             method: "POST",
                             headers: {
                               Authorization: `Bearer ${token}`,
@@ -2445,15 +2291,27 @@ export default function OrderPage() {
                             },
                             body: JSON.stringify({
                               supplierMemos: orderMemos, // Supplier ID bo'yicha memo'lar
+                              items: draft?.items || [], // Local draft items
                             }),
                           });
-                          alert("주문서가 생성되었습니다.");
-                          setShowOrderModal(false);
-                          setOrderMemos({});
-                          await fetchDraft();
-                          // Order history'ni yangilash va tab'ga o'tish
-                          setActiveTab("history");
-                          await fetchOrders();
+
+                          if (response.ok) {
+                            alert("주문서가 생성되었습니다.");
+                            setShowOrderModal(false);
+                            setOrderMemos({});
+                            // Local draft'ni tozalash
+                            setDraft(null);
+                            setQuantities({});
+                            // Order history'ni yangilash va tab'ga o'tish
+                            setActiveTab("history");
+                            await fetchOrders();
+                          } else {
+                            const errorData = await response.json();
+                            console.error("Order creation failed:", errorData);
+                            alert(
+                              `주문서 생성에 실패했습니다: ${errorData.message || "Unknown error"}`
+                            );
+                          }
                         } catch (err) {
                           console.error("Failed to create order", err);
                           alert("주문서 생성에 실패했습니다.");

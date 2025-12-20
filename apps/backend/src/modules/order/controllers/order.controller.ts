@@ -36,10 +36,10 @@ export class OrderController {
    * 주문 처리용 제품 목록 (모든 제품 반환, frontend에서 sorting/filtering)
    */
   @Get("products")
-  @ApiOperation({ summary: "Get all products for order - filtering done on frontend" })
-  async getProductsForOrder(
-    @Tenant() tenantId: string
-  ): Promise<any[]> {
+  @ApiOperation({
+    summary: "Get all products for order - filtering done on frontend",
+  })
+  async getProductsForOrder(@Tenant() tenantId: string): Promise<any[]> {
     return this.orderService.getProductsForOrder(tenantId);
   }
 
@@ -47,7 +47,9 @@ export class OrderController {
    * 기타제품 주문용 제품 검색 (Pagination bilan, risk score bo'lmasa ham)
    */
   @Get("products/search")
-  @ApiOperation({ summary: "Search products for additional order (with pagination)" })
+  @ApiOperation({
+    summary: "Search products for additional order (with pagination)",
+  })
   async searchProducts(
     @Tenant() tenantId: string,
     @Query() query: SearchProductsQueryDto
@@ -60,12 +62,13 @@ export class OrderController {
    */
   @Get("draft")
   @ApiOperation({ summary: "Get or create order draft" })
-  async getDraft(
-    @Tenant() tenantId: string,
-    @Req() req: any
-  ) {
+  async getDraft(@Tenant() tenantId: string, @Req() req: any) {
     // Session ID olish (frontend'dan header yoki query param orqali)
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || req.user?.id || "default";
+    const sessionId =
+      req.headers["x-session-id"] ||
+      req.query.sessionId ||
+      req.user?.id ||
+      "default";
     return this.orderService.getOrCreateDraft(sessionId, tenantId);
   }
 
@@ -79,7 +82,11 @@ export class OrderController {
     @Body() dto: AddOrderDraftItemDto,
     @Req() req: any
   ) {
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || req.user?.id || "default";
+    const sessionId =
+      req.headers["x-session-id"] ||
+      req.query.sessionId ||
+      req.user?.id ||
+      "default";
     return this.orderService.addDraftItem(sessionId, tenantId, dto);
   }
 
@@ -94,7 +101,11 @@ export class OrderController {
     @Body() dto: UpdateOrderDraftItemDto,
     @Req() req: any
   ) {
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || req.user?.id || "default";
+    const sessionId =
+      req.headers["x-session-id"] ||
+      req.query.sessionId ||
+      req.user?.id ||
+      "default";
     return this.orderService.updateDraftItem(sessionId, tenantId, itemId, dto);
   }
 
@@ -108,7 +119,11 @@ export class OrderController {
     @Body() dto: UpdateOrderDraftDto,
     @Req() req: any
   ) {
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || req.user?.id || "default";
+    const sessionId =
+      req.headers["x-session-id"] ||
+      req.query.sessionId ||
+      req.user?.id ||
+      "default";
     return this.orderService.updateDraft(sessionId, tenantId, dto);
   }
 
@@ -117,11 +132,12 @@ export class OrderController {
    */
   @Delete("draft")
   @ApiOperation({ summary: "Delete order draft" })
-  async deleteDraft(
-    @Tenant() tenantId: string,
-    @Req() req: any
-  ) {
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || req.user?.id || "default";
+  async deleteDraft(@Tenant() tenantId: string, @Req() req: any) {
+    const sessionId =
+      req.headers["x-session-id"] ||
+      req.query.sessionId ||
+      req.user?.id ||
+      "default";
     // Delete logic will be added to service
     return { success: true };
   }
@@ -137,7 +153,8 @@ export class OrderController {
     @ReqUser("id") userId: string,
     @Req() req: any
   ) {
-    const sessionId = req.headers["x-session-id"] || req.query.sessionId || userId || "default";
+    const sessionId =
+      req.headers["x-session-id"] || req.query.sessionId || userId || "default";
     return this.orderService.createOrder(sessionId, tenantId, dto, userId);
   }
 
@@ -159,7 +176,9 @@ export class OrderController {
    */
   @Get("pending-inbound")
   @UseGuards(JwtTenantGuard)
-  @ApiOperation({ summary: "Get orders ready for inbound (supplier confirmed)" })
+  @ApiOperation({
+    summary: "Get orders ready for inbound (supplier confirmed)",
+  })
   async getPendingInbound(@Tenant() tenantId: string) {
     return this.orderService.getPendingInboundOrders(tenantId);
   }
@@ -228,4 +247,3 @@ export class OrderController {
     return this.orderService.deleteOrder(id, tenantId);
   }
 }
-

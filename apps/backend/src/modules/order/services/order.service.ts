@@ -640,46 +640,67 @@ export class OrderService {
     dto: CreateOrderDto,
     createdBy?: string
   ): Promise<any> {
-    if (!tenantId || !sessionId) {
-      throw new BadRequestException("Tenant ID and Session ID are required");
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
     }
 
-    // Draft'ni olish
-    this.logger.log(
-      `🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`
-    );
+    let items: any[] = [];
 
-    const draft = await this.orderRepository.findDraftBySession(
-      sessionId,
-      tenantId
-    );
-
-    if (!draft) {
-      this.logger.warn(
-        `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
+    // Items'ni DTO'dan yoki draft'dan olish
+    if (dto.items && dto.items.length > 0) {
+      // Frontend'dan items berilgan - local state'dan
+      this.logger.log(
+        `🔍 DEBUG: createOrder - Using items from request body (${dto.items.length} items)`
       );
-      throw new NotFoundException("Draft not found");
+      items = dto.items.map((item) => ({
+        id: item.batchId ? `${item.productId}-${item.batchId}` : item.productId,
+        productId: item.productId,
+        batchId: item.batchId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.quantity * item.unitPrice,
+        // supplierId'ni product'dan olish kerak (quyida)
+      }));
+    } else if (sessionId) {
+      // Draft'dan olish (eski logic)
+      this.logger.log(
+        `🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`
+      );
+
+      const draft = await this.orderRepository.findDraftBySession(
+        sessionId,
+        tenantId
+      );
+
+      if (!draft) {
+        this.logger.warn(
+          `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
+        );
+        throw new NotFoundException("Draft not found");
+      }
+
+      items = Array.isArray(draft.items) ? draft.items : [];
+
+      this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
+      this.logger.log(
+        `🔍 DEBUG: Draft items: ${JSON.stringify(
+          items.map((i: any) => ({
+            id: i.id,
+            productId: i.productId,
+            supplierId: i.supplierId,
+            quantity: i.quantity,
+          }))
+        )}`
+      );
+    } else {
+      throw new BadRequestException("Either items or sessionId is required");
     }
-
-    const items = Array.isArray(draft.items) ? draft.items : [];
-
-    this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
-    this.logger.log(
-      `🔍 DEBUG: Draft items: ${JSON.stringify(
-        items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          supplierId: i.supplierId,
-          quantity: i.quantity,
-        }))
-      )}`
-    );
 
     if (items.length === 0) {
       throw new BadRequestException("Order must have at least one item");
     }
 
-    // Validation: manfiy yoki 0 son emas
+    // Validation va supplierId qo'shish
     for (const item of items) {
       if (item.quantity <= 0) {
         throw new BadRequestException(
@@ -690,10 +711,25 @@ export class OrderService {
       // Product va batch mavjudligini tekshirish
       const product = await this.prisma.product.findFirst({
         where: { id: item.productId, tenant_id: tenantId },
+        include: {
+          supplierProducts: {
+            select: {
+              supplier_id: true,
+            },
+            take: 1, // Birinchi supplier'ni olish
+          },
+        },
       });
 
       if (!product) {
         throw new NotFoundException(`Product not found: ${item.productId}`);
+      }
+
+      // DTO'dan kelgan items'ga supplierId qo'shish
+      if (!item.supplierId) {
+        const supplierId =
+          product.supplierProducts?.[0]?.supplier_id || "unknown";
+        item.supplierId = supplierId;
       }
 
       // Zaxira tekshirish (agar batch bo'lsa)
