@@ -256,7 +256,7 @@ docker compose -f docker-compose.prod.yml ps
 
 ```bash
 # Barcha log'larni ko'rish
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Yoki alohida log'lar
 docker logs -f clinic-erp-backend-prod
@@ -279,7 +279,7 @@ curl http://localhost:3000/docs
 # yoki browser'da: http://YOUR_VPS_IP:3000/docs
 
 # Supplier Backend (Port 3002)
-curl http://localhost:3002/docs
+cu dfrl http://localhost:3002/docs
 # yoki browser'da: http://YOUR_VPS_IP:3002/docs
 ```
 

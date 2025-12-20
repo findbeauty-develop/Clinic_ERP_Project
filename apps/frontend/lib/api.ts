@@ -3,53 +3,13 @@
  */
 
 const getApiUrl = () => {
-  // Runtime'da o'qish uchun: avval window.location'dan, keyin process.env'dan
   if (typeof window !== "undefined") {
-    // Client-side: window.location orqali backend URL'ni aniqlash
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-
-    // Debug log (faqat development'da)
-    if (process.env.NODE_ENV === "development") {
-      console.log(
-        `🔍 DEBUG: getApiUrl - hostname: ${hostname}, protocol: ${protocol}`
-      );
-    }
-
-    // Agar VPS'da ishlayotgan bo'lsa (72.60.108.46), backend port 3000
-    if (hostname === "72.60.108.46" || hostname.includes("72.60.108.46")) {
-      const apiUrl = `http://${hostname}:3000`;
-      if (process.env.NODE_ENV === "development") {
-        console.log(`🔍 DEBUG: Using VPS API URL: ${apiUrl}`);
-      }
-      return apiUrl;
-    }
-
-    // Agar localhost bo'lsa
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:3000";
-    }
-
-    // Boshqa holatda: build vaqtidagi environment variable'dan yoki hostname'dan
-    const fallbackUrl =
-      process.env.NEXT_PUBLIC_API_URL || `http://${hostname}:3000`;
-    if (process.env.NODE_ENV === "development") {
-      console.log(`🔍 DEBUG: Using fallback API URL: ${fallbackUrl}`);
-    }
-    return fallbackUrl;
-  }
-
-  // Server-side: process.env'dan
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
-  if (!apiUrl) {
-    console.error("❌ NEXT_PUBLIC_API_URL is not configured");
-    throw new Error(
-      "API base URL is not configured. Please set NEXT_PUBLIC_API_URL in .env.local file"
+    return (
+      process.env.NEXT_PUBLIC_API_URL ||
+      `${window.location.protocol}//${window.location.hostname}:3000`
     );
   }
-
-  return apiUrl;
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 };
 /**
  * Get authentication token from localStorage
