@@ -108,11 +108,9 @@ export class SupplierService {
         // Format response
         return suppliersToReturn.map((supplier: any) => {
           // IMPORTANT: Primary search matches ONLY by SupplierManager.name
-          // Get the first manager (prioritize SupplierManager over ClinicSupplierManager)
+          // Get the first manager (use SupplierManager)
           // SupplierManager is from platform-registered suppliers (has login credentials)
-          // ClinicSupplierManager is from clinic-created suppliers (display only)
-          const manager =
-            supplier.managers?.[0] || supplier.clinicManagers?.[0];
+          const manager = supplier.managers?.[0];
 
           return {
             // 회사 정보
@@ -150,18 +148,8 @@ export class SupplierService {
                 responsibleProducts: m.responsible_products,
                 status: m.status,
               })) || [],
-
-            // Clinic managers (ClinicSupplierManager - clinic-specific)
-            clinicManagers:
-              supplier.clinicManagers?.map((m: any) => ({
-                id: m.id,
-                name: m.name,
-                position: m.position,
-                phoneNumber: m.phone_number,
-                email1: m.email1,
-                email2: m.email2,
-                responsibleProducts: m.responsible_products,
-              })) || [],
+            
+            // Note: clinicManagers removed - no direct relation in Supplier model
           };
         });
       }
@@ -214,18 +202,8 @@ export class SupplierService {
             responsibleProducts: m.responsible_products,
             status: m.status,
           })) || [],
-
-        // Clinic managers (ClinicSupplierManager - clinic-specific)
-        clinicManagers:
-          supplier.clinicManagers?.map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            position: m.position,
-            phoneNumber: m.phone_number,
-            email1: m.email1,
-            email2: m.email2,
-            responsibleProducts: m.responsible_products,
-          })) || [],
+        
+        // Note: clinicManagers removed - no direct relation in Supplier model
       };
     });
   }
@@ -251,9 +229,9 @@ export class SupplierService {
 
     // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
     return suppliers.map((supplier: any) => {
-      // Get the first manager (prioritize SupplierManager over ClinicSupplierManager)
+      // Get the first manager (use SupplierManager since clinicManagers not included)
       // IMPORTANT: For phone search, we want the manager that matches the phone number
-      const manager = supplier.managers?.[0] || supplier.clinicManagers?.[0];
+      const manager = supplier.managers?.[0];
 
       // Check if supplier is registered on platform (has ACTIVE SupplierManager)
       const isRegisteredOnPlatform =
@@ -302,16 +280,8 @@ export class SupplierService {
             responsibleProducts: m.responsible_products,
             status: m.status,
           })) || [],
-        clinicManagers:
-          supplier.clinicManagers?.map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            position: m.position,
-            phoneNumber: m.phone_number,
-            email1: m.email1,
-            email2: m.email2,
-            responsibleProducts: m.responsible_products,
-          })) || [],
+        
+        // Note: clinicManagers removed - no direct relation in Supplier model
       };
     });
   }

@@ -9,6 +9,7 @@ export class OrderReturnService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getReturns(tenantId: string, status?: string) {
+    this.logger.log(`🔍 Getting returns for tenant: ${tenantId}, status: ${status}`);
     const where: any = { tenant_id: tenantId };
     if (status) {
       where.status = status;
@@ -20,12 +21,16 @@ export class OrderReturnService {
         orderBy: { created_at: "desc" },
       });
 
+      this.logger.log(`📦 Found ${returns.length} returns`);
+
       // Fetch supplier information for each return
       const returnsWithSupplier = await Promise.all(
         returns.map(async (returnItem: any) => {
           let supplierName = "알 수 없음";
           let managerName = "";
           let returnManagerName = "";
+
+          this.logger.log(`Processing return ${returnItem.id}: supplier_id=${returnItem.supplier_id}, outbound_id=${returnItem.outbound_id}`);
 
           // Fetch return manager name (clinic member)
           if (returnItem.return_manager) {
@@ -42,6 +47,7 @@ export class OrderReturnService {
           }
 
           if (returnItem.supplier_id) {
+            this.logger.log(`Fetching supplier: ${returnItem.supplier_id}`);
             const supplier = await (this.prisma as any).supplier.findUnique({
               where: { id: returnItem.supplier_id },
               include: {
@@ -50,18 +56,79 @@ export class OrderReturnService {
                   take: 1,
                   orderBy: { created_at: "asc" },
                 },
-                clinicManagers: {
-                  where: { tenant_id: tenantId },
-                  take: 1,
-                  orderBy: { created_at: "asc" },
-                },
               },
             });
 
+            this.logger.log(`Supplier query result:`, JSON.stringify({
+              found: !!supplier,
+              company_name: supplier?.company_name,
+              managers_count: supplier?.managers?.length || 0,
+              first_manager: supplier?.managers?.[0] ? {
+                name: supplier.managers[0].name,
+                manager_id: supplier.managers[0].manager_id,
+              } : null
+            }));
+
             if (supplier) {
               supplierName = supplier.company_name || "알 수 없음";
-              const manager = supplier.managers?.[0] || supplier.clinicManagers?.[0];
+              const manager = supplier.managers?.[0];
               managerName = manager?.name || "";
+              this.logger.log(`✅ Supplier found: ${supplierName}, manager: ${managerName}`);
+            } else {
+              this.logger.warn(`⚠️ Supplier not found: ${returnItem.supplier_id}, trying via product_id`);
+              
+              // Fallback: Try to get supplier via ProductSupplier -> ClinicSupplierManager
+              if (returnItem.product_id) {
+                try {
+                  const productSupplier = await (this.prisma as any).productSupplier.findFirst({
+                    where: {
+                      product_id: returnItem.product_id,
+                      tenant_id: tenantId,
+                    },
+                    include: {
+                      clinicSupplierManager: {
+                        include: {
+                          linkedManager: {
+                            include: {
+                              supplier: {
+                                include: {
+                                  managers: {
+                                    where: { status: "ACTIVE" },
+                                    take: 1,
+                                    orderBy: { created_at: "asc" },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  });
+
+                  if (productSupplier?.clinicSupplierManager) {
+                    const clinicManager = productSupplier.clinicSupplierManager;
+                    
+                    // If linked to platform supplier, use that
+                    if (clinicManager.linkedManager?.supplier) {
+                      const platformSupplier = clinicManager.linkedManager.supplier;
+                      supplierName = platformSupplier.company_name || clinicManager.company_name || "알 수 없음";
+                      const manager = platformSupplier.managers?.[0];
+                      managerName = manager?.name || clinicManager.name || "";
+                      this.logger.log(`✅ Supplier found via ProductSupplier (platform): ${supplierName}, manager: ${managerName}`);
+                    } else {
+                      // Manual supplier (ClinicSupplierManager only)
+                      supplierName = clinicManager.company_name || "알 수 없음";
+                      managerName = clinicManager.name || "";
+                      this.logger.log(`✅ Supplier found via ProductSupplier (manual): ${supplierName}, manager: ${managerName}`);
+                    }
+                  } else {
+                    this.logger.warn(`⚠️ ProductSupplier not found for product_id: ${returnItem.product_id}`);
+                  }
+                } catch (error: any) {
+                  this.logger.error(`Error fetching supplier via ProductSupplier: ${error.message}`);
+                }
+              }
             }
           } else if (returnItem.outbound_id) {
             // For defective products from outbound, get supplier from product
@@ -96,17 +163,12 @@ export class OrderReturnService {
                       take: 1,
                       orderBy: { created_at: "asc" },
                     },
-                    clinicManagers: {
-                      where: { tenant_id: tenantId },
-                      take: 1,
-                      orderBy: { created_at: "asc" },
-                    },
                   },
                 });
 
                 if (supplier) {
                   supplierName = supplier.company_name || "알 수 없음";
-                  const manager = supplier.managers?.[0] || supplier.clinicManagers?.[0];
+                  const manager = supplier.managers?.[0];
                   managerName = manager?.name || supplierProduct.contact_name || "";
                 }
               }

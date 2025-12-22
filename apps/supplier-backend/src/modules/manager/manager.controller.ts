@@ -172,7 +172,19 @@ export class ManagerController {
   @Post("register-complete")
   @ApiOperation({ summary: "Complete registration with all data (final step)" })
   async registerComplete(@Body() dto: RegisterCompleteDto) {
-    return this.managerService.registerComplete(dto);
+    try {
+      console.log("🔵 [Controller] register-complete endpoint called");
+      console.log("📦 [Controller] Received DTO:", JSON.stringify(dto, null, 2));
+      const result = await this.managerService.registerComplete(dto);
+      console.log("✅ [Controller] Registration completed successfully");
+      return result;
+    } catch (error: any) {
+      console.error("❌ [Controller] register-complete failed:");
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      throw error; // Re-throw to let NestJS handle it
+    }
   }
 
   @Get("profile")

@@ -29,7 +29,7 @@ export class ManagerService {
     private readonly googleVisionService: GoogleVisionService,
     private readonly certificateParser: BusinessCertificateParserService,
     private readonly solapiProvider: SolapiProvider,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   async registerManager(dto: RegisterManagerDto) {
@@ -119,7 +119,11 @@ export class ManagerService {
     }
 
     // 3. Remove duplicates from products
-    const uniqueProducts = Array.from(new Set(dto.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0)));
+    const uniqueProducts = Array.from(
+      new Set(
+        dto.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0)
+      )
+    );
 
     if (uniqueProducts.length === 0) {
       throw new BadRequestException("최소 1개 이상의 담당 제품을 입력하세요");
@@ -174,12 +178,17 @@ export class ManagerService {
   }
 
   async registerComplete(dto: RegisterCompleteDto) {
-    // Use transaction to ensure all-or-nothing: if validation fails, nothing is saved
-    // Wrap in executeWithRetry for connection error handling
-    return await this.prisma.executeWithRetry(async () => {
-      return await this.prisma.$transaction(async (tx: any) => {
-        // STEP 1: ALL VALIDATIONS FIRST - before any database writes
-        
+    try {
+      this.logger.log(
+        `📝 registerComplete called for: ${dto.manager.name} (${dto.manager.phoneNumber})`
+      );
+
+      // Use transaction to ensure all-or-nothing: if validation fails, nothing is saved
+      // Wrap in executeWithRetry for connection error handling
+      return await this.prisma.executeWithRetry(async () => {
+        return await this.prisma.$transaction(async (tx: any) => {
+          // STEP 1: ALL VALIDATIONS FIRST - before any database writes
+
         // 1. Extract OCR data from certificate if provided (for verification)
         let representativeName: string | undefined;
         let openingDate: string | undefined;
@@ -188,32 +197,48 @@ export class ManagerService {
           try {
             // Extract file path from URL
             // URL format: /uploads/supplier/certificate/filename.jpg
-            const uploadRoot = join(process.cwd(), 'uploads');
-            const relativePath = dto.manager.certificateImageUrl.replace(/^\/uploads\//, '');
+            const uploadRoot = join(process.cwd(), "uploads");
+            const relativePath = dto.manager.certificateImageUrl.replace(
+              /^\/uploads\//,
+              ""
+            );
             const filePath = join(uploadRoot, relativePath);
-            
+
             // Read file and extract OCR
             const buffer = await fs.readFile(filePath);
-            const rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
-            const parsedFields = this.certificateParser.parseBusinessCertificate(rawText);
-            
+            const rawText =
+              await this.googleVisionService.extractTextFromBuffer(buffer);
+            const parsedFields =
+              this.certificateParser.parseBusinessCertificate(rawText);
+
             representativeName = parsedFields.representativeName;
             openingDate = parsedFields.openingDate;
-            
+
             // Log extracted data
             if (representativeName && openingDate) {
-              console.log(`✅ OCR extracted - Representative: ${representativeName}, Opening Date: ${openingDate}`);
+              console.log(
+                `✅ OCR extracted - Representative: ${representativeName}, Opening Date: ${openingDate}`
+              );
             } else {
-              console.warn(`⚠️ OCR extraction incomplete - Representative: ${representativeName || 'undefined'}, Opening Date: ${openingDate || 'undefined'}`);
-              console.warn(`Parsed fields: ${JSON.stringify({
-                representativeName: parsedFields.representativeName,
-                openingDate: parsedFields.openingDate,
-                businessNumber: parsedFields.businessNumber,
-                companyName: parsedFields.companyName,
-              })}`);
+              console.warn(
+                `⚠️ OCR extraction incomplete - Representative: ${
+                  representativeName || "undefined"
+                }, Opening Date: ${openingDate || "undefined"}`
+              );
+              console.warn(
+                `Parsed fields: ${JSON.stringify({
+                  representativeName: parsedFields.representativeName,
+                  openingDate: parsedFields.openingDate,
+                  businessNumber: parsedFields.businessNumber,
+                  companyName: parsedFields.companyName,
+                })}`
+              );
             }
           } catch (error) {
-            console.error('Failed to extract OCR data from certificate:', error);
+            console.error(
+              "Failed to extract OCR data from certificate:",
+              error
+            );
             // Continue without OCR data - verification will fail if required
           }
         }
@@ -224,33 +249,40 @@ export class ManagerService {
         if (representativeName && openingDate && dto.company.businessNumber) {
           try {
             // All required data is available - attempt verification
-            const verification = await this.businessVerificationService.verifyBusinessNumber({
-              businessNumber: dto.company.businessNumber,
-              representativeName: representativeName,
-              openingDate: openingDate,
-            });
+            const verification =
+              await this.businessVerificationService.verifyBusinessNumber({
+                businessNumber: dto.company.businessNumber,
+                representativeName: representativeName,
+                openingDate: openingDate,
+              });
 
             if (verification.isValid) {
               // Log verification success
-              this.logger.log(`Business verification successful - Status: ${verification.businessStatus}`);
+              this.logger.log(
+                `Business verification successful - Status: ${verification.businessStatus}`
+              );
             } else {
               // Verification failed - check if it's an API error or data mismatch
-              const errorMessage = verification.error || '';
-              
+              const errorMessage = verification.error || "";
+
               // If it's an API error (404, connection failed, etc.), log warning but continue registration
-              if (errorMessage.includes('404') || 
-                  errorMessage.includes('Not Found') || 
-                  errorMessage.includes('API request failed') ||
-                  errorMessage.includes('Cannot connect') ||
-                  errorMessage.includes('timeout') ||
-                  errorMessage.includes('API key is not configured')) {
-                this.logger.warn(`Business verification API error: ${errorMessage}. Registration will continue without verification.`);
+              if (
+                errorMessage.includes("404") ||
+                errorMessage.includes("Not Found") ||
+                errorMessage.includes("API request failed") ||
+                errorMessage.includes("Cannot connect") ||
+                errorMessage.includes("timeout") ||
+                errorMessage.includes("API key is not configured")
+              ) {
+                this.logger.warn(
+                  `Business verification API error: ${errorMessage}. Registration will continue without verification.`
+                );
                 // Continue registration - API errors don't block registration
               } else {
                 // Data mismatch - this is a real validation error
                 throw new BadRequestException(
-                  verification.error || 
-                  '사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요.'
+                  verification.error ||
+                    "사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요."
                 );
               }
             }
@@ -259,22 +291,30 @@ export class ManagerService {
             if (error instanceof BadRequestException) {
               throw error;
             }
-            
+
             // For other errors (network, API unavailable, etc.), log and continue
-            this.logger.warn(`Business verification failed due to API error: ${error?.message || 'Unknown error'}. Registration will continue without verification.`);
+            this.logger.warn(
+              `Business verification failed due to API error: ${
+                error?.message || "Unknown error"
+              }. Registration will continue without verification.`
+            );
             // Continue registration - API errors don't block registration
           }
         } else {
           // OCR data incomplete - skip verification but log warning
           const missingFields = [];
-          if (!representativeName) missingFields.push('대표자명');
-          if (!openingDate) missingFields.push('개업일자');
-          if (!dto.company.businessNumber) missingFields.push('사업자등록번호');
-          
-          this.logger.warn(`OCR data incomplete for business verification. Missing: ${missingFields.join(', ')}. Skipping verification.`);
+          if (!representativeName) missingFields.push("대표자명");
+          if (!openingDate) missingFields.push("개업일자");
+          if (!dto.company.businessNumber) missingFields.push("사업자등록번호");
+
+          this.logger.warn(
+            `OCR data incomplete for business verification. Missing: ${missingFields.join(
+              ", "
+            )}. Skipping verification.`
+          );
           // Registration continues without verification when data is incomplete
         }
-        
+
         // 3. Hash password
         const passwordHash = await hash(dto.contact.password, 10);
 
@@ -295,7 +335,10 @@ export class ManagerService {
         }
 
         // 7. Check for duplicate email1 in SupplierManager (if email1 is provided)
-        if (dto.contact.email1 && (!existingManager || existingManager.email1 !== dto.contact.email1)) {
+        if (
+          dto.contact.email1 &&
+          (!existingManager || existingManager.email1 !== dto.contact.email1)
+        ) {
           const existingEmail = await tx.supplierManager.findFirst({
             where: { email1: dto.contact.email1 },
           });
@@ -306,16 +349,36 @@ export class ManagerService {
         }
 
         // 8. Check for ClinicSupplierManager (clinic tomonidan yaratilgan)
-        // Matching: business_number + phone_number + name
-        const existingClinicManager = existingSupplier
-          ? await tx.clinicSupplierManager.findFirst({
-              where: {
-                supplier_id: existingSupplier.id,
-                phone_number: dto.manager.phoneNumber,
-                name: dto.manager.name, // Name ham mos kelishi kerak
+        // Matching: business_number (via linkedManager) + phone_number + name
+        // NOTE: After clean architecture migration, ClinicSupplierManager no longer has supplier_id
+        // Instead, we match by phone_number + name, which are unique identifiers for a contact
+        const existingClinicManager = await tx.clinicSupplierManager.findFirst({
+          where: {
+            phone_number: dto.manager.phoneNumber,
+            name: dto.manager.name, // Name ham mos kelishi kerak
+            // Note: We can't directly filter by supplier here since supplier_id was removed
+            // We'll verify the linkedManager.supplier.business_number after fetching
+          },
+          include: {
+            linkedManager: {
+              include: {
+                supplier: {
+                  select: {
+                    id: true,
+                    business_number: true,
+                  },
+                },
               },
-            })
-          : null;
+            },
+          },
+        });
+
+        // Verify that the found ClinicSupplierManager belongs to the same business (if it has linkedManager)
+        const isMatchingBusiness = existingClinicManager
+          ? !existingClinicManager.linkedManager || // Manual supplier (not linked yet)
+            existingClinicManager.linkedManager.supplier.business_number ===
+              dto.company.businessNumber
+          : false;
 
         // STEP 2: All validations passed, now proceed with database writes
 
@@ -324,62 +387,85 @@ export class ManagerService {
         // Supplier signup data takes precedence, but preserve manual fields if missing
         const supplier = existingSupplier
           ? await tx.supplier.update({
-            where: { id: existingSupplier.id },
-            data: {
-              // Supplier signup data takes precedence
-              company_name: dto.company.companyName,
-              company_phone: dto.company.companyPhone || existingSupplier.company_phone || null,
-              company_email: dto.company.companyEmail || existingSupplier.company_email,
-              company_address: dto.company.companyAddress || existingSupplier.company_address || null,
-              product_categories: (dto.company.productCategories && dto.company.productCategories.length > 0)
-                ? dto.company.productCategories 
-                : existingSupplier.product_categories,
-              share_consent: dto.company.shareConsent !== undefined 
-                ? dto.company.shareConsent 
-                : existingSupplier.share_consent,
-              status: "ACTIVE", // Claim existing company - set to ACTIVE
-              // tenant_id is preserved from existing supplier (same company, same tenant_id)
-              updated_at: new Date(),
-            },
-          })
-        : await tx.supplier.create({
-            data: {
-              company_name: dto.company.companyName,
-              business_number: dto.company.businessNumber,
-              company_phone: dto.company.companyPhone || null,
-              company_email: dto.company.companyEmail || "",
-              company_address: dto.company.companyAddress || null,
-              product_categories: dto.company.productCategories || [],
-              share_consent: dto.company.shareConsent || false,
-              status: "ACTIVE", // New supplier signup - immediately ACTIVE (no approval needed)
-              tenant_id: `supplier_${dto.company.businessNumber.replace(/[^0-9]/g, "")}_${Date.now()}`, // Generate unique tenant_id for new company
-            },
-          });
+              where: { id: existingSupplier.id },
+              data: {
+                // Supplier signup data takes precedence
+                company_name: dto.company.companyName,
+                company_phone:
+                  dto.company.companyPhone ||
+                  existingSupplier.company_phone ||
+                  null,
+                company_email:
+                  dto.company.companyEmail || existingSupplier.company_email,
+                company_address:
+                  dto.company.companyAddress ||
+                  existingSupplier.company_address ||
+                  null,
+                product_categories:
+                  dto.company.productCategories &&
+                  dto.company.productCategories.length > 0
+                    ? dto.company.productCategories
+                    : existingSupplier.product_categories,
+                share_consent:
+                  dto.company.shareConsent !== undefined
+                    ? dto.company.shareConsent
+                    : existingSupplier.share_consent,
+                status: "ACTIVE", // Claim existing company - set to ACTIVE
+                // tenant_id is preserved from existing supplier (same company, same tenant_id)
+                updated_at: new Date(),
+              },
+            })
+          : await tx.supplier.create({
+              data: {
+                company_name: dto.company.companyName,
+                business_number: dto.company.businessNumber,
+                company_phone: dto.company.companyPhone || null,
+                company_email: dto.company.companyEmail || "",
+                company_address: dto.company.companyAddress || null,
+                product_categories: dto.company.productCategories || [],
+                share_consent: dto.company.shareConsent || false,
+                status: "ACTIVE", // New supplier signup - immediately ACTIVE (no approval needed)
+                tenant_id: `supplier_${dto.company.businessNumber.replace(
+                  /[^0-9]/g,
+                  ""
+                )}_${Date.now()}`, // Generate unique tenant_id for new company
+              },
+            });
 
         // 8. Remove duplicates from products
         const uniqueProducts = Array.from(
-          new Set(dto.contact.responsibleProducts.map((p) => p.trim()).filter((p) => p.length > 0))
+          new Set(
+            dto.contact.responsibleProducts
+              .map((p) => p.trim())
+              .filter((p) => p.length > 0)
+          )
         );
 
         // 9. Manager address and products
         const managerAddress = dto.contact.managerAddress?.trim() || null;
-        const finalProducts = existingClinicManager && existingClinicManager.responsible_products.length > 0
-          ? existingClinicManager.responsible_products
-          : uniqueProducts;
+        const finalProducts =
+          existingClinicManager &&
+          isMatchingBusiness &&
+          existingClinicManager.responsible_products.length > 0
+            ? existingClinicManager.responsible_products
+            : uniqueProducts;
 
         // 10. Generate manager ID if not provided (회사이름+4자리 랜덤 숫자)
         let managerId = dto.managerId || existingManager?.manager_id;
         if (!managerId) {
-          const formattedCompanyName = dto.company.companyName.replace(/\s+/g, "");
+          const formattedCompanyName = dto.company.companyName.replace(
+            /\s+/g,
+            ""
+          );
           // Generate random 4-digit number (1000-9999)
           let randomNumber = Math.floor(1000 + Math.random() * 9000);
           managerId = `${formattedCompanyName}${randomNumber}`;
-          
+
           // Check for duplicate managerId and regenerate if needed
           let existingId = await tx.supplierManager.findUnique({
             where: { manager_id: managerId },
           });
-          
+
           let attempts = 0;
           while (existingId && attempts < 10) {
             randomNumber = Math.floor(1000 + Math.random() * 9000);
@@ -389,16 +475,21 @@ export class ManagerService {
             });
             attempts++;
           }
-          
+
           if (existingId) {
-            throw new BadRequestException("담당자 ID 생성에 실패했습니다. 다시 시도해주세요.");
+            throw new BadRequestException(
+              "담당자 ID 생성에 실패했습니다. 다시 시도해주세요."
+            );
           }
-        } else if (dto.managerId && dto.managerId !== existingManager?.manager_id) {
+        } else if (
+          dto.managerId &&
+          dto.managerId !== existingManager?.manager_id
+        ) {
           // Check if provided managerId is unique (only if different from existing)
           const existingId = await tx.supplierManager.findUnique({
             where: { manager_id: managerId },
           });
-          
+
           if (existingId) {
             throw new ConflictException("이미 사용 중인 담당자 ID입니다");
           }
@@ -410,27 +501,40 @@ export class ManagerService {
         const manager = await tx.supplierManager.create({
           data: {
             supplier_tenant_id: supplier.tenant_id!, // Supplier'ning tenant_id'si
-            clinic_manager_id: existingClinicManager?.id || null, // ClinicSupplierManager bilan link
+            clinic_manager_id:
+              existingClinicManager && isMatchingBusiness
+                ? existingClinicManager.id
+                : null, // ClinicSupplierManager bilan link (only if matching business)
             manager_id: managerId,
             name: dto.manager.name,
             phone_number: dto.manager.phoneNumber,
-            certificate_image_url: dto.manager.certificateImageUrl || existingClinicManager?.certificate_image_url || null,
+            certificate_image_url:
+              dto.manager.certificateImageUrl ||
+              (existingClinicManager && isMatchingBusiness
+                ? existingClinicManager.certificate_image_url
+                : null) ||
+              null,
             password_hash: passwordHash,
             email1: dto.contact.email1,
             manager_address: managerAddress, // Manager address (bitta string)
             responsible_products: finalProducts,
-            position: dto.manager.position || existingClinicManager?.position || null,
+            position:
+              dto.manager.position ||
+              (existingClinicManager && isMatchingBusiness
+                ? existingClinicManager.position
+                : null) ||
+              null,
             status: "ACTIVE", // Immediately ACTIVE after signup (no approval needed)
             created_by: "self", // Self-registered manager
           },
         });
 
-        // 12. Agar ClinicSupplierManager topilsa, unga link qo'shish
-        if (existingClinicManager) {
+        // 12. Agar ClinicSupplierManager topilsa va business mos kelsa, unga link qo'shish
+        if (existingClinicManager && isMatchingBusiness) {
           await tx.clinicSupplierManager.update({
             where: { id: existingClinicManager.id },
             data: {
-              // linkedManager relation orqali avtomatik link qilinadi
+              linked_supplier_manager_id: manager.id, // Link to SupplierManager
             },
           });
 
@@ -441,7 +545,9 @@ export class ManagerService {
           // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
           // This ensures that only clinics that have actually done business with the supplier
           // will see the supplier in primary search results
-          this.logger.log('Skipping auto-approval of trade links. Trade links will be created when clinic creates products or manually approves.');
+          this.logger.log(
+            "Skipping auto-approval of trade links. Trade links will be created when clinic creates products or manually approves."
+          );
         }
 
         // 13. Create region tags
@@ -486,6 +592,13 @@ export class ManagerService {
         };
       }); // End of transaction
     }); // End of executeWithRetry
+    } catch (error: any) {
+      this.logger.error(
+        `❌ registerComplete failed for ${dto.manager.name}: ${error.message}`
+      );
+      this.logger.error(`Error stack: ${error.stack}`);
+      throw error; // Re-throw to let NestJS handle it
+    }
   }
 
   /**
@@ -571,14 +684,19 @@ export class ManagerService {
     }
 
     // Verify current password
-    const isPasswordValid = await compare(currentPassword, manager.password_hash);
+    const isPasswordValid = await compare(
+      currentPassword,
+      manager.password_hash
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException("Current password is incorrect");
     }
 
     // Validate new password
     if (newPassword.length < 6) {
-      throw new BadRequestException("New password must be at least 6 characters");
+      throw new BadRequestException(
+        "New password must be at least 6 characters"
+      );
     }
 
     // Hash new password
@@ -734,8 +852,15 @@ export class ManagerService {
     }
 
     // Validate required fields
-    if (!data.company_name || !data.business_number || !data.company_phone || !data.company_email) {
-      throw new BadRequestException("회사명, 사업자등록번호, 회사 전화번호, 회사 이메일은 필수입니다");
+    if (
+      !data.company_name ||
+      !data.business_number ||
+      !data.company_phone ||
+      !data.company_email
+    ) {
+      throw new BadRequestException(
+        "회사명, 사업자등록번호, 회사 전화번호, 회사 이메일은 필수입니다"
+      );
     }
 
     // Validate business number format (10 digits)
@@ -858,7 +983,7 @@ export class ManagerService {
       status: "deleted",
       updated_at: new Date(),
     };
-    
+
     if (withdrawalReason) {
       updateData.withdrawal_reason = withdrawalReason;
     }
@@ -896,9 +1021,8 @@ export class ManagerService {
     }
 
     // Get customer service phone number from environment
-    const customerServicePhone = this.configService.get<string>(
-      "CUSTOMER_SERVICE_PHONE"
-    ) || "01021455662"; // Fallback to default
+    const customerServicePhone =
+      this.configService.get<string>("CUSTOMER_SERVICE_PHONE") || "01021455662"; // Fallback to default
 
     // Format SMS message
     const companyName = manager.supplier.company_name || "—";
@@ -941,8 +1065,10 @@ export class ManagerService {
    * Supplier manager'ga bog'langan clinic'larni olish (clinic-backend'dan)
    */
   async getClinicsForSupplier(supplierManagerId: string) {
-    const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
-    const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+    const clinicBackendUrl =
+      process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+    const apiKey =
+      process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
     try {
       const response = await fetch(
@@ -958,23 +1084,33 @@ export class ManagerService {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        this.logger.error(`Failed to fetch clinics: ${response.status} - ${errorText}`);
+        this.logger.error(
+          `Failed to fetch clinics: ${response.status} - ${errorText}`
+        );
         throw new BadRequestException("Failed to fetch clinics");
       }
 
       return await response.json();
     } catch (error: any) {
       this.logger.error(`Error fetching clinics: ${error.message}`);
-      throw new BadRequestException(`Failed to fetch clinics: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to fetch clinics: ${error.message}`
+      );
     }
   }
 
   /**
    * Clinic uchun memo saqlash (clinic-backend'ga)
    */
-  async updateClinicMemo(tenantId: string, supplierManagerId: string, memo: string | null) {
-    const clinicBackendUrl = process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
-    const apiKey = process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+  async updateClinicMemo(
+    tenantId: string,
+    supplierManagerId: string,
+    memo: string | null
+  ) {
+    const clinicBackendUrl =
+      process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+    const apiKey =
+      process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
     try {
       const response = await fetch(
@@ -994,7 +1130,9 @@ export class ManagerService {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
-        this.logger.error(`Failed to update memo: ${response.status} - ${errorText}`);
+        this.logger.error(
+          `Failed to update memo: ${response.status} - ${errorText}`
+        );
         throw new BadRequestException("Failed to update memo");
       }
 
@@ -1005,4 +1143,3 @@ export class ManagerService {
     }
   }
 }
-

@@ -25,8 +25,7 @@ model Supplier {
   updated_at         DateTime?
 
   // Relations
-  clinicManagers ClinicSupplierManager[]
-  managers       SupplierManager[]
+  managers SupplierManager[] @relation("SupplierToManagers")
 
   @@index([tenant_id])
   @@index([business_number])
@@ -34,30 +33,43 @@ model Supplier {
 }
 
 // Clinic tomonidan yaratilgan Supplier Manager (Clinic context'da)
+// NOTE: This model must match clinic-backend's ClinicSupplierManager for schema consistency
 model ClinicSupplierManager {
-  id                    String    @id @default(uuid())
-  supplier_id           String
-  tenant_id             String // Qaysi clinic yaratgan
-  name                  String
-  phone_number          String // NOT UNIQUE - faqat clinic context'da
+  id        String @id @default(uuid())
+  tenant_id String
+
+  // Company information (denormalized - stored here for manual suppliers)
+  company_name    String // Company name (required)
+  business_number String? // Business registration number (for claim matching)
+  company_phone   String? // Company phone
+  company_email   String? // Company email
+  company_address String? // Company address
+
+  // Contact person information
+  name                  String // Manager/contact name
+  phone_number          String // Contact phone (for claim matching)
   email1                String?
   email2                String?
   position              String? // 직함
-  certificate_image_url String? // 사업자등록증 이미지 URL
-  responsible_regions   String[]  @default([])
-  responsible_products  String[]  @default([])
-  memo                  String?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime?
+  certificate_image_url String?
 
-  // Relations
-  supplier      Supplier         @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
-  linkedManager SupplierManager? // Supplier ro'yxatdan o'tganda link qilinadi
+  // Additional info
+  responsible_regions  String[] @default([])
+  responsible_products String[] @default([])
+  memo                 String?
 
-  @@index([supplier_id])
+  // Claim/link to platform supplier (optional)
+  linked_supplier_manager_id String? // SupplierManager ID (when claimed)
+  linkedManager              SupplierManager? @relation("ClaimedBySupplierManager", fields: [linked_supplier_manager_id], references: [id], onDelete: SetNull)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
   @@index([tenant_id])
-  @@index([phone_number])
-  @@index([tenant_id, phone_number]) // Composite index for clinic-specific search
+  @@index([tenant_id, phone_number])
+  @@index([tenant_id, business_number])
+  @@index([linked_supplier_manager_id])
+  @@index([phone_number]) // For claim matching
 }
 
 // Supplier tomonidan yaratilgan Manager (Global, login uchun)
@@ -93,8 +105,8 @@ model SupplierManager {
   created_by       String? // Who created this manager (clinic or self-registered)
 
   // Relations
-  supplier      Supplier               @relation(fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)
-  clinicManager ClinicSupplierManager? @relation(fields: [clinic_manager_id], references: [id], onDelete: SetNull)
+  supplier              Supplier                 @relation("SupplierToManagers", fields: [supplier_tenant_id], references: [tenant_id], onDelete: Cascade)
+  claimedClinicContacts ClinicSupplierManager[]  @relation("ClaimedBySupplierManager")
 
   @@index([supplier_tenant_id])
   @@index([manager_id])

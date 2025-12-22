@@ -163,28 +163,6 @@ export class SupplierRepository {
             status: true,
           },
         },
-        clinicManagers: {
-          where: {
-            tenant_id: tenantId,
-            // NOTE: managerName filter is NOT applied to ClinicSupplierManager
-            // Primary search matches ONLY by SupplierManager.name (approved managers)
-            // ClinicSupplierManager is included only for display purposes
-            ...(phoneNumber ? {
-              phone_number: {
-                contains: phoneNumber,
-                mode: "insensitive",
-              },
-            } : {}),
-          },
-          select: {
-            id: true,
-            name: true,
-            position: true,
-            phone_number: true,
-            email1: true,
-            responsible_products: true,
-          },
-        },
       },
       orderBy: {
         created_at: "desc",
@@ -290,6 +268,8 @@ export class SupplierRepository {
     }
 
     // Return suppliers with their managers
+    // Note: We don't include clinicManagers here because there's no direct relation
+    // in the Supplier model. ClinicSupplierManager data is fetched separately if needed.
     return prisma.supplier.findMany({
       where: {
         id: {
@@ -327,33 +307,6 @@ export class SupplierRepository {
             status: true,
           },
         },
-        clinicManagers: tenantId ? {
-          where: {
-            tenant_id: tenantId, // Only this clinic's managers
-            OR: [
-              {
-                phone_number: {
-                  contains: phoneNumber,
-                  mode: "insensitive",
-                },
-              },
-              {
-                phone_number: {
-                  contains: cleanPhoneNumber,
-                  mode: "insensitive",
-                },
-              },
-            ],
-          },
-          select: {
-            id: true,
-            name: true,
-            position: true,
-            phone_number: true,
-            email1: true,
-            responsible_products: true,
-          },
-        } : undefined,
       },
       orderBy: {
         created_at: "desc",
@@ -427,20 +380,6 @@ export class SupplierRepository {
             email1: true,
             responsible_products: true,
             status: true,
-          },
-        },
-        clinicManagers: {
-          where: {
-            tenant_id: tenantId,
-          },
-          select: {
-            id: true,
-            name: true,
-            position: true,
-            phone_number: true,
-            email1: true,
-            email2: true,
-            responsible_products: true,
           },
         },
       },
