@@ -1044,7 +1044,8 @@ export default function InboundNewPage() {
       if (supplierUUID || formData.supplierName) {
         payload.suppliers = [
           {
-            supplier_id: supplierUUID || formData.supplierName, // ✅ Use Supplier.id (UUID)
+            supplier_id: supplierUUID || undefined, // Faqat UUID bo'lsa yuborish
+            company_name: formData.supplierName || undefined, // ✅ QOSHISH: Company name alohida
             purchase_price: formData.purchasePrice
               ? Number(formData.purchasePrice)
               : undefined,

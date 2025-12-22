@@ -19,16 +19,23 @@ export class SupplierReturnNotificationService {
     try {
       const prisma = this.prisma;
 
-      // 1. Product'ning barcha SupplierProduct'larini olish
-      const supplierProducts = await (prisma as any).supplierProduct.findMany({
+      // 1. Product'ning ProductSupplier mappingini olish
+      const productSupplier = await (prisma as any).productSupplier.findUnique({
         where: {
           product_id: returnRecord.product_id,
         },
+        include: {
+          clinicSupplierManager: {
+            include: {
+              linkedManager: true,
+            },
+          },
+        },
       });
 
-      if (!supplierProducts || supplierProducts.length === 0) {
+      if (!productSupplier || !productSupplier.clinicSupplierManager) {
         this.logger.log(
-          `No suppliers found for product ${returnRecord.product_id}, skipping notification creation`
+          `No supplier found for product ${returnRecord.product_id}, skipping notification creation`
         );
         return;
       }
@@ -45,76 +52,77 @@ export class SupplierReturnNotificationService {
 
       const clinicName = clinic?.name || `Clinic-${tenantId}`;
 
-      // 3. Har bir supplier uchun notification yaratish
-      for (const supplierProduct of supplierProducts) {
-        if (!supplierProduct.supplier_id) {
-          continue;
-        }
+      // 3. Check if linked to platform supplier
+      const clinicSupplierManager = productSupplier.clinicSupplierManager;
+      const linkedManager = clinicSupplierManager.linkedManager;
 
-        // 4. Supplier'ni topish
-        const supplier = await (prisma as any).supplier.findFirst({
-          where: {
-            id: supplierProduct.supplier_id,
-          },
-        });
+      if (!linkedManager) {
+        this.logger.log(
+          `Supplier not linked to platform for product ${returnRecord.product_id}, skipping notification`
+        );
+        return;
+      }
 
-        if (!supplier) {
-          this.logger.warn(
-            `Supplier not found: ${supplierProduct.supplier_id}`
-          );
-          continue;
-        }
+      // 4. Find supplier via linkedManager
+      const supplier = await (prisma as any).supplier.findFirst({
+        where: {
+          tenant_id: linkedManager.supplier_tenant_id,
+        },
+      });
 
-        // 5. Supplier'ning barcha ACTIVE SupplierManager'larini topish
-        // SupplierManager supplier_tenant_id orqali Supplier bilan bog'langan
-        const supplierManagers = await (prisma as any).supplierManager.findMany({
-          where: {
-            supplier_tenant_id: supplier.tenant_id,
-            status: "ACTIVE",
-          },
-        });
+      if (!supplier) {
+        this.logger.warn(`Supplier not found for manager ${linkedManager.id}`);
+        return;
+      }
 
-        if (!supplierManagers || supplierManagers.length === 0) {
+      // 5. Get all ACTIVE SupplierManagers for this supplier
+      const supplierManagers = await (prisma as any).supplierManager.findMany({
+        where: {
+          supplier_tenant_id: supplier.tenant_id,
+          status: "ACTIVE",
+        },
+      });
+
+      if (!supplierManagers || supplierManagers.length === 0) {
+        this.logger.log(
+          `No active managers found for supplier ${supplier.id}, skipping notification`
+        );
+        return;
+      }
+
+      // 6. Create notification for each SupplierManager
+      for (const manager of supplierManagers) {
+        try {
+          await (prisma as any).supplierReturnNotification.create({
+            data: {
+              supplier_manager_id: manager.id,
+              return_id: returnRecord.id,
+              clinic_tenant_id: tenantId,
+              clinic_name: clinicName,
+              product_id: product.id,
+              product_name: product.name,
+              product_brand: product.brand,
+              product_code: product.barcode || null,
+              return_qty: returnRecord.return_qty,
+              refund_amount_per_item: returnRecord.refund_amount,
+              total_refund: returnRecord.total_refund,
+              return_manager_name: returnRecord.manager_name,
+              return_date: returnRecord.return_date,
+              batch_no: returnRecord.batch_no || null,
+              status: "PENDING",
+              is_read: false,
+            },
+          });
+
           this.logger.log(
-            `No active managers found for supplier ${supplier.id}, skipping notification`
+            `Created return notification for supplier manager ${manager.id} (${manager.name}) for return ${returnRecord.id}`
           );
-          continue;
-        }
-
-        // 6. Har bir SupplierManager uchun notification yaratish
-        for (const manager of supplierManagers) {
-          try {
-            await (prisma as any).supplierReturnNotification.create({
-              data: {
-                supplier_manager_id: manager.id,
-                return_id: returnRecord.id,
-                clinic_tenant_id: tenantId,
-                clinic_name: clinicName,
-                product_id: product.id,
-                product_name: product.name,
-                product_brand: product.brand,
-                product_code: product.barcode || null,
-                return_qty: returnRecord.return_qty,
-                refund_amount_per_item: returnRecord.refund_amount,
-                total_refund: returnRecord.total_refund,
-                return_manager_name: returnRecord.manager_name,
-                return_date: returnRecord.return_date,
-                batch_no: returnRecord.batch_no || null,
-                status: "PENDING",
-                is_read: false,
-              },
-            });
-
-            this.logger.log(
-              `Created return notification for supplier manager ${manager.id} (${manager.name}) for return ${returnRecord.id}`
-            );
-          } catch (error: any) {
-            this.logger.error(
-              `Failed to create notification for manager ${manager.id}: ${error.message}`,
-              error.stack
-            );
-            // Continue with other managers even if one fails
-          }
+        } catch (error: any) {
+          this.logger.error(
+            `Failed to create notification for manager ${manager.id}: ${error.message}`,
+            error.stack
+          );
+          // Continue with other managers even if one fails
         }
       }
     } catch (error: any) {
@@ -126,4 +134,3 @@ export class SupplierReturnNotificationService {
     }
   }
 }
-

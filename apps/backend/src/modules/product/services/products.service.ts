@@ -8,10 +8,14 @@ import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { CreateBatchDto, CreateProductDto } from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
+import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly clinicSupplierHelper: ClinicSupplierHelperService
+  ) {}
 
   async createProduct(dto: CreateProductDto, tenantId: string) {
     if (!tenantId) {
@@ -36,6 +40,38 @@ export class ProductsService {
         dto.isActive ??
         (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
 
+      // ✅ NEW: Find or create ClinicSupplierManager
+      let clinicSupplierManagerId: string;
+
+      if (dto.suppliers && dto.suppliers.length > 0) {
+        const s = dto.suppliers[0]; // Birinchi supplier olinadi
+
+        const supplierManager =
+          await this.clinicSupplierHelper.findOrCreateSupplierManager(
+            tenantId,
+            {
+              supplier_id: s.supplier_id,
+              company_name: s.company_name,
+              business_number: s.business_number,
+              company_phone: s.company_phone,
+              company_email: s.company_email,
+              company_address: s.company_address,
+              contact_name: s.contact_name,
+              contact_phone: s.contact_phone,
+              contact_email: s.contact_email,
+            }
+          );
+
+        clinicSupplierManagerId = supplierManager.id;
+      } else {
+        // Default supplier manager
+        const defaultSupplier =
+          await this.clinicSupplierHelper.findOrCreateDefaultSupplierManager(
+            tenantId
+          );
+        clinicSupplierManagerId = defaultSupplier.id;
+      }
+
       const product = await tx.product.create({
         data: {
           tenant_id: tenantId,
@@ -48,7 +84,7 @@ export class ProductsService {
           status: resolvedStatus,
           is_active: resolvedIsActive,
           unit: dto.unit ?? null,
-          purchase_price: dto.purchasePrice ?? null,
+          purchase_price: dto.purchasePrice ?? null, // Default/fallback price
           sale_price: dto.salePrice ?? null,
           current_stock: dto.currentStock ?? 0,
           min_stock: dto.minStock ?? 0,
@@ -78,8 +114,75 @@ export class ProductsService {
               }
             : undefined,
         } as any,
-        include: { returnPolicy: true, batches: true, supplierProducts: true },
+        include: {
+          returnPolicy: true,
+          batches: true,
+          productSupplier: {
+            include: {
+              clinicSupplierManager: {
+                include: {
+                  linkedManager: {
+                    select: {
+                      id: true,
+                      name: true,
+                      phone_number: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
+
+      // ✅ NEW: Create ProductSupplier mapping (using transaction client)
+      if (dto.suppliers && dto.suppliers.length > 0) {
+        const s = dto.suppliers[0];
+        await tx.productSupplier.upsert({
+          where: {
+            tenant_id_product_id: {
+              tenant_id: tenantId,
+              product_id: product.id,
+            },
+          },
+          create: {
+            tenant_id: tenantId,
+            product_id: product.id,
+            clinic_supplier_manager_id: clinicSupplierManagerId,
+            purchase_price: s.purchase_price ?? dto.purchasePrice,
+            moq: s.moq,
+            lead_time_days: s.lead_time_days,
+            note: s.note,
+          },
+          update: {
+            clinic_supplier_manager_id: clinicSupplierManagerId,
+            purchase_price: s.purchase_price ?? dto.purchasePrice,
+            moq: s.moq,
+            lead_time_days: s.lead_time_days,
+            note: s.note,
+          },
+        });
+      } else {
+        // Default ProductSupplier mapping
+        await tx.productSupplier.upsert({
+          where: {
+            tenant_id_product_id: {
+              tenant_id: tenantId,
+              product_id: product.id,
+            },
+          },
+          create: {
+            tenant_id: tenantId,
+            product_id: product.id,
+            clinic_supplier_manager_id: clinicSupplierManagerId,
+            purchase_price: dto.purchasePrice,
+          },
+          update: {
+            clinic_supplier_manager_id: clinicSupplierManagerId,
+            purchase_price: dto.purchasePrice,
+          },
+        });
+      }
 
       // Create batches
       if (dto.initial_batches?.length) {
@@ -113,138 +216,27 @@ export class ProductsService {
         }
       }
 
-      // Create supplier products
-      if (dto.suppliers?.length) {
-        for (const s of dto.suppliers) {
-          // Try to find Supplier by supplier_id to get tenant_id and company_name
-          let supplierTenantId = null;
-          let companyName = null;
-          let supplierRecord = null;
-
-          if (s.supplier_id) {
-            try {
-              // Check if supplier_id is a UUID (Supplier.id)
-              supplierRecord = await tx.supplier.findUnique({
-                where: { id: s.supplier_id },
-                select: { tenant_id: true, company_name: true },
-              });
-
-              if (supplierRecord) {
-                supplierTenantId = supplierRecord.tenant_id;
-                companyName = supplierRecord.company_name;
-              } else {
-                // Not a UUID, maybe it's a company name or manager_id (legacy)
-                companyName = s.supplier_id;
-              }
-            } catch (e) {
-              // Invalid UUID format - treat as company name
-              companyName = s.supplier_id;
-            }
-          }
-
-          // Find SupplierManager by contact_phone if available
-          // This allows us to link the product to the correct manager even if supplier is registered on platform
-          let supplierManagerId = null;
-          if (s.contact_phone) {
-            try {
-              // phone_number is unique, so we'll get at most one result
-              const supplierManager = await tx.supplierManager.findFirst({
-                where: {
-                  phone_number: s.contact_phone,
-                  status: "ACTIVE",
-                },
-                select: {
-                  id: true,
-                },
-              });
-
-              if (supplierManager) {
-                supplierManagerId = supplierManager.id;
-              }
-            } catch (e) {
-              // Log but don't fail - supplier might not be registered on platform yet
-              console.warn(
-                `Failed to find SupplierManager by phone ${s.contact_phone}: ${e}`
-              );
-            }
-          }
-
-          await tx.supplierProduct.create({
-            data: {
-              tenant_id: tenantId,
-              product_id: product.id,
-              supplier_id: s.supplier_id ?? null, // Optional - legacy field
-              supplier_manager_id: supplierManagerId, // SupplierManager ID if supplier is registered on platform
-              supplier_tenant_id: supplierTenantId,
-              company_name: companyName,
-              purchase_price: s.purchase_price ?? null,
-              moq: s.moq ?? null,
-              lead_time_days: s.lead_time_days ?? null,
-              note: s.note ?? null,
-              contact_name: s.contact_name ?? null,
-              contact_phone: s.contact_phone ?? null,
-              contact_email: s.contact_email ?? null,
-            } as any,
-          });
-
-          // Create ClinicSupplierLink if supplier is registered on platform
-          // This ensures that suppliers with actual business transactions appear in primary search
-          if (supplierRecord && supplierRecord.tenant_id) {
-            try {
-              // Find SupplierManager for this supplier (ACTIVE status)
-              const supplierManager = await tx.supplierManager.findFirst({
-                where: {
-                  supplier_tenant_id: supplierRecord.tenant_id,
-                  status: "ACTIVE",
-                },
-                select: {
-                  id: true,
-                },
-              });
-
-              if (supplierManager) {
-                // Create or update ClinicSupplierLink to APPROVED status
-                // This link will allow the supplier to appear in primary search results
-                await tx.clinicSupplierLink.upsert({
-                  where: {
-                    tenant_id_supplier_manager_id: {
-                      tenant_id: tenantId,
-                      supplier_manager_id: supplierManager.id,
-                    },
-                  },
-                  update: {
-                    status: "APPROVED",
-                    approved_at: new Date(),
-                    updated_at: new Date(),
-                  },
-                  create: {
-                    tenant_id: tenantId,
-                    supplier_manager_id: supplierManager.id,
-                    status: "APPROVED",
-                    approved_at: new Date(),
-                  },
-                });
-              }
-            } catch (linkError: any) {
-              // Log error but don't fail product creation
-              // Trade link creation is optional - product creation should succeed even if link creation fails
-              console.warn(
-                `Failed to create ClinicSupplierLink for supplier ${
-                  s.supplier_id
-                }: ${linkError?.message || "Unknown error"}`
-              );
-            }
-          }
-        }
-      }
-
       // Return product with all related data
       return tx.product.findUnique({
         where: { id: product.id },
         include: {
           returnPolicy: true,
           batches: true,
-          supplierProducts: true,
+          productSupplier: {
+            include: {
+              clinicSupplierManager: {
+                include: {
+                  linkedManager: {
+                    select: {
+                      id: true,
+                      name: true,
+                      phone_number: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
     });
@@ -255,15 +247,27 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const product = await this.prisma.product.findFirst({
+    const product = await (this.prisma.product.findFirst as any)({
       where: { id: productId, tenant_id: tenantId },
       include: {
         returnPolicy: true,
         batches: {
           orderBy: { created_at: "desc" },
         },
-        supplierProducts: {
-          orderBy: { created_at: "desc" },
+        productSupplier: {
+          include: {
+            clinicSupplierManager: {
+              include: {
+                linkedManager: {
+                  select: {
+                    id: true,
+                    name: true,
+                    phone_number: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -272,12 +276,17 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    const latestBatch = product.batches?.[0];
-    const supplierProduct = product.supplierProducts?.[0];
+    const latestBatch = (product.batches as any[])?.[0];
 
     // alertDays ni batch'dan yoki product'dan olish
     // Agar batch'da alert_days bo'lsa, uni ishlatish, aks holda null
     const alertDays = latestBatch?.alert_days ?? null;
+
+    // ✅ NEW: Get supplier info from ProductSupplier
+    const productSupplier = product.productSupplier;
+    const supplierManager = productSupplier?.clinicSupplierManager;
+    const purchasePrice =
+      productSupplier?.purchase_price ?? product.purchase_price; // Source of truth
 
     return {
       id: product.id,
@@ -288,25 +297,25 @@ export class ProductsService {
       status: product.status,
       currentStock: product.current_stock,
       minStock: product.min_stock,
-      purchasePrice: product.purchase_price,
+      purchasePrice: purchasePrice, // ProductSupplier.purchase_price or Product.purchase_price
       salePrice: product.sale_price,
       unit: product.unit,
-      capacityPerProduct: (product as any).capacity_per_product,
-      capacityUnit: (product as any).capacity_unit,
-      usageCapacity: (product as any).usage_capacity,
-      supplierId: supplierProduct?.supplier_id ?? null, // Supplier UUID
-      supplierName: supplierProduct?.company_name ?? null, // Company name (denormalized)
-      managerName: supplierProduct?.contact_name ?? null,
-      contactPhone: supplierProduct?.contact_phone ?? null,
-      contactEmail: supplierProduct?.contact_email ?? null,
+      capacityPerProduct: product.capacity_per_product,
+      capacityUnit: product.capacity_unit,
+      usageCapacity: product.usage_capacity,
+      supplierId: supplierManager?.id ?? null, // ClinicSupplierManager ID
+      supplierName: supplierManager?.company_name ?? null,
+      managerName: supplierManager?.name ?? null,
+      contactPhone: supplierManager?.phone_number ?? null,
+      contactEmail: supplierManager?.email1 ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
-      storageLocation: latestBatch?.storage ?? (product as any).storage ?? null, // Batch level yoki Product level
-      productStorage: (product as any).storage ?? null, // Product level storage (fallback uchun)
-      memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
+      storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch level yoki Product level
+      productStorage: product.storage ?? null, // Product level storage (fallback uchun)
+      memo: product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
       returnStorage: product.returnPolicy?.return_storage ?? null,
-      alertDays: (product as any).alert_days ?? null,
+      alertDays: product.alert_days ?? null,
     };
   }
 
@@ -317,16 +326,25 @@ export class ProductsService {
 
     // Use executeWithRetry to handle connection errors automatically
     const products = await this.prisma.executeWithRetry(async () => {
-      return await this.prisma.product.findMany({
+      return await (this.prisma.product.findMany as any)({
         where: { tenant_id: tenantId },
         include: {
           returnPolicy: true,
           batches: {
             orderBy: { created_at: "desc" },
           },
-          supplierProducts: {
-            orderBy: { created_at: "desc" },
-            take: 1,
+          productSupplier: {
+            include: {
+              clinicSupplierManager: {
+                select: {
+                  id: true,
+                  company_name: true,
+                  name: true,
+                  phone_number: true,
+                  business_number: true,
+                },
+              },
+            },
           },
         },
         orderBy: { created_at: "desc" },
@@ -335,10 +353,11 @@ export class ProductsService {
 
     return products.map((product: any) => {
       const latestBatch = product.batches?.[0];
-      const supplierProduct = product.supplierProducts?.[0];
 
-      // Get company_name directly from SupplierProduct (denormalized field)
-      const companyName = supplierProduct?.company_name ?? null;
+      // Get supplier info from ProductSupplier -> ClinicSupplierManager
+      const supplierManager = product.productSupplier?.clinicSupplierManager;
+      const companyName = supplierManager?.company_name ?? null;
+      const managerName = supplierManager?.name ?? null;
 
       // 재고 부족 tag
       const isLowStock = product.current_stock < product.min_stock;
@@ -375,12 +394,13 @@ export class ProductsService {
         purchasePrice: product.purchase_price,
         salePrice: product.sale_price,
         unit: product.unit,
-        supplierName: companyName, // Company name from Supplier table
-        managerName: supplierProduct?.contact_name ?? null,
+        supplierName: companyName, // Company name from ClinicSupplierManager
+        managerName: managerName, // Manager name from ClinicSupplierManager
+        supplierId: supplierManager?.id ?? null, // ClinicSupplierManager ID
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch yoki Product level
         productStorage: product.storage ?? null, // Product level storage
-        memo: supplierProduct?.note ?? product.returnPolicy?.note ?? null,
+        memo: product.returnPolicy?.note ?? null,
         expiryMonths: product.expiry_months ?? null,
         expiryUnit: product.expiry_unit ?? null,
         isLowStock, // ← Qo'shildi (재고 부족 tag)

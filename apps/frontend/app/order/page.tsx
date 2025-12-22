@@ -476,6 +476,16 @@ export default function OrderPage() {
       const unitPrice = product.unitPrice || 0;
       const supplierId = product.supplierId || "unknown";
 
+      // 🔍 DEBUG: Product va supplier ma'lumotlarini ko'rish
+      console.log("🔍 handleQuantityChange:", {
+        productId,
+        productName: product.productName,
+        supplierId,
+        supplierName: product.supplierName,
+        quantity: sanitizedQuantity,
+        fullProduct: product,
+      });
+
       // Local state update - darhol quantities'ni yangilash
       setQuantities((prev) => ({
         ...prev,
@@ -577,6 +587,19 @@ export default function OrderPage() {
           }
           groupedBySupplier[supId].items.push(item);
           groupedBySupplier[supId].totalAmount += item.totalPrice;
+        });
+
+        // 🔍 DEBUG: Grouped suppliers
+        console.log("🔍 Grouped by supplier:", {
+          totalSuppliers: Object.keys(groupedBySupplier).length,
+          suppliers: Object.entries(groupedBySupplier).map(([id, group]) => ({
+            supplierId: id,
+            itemCount: group.items.length,
+            items: group.items.map((i: any) => ({
+              productId: i.productId,
+              supplierId: i.supplierId,
+            })),
+          })),
         });
 
         return {

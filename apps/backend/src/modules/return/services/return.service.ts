@@ -126,9 +126,26 @@ export class ReturnService {
               refund_amount: true,
             },
           },
-          supplierProducts: {
-            take: 1,
-            orderBy: { created_at: "desc" },
+          productSupplier: {
+            include: {
+              clinicSupplierManager: {
+                select: {
+                  id: true,
+                  company_name: true,
+                  name: true,
+                  linkedManager: {
+                    select: {
+                      id: true,
+                      supplier: {
+                        select: {
+                          id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
           batches: {
             take: 1,
@@ -234,8 +251,8 @@ export class ReturnService {
           productName: product.name,
           brand: product.brand,
           unit: product.unit,
-          supplierId: null, // Supplier ID - optional field
-          supplierName: null, // Supplier name not available from SupplierProduct
+          supplierId: product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || null,
+          supplierName: product.productSupplier?.clinicSupplierManager?.company_name || null,
           storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
           unreturnedQty,
           emptyBoxes, // 사용 단위 mantiqi: bo'sh box'lar soni (previousEmptyBoxes)
@@ -277,9 +294,23 @@ export class ReturnService {
               },
               include: {
                 returnPolicy: true,
-                supplierProducts: {
-                  take: 1,
-                  orderBy: { created_at: "desc" },
+                productSupplier: {
+                  include: {
+                    clinicSupplierManager: {
+                      include: {
+                        linkedManager: {
+                          select: {
+                            id: true,
+                            supplier: {
+                              select: {
+                                id: true,
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
               },
             });
@@ -346,8 +377,8 @@ export class ReturnService {
               continue;
             }
 
-            // 6. Supplier ID olish (supplierProducts orqali)
-            const supplierId = product.supplierProducts?.[0]?.supplier_id || undefined;
+            // 6. Supplier ID olish (productSupplier orqali)
+            const supplierId = product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || undefined;
 
             // 7. Refund amount olish
             const refundAmount = product.returnPolicy?.refund_amount ?? 0;
@@ -439,8 +470,14 @@ export class ReturnService {
               tenant_id: tenantId,
             },
             include: {
-              supplierProducts: {
-                orderBy: { created_at: "desc" },
+              productSupplier: {
+                include: {
+                  clinicSupplierManager: {
+                    include: {
+                      linkedManager: true,
+                    },
+                  },
+                },
               },
             },
           });

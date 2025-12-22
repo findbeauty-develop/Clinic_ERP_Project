@@ -270,15 +270,17 @@ export class SupplierRepository {
           ],
         },
         include: {
-          supplier: true,
           linkedManager: true, // Check if linked to SupplierManager
+          productSuppliers: {
+            take: 1, // Just to check if this supplier has products
+          },
         },
       });
 
-      // Collect supplier IDs from ClinicSupplierManager
+      // Collect supplier IDs from ClinicSupplierManager via linkedManager
       clinicManagers.forEach((cm: any) => {
-        if (cm.supplier) {
-          supplierIds.add(cm.supplier.id);
+        if (cm.linkedManager && cm.linkedManager.supplier_id) {
+          supplierIds.add(cm.linkedManager.supplier_id);
         }
       });
     }

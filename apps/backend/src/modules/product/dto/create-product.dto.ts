@@ -84,7 +84,27 @@ export class CreateBatchDto {
 export class LinkSupplierDto {
   @IsOptional()
   @IsString()
-  supplier_id?: string; // Optional - field removed from database schema
+  supplier_id?: string; // UUID yoki company name (legacy)
+
+  @IsOptional()
+  @IsString()
+  company_name?: string; // Alohida company name field
+
+  @IsOptional()
+  @IsString()
+  business_number?: string; // Business registration number
+
+  @IsOptional()
+  @IsString()
+  company_phone?: string; // Company phone
+
+  @IsOptional()
+  @IsString()
+  company_email?: string; // Company email
+
+  @IsOptional()
+  @IsString()
+  company_address?: string; // Company address
 
   @IsOptional()
   @IsInt()

@@ -29,7 +29,7 @@ model Product {
   capacity_per_product Int?
   capacity_unit        String?
   usage_capacity       Int?
-    storage              String? 
+  storage              String?
 
   // Product-level expiry defaults (yangi fieldlar)
   expiry_months Int? // 유통기한 기간 (default for all batches)
@@ -43,15 +43,19 @@ model Product {
   packaging_to_quantity            Int? // 제품 수량 (예: 2)
   packaging_to_unit                String? // 제품 단위 (예: "ea")
 
+  // Relations
   batches          Batch[]
   orderItems       OrderItem[]
   outbounds        Outbound[]
   packageItems     PackageItem[]
   returns          Return[]
   returnPolicy     ReturnPolicy?
-  supplierProducts SupplierProduct[]
+  supplierProducts SupplierProduct[] // DEPRECATED: Will be removed after migration
+  productSupplier  ProductSupplier? // NEW: 1:1 mapping to supplier (per tenant)
 
   @@index([tenant_id])
+  @@index([tenant_id, name])
+  @@index([tenant_id, barcode])
 }
 
 model Clinic {
@@ -143,24 +147,25 @@ model Batch {
   @@index([tenant_id, product_id])
 }
 
+// DEPRECATED: Will be removed after migration to ProductSupplier
 model SupplierProduct {
-  id                 String    @id @default(uuid())
-  tenant_id          String
-  product_id         String
-  supplier_id        String?
+  id                  String    @id @default(uuid())
+  tenant_id           String
+  product_id          String
+  supplier_id         String?
   supplier_manager_id String? // SupplierManager ID (if supplier is registered on platform)
-  purchase_price     Int?
-  moq                Int?
-  lead_time_days     Int?
-  note               String?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime?
-  contact_name       String?
-  contact_phone      String?
-  contact_email      String?
-  supplier_tenant_id String?
-  company_name       String?
-  product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  purchase_price      Int?
+  moq                 Int?
+  lead_time_days      Int?
+  note                String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime?
+  contact_name        String?
+  contact_phone       String?
+  contact_email       String?
+  supplier_tenant_id  String?
+  company_name        String?
+  product             Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([product_id])
@@ -168,6 +173,34 @@ model SupplierProduct {
   @@index([supplier_manager_id])
   @@index([supplier_tenant_id])
   @@index([tenant_id, product_id])
+}
+
+// NEW: Product ↔ Supplier mapping (1:1 per tenant)
+model ProductSupplier {
+  id                         String @id @default(uuid())
+  tenant_id                  String
+  product_id                 String @unique // Unique per tenant (enforced by @@unique([tenant_id, product_id]))
+  clinic_supplier_manager_id String // ClinicSupplierManager ID (never NULL)
+
+  // Product-specific supplier overrides
+  purchase_price Int? // Overrides Product.purchase_price if set
+  moq            Int? // Minimum order quantity
+  lead_time_days Int? // Lead time in days
+  note           String? // Product-specific supplier note
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  product               Product               @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  clinicSupplierManager ClinicSupplierManager @relation(fields: [clinic_supplier_manager_id], references: [id], onDelete: Cascade)
+
+  // Constraints: 1 product = 1 supplier per tenant
+  @@unique([tenant_id, product_id])
+  @@index([tenant_id])
+  @@index([product_id])
+  @@index([clinic_supplier_manager_id])
+  @@index([tenant_id, clinic_supplier_manager_id])
 }
 
 model Outbound {
@@ -404,100 +437,134 @@ model RejectedOrder {
 }
 
 model Supplier {
-  id                 String                  @id @default(uuid())
-  tenant_id          String                  @unique
+  id                 String            @id @default(uuid())
+  tenant_id          String            @unique
   company_name       String
-  business_number    String                  @unique
+  business_number    String            @unique
   company_phone      String?
   company_email      String
   company_address    String?
-  product_categories String[]                @default([])
-  share_consent      Boolean                 @default(false)
-  status             String                  @default("MANUAL_ONLY")
-  created_at         DateTime                @default(now())
+  product_categories String[]          @default([])
+  share_consent      Boolean           @default(false)
+  status             String            @default("MANUAL_ONLY")
+  created_at         DateTime          @default(now())
   updated_at         DateTime?
-  clinicManagers     ClinicSupplierManager[]
-  managers           SupplierManager[]       @relation("SupplierToManagers")
+  managers           SupplierManager[] @relation("SupplierToManagers")
 
   @@index([tenant_id])
   @@index([business_number])
   @@index([status])
 }
 
+/// Clinic ↔ SupplierManager relationship lifecycle.
+/// Tracks trade relationship status (REQUESTED → APPROVED → BLOCKED).
+/// Can be traced back to ClinicSupplierManager for audit.
 model ClinicSupplierLink {
-  id                  String          @id @default(uuid())
-  tenant_id           String
-  status              String          @default("REQUESTED")
-  requested_at        DateTime        @default(now())
-  approved_at         DateTime?
-  blocked_at          DateTime?
-  created_at          DateTime        @default(now())
-  updated_at          DateTime?
-  supplier_manager_id String
-  memo                String? // Supplier tomonidan clinic haqida memo
+  id        String @id @default(uuid())
+  tenant_id String
+
+  supplier_manager_id String // SupplierManager ID (platform supplier)
   supplierManager     SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+
+  // Traceability: which ClinicSupplierManager initiated this link (optional)
+  clinic_supplier_manager_id String?
+  clinicSupplierManager      ClinicSupplierManager? @relation(fields: [clinic_supplier_manager_id], references: [id], onDelete: SetNull)
+
+  // Lifecycle
+  status       String    @default("REQUESTED")
+  requested_at DateTime  @default(now())
+  approved_at  DateTime?
+  blocked_at   DateTime?
+
+  memo String? // Supplier tomonidan clinic haqida memo
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@unique([tenant_id, supplier_manager_id])
   @@index([tenant_id])
   @@index([supplier_manager_id])
+  @@index([clinic_supplier_manager_id])
   @@index([status])
   @@index([tenant_id, status])
 }
 
+/// Manual supplier contact created by clinic.
+/// Can be claimed/linked to SupplierManager when supplier registers on platform.
 model ClinicSupplierManager {
-  id                    String           @id @default(uuid())
-  supplier_id           String
-  tenant_id             String
-  name                  String
-  phone_number          String
+  id        String @id @default(uuid())
+  tenant_id String
+
+  // Company information (denormalized - stored here for manual suppliers)
+  company_name    String // Company name (required)
+  business_number String? // Business registration number (for claim matching)
+  company_phone   String? // Company phone
+  company_email   String? // Company email
+  company_address String? // Company address
+
+  // Contact person information
+  name                  String // Manager/contact name
+  phone_number          String // Contact phone (for claim matching)
   email1                String?
   email2                String?
-  position              String?
+  position              String? // 직함
   certificate_image_url String?
-  responsible_regions   String[]         @default([])
-  responsible_products  String[]         @default([])
-  memo                  String?
-  created_at            DateTime         @default(now())
-  updated_at            DateTime?
-  supplier              Supplier         @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
-  linkedManager         SupplierManager?
 
-  @@index([supplier_id])
+  // Additional info
+  responsible_regions  String[] @default([])
+  responsible_products String[] @default([])
+  memo                 String?
+
+  // Claim/link to platform supplier (optional)
+  linked_supplier_manager_id String? // SupplierManager ID (when claimed)
+  linkedManager              SupplierManager? @relation("ClaimedBySupplierManager", fields: [linked_supplier_manager_id], references: [id], onDelete: SetNull)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  productSuppliers ProductSupplier[] // Products mapped to this supplier
+  clinicLinks      ClinicSupplierLink[] // Trade links created from this contact
+  SupplierManager  SupplierManager?
+
   @@index([tenant_id])
-  @@index([phone_number])
   @@index([tenant_id, phone_number])
+  @@index([tenant_id, business_number])
+  @@index([linked_supplier_manager_id])
+  @@index([phone_number]) // For claim matching
 }
 
 model SupplierManager {
-  id                          String                       @id @default(uuid())
-  manager_id                  String                       @unique
-  name                        String
-  phone_number                String                       @unique
-  certificate_image_url       String?
-  password_hash               String?
-  email1                      String?
-  responsible_products        String[]                     @default([])
-  status                      String                       @default("ACTIVE")
-  created_at                  DateTime                     @default(now())
-  updated_at                  DateTime?
-  position                    String?
-  clinic_manager_id           String?                      @unique
-  supplier_tenant_id          String
-  manager_address             String?
-  created_by                  String?
-  
+  id                    String    @id @default(uuid())
+  manager_id            String    @unique
+  name                  String
+  phone_number          String    @unique
+  certificate_image_url String?
+  password_hash         String?
+  email1                String?
+  responsible_products  String[]  @default([])
+  status                String    @default("ACTIVE")
+  created_at            DateTime  @default(now())
+  updated_at            DateTime?
+  position              String?
+  clinic_manager_id     String?   @unique
+  supplier_tenant_id    String
+  manager_address       String?
+  created_by            String?
+
   // 알림 설정 (Notification Settings)
-  public_contact_name         Boolean                      @default(false) // 담당자 이름 공개
-  allow_hospital_search       Boolean                      @default(false) // 병의원 검색 허용
-  receive_kakaotalk           Boolean                      @default(false) // 카톡 알림 받기
-  receive_sms                 Boolean                      @default(false) // 문자(SMS) 알림 받기
-  receive_email               Boolean                      @default(false) // 이메일 알림 받기
-  
+  public_contact_name   Boolean @default(false) // 담당자 이름 공개
+  allow_hospital_search Boolean @default(false) // 병의원 검색 허용
+  receive_kakaotalk     Boolean @default(false) // 카톡 알림 받기
+  receive_sms           Boolean @default(false) // 문자(SMS) 알림 받기
+  receive_email         Boolean @default(false) // 이메일 알림 받기
+
   // 회원탈퇴 (Withdrawal)
-  withdrawal_reason           String?                      // 회원탈퇴 사유 (optional)
-  
+  withdrawal_reason String? // 회원탈퇴 사유 (optional)
+
   clinicLinks                 ClinicSupplierLink[]
   clinicManager               ClinicSupplierManager?       @relation(fields: [clinic_manager_id], references: [id])
+  claimedClinicContacts       ClinicSupplierManager[]      @relation("ClaimedBySupplierManager") // Claimed manual contacts
   supplierReturnNotifications SupplierReturnNotification[]
 
   supplier Supplier @relation("SupplierToManagers", fields: [supplier_tenant_id], references: [tenant_id])
@@ -604,7 +671,7 @@ model WarehouseLocation {
 model NewsCache {
   id         String   @id @default(uuid())
   cache_key  String   @unique
-  data       String   // JSON string
+  data       String // JSON string
   updated_at DateTime @default(now())
   created_at DateTime @default(now())
 
@@ -613,13 +680,13 @@ model NewsCache {
 }
 
 model PhoneVerificationCode {
-  id          String   @id @default(uuid())
+  id           String   @id @default(uuid())
   phone_number String
-  code        String
-  verified    Boolean  @default(false)
-  expires_at  DateTime
-  created_at  DateTime @default(now())
-  
+  code         String
+  verified     Boolean  @default(false)
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+
   @@index([phone_number, verified])
   @@index([expires_at])
 }
@@ -644,16 +711,16 @@ model SupplierProductTag {
 
 // Clinic → Supplier return request
 model SupplierReturnRequest {
-  id                String   @id @default(uuid())
-  supplier_tenant_id String // Which supplier company
+  id                  String    @id @default(uuid())
+  supplier_tenant_id  String // Which supplier company
   supplier_manager_id String? // Target manager (if any)
   clinic_tenant_id    String // Which clinic sent the return
   clinic_name         String // Denormalized clinic name
   clinic_manager_name String // Denormalized clinic manager name (담당자)
-  return_no           String  @unique // 반품번호: B + YYYYMMDD + 6 random digits
-  status              String  @default("pending") // pending, processing, completed, rejected
+  return_no           String    @unique // 반품번호: B + YYYYMMDD + 6 random digits
+  status              String    @default("pending") // pending, processing, completed, rejected
   memo                String? // General memo for the return request
-  created_at          DateTime @default(now())
+  created_at          DateTime  @default(now())
   updated_at          DateTime?
   confirmed_at        DateTime? // When supplier confirms (요청 확인)
   completed_at        DateTime? // When supplier marks as received (제품 받았음)
@@ -672,21 +739,21 @@ model SupplierReturnRequest {
 
 // Clinic → Supplier return request items
 model SupplierReturnItem {
-  id              String   @id @default(uuid())
+  id                String   @id @default(uuid())
   return_request_id String
-  product_name    String
-  brand           String?
-  quantity        Int
-  status          String   @default("pending") // pending, processing, completed, rejected
-  return_type     String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
-  memo            String? // Item-specific memo
-  images          String[] @default([]) // Image URLs
-  inbound_date    String   // YYYY-MM-DD format
-  total_price     Int
-  order_no        String?  // For 주문 returns
-  batch_no        String?  // For 불량 returns
+  product_name      String
+  brand             String?
+  quantity          Int
+  status            String   @default("pending") // pending, processing, completed, rejected
+  return_type       String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
+  memo              String? // Item-specific memo
+  images            String[] @default([]) // Image URLs
+  inbound_date      String // YYYY-MM-DD format
+  total_price       Int
+  order_no          String? // For 주문 returns
+  batch_no          String? // For 불량 returns
 
-  created_at DateTime @default(now())
+  created_at DateTime  @default(now())
   updated_at DateTime?
 
   returnRequest SupplierReturnRequest @relation(fields: [return_request_id], references: [id], onDelete: Cascade)
