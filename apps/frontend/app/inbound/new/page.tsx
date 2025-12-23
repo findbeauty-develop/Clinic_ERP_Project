@@ -1034,7 +1034,10 @@ export default function InboundNewPage() {
               ? null
               : formData.expiryUnit || undefined,
             qty: Number(formData.currentStock) || 0,
-            alert_days: formData.alertDays || undefined,
+            alert_days:
+              formData.alertDays && formData.alertDays.trim() !== ""
+                ? formData.alertDays
+                : undefined,
             inbound_manager:
               selectedManager !== "성함 선택" ? selectedManager : undefined,
           },
@@ -1657,46 +1660,73 @@ export default function InboundNewPage() {
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                   판매가
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={formData.salePrice}
-                    onChange={(e) =>
-                      handleInputChange("salePrice", e.target.value)
-                    }
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
-                  <div className="relative w-28">
-                    <select
-                      value={formData.salePriceUnit}
-                      disabled={true} // Readonly
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-8 text-sm text-slate-600 cursor-not-allowed transition dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
-                      title="제품 용량 또는 사용 단위에 따라 자동으로 설정됩니다"
-                    >
-                      {unitOptions.slice(1).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={formData.salePrice}
+                      onChange={(e) =>
+                        handleInputChange("salePrice", e.target.value)
+                      }
+                      className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    {/* <div className="relative w-28">
+                      <select
+                        value={formData.salePriceUnit}
+                        disabled={true} // Readonly
+                        className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-8 text-sm text-slate-600 cursor-not-allowed transition dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
+                        title="제품 용량 또는 사용 단위에 따라 자동으로 설정됩니다"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
+                        {unitOptions.slice(1).map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                        <svg
+                          className="h-4 w-4 text-slate-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
+                    </div> */}
                   </div>
+                  {/* Unit Display Card */}
+                  {(formData.enableUsageCapacity && formData.usageCapacity) ||
+                  formData.capacityPerProduct ? (
+                    <div className="mt-0 flex-shrink-0">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {formData.enableUsageCapacity &&
+                            formData.usageCapacity
+                              ? "사용 단위"
+                              : "제품 용량"}
+                          </div>
+
+                          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-right">
+                            {formData.enableUsageCapacity &&
+                            formData.usageCapacity
+                              ? `${formData.usageCapacity} ${formData.usageCapacityUnit || ""}`
+                              : formData.capacityPerProduct
+                                ? `${formData.capacityPerProduct} ${formData.capacityUnit || ""}`
+                                : "-"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   고객에게 판매하는 가격

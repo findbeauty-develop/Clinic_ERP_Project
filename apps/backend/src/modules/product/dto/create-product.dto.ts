@@ -184,7 +184,7 @@ export class CreateProductDto {
   minStock?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   capacityPerProduct?: number;
 

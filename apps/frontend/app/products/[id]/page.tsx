@@ -1121,6 +1121,7 @@ function ProductEditForm({
               <input
                 type="number"
                 min="0"
+                step="any"
                 value={formData.capacityPerProduct || ""}
                 onChange={(e) =>
                   handleInputChange("capacityPerProduct", e.target.value)
@@ -1234,16 +1235,44 @@ function ProductEditForm({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              판매가
-            </label>
-            <input
-              type="number"
-              value={formData.salePrice}
-              onChange={(e) => handleInputChange("salePrice", e.target.value)}
-              onWheel={(e) => e.currentTarget.blur()}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex items-start gap-3">
+              <div className="flex-1 flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  판매가
+                </label>
+                <input
+                  type="number"
+                  value={formData.salePrice}
+                  onChange={(e) =>
+                    handleInputChange("salePrice", e.target.value)
+                  }
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              {/* Unit Display Card */}
+              {(formData.capacityPerProduct || formData.usageCapacity) && (
+                <div className="mt-7 flex-shrink-0">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                    <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      {formData.usageCapacity &&
+                      formData.usageCapacity.trim() !== ""
+                        ? "사용 단위"
+                        : "제품 용량"}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      {formData.usageCapacity &&
+                      formData.usageCapacity.trim() !== ""
+                        ? `${formData.usageCapacity} ${formData.capacityUnit || ""}`
+                        : formData.capacityPerProduct &&
+                            formData.capacityPerProduct.trim() !== ""
+                          ? `${formData.capacityPerProduct} ${formData.capacityUnit || ""}`
+                          : "-"}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

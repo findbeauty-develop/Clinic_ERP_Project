@@ -582,7 +582,9 @@ export class ProductsService {
               expiry_date: batch.expiry_date
                 ? new Date(batch.expiry_date)
                 : null,
-              alert_days: batch.alert_days ?? null,
+              alert_days: batch.alert_days && batch.alert_days.trim() !== "" 
+                ? batch.alert_days 
+                : null,
             } as any,
           });
         }

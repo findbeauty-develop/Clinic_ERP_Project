@@ -26,7 +26,7 @@ model Product {
   unit                 String?
   purchase_price       Int?
   sale_price           Int?
-  capacity_per_product Int?
+  capacity_per_product Float?
   capacity_unit        String?
   usage_capacity       Int?
   storage              String?
