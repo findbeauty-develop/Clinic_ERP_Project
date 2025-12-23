@@ -253,12 +253,19 @@ function ReturnCard({
       const { apiPost } = await import("../../lib/api");
 
       // IMPORTANT: /order-returns page'dan yuborilgan barcha product'lar /exchanges page'ga kelishi kerak
-      // Shuning uchun return_type ni "주문|교환" qilib o'rnatamiz
-      const finalReturnType = returnType?.includes("주문")
-        ? returnType.includes("교환")
-          ? returnType
-          : "주문|교환"
-        : "주문|교환"; // Default to "주문|교환" for order-returns page
+      // - Order returns: "주문|교환" (always exchange for exchanges page)
+      // - Defective returns: "불량|교환" (convert to exchange for exchanges page)
+      let finalReturnType: string;
+      if (returnType?.includes("불량")) {
+        // Defective product - convert to exchange type for exchanges page
+        finalReturnType = "불량|교환";
+      } else if (returnType?.includes("주문")) {
+        // Order return - use exchange type if not already
+        finalReturnType = returnType.includes("교환") ? returnType : "주문|교환";
+      } else {
+        // Default to "주문|교환" for order returns
+        finalReturnType = "주문|교환";
+      }
 
       const response = await apiPost(
         `${apiUrl}/order-returns/${returnItem.id}/process`,
@@ -396,7 +403,12 @@ function ReturnCard({
           <div className="flex flex-col gap-1">
             <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
               공급처: {returnItem.supplierName || "알 수 없음"}{" "}
-              {returnItem.managerName ? `${returnItem.managerName} 대리` : ""}
+              {returnItem.managerName ? (
+                <>
+                  {returnItem.managerName}
+                  {returnItem.managerPosition ? ` ${returnItem.managerPosition}` : " 대리"}
+                </>
+              ) : ""}
             </div>
             {returnItem.return_no && (
               <div className="text-xs text-slate-500 dark:text-slate-400">

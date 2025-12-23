@@ -28,6 +28,10 @@ export class OrderReturnService {
         returns.map(async (returnItem: any) => {
           let supplierName = "알 수 없음";
           let managerName = "";
+          let managerPosition = "";
+          let managerPhone = "";
+          let managerEmail = "";
+          let supplierManagerId = null; // For supplier notification
           let returnManagerName = "";
 
           this.logger.log(`Processing return ${returnItem.id}: supplier_id=${returnItem.supplier_id}, outbound_id=${returnItem.outbound_id}`);
@@ -73,7 +77,11 @@ export class OrderReturnService {
               supplierName = supplier.company_name || "알 수 없음";
               const manager = supplier.managers?.[0];
               managerName = manager?.name || "";
-              this.logger.log(`✅ Supplier found: ${supplierName}, manager: ${managerName}`);
+              managerPosition = manager?.position || "";
+              managerPhone = manager?.phone_number || "";
+              managerEmail = manager?.email1 || "";
+              supplierManagerId = manager?.id || null;
+              this.logger.log(`✅ Supplier found: ${supplierName}, manager: ${managerName}, position: ${managerPosition}`);
             } else {
               this.logger.warn(`⚠️ Supplier not found: ${returnItem.supplier_id}, trying via product_id`);
               
@@ -115,12 +123,20 @@ export class OrderReturnService {
                       supplierName = platformSupplier.company_name || clinicManager.company_name || "알 수 없음";
                       const manager = platformSupplier.managers?.[0];
                       managerName = manager?.name || clinicManager.name || "";
-                      this.logger.log(`✅ Supplier found via ProductSupplier (platform): ${supplierName}, manager: ${managerName}`);
+                      managerPosition = manager?.position || clinicManager.position || "";
+                      managerPhone = manager?.phone_number || clinicManager.phone_number || "";
+                      managerEmail = manager?.email1 || clinicManager.email1 || "";
+                      supplierManagerId = manager?.id || null;
+                      this.logger.log(`✅ Supplier found via ProductSupplier (platform): ${supplierName}, manager: ${managerName}, position: ${managerPosition}`);
                     } else {
                       // Manual supplier (ClinicSupplierManager only)
                       supplierName = clinicManager.company_name || "알 수 없음";
                       managerName = clinicManager.name || "";
-                      this.logger.log(`✅ Supplier found via ProductSupplier (manual): ${supplierName}, manager: ${managerName}`);
+                      managerPosition = clinicManager.position || "";
+                      managerPhone = clinicManager.phone_number || "";
+                      managerEmail = clinicManager.email1 || "";
+                      supplierManagerId = null; // Manual suppliers don't have SupplierManager ID
+                      this.logger.log(`✅ Supplier found via ProductSupplier (manual): ${supplierName}, manager: ${managerName}, position: ${managerPosition}`);
                     }
                   } else {
                     this.logger.warn(`⚠️ ProductSupplier not found for product_id: ${returnItem.product_id}`);
@@ -131,46 +147,61 @@ export class OrderReturnService {
               }
             }
           } else if (returnItem.outbound_id) {
-            // For defective products from outbound, get supplier from product
+            // For defective products from outbound, get supplier from product via ProductSupplier
             const outbound = await (this.prisma as any).outbound.findFirst({
               where: { id: returnItem.outbound_id, tenant_id: tenantId },
               include: {
                 product: {
                   include: {
-                    supplierProducts: {
-                      take: 1,
-                      orderBy: { created_at: "asc" },
+                    productSupplier: {
+                      include: {
+                        clinicSupplierManager: {
+                          include: {
+                            linkedManager: {
+                              include: {
+                                supplier: {
+                                  include: {
+                                    managers: {
+                                      where: { status: "ACTIVE" },
+                                      take: 1,
+                                      orderBy: { created_at: "asc" },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },
               },
             });
 
-            if (outbound?.product?.supplierProducts?.[0]) {
-              const supplierProduct = outbound.product.supplierProducts[0];
+            if (outbound?.product?.productSupplier?.clinicSupplierManager) {
+              const clinicManager = outbound.product.productSupplier.clinicSupplierManager;
               
-              // Use company_name from SupplierProduct if available
-              if (supplierProduct.company_name) {
-                supplierName = supplierProduct.company_name;
-                managerName = supplierProduct.contact_name || "";
-              } else if (supplierProduct.supplier_id) {
-                // Otherwise, fetch from Supplier table
-                const supplier = await (this.prisma as any).supplier.findUnique({
-                  where: { id: supplierProduct.supplier_id },
-                  include: {
-                    managers: {
-                      where: { status: "ACTIVE" },
-                      take: 1,
-                      orderBy: { created_at: "asc" },
-                    },
-                  },
-                });
-
-                if (supplier) {
-                  supplierName = supplier.company_name || "알 수 없음";
-                  const manager = supplier.managers?.[0];
-                  managerName = manager?.name || supplierProduct.contact_name || "";
-                }
+              // If linked to platform supplier, use that
+              if (clinicManager.linkedManager?.supplier) {
+                const platformSupplier = clinicManager.linkedManager.supplier;
+                supplierName = platformSupplier.company_name || clinicManager.company_name || "알 수 없음";
+                const manager = platformSupplier.managers?.[0];
+                managerName = manager?.name || clinicManager.name || "";
+                managerPosition = manager?.position || clinicManager.position || "";
+                managerPhone = manager?.phone_number || clinicManager.phone_number || "";
+                managerEmail = manager?.email1 || clinicManager.email1 || "";
+                supplierManagerId = manager?.id || null;
+                this.logger.log(`✅ Supplier found via Outbound (platform): ${supplierName}, manager: ${managerName}`);
+              } else {
+                // Manual supplier (ClinicSupplierManager only)
+                supplierName = clinicManager.company_name || "알 수 없음";
+                managerName = clinicManager.name || "";
+                managerPosition = clinicManager.position || "";
+                managerPhone = clinicManager.phone_number || "";
+                managerEmail = clinicManager.email1 || "";
+                supplierManagerId = null;
+                this.logger.log(`✅ Supplier found via Outbound (manual): ${supplierName}, manager: ${managerName}`);
               }
             }
           }
@@ -179,6 +210,10 @@ export class OrderReturnService {
             ...returnItem,
             supplierName,
             managerName,
+            managerPosition,
+            managerPhone,
+            managerEmail,
+            supplierManagerId, // For supplier notification
             returnManagerName,
           };
         })
@@ -346,6 +381,34 @@ export class OrderReturnService {
     // Update return with all data
     const finalImages = imageUrls.length > 0 ? imageUrls : (returnItem.images || []);
     
+    // Determine return_type BEFORE database update (so we can use it for supplier notification)
+    const existingReturnType = returnItem.return_type || "";
+    const dtoReturnType = dto.return_type || "";
+    
+    let finalReturnType: string;
+    if (existingReturnType.startsWith("불량")) {
+      // Defective product - if dto.return_type contains "교환", use "불량|교환", otherwise keep existing
+      if (dtoReturnType && dtoReturnType.includes("교환")) {
+        finalReturnType = "불량|교환"; // For exchanges page
+        this.logger.log(`✅ Changing defective return_type from "${existingReturnType}" to "${finalReturnType}" for exchanges page`);
+      } else if (dtoReturnType && dtoReturnType.includes("반품")) {
+        finalReturnType = "불량|반품";
+        this.logger.log(`✅ Changing defective return_type from "${existingReturnType}" to "${finalReturnType}" for returns page`);
+      } else {
+        // Keep existing type
+        finalReturnType = existingReturnType;
+        this.logger.log(`✅ Keeping defective return_type: ${existingReturnType}`);
+      }
+    } else if (dtoReturnType && (dtoReturnType.startsWith("주문") || dtoReturnType.startsWith("불량"))) {
+      // Use dto.return_type if provided and valid
+      finalReturnType = dtoReturnType;
+      this.logger.log(`✅ Using dto return_type: ${dtoReturnType}`);
+    } else {
+      // Default: "주문|교환" for order returns (order-returns page -> exchanges page)
+      finalReturnType = "주문|교환";
+      this.logger.log(`✅ Using default return_type: 주문|교환`);
+    }
+    
     const updatedReturn = await this.prisma.executeWithRetry(async () => {
       const updateData: any = {
         return_no: returnNo,
@@ -354,12 +417,8 @@ export class OrderReturnService {
         images: finalImages,
         status: "pending", // Keep as pending until supplier confirms
         updated_at: new Date(),
+        return_type: finalReturnType, // Set the determined return_type
       };
-      
-      // IMPORTANT: /order-returns page'dan yuborilgan barcha product'lar /exchanges page'ga kelishi kerak
-      // Shuning uchun return_type ni "주문|교환" qilib majburiy o'rnatamiz
-      // Frontend'dan kelgan return_type ni e'tiborsiz qoldiramiz
-      updateData.return_type = "주문|교환"; // Always "주문|교환" for order-returns page
       
       return (this.prisma as any).orderReturn.update({
         where: { id, tenant_id: tenantId },
@@ -367,11 +426,14 @@ export class OrderReturnService {
       });
     });
 
-    // Ensure images are included in the return object for sending to supplier
+    // Ensure images and updated return_type are included in the return object for sending to supplier
     const returnWithImages = {
       ...updatedReturn,
+      return_type: finalReturnType, // Use the determined return_type
       images: finalImages,
     };
+    
+    this.logger.log(`📤 Prepared return for supplier: return_no=${returnWithImages.return_no}, return_type=${returnWithImages.return_type}`);
 
     // Send to supplier-backend
     try {
@@ -401,24 +463,129 @@ export class OrderReturnService {
    * Send return request to supplier-backend
    */
   private async sendReturnToSupplier(returnItem: any, tenantId: string) {
-    if (!returnItem.supplier_id) {
-      this.logger.warn(`Return ${returnItem.id} has no supplier_id, skipping supplier notification`);
+    this.logger.log(`📤 Sending return ${returnItem.return_no} to supplier (type: ${returnItem.return_type})`);
+    this.logger.log(`Return details: product_id=${returnItem.product_id}, outbound_id=${returnItem.outbound_id}, supplier_id=${returnItem.supplier_id}`);
+    
+    // Get supplierManagerId from return item or fetch via product_id
+    let supplierManagerId = returnItem.supplierManagerId;
+    let supplierTenantId: string | null = null;
+    
+    // If supplierManagerId not in return item, fetch it via product_id
+    if (!supplierManagerId && returnItem.product_id) {
+      try {
+        const productSupplier = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).productSupplier.findFirst({
+            where: {
+              product_id: returnItem.product_id,
+              tenant_id: tenantId,
+            },
+            include: {
+              clinicSupplierManager: {
+                include: {
+                  linkedManager: {
+                    include: {
+                      supplier: {
+                        select: { tenant_id: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          });
+        });
+
+        if (productSupplier?.clinicSupplierManager?.linkedManager) {
+          supplierManagerId = productSupplier.clinicSupplierManager.linkedManager.id;
+          supplierTenantId = productSupplier.clinicSupplierManager.linkedManager.supplier?.tenant_id || null;
+          this.logger.log(`✅ Found supplierManagerId via ProductSupplier: ${supplierManagerId}`);
+        } else if (productSupplier?.clinicSupplierManager) {
+          // Manual supplier - no platform notification
+          this.logger.warn(`⚠️ Manual supplier (no platform), skipping supplier-backend notification`);
+          return;
+        }
+      } catch (error: any) {
+        this.logger.error(`Error fetching supplierManagerId: ${error.message}`);
+      }
+    }
+
+    // Fallback 1: Try via supplier_id (old method)
+    if (!supplierManagerId && returnItem.supplier_id) {
+      try {
+        const supplier = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplier.findUnique({
+            where: { id: returnItem.supplier_id },
+            include: {
+              managers: {
+                where: { status: "ACTIVE" },
+                take: 1,
+                orderBy: { created_at: "asc" },
+              },
+            },
+          });
+        });
+
+        if (supplier?.managers?.[0]) {
+          supplierManagerId = supplier.managers[0].id;
+          supplierTenantId = supplier.tenant_id;
+          this.logger.log(`✅ Found supplierManagerId via Supplier: ${supplierManagerId}`);
+        }
+      } catch (error: any) {
+        this.logger.error(`Error fetching supplier via supplier_id: ${error.message}`);
+      }
+    }
+
+    // Fallback 2: For defective products (불량), try via outbound_id -> product -> ProductSupplier
+    if (!supplierManagerId && returnItem.outbound_id) {
+      try {
+        this.logger.log(`Trying to find supplier via outbound_id: ${returnItem.outbound_id}`);
+        const outbound = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).outbound.findFirst({
+            where: { id: returnItem.outbound_id, tenant_id: tenantId },
+            include: {
+              product: {
+                include: {
+                  productSupplier: {
+                    include: {
+                      clinicSupplierManager: {
+                        include: {
+                          linkedManager: {
+                            include: {
+                              supplier: {
+                                select: { tenant_id: true },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          });
+        });
+
+        if (outbound?.product?.productSupplier?.clinicSupplierManager?.linkedManager) {
+          supplierManagerId = outbound.product.productSupplier.clinicSupplierManager.linkedManager.id;
+          supplierTenantId = outbound.product.productSupplier.clinicSupplierManager.linkedManager.supplier?.tenant_id || null;
+          this.logger.log(`✅ Found supplierManagerId via Outbound -> ProductSupplier: ${supplierManagerId}`);
+        } else if (outbound?.product?.productSupplier?.clinicSupplierManager) {
+          // Manual supplier - no platform notification
+          this.logger.warn(`⚠️ Manual supplier (no platform) via Outbound, skipping supplier-backend notification`);
+          return;
+        }
+      } catch (error: any) {
+        this.logger.error(`Error fetching supplier via outbound_id: ${error.message}`);
+      }
+    }
+
+    if (!supplierManagerId || !supplierTenantId) {
+      this.logger.warn(`⚠️ Return ${returnItem.id} has no supplierManagerId or supplierTenantId, skipping supplier notification`);
       return;
     }
 
     try {
-      // Get supplier details
-      const supplier = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplier.findUnique({
-          where: { id: returnItem.supplier_id },
-          select: { tenant_id: true },
-        });
-      });
-
-      if (!supplier || !supplier.tenant_id) {
-        this.logger.warn(`Supplier ${returnItem.supplier_id} not found or missing tenant_id`);
-        return;
-      }
 
       // Get clinic details
       const clinic = await this.prisma.executeWithRetry(async () => {
@@ -461,7 +628,8 @@ export class OrderReturnService {
       
       const returnData = {
         returnNo: returnItem.return_no,
-        supplierTenantId: supplier.tenant_id,
+        supplierTenantId: supplierTenantId,
+        supplierManagerId: supplierManagerId, // Add supplierManagerId for supplier-backend
         clinicTenantId: tenantId,
         clinicName: clinicName,
         clinicManagerName: clinicManagerName,
@@ -470,7 +638,7 @@ export class OrderReturnService {
             productName: returnItem.product_name,
             brand: returnItem.brand || "",
             quantity: returnItem.return_quantity,
-            returnType: returnItem.return_type,
+            returnType: returnItem.return_type, // Should be "주문|교환" or "불량|교환" etc.
             memo: returnItem.memo || "",
             images: imagesArray,
             inboundDate: returnItem.inbound_date 
@@ -483,6 +651,9 @@ export class OrderReturnService {
         ],
         createdAt: returnItem.created_at.toISOString(),
       };
+
+      // Log the return_type being sent
+      this.logger.log(`📦 Sending return data with returnType: "${returnData.items[0].returnType}" for return_no: ${returnItem.return_no}`);
 
       // Call supplier-backend API
       const supplierApiUrl = process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
@@ -551,9 +722,20 @@ export class OrderReturnService {
           include: {
             product: {
               include: {
-                supplierProducts: {
-                  take: 1,
-                  orderBy: { created_at: "asc" },
+                productSupplier: {
+                  include: {
+                    clinicSupplierManager: {
+                      include: {
+                        linkedManager: {
+                          include: {
+                            supplier: {
+                              select: { id: true },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -566,10 +748,13 @@ export class OrderReturnService {
         throw new BadRequestException("Outbound not found");
       }
 
-      // Get supplier_id from product if available
+      // Get supplier_id from product via ProductSupplier -> ClinicSupplierManager -> linkedManager
       let supplierId = null;
-      if (outbound.product?.supplierProducts && outbound.product.supplierProducts.length > 0) {
-        supplierId = outbound.product.supplierProducts[0].supplier_id;
+      if (outbound.product?.productSupplier?.clinicSupplierManager?.linkedManager?.supplier) {
+        supplierId = outbound.product.productSupplier.clinicSupplierManager.linkedManager.supplier.id;
+        this.logger.log(`✅ Found supplier_id via ProductSupplier: ${supplierId}`);
+      } else {
+        this.logger.warn(`⚠️ No platform supplier found for product ${outbound.product_id}, supplier_id will be null`);
       }
 
       // Get return manager: try to find member_id from manager_name (full_name)

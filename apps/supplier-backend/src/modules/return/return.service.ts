@@ -71,12 +71,20 @@ export class ReturnService {
       // Filter by return_type if specified
       let filteredRequests = returnRequests;
       if (filters?.returnType) {
+        this.logger.log(`🔍 Filtering by returnType: ${filters.returnType}`);
+        this.logger.log(`Total requests before filter: ${returnRequests.length}`);
         filteredRequests = returnRequests.filter((request: any) => {
           // Check if any item in the request matches the return_type filter
-          return request.items?.some((item: any) => 
-            item.return_type?.includes(filters.returnType)
-          );
+          const hasMatchingItem = request.items?.some((item: any) => {
+            const matches = item.return_type?.includes(filters.returnType);
+            if (!matches) {
+              this.logger.log(`Item return_type "${item.return_type}" does not include "${filters.returnType}"`);
+            }
+            return matches;
+          });
+          return hasMatchingItem;
         });
+        this.logger.log(`Total requests after filter: ${filteredRequests.length}`);
       }
 
       // Calculate total count after filtering
@@ -874,11 +882,13 @@ export class ReturnService {
             ? item.images 
             : (item.images ? [item.images] : []);
           
+          this.logger.log(`📝 Creating return item with returnType: "${item.returnType}" for product: ${item.productName}`);
+          
           return {
             product_name: item.productName,
             brand: item.brand || null,
             quantity: item.quantity,
-            return_type: item.returnType,
+            return_type: item.returnType, // Should be "주문|교환", "불량|교환", etc.
             memo: item.memo || null,
             images: imagesArray,
             inbound_date: item.inboundDate,
