@@ -934,48 +934,25 @@ export default function OrderPage() {
                                 </span>
                               </div>
 
-                              {/* Batch'lar ro'yxati */}
+                              {/* Batch'lar ro'yxati - Combined total */}
                               {product.batches &&
                                 product.batches.length > 0 && (
-                                  <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-                                    {product.batches.map((batch: any) => (
-                                      <div
-                                        key={batch.id}
-                                        className={`relative flex items-center rounded px-2 py-1 text-sm ${
-                                          batch.isExpiringSoon
-                                            ? "bg-yellow-50 dark:bg-yellow-900/20"
-                                            : ""
-                                        }`}
+                                  <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                        총 재고량:
+                                      </span>
+                                      <span
+                                        className={`text-sm font-semibold ${product.currentStock <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-white"}`}
                                       >
-                                        <span className="font-medium text-slate-900 dark:text-white">
-                                          {batch.batchNo}
-                                        </span>
-                                        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                                          {batch.expiryDate && (
-                                            <span
-                                              className={
-                                                batch.isExpiringSoon
-                                                  ? "font-semibold text-yellow-700 dark:text-yellow-400"
-                                                  : "text-orange-600 dark:text-orange-400"
-                                              }
-                                            >
-                                              유통기간: {batch.expiryDate}
-                                            </span>
-                                          )}
-                                          {batch.isExpiringSoon &&
-                                            batch.daysUntilExpiry !== null && (
-                                              <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                                                (D-{batch.daysUntilExpiry})
-                                              </span>
-                                            )}
-                                        </div>
-                                        <span
-                                          className={`ml-auto font-semibold ${batch.qty <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}
-                                        >
-                                          {batch.qty} 개
-                                        </span>
-                                      </div>
-                                    ))}
+                                        {product.batches.reduce(
+                                          (total: number, batch: any) =>
+                                            total + (batch.qty || 0),
+                                          0
+                                        )}{" "}
+                                        개
+                                      </span>
+                                    </div>
                                   </div>
                                 )}
                             </div>
@@ -1149,9 +1126,23 @@ export default function OrderPage() {
                                 {/* 재고 정보 */}
                                 <div className="mb-2 flex items-center gap-3 text-sm">
                                   <span
-                                    className={`font-semibold ${product.isLowStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}
+                                    className={`font-semibold ${
+                                      (product.batches?.reduce(
+                                        (total: number, batch: any) =>
+                                          total + (batch.qty || 0),
+                                        0
+                                      ) || 0) <= (product.minStock || 0)
+                                        ? "text-red-600 dark:text-red-400"
+                                        : "text-slate-700 dark:text-slate-300"
+                                    }`}
                                   >
-                                    현재고: {product.currentStock || 0}개
+                                    현재고:{" "}
+                                    {product.batches?.reduce(
+                                      (total: number, batch: any) =>
+                                        total + (batch.qty || 0),
+                                      0
+                                    ) || 0}
+                                    개
                                   </span>
                                   <span className="text-slate-600 dark:text-slate-400">
                                     최소재고: {product.minStock || 0}개
@@ -1161,46 +1152,22 @@ export default function OrderPage() {
                                 {/* Batch'lar ro'yxati */}
                                 {product.batches &&
                                   product.batches.length > 0 && (
-                                    <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-                                      {product.batches.map((batch: any) => (
-                                        <div
-                                          key={batch.id}
-                                          className={`relative flex items-center rounded px-2 py-1 text-sm ${
-                                            batch.isExpiringSoon
-                                              ? "bg-yellow-50 dark:bg-yellow-900/20"
-                                              : ""
-                                          }`}
+                                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                          총 재고량:
+                                        </span>
+                                        <span
+                                          className={`text-sm font-semibold ${product.currentStock <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-white"}`}
                                         >
-                                          <span className="font-medium text-slate-900 dark:text-white">
-                                            {batch.batchNo}
-                                          </span>
-                                          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                                            {batch.expiryDate && (
-                                              <span
-                                                className={
-                                                  batch.isExpiringSoon
-                                                    ? "font-semibold text-yellow-700 dark:text-yellow-400"
-                                                    : "text-orange-600 dark:text-orange-400"
-                                                }
-                                              >
-                                                유통기간: {batch.expiryDate}
-                                              </span>
-                                            )}
-                                            {batch.isExpiringSoon &&
-                                              batch.daysUntilExpiry !==
-                                                null && (
-                                                <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                                                  (D-{batch.daysUntilExpiry})
-                                                </span>
-                                              )}
-                                          </div>
-                                          <span
-                                            className={`ml-auto font-semibold ${batch.qty <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}
-                                          >
-                                            {batch.qty} 개
-                                          </span>
-                                        </div>
-                                      ))}
+                                          {product.batches.reduce(
+                                            (total: number, batch: any) =>
+                                              total + (batch.qty || 0),
+                                            0
+                                          )}{" "}
+                                          개
+                                        </span>
+                                      </div>
                                     </div>
                                   )}
                               </div>
