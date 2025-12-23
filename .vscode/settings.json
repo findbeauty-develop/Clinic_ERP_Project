@@ -31,5 +31,10 @@
   },
   "[markdown]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "workbench.preferredHighContrastLightColorTheme": "Cursor Light",
+  "workbench.preferredLightColorTheme": "Cursor Dark",
+  "workbench.preferredHighContrastColorTheme": "Cursor Light",
+  "workbench.preferredDarkColorTheme": "Cursor Dark",
+  "workbench.colorTheme": "Cursor Dark"
 }

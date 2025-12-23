@@ -182,8 +182,9 @@ function ReturnCard({
     returnItem.return_type || "주문|반품"
   );
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
+  const [returnManagerName, setReturnManagerName] = useState("");
 
-  // Get return manager name from backend response
+  // Get return manager name from backend response (for display in non-editable tabs)
   const managerName = returnItem.returnManagerName || "";
 
   const isOrderReturn = returnType?.includes("주문");
@@ -261,7 +262,9 @@ function ReturnCard({
         finalReturnType = "불량|교환";
       } else if (returnType?.includes("주문")) {
         // Order return - use exchange type if not already
-        finalReturnType = returnType.includes("교환") ? returnType : "주문|교환";
+        finalReturnType = returnType.includes("교환")
+          ? returnType
+          : "주문|교환";
       } else {
         // Default to "주문|교환" for order returns
         finalReturnType = "주문|교환";
@@ -271,7 +274,7 @@ function ReturnCard({
         `${apiUrl}/order-returns/${returnItem.id}/process`,
         {
           memo: memo || null,
-          returnManager: returnItem.return_manager || null,
+          returnManager: returnManagerName || null,
           images: images,
           return_type: finalReturnType, // Always "주문|교환" for order-returns page
         }
@@ -406,9 +409,13 @@ function ReturnCard({
               {returnItem.managerName ? (
                 <>
                   {returnItem.managerName}
-                  {returnItem.managerPosition ? ` ${returnItem.managerPosition}` : " 대리"}
+                  {returnItem.managerPosition
+                    ? ` ${returnItem.managerPosition}`
+                    : " 대리"}
                 </>
-              ) : ""}
+              ) : (
+                ""
+              )}
             </div>
             {returnItem.return_no && (
               <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -580,8 +587,25 @@ function ReturnCard({
                         </label>
                       </div>
                     ) : (
-                      <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-xl hover:border-sky-400 dark:border-slate-600 dark:bg-slate-700">
-                        📷
+                      <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-slate-400 hover:border-sky-400 hover:text-sky-500 transition-colors dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500 dark:hover:text-sky-400">
+                        <svg
+                          className="h-6 w-6"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
                         <input
                           type="file"
                           accept="image/*"
@@ -602,9 +626,13 @@ function ReturnCard({
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     반품 담당자:
                   </label>
-                  <span className="text-sm text-slate-900 dark:text-slate-200">
-                    {managerName || "담당자 없음"}
-                  </span>
+                  <input
+                    type="text"
+                    value={returnManagerName}
+                    onChange={(e) => setReturnManagerName(e.target.value)}
+                    placeholder="담당자 이름 입력"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                  />
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -638,7 +666,7 @@ function ReturnCard({
                 반품 담당자:
               </label>
               <span className="text-sm text-slate-900 dark:text-slate-200">
-                {managerName || "담당자 없음"}
+                {managerName || "담당자 없음"}님
               </span>
             </div>
             <div className="flex items-center gap-3">

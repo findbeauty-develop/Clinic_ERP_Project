@@ -42,12 +42,12 @@ export class ReturnRepository {
       memo: data.memo ?? null,
       created_by: data.created_by ?? null,
     };
-    
+
     // Only include return_no if it exists (after migration)
     if (data.return_no !== undefined) {
       createData.return_no = data.return_no;
     }
-    
+
     return await (client as any).return.create({
       data: createData,
     });
@@ -161,11 +161,26 @@ export class ReturnRepository {
               name: true,
               brand: true,
               unit: true,
-              supplierProducts: {
-                take: 1,
-                orderBy: { created_at: "desc" },
+              productSupplier: {
                 select: {
-                  supplier_id: true,
+                  clinic_supplier_manager_id: true,
+                  clinicSupplierManager: {
+                    select: {
+                      id: true,
+                      company_name: true,
+                      name: true,
+                      linkedManager: {
+                        select: {
+                          id: true,
+                          supplier: {
+                            select: {
+                              id: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -193,27 +208,28 @@ export class ReturnRepository {
 
     // Fetch supplier return notifications for each return
     const returnIds = returns.map((r: any) => r.id);
-    const notifications = returnIds.length > 0
-      ? await (this.prisma as any).supplierReturnNotification.findMany({
-          where: {
-            return_id: { in: returnIds },
-          },
-          select: {
-            return_id: true,
-            status: true,
-            accepted_at: true,
-            created_at: true,
-          },
-          orderBy: { created_at: "desc" },
-        })
-      : [];
+    const notifications =
+      returnIds.length > 0
+        ? await (this.prisma as any).supplierReturnNotification.findMany({
+            where: {
+              return_id: { in: returnIds },
+            },
+            select: {
+              return_id: true,
+              status: true,
+              accepted_at: true,
+              created_at: true,
+            },
+            orderBy: { created_at: "desc" },
+          })
+        : [];
 
     // Group notifications by return_id and get the best status for each return
     // Priority: ACCEPTED > PENDING > REJECTED
     const notificationsByReturnId: Record<string, any> = {};
     notifications.forEach((notif: any) => {
       const existing = notificationsByReturnId[notif.return_id];
-      
+
       if (!existing) {
         notificationsByReturnId[notif.return_id] = notif;
       } else {
@@ -223,16 +239,18 @@ export class ReturnRepository {
           PENDING: 2,
           REJECTED: 1,
         };
-        
+
         const existingPriority = statusPriority[existing.status] || 0;
         const newPriority = statusPriority[notif.status] || 0;
-        
+
         // If new notification has higher priority, use it
         // If same priority, use the latest one
         if (newPriority > existingPriority) {
           notificationsByReturnId[notif.return_id] = notif;
-        } else if (newPriority === existingPriority && 
-                   new Date(notif.created_at) > new Date(existing.created_at)) {
+        } else if (
+          newPriority === existingPriority &&
+          new Date(notif.created_at) > new Date(existing.created_at)
+        ) {
           notificationsByReturnId[notif.return_id] = notif;
         }
       }
@@ -241,7 +259,7 @@ export class ReturnRepository {
     // Attach notification status to each return
     const returnsWithStatus = returns.map((returnItem: any) => ({
       ...returnItem,
-      supplierReturnNotifications: notificationsByReturnId[returnItem.id] 
+      supplierReturnNotifications: notificationsByReturnId[returnItem.id]
         ? [notificationsByReturnId[returnItem.id]]
         : [],
     }));
@@ -255,4 +273,3 @@ export class ReturnRepository {
     };
   }
 }
-

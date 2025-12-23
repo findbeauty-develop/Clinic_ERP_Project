@@ -725,6 +725,13 @@ export default function InboundNewPage() {
 
   const [uploadingCertificate, setUploadingCertificate] = useState(false);
   const [savingManualEntry, setSavingManualEntry] = useState(false);
+  const [ocrProcessing, setOcrProcessing] = useState(false);
+  const [ocrExtractedData, setOcrExtractedData] = useState<{
+    companyName?: string;
+    businessNumber?: string;
+    companyAddress?: string;
+    companyPhone?: string;
+  } | null>(null);
 
   // Initialize phone number when manual entry form opens
   useEffect(() => {
@@ -1093,7 +1100,7 @@ export default function InboundNewPage() {
               >
                 <ArrowLeftIcon className="h-5 w-5" />
               </Link>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
+              <h1 className="t ext-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
                 제품 정보 입력
               </h1>
             </div>
@@ -1126,7 +1133,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <InfoIcon className="h-5 w-5 text-sky-500" />
-            제품 정보
+            제품 정보 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none">
             <div className="p-6 sm:p-10">
@@ -1247,11 +1254,16 @@ export default function InboundNewPage() {
                             type="text"
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            placeholder="바코드 입력"
+                            maxLength={13}
+                            placeholder="바코드 입력 (13자리)"
                             value={formData.barcode}
-                            onChange={(e) =>
-                              handleInputChange("barcode", e.target.value)
-                            }
+                            onChange={(e) => {
+                              // Only allow numbers and limit to 13 digits
+                              const value = e.target.value
+                                .replace(/\D/g, "")
+                                .slice(0, 13);
+                              handleInputChange("barcode", value);
+                            }}
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                           {/* <button
@@ -1339,7 +1351,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <InfoIcon className="h-5 w-5 text-sky-500" />
-            수량 및 용량
+            수량 및 용량 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-4">
@@ -1587,7 +1599,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <DollarIcon className="h-5 w-5 text-emerald-500" />
-            가격 정보
+            가격 정보 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid gap-6 md:grid-cols-2">
@@ -1769,7 +1781,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <RefreshIcon className="h-5 w-5 text-amber-500" />
-            반납 관리
+            반납 관리 *
           </h2>
 
           <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
@@ -1838,7 +1850,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <CalendarIcon className="h-5 w-5 text-emerald-500" />
-            유통기한 정보
+            유통기한 정보 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="space-y-6">
@@ -2155,11 +2167,11 @@ export default function InboundNewPage() {
                       </label>
                       <div className="space-y-2">
                         {manualEntryForm.certificatePreview ? (
-                          <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+                          <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 ">
                             <img
                               src={manualEntryForm.certificatePreview}
                               alt="Certificate preview"
-                              className="h-48 w-full object-contain rounded-lg"
+                              className="h-62 w-full object-contain rounded-lg"
                             />
                             <button
                               type="button"
@@ -2170,6 +2182,7 @@ export default function InboundNewPage() {
                                   certificateImage: null,
                                   certificateUrl: "",
                                 }));
+                                setOcrExtractedData(null);
                               }}
                               className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
                             >
@@ -2187,6 +2200,35 @@ export default function InboundNewPage() {
                                 />
                               </svg>
                             </button>
+                            {ocrProcessing && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+                                <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+                                  <svg
+                                    className="animate-spin h-5 w-5 text-sky-600"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                  </svg>
+                                  <span className="text-sm font-medium text-slate-700">
+                                    OCR 처리 중...
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
@@ -2194,18 +2236,93 @@ export default function InboundNewPage() {
                               <p className="text-sm text-slate-500 dark:text-slate-400">
                                 이미지를 업로드하세요
                               </p>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                                업로드 시 자동으로 정보를 추출합니다
+                              </p>
                             </div>
                           </div>
                         )}
+
+                        {/* OCR Extracted Data Notification */}
+                        {ocrExtractedData && !ocrProcessing && (
+                          <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                            <div className="flex items-start gap-2">
+                              <svg
+                                className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-green-800 dark:text-green-300 mb-1">
+                                  OCR로 정보가 자동 추출되었습니다
+                                </p>
+                                <div className="text-xs text-green-700 dark:text-green-400 space-y-1">
+                                  {ocrExtractedData.companyName && (
+                                    <p>
+                                      • 회사명: {ocrExtractedData.companyName}
+                                    </p>
+                                  )}
+                                  {ocrExtractedData.businessNumber && (
+                                    <p>
+                                      • 사업자등록번호:{" "}
+                                      {ocrExtractedData.businessNumber}
+                                    </p>
+                                  )}
+                                  {ocrExtractedData.companyAddress && (
+                                    <p>
+                                      • 주소: {ocrExtractedData.companyAddress}
+                                    </p>
+                                  )}
+                                  {ocrExtractedData.companyPhone && (
+                                    <p>
+                                      • 전화번호:{" "}
+                                      {ocrExtractedData.companyPhone}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setOcrExtractedData(null)}
+                                className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                          {uploadingCertificate
-                            ? "업로드 중..."
-                            : "사업자등록증 업데이트"}
+                          {uploadingCertificate || ocrProcessing
+                            ? "업로드 및 OCR 처리 중..."
+                            : manualEntryForm.certificatePreview
+                              ? "사업자등록증 변경"
+                              : "사업자등록증 업로드"}
                           <input
                             type="file"
                             accept="image/*"
                             onChange={handleCertificateUpload}
-                            disabled={uploadingCertificate}
+                            disabled={uploadingCertificate || ocrProcessing}
                             className="hidden"
                           />
                         </label>
@@ -2228,7 +2345,7 @@ export default function InboundNewPage() {
                             phoneNumber: e.target.value,
                           }))
                         }
-                        placeholder="“-”없이 입력해주세요."
+                        placeholder="-없이 입력해주세요."
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
                     </div>
@@ -2606,31 +2723,21 @@ export default function InboundNewPage() {
           </div>
         </section>
 
-        <section className="space-y-6">
+        {/* <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <ClipboardIcon className="h-5 w-5 text-indigo-500" />
-            입고 담당자
+            입고 담당자 *
           </h2>
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                담당자
-              </span>
-              <span className="rounded-lg bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                {selectedManager || "알 수 없음"}
-              </span>
-            </div>
-          </div>
-        </section>
+        </section> */}
 
         <footer className="">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
             {/* LEFT: 보관 위치 */}
             <div className="flex-1">
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                보관 위치
-              </label>
               <div className="relative">
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-400 mr-2">
+                  보관 위치 *
+                </label>
                 <input
                   type="text"
                   list="storage-options"
@@ -2645,6 +2752,18 @@ export default function InboundNewPage() {
                   ))}
                 </datalist>
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                담당자 *
+              </label>
+              <input
+                type="text"
+                value={selectedManager}
+                onChange={(e) => setSelectedManager(e.target.value)}
+                placeholder="담당자 이름 입력"
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+              />
             </div>
 
             {/* RIGHT: 버튼 */}

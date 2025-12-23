@@ -45,7 +45,9 @@ export class OrderReturnService {
           );
 
           // Fetch return manager name (clinic member)
+          // return_manager can be either a member_id or a name
           if (returnItem.return_manager) {
+            // First try to find by member_id
             const returnManager = await (this.prisma as any).member.findFirst({
               where: {
                 member_id: returnItem.return_manager,
@@ -55,7 +57,12 @@ export class OrderReturnService {
                 full_name: true,
               },
             });
-            returnManagerName = returnManager?.full_name || "";
+            if (returnManager) {
+              returnManagerName = returnManager.full_name;
+            } else {
+              // If not found by member_id, assume it's already a name
+              returnManagerName = returnItem.return_manager;
+            }
           }
 
           if (returnItem.supplier_id) {
@@ -695,6 +702,7 @@ export class OrderReturnService {
       const clinicName = clinic?.name || "알 수 없음";
 
       // Get clinic manager name (return_manager)
+      // return_manager can be either a member_id or a name
       let clinicManagerName = returnItem.return_manager || "";
       if (returnItem.return_manager) {
         const member = await this.prisma.executeWithRetry(async () => {
@@ -708,6 +716,9 @@ export class OrderReturnService {
         });
         if (member?.full_name) {
           clinicManagerName = member.full_name;
+        } else {
+          // If not found by member_id, assume it's already a name
+          clinicManagerName = returnItem.return_manager;
         }
       }
 

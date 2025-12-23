@@ -1129,6 +1129,36 @@ export class OrderService {
       });
     }
 
+    // Collect all created_by member IDs for batch lookup
+    const memberIds = new Set<string>();
+    filteredOrders.forEach((order: any) => {
+      if (order.created_by && !order.clinic_manager_name) {
+        memberIds.add(order.created_by);
+      }
+    });
+
+    // Fetch all members in batch
+    const membersMap = new Map<string, any>();
+    if (memberIds.size > 0) {
+      const members = await (this.prisma as any).member.findMany({
+        where: {
+          id: {
+            in: Array.from(memberIds),
+          },
+          tenant_id: tenantId,
+        },
+        select: {
+          id: true,
+          full_name: true,
+          member_id: true,
+        },
+      });
+
+      members.forEach((member: any) => {
+        membersMap.set(member.id, member);
+      });
+    }
+
     return filteredOrders.map((order: any) => {
       // Supplier va manager ma'lumotlarini topish (items'dan)
       let supplierName = order.supplier_id || "공급업체 없음";
@@ -1200,7 +1230,11 @@ export class OrderService {
           supplierDetails.managerName = managerName;
           supplierDetails.managerPhone =
             clinicSupplierManager.phone_number || null;
-          supplierDetails.managerEmail = null;
+          supplierDetails.managerEmail =
+            clinicSupplierManager.email1 ||
+            clinicSupplierManager.email2 ||
+            null;
+          supplierDetails.position = clinicSupplierManager.position || null;
         }
       } else {
         // Fallback: try to get from clinicSupplierManager
@@ -1249,19 +1283,30 @@ export class OrderService {
               supplierDetails.managerName = managerName;
               supplierDetails.managerPhone =
                 clinicSupplierManager.phone_number || null;
-              supplierDetails.managerEmail = null;
+              supplierDetails.managerEmail =
+                clinicSupplierManager.email1 ||
+                clinicSupplierManager.email2 ||
+                null;
+              supplierDetails.position = clinicSupplierManager.position || null;
             }
           } else {
-            // Last resort: use clinicSupplierManager data
+            // Last resort: use clinicSupplierManager data (manual supplier)
             supplierName = clinicSupplierManager.company_name || supplierName;
             managerName = clinicSupplierManager.name || "";
 
-            // Create minimal supplierDetails from clinicSupplierManager
+            // Create supplierDetails from clinicSupplierManager with all available fields
             supplierDetails = {
               companyName: supplierName,
+              companyAddress: clinicSupplierManager.company_address || null,
+              companyPhone: clinicSupplierManager.company_phone || null,
+              companyEmail: clinicSupplierManager.company_email || null,
               managerName: managerName,
               managerPhone: clinicSupplierManager.phone_number || null,
-              managerEmail: null,
+              managerEmail:
+                clinicSupplierManager.email1 ||
+                clinicSupplierManager.email2 ||
+                null,
+              position: clinicSupplierManager.position || null,
             };
           }
         }
@@ -1287,6 +1332,15 @@ export class OrderService {
         0
       );
 
+      // Get creator name - Use clinic_manager_name first
+      let createdByName = "알 수 없음";
+      if (order.clinic_manager_name) {
+        createdByName = order.clinic_manager_name;
+      } else if (order.created_by && membersMap.has(order.created_by)) {
+        const member = membersMap.get(order.created_by);
+        createdByName = member.full_name || member.member_id;
+      }
+
       return {
         id: order.id,
         orderNo: order.order_no,
@@ -1298,6 +1352,7 @@ export class OrderService {
         totalAmount: order.total_amount || totalAmount,
         memo: order.memo,
         createdAt: order.created_at,
+        createdByName: createdByName, // 클리닉 담당자 이름
         items: formattedItems,
       };
     });
