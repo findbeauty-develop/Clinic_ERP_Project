@@ -42,6 +42,7 @@ type ProductListItem = {
   salePrice?: number | null;
   supplierName?: string | null;
   managerName?: string | null;
+  managerPosition?: string | null;
   expiryDate?: string | null;
   storageLocation?: string | null;
   memo?: string | null;
@@ -140,6 +141,7 @@ export default function InboundPage() {
             ...order,
             supplierName: supplierGroup.supplierName,
             managerName: supplierGroup.managerName,
+            managerPosition: supplierGroup.managerPosition,
           });
         });
       });
@@ -1610,7 +1612,7 @@ function PendingOrdersList({
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
           입고 대기 중인 주문 ({orders.length}건)
         </h2>
-        
+
         {/* 🆕 Manual Refresh Button */}
         <button
           onClick={onRefresh}
@@ -1619,7 +1621,7 @@ function PendingOrdersList({
           title="주문 목록 새로고침"
         >
           <svg
-            className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -1631,7 +1633,7 @@ function PendingOrdersList({
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
             />
           </svg>
-          {loading ? '새로고침 중...' : '새로고침'}
+          {loading ? "새로고침 중..." : "새로고침"}
         </button>
       </div>
 
@@ -1712,20 +1714,24 @@ function PendingOrdersList({
               {/* Card */}
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
                 {/* Order Info - 3 Columns */}
-                <div className="mb-4 grid grid-cols-1 gap-4 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
+                <div className="mb-4 grid grid-cols-1 gap-0.9 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
                   {/* Left: 공급업체 + Manager */}
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <TruckIcon className="h-5 w-5 text-indigo-500" />
-                      <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                        {order.supplierName || "알 수 없음"}
-                      </h3>
+                    <div className="mt-3">
+                      <div className="flex items-center gap-1">
+                        <TruckIcon className="h-5 w-5 text-indigo-500" />
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-900 dark:text-white">
+                          {order.supplierName || "알 수 없음"}
+                        </h3>
+                        {order.managerName && (
+                          <p className="text-sm text-slate-500 dark:text-slate-400 ml-2">
+                            담당자: {order.managerName}
+                            {order.managerPosition &&
+                              `${order.managerPosition}`}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {order.managerName && (
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        담당자: {order.managerName}
-                      </p>
-                    )}
                   </div>
 
                   {/* Center: 주문번호 */}
@@ -1771,7 +1777,7 @@ function PendingOrdersList({
                     )}
                     <div className="flex items-center gap-2 lg:justify-end">
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        주문자: {order.createdByName || "알 수 없음"}
+                        주문자: {order.createdByName || "알 수 없음"}님
                       </span>
                     </div>
                   </div>

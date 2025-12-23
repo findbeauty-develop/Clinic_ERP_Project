@@ -1398,14 +1398,13 @@ export class OrderService {
         where: { id: order.supplier_id },
         include: {
           linkedManager: {
-            include: {
+            select: {
+              name: true,
+              position: true,
               supplier: {
-                include: {
-                  managers: {
-                    where: { status: "ACTIVE" },
-                    orderBy: { created_at: "asc" },
-                    take: 1,
-                  },
+                select: {
+                  id: true,
+                  company_name: true,
                 },
               },
             },
@@ -2168,21 +2167,64 @@ export class OrderService {
       const supplierId = order.supplier_id || "unknown";
 
       if (!grouped[supplierId]) {
-        // Get supplier info
-        let supplierInfo = { companyName: "알 수 없음", managerName: "" };
+        // Get supplier info from ClinicSupplierManager
+        let supplierInfo = {
+          companyName: "알 수 없음",
+          managerName: "",
+          managerPosition: "",
+        };
         if (order.supplier_id) {
-          const supplier = await (this.prisma as any).supplier.findUnique({
+          const clinicSupplierManager = await (
+            this.prisma as any
+          ).clinicSupplierManager.findUnique({
             where: { id: order.supplier_id },
             include: {
-              managers: {
-                where: { status: "ACTIVE" },
-                take: 1,
+              linkedManager: {
+                select: {
+                  name: true,
+                  position: true,
+                  supplier: {
+                    select: {
+                      id: true,
+                      company_name: true,
+                    },
+                  },
+                },
               },
             },
           });
-          if (supplier) {
-            supplierInfo.companyName = supplier.company_name;
-            supplierInfo.managerName = supplier.managers?.[0]?.name || "";
+
+          if (clinicSupplierManager) {
+            // If linked to platform supplier, use supplier's company_name
+            if (clinicSupplierManager.linkedManager?.supplier) {
+              supplierInfo.companyName =
+                clinicSupplierManager.linkedManager.supplier.company_name;
+              supplierInfo.managerName =
+                clinicSupplierManager.linkedManager.name ||
+                clinicSupplierManager.name ||
+                "";
+              supplierInfo.managerPosition =
+                clinicSupplierManager.linkedManager.position ||
+                clinicSupplierManager.position ||
+                "";
+              this.logger.log(
+                `✅ Platform supplier found: ${supplierInfo.companyName}, Manager: ${supplierInfo.managerName}, Position: ${supplierInfo.managerPosition}`
+              );
+            } else {
+              // Manual supplier - use denormalized fields from ClinicSupplierManager
+              supplierInfo.companyName =
+                clinicSupplierManager.company_name || "알 수 없음";
+              supplierInfo.managerName = clinicSupplierManager.name || "";
+              supplierInfo.managerPosition =
+                clinicSupplierManager.position || "";
+              this.logger.log(
+                `✅ Manual supplier found: ${supplierInfo.companyName}, Manager: ${supplierInfo.managerName}, Position: ${supplierInfo.managerPosition}`
+              );
+            }
+          } else {
+            this.logger.warn(
+              `⚠️ ClinicSupplierManager not found for supplier_id: ${order.supplier_id}`
+            );
           }
         }
 
@@ -2190,6 +2232,7 @@ export class OrderService {
           supplierId: supplierId,
           supplierName: supplierInfo.companyName,
           managerName: supplierInfo.managerName,
+          managerPosition: supplierInfo.managerPosition,
           orders: [],
         };
       }

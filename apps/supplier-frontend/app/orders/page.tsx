@@ -76,9 +76,13 @@ export default function OrdersPage() {
   const [detailOrder, setDetailOrder] = useState<SupplierOrder | null>(null);
   const [updating, setUpdating] = useState(false);
   const [confirmOrder, setConfirmOrder] = useState<SupplierOrder | null>(null);
-  const [itemAdjustments, setItemAdjustments] = useState<Record<string, ItemAdjustment>>({});
+  const [itemAdjustments, setItemAdjustments] = useState<
+    Record<string, ItemAdjustment>
+  >({});
   const [rejectOrder, setRejectOrder] = useState<SupplierOrder | null>(null);
-  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
+  const [rejectionReasons, setRejectionReasons] = useState<
+    Record<string, string>
+  >({});
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -101,6 +105,7 @@ export default function OrdersPage() {
     }
   }, [statusParam]);
 
+  // Initial fetch
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
@@ -117,10 +122,10 @@ export default function OrdersPage() {
   const selectAllItemsInOrder = (order: SupplierOrder) => {
     setSelectedItems((prev) => {
       const next = new Set(prev);
-      
+
       // Check if all items in this order are already selected
       const allSelected = order.items.every((item) => prev.has(item.id));
-      
+
       if (allSelected) {
         // Deselect all items in this order
         order.items.forEach((item) => next.delete(item.id));
@@ -128,7 +133,7 @@ export default function OrdersPage() {
         // Select all items in this order
         order.items.forEach((item) => next.add(item.id));
       }
-      
+
       return next;
     });
   };
@@ -198,7 +203,19 @@ export default function OrdersPage() {
     }
   };
 
-  const renderStatusBadge = (status: string) => {
+  const renderStatusBadge = (
+    status: string,
+    showWarehouseBadge: boolean = false
+  ) => {
+    // Show "입고 완료" badge for completed orders in "주문 내역" tab
+    if (status === "completed" && showWarehouseBadge) {
+      return (
+        <span className="rounded-full px-2 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700">
+          입고 완료
+        </span>
+      );
+    }
+
     const label = statusLabels[status] || status;
     const color =
       status === "pending"
@@ -218,7 +235,9 @@ export default function OrdersPage() {
   };
 
   // Helper function to extract rejection reason from memo
-  const extractRejectionReason = (memo: string | null | undefined): string | null => {
+  const extractRejectionReason = (
+    memo: string | null | undefined
+  ): string | null => {
     if (!memo) return null;
     const match = memo.match(/\[거절 사유:\s*([^\]]+)\]/);
     return match ? match[1].trim() : null;
@@ -242,9 +261,7 @@ export default function OrdersPage() {
         {/* Top: Date and Order Number */}
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm text-slate-500">{dateStr}</div>
-          <div className="text-xs text-slate-500">
-            주문번호 {order.orderNo}
-          </div>
+          <div className="text-xs text-slate-500">주문번호 {order.orderNo}</div>
         </div>
 
         {/* Clinic Name and Status */}
@@ -255,13 +272,15 @@ export default function OrdersPage() {
               {order.clinic?.managerName || ""}님
             </span>
           </div>
-          {renderStatusBadge(order.status)}
+          {renderStatusBadge(order.status, activeTab === "all")}
         </div>
 
         <div className="divide-y divide-slate-100">
           {order.items.map((item) => {
-            const rejectionReason = isRejected ? extractRejectionReason(item.memo) : null;
-            
+            const rejectionReason = isRejected
+              ? extractRejectionReason(item.memo)
+              : null;
+
             return (
               <div
                 key={item.id}
@@ -269,7 +288,11 @@ export default function OrdersPage() {
                   isRejected ? "grid-cols-4" : "grid-cols-5"
                 }`}
               >
-                <div className={`flex items-center gap-2 ${isRejected ? "col-span-1" : "col-span-1"}`}>
+                <div
+                  className={`flex items-center gap-2 ${
+                    isRejected ? "col-span-1" : "col-span-1"
+                  }`}
+                >
                   {!isRejected && activeTab === "pending" && (
                     <input
                       type="checkbox"
@@ -278,7 +301,9 @@ export default function OrdersPage() {
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                   )}
-                  <span className="truncate font-medium">{item.productName}</span>
+                  <span className="truncate font-medium">
+                    {item.productName}
+                  </span>
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">{item.quantity}개</div>
@@ -311,7 +336,9 @@ export default function OrdersPage() {
               onClick={() => selectAllItemsInOrder(order)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              {order.items.every((item) => selectedItems.has(item.id)) ? "선택 해제" : "전체 선택"}
+              {order.items.every((item) => selectedItems.has(item.id))
+                ? "선택 해제"
+                : "전체 선택"}
             </button>
           )}
           {order.status === "pending" && activeTab === "pending" && (
@@ -358,10 +385,12 @@ export default function OrdersPage() {
   };
 
   const selectedCount = selectedItems.size;
-  
+
   // Check if any selected items belong to pending orders
-  const hasPendingSelected = orders.some((order) =>
-    order.status === "pending" && order.items.some((item) => selectedItems.has(item.id))
+  const hasPendingSelected = orders.some(
+    (order) =>
+      order.status === "pending" &&
+      order.items.some((item) => selectedItems.has(item.id))
   );
 
   return (
@@ -369,7 +398,9 @@ export default function OrdersPage() {
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-3">주문</h1>
+            <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-3">
+              주문
+            </h1>
             <p className="mt-1 text-sm text-slate-500">
               재고 부족 및 유효기한 임박 제품을 주문하고 관리하세요
             </p>
@@ -385,7 +416,7 @@ export default function OrdersPage() {
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
             >
               <path
                 strokeLinecap="round"
@@ -417,7 +448,6 @@ export default function OrdersPage() {
       </div>
 
       <div className="px-4 pt-4">
-
         {loading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm">
             불러오는 중...
@@ -456,7 +486,7 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {renderStatusBadge(detailOrder.status)}
+                {renderStatusBadge(detailOrder.status, activeTab === "all")}
                 <button
                   onClick={() => setDetailOrder(null)}
                   className="text-slate-500 hover:text-slate-700"
@@ -467,9 +497,13 @@ export default function OrdersPage() {
             </div>
 
             <div className="px-6 py-4">
-              <div className={`mb-3 grid text-xs font-semibold text-slate-500 ${
-                detailOrder.status === "rejected" ? "grid-cols-4" : "grid-cols-6"
-              }`}>
+              <div
+                className={`mb-3 grid text-xs font-semibold text-slate-500 ${
+                  detailOrder.status === "rejected"
+                    ? "grid-cols-4"
+                    : "grid-cols-6"
+                }`}
+              >
                 <div className="col-span-2">제품</div>
                 <div>브랜드</div>
                 <div className="text-right">수량</div>
@@ -484,15 +518,18 @@ export default function OrdersPage() {
               </div>
               <div className="divide-y divide-slate-100">
                 {detailOrder.items.map((item) => {
-                  const rejectionReason = detailOrder.status === "rejected" 
-                    ? extractRejectionReason(item.memo) 
-                    : null;
-                  
+                  const rejectionReason =
+                    detailOrder.status === "rejected"
+                      ? extractRejectionReason(item.memo)
+                      : null;
+
                   return (
                     <div
                       key={item.id}
                       className={`grid py-2 text-sm text-slate-700 ${
-                        detailOrder.status === "rejected" ? "grid-cols-4" : "grid-cols-6"
+                        detailOrder.status === "rejected"
+                          ? "grid-cols-4"
+                          : "grid-cols-6"
                       }`}
                     >
                       <div className="col-span-2 truncate font-medium">
@@ -571,14 +608,17 @@ export default function OrdersPage() {
               {/* Header Row */}
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs sm:text-sm text-slate-900">
-                  {new Date(confirmOrder.orderDate).toLocaleString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                  }).replace(/\. /g, '-').replace('.', '')}
+                  {new Date(confirmOrder.orderDate)
+                    .toLocaleString("ko-KR", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })
+                    .replace(/\. /g, "-")
+                    .replace(".", "")}
                 </div>
                 <button
                   onClick={() => {
@@ -587,8 +627,18 @@ export default function OrdersPage() {
                   }}
                   className="text-slate-400 hover:text-slate-600"
                 >
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -619,7 +669,9 @@ export default function OrdersPage() {
                     {/* Product Row - Compact Layout */}
                     <div className="flex items-center gap-2 text-sm">
                       {/* Product Name */}
-                      <div className="w-20 font-medium text-slate-900 text-xs">{item.productName}</div>
+                      <div className="w-20 font-medium text-slate-900 text-xs">
+                        {item.productName}
+                      </div>
 
                       {/* Quantity */}
                       <div className="flex items-center gap-1">
@@ -637,7 +689,9 @@ export default function OrdersPage() {
                           }}
                           className="w-14 rounded border border-slate-300 px-1 py-1 text-center text-xs text-slate-900 font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
-                        <span className="text-slate-600 text-xs whitespace-nowrap">/ {item.quantity}개</span>
+                        <span className="text-slate-600 text-xs whitespace-nowrap">
+                          / {item.quantity}개
+                        </span>
                       </div>
 
                       {/* Price */}
@@ -655,12 +709,17 @@ export default function OrdersPage() {
                           }}
                           className="w-20 rounded border border-slate-300 px-1 py-1 text-center text-xs text-slate-900 font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
-                        <span className="text-slate-600 text-xs whitespace-nowrap">/ {formatNumber(item.unitPrice)} 원</span>
+                        <span className="text-slate-600 text-xs whitespace-nowrap">
+                          / {formatNumber(item.unitPrice)} 원
+                        </span>
                       </div>
 
                       {/* Total */}
                       <div className="ml-auto text-right font-semibold text-slate-900 text-xs whitespace-nowrap">
-                        {formatNumber(adjustment.actualQuantity * adjustment.actualPrice)} 원
+                        {formatNumber(
+                          adjustment.actualQuantity * adjustment.actualPrice
+                        )}{" "}
+                        원
                       </div>
                     </div>
 
@@ -676,18 +735,20 @@ export default function OrdersPage() {
                                 onChange={(e) => {
                                   setItemAdjustments((prev) => ({
                                     ...prev,
-                                    [item.id]: { ...adjustment, quantityChangeReason: e.target.value },
+                                    [item.id]: {
+                                      ...adjustment,
+                                      quantityChangeReason: e.target.value,
+                                    },
                                   }));
                                 }}
                                 className="w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white text-slate-900 font-medium"
-
                               >
                                 <option value="">수량 변동 사유</option>
                                 <option value="제품단종">제품단종</option>
                                 <option value="재고부족">재고부족</option>
                                 <option value="메모">직접 입력</option>
                               </select>
-                              {adjustment.quantityChangeReason === '메모' && (
+                              {adjustment.quantityChangeReason === "메모" && (
                                 <input
                                   type="text"
                                   placeholder="메모"
@@ -695,7 +756,10 @@ export default function OrdersPage() {
                                   onChange={(e) => {
                                     setItemAdjustments((prev) => ({
                                       ...prev,
-                                      [item.id]: { ...adjustment, quantityChangeNote: e.target.value },
+                                      [item.id]: {
+                                        ...adjustment,
+                                        quantityChangeNote: e.target.value,
+                                      },
                                     }));
                                   }}
                                   className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white"
@@ -712,18 +776,22 @@ export default function OrdersPage() {
                                 onChange={(e) => {
                                   setItemAdjustments((prev) => ({
                                     ...prev,
-                                    [item.id]: { ...adjustment, priceChangeReason: e.target.value },
+                                    [item.id]: {
+                                      ...adjustment,
+                                      priceChangeReason: e.target.value,
+                                    },
                                   }));
                                 }}
                                 className="w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white text-slate-900 font-medium"
-
                               >
                                 <option value="">가격 변동 사유</option>
                                 <option value="환률변동">환률변동</option>
-                                <option value="원자재 가격 변동">원자재 가격 변동</option>
+                                <option value="원자재 가격 변동">
+                                  원자재 가격 변동
+                                </option>
                                 <option value="메모">직접 입력</option>
                               </select>
-                              {adjustment.priceChangeReason === '메모' && (
+                              {adjustment.priceChangeReason === "메모" && (
                                 <input
                                   type="text"
                                   placeholder="메모"
@@ -731,7 +799,10 @@ export default function OrdersPage() {
                                   onChange={(e) => {
                                     setItemAdjustments((prev) => ({
                                       ...prev,
-                                      [item.id]: { ...adjustment, priceChangeNote: e.target.value },
+                                      [item.id]: {
+                                        ...adjustment,
+                                        priceChangeNote: e.target.value,
+                                      },
                                     }));
                                   }}
                                   className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm bg-white"
@@ -750,77 +821,85 @@ export default function OrdersPage() {
             {/* Modal Footer */}
             <div className="sticky bottom-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
               <div className="text-sm sm:text-base font-bold text-slate-900">
-                총 {formatNumber(
+                총{" "}
+                {formatNumber(
                   Object.values(itemAdjustments).reduce(
                     (sum, adj) => sum + adj.actualQuantity * adj.actualPrice,
                     0
                   )
-                )}원
+                )}
+                원
               </div>
               <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-0.9 py-2">
-  {/* Left: 취소 */}
-  <button
-    onClick={() => {
-      setConfirmOrder(null);
-      setItemAdjustments({});
-    }}
-    className="rounded-lg border border-slate-300 px-4 sm:px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-  >
-    취소
-  </button>
-  
-  {/* Right: 판매가 확인 후 접수 */}
-  <button
-    disabled={updating}
-    onClick={async () => {
-      setUpdating(true);
-      try {
-        // Prepare adjustments array
-        // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
-        let adjustments = Object.values(itemAdjustments).map((adj) => ({
-          itemId: adj.itemId,
-          actualQuantity: adj.actualQuantity,
-          actualPrice: adj.actualPrice,
-          quantityChangeReason: adj.quantityChangeReason || null,
-          quantityChangeNote: adj.quantityChangeNote || null,
-          priceChangeReason: adj.priceChangeReason || null,
-          priceChangeNote: adj.priceChangeNote || null,
-        }));
+                {/* Left: 취소 */}
+                <button
+                  onClick={() => {
+                    setConfirmOrder(null);
+                    setItemAdjustments({});
+                  }}
+                  className="rounded-lg border border-slate-300 px-4 sm:px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  취소
+                </button>
 
-        // If no adjustments were made, create default adjustments (all items confirmed as ordered)
-        if (adjustments.length === 0 && confirmOrder?.items) {
-          adjustments = confirmOrder.items.map((item: any) => ({
-            itemId: item.id,
-            actualQuantity: item.quantity,
-            actualPrice: item.unitPrice,
-            quantityChangeReason: null,
-            quantityChangeNote: null,
-            priceChangeReason: null,
-            priceChangeNote: null,
-          }));
-        }
+                {/* Right: 판매가 확인 후 접수 */}
+                <button
+                  disabled={updating}
+                  onClick={async () => {
+                    setUpdating(true);
+                    try {
+                      // Prepare adjustments array
+                      // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
+                      let adjustments = Object.values(itemAdjustments).map(
+                        (adj) => ({
+                          itemId: adj.itemId,
+                          actualQuantity: adj.actualQuantity,
+                          actualPrice: adj.actualPrice,
+                          quantityChangeReason:
+                            adj.quantityChangeReason || null,
+                          quantityChangeNote: adj.quantityChangeNote || null,
+                          priceChangeReason: adj.priceChangeReason || null,
+                          priceChangeNote: adj.priceChangeNote || null,
+                        })
+                      );
 
-        // Call API to update status with adjustments
-        await apiPut(`/supplier/orders/${confirmOrder.id}/status`, {
-          status: "confirmed",
-          adjustments,
-        });
+                      // If no adjustments were made, create default adjustments (all items confirmed as ordered)
+                      if (adjustments.length === 0 && confirmOrder?.items) {
+                        adjustments = confirmOrder.items.map((item: any) => ({
+                          itemId: item.id,
+                          actualQuantity: item.quantity,
+                          actualPrice: item.unitPrice,
+                          quantityChangeReason: null,
+                          quantityChangeNote: null,
+                          priceChangeReason: null,
+                          priceChangeNote: null,
+                        }));
+                      }
 
-        alert("주문이 접수되었습니다.");
-        setConfirmOrder(null);
-        setItemAdjustments({});
-        await fetchOrders();
-      } catch (err: any) {
-        alert(err?.message || "주문 접수에 실패했습니다.");
-      } finally {
-        setUpdating(false);
-      }
-    }}
-    className="rounded-lg bg-emerald-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-  >
-    판매가 확인 후 접수
-  </button>
-</div>
+                      // Call API to update status with adjustments
+                      await apiPut(
+                        `/supplier/orders/${confirmOrder.id}/status`,
+                        {
+                          status: "confirmed",
+                          adjustments,
+                        }
+                      );
+
+                      alert("주문이 접수되었습니다.");
+                      setConfirmOrder(null);
+                      setItemAdjustments({});
+                      await fetchOrders();
+                    } catch (err: any) {
+                      alert(err?.message || "주문 접수에 실패했습니다.");
+                    } finally {
+                      setUpdating(false);
+                    }
+                  }}
+                  className="rounded-lg bg-emerald-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  판매가 확인 후 접수
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -834,14 +913,17 @@ export default function OrdersPage() {
               {/* Header Row */}
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs sm:text-sm text-slate-900">
-                  {new Date(rejectOrder.orderDate).toLocaleString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                  }).replace(/\. /g, '-').replace('.', '')}
+                  {new Date(rejectOrder.orderDate)
+                    .toLocaleString("ko-KR", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })
+                    .replace(/\. /g, "-")
+                    .replace(".", "")}
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-sm sm:text-base font-semibold text-slate-900">
@@ -854,8 +936,18 @@ export default function OrdersPage() {
                     }}
                     className="text-slate-400 hover:text-slate-600"
                   >
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -874,14 +966,21 @@ export default function OrdersPage() {
 
             <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
               {rejectOrder.items.map((item) => (
-                <div key={item.id} className="space-y-2 border-b border-slate-100 pb-4 last:border-b-0">
+                <div
+                  key={item.id}
+                  className="space-y-2 border-b border-slate-100 pb-4 last:border-b-0"
+                >
                   {/* Product Info Row */}
                   <div className="flex items-center gap-3 text-sm">
-                    <div className="font-medium text-slate-900">{item.productName}</div>
+                    <div className="font-medium text-slate-900">
+                      {item.productName}
+                    </div>
                     <div className="text-slate-500">{item.brand || "-"}</div>
                     <div className="ml-auto flex items-center gap-4">
                       <div className="text-slate-600">{item.quantity}개</div>
-                      <div className="text-slate-600">{formatNumber(item.unitPrice)}</div>
+                      <div className="text-slate-600">
+                        {formatNumber(item.unitPrice)}
+                      </div>
                       <div className="font-semibold text-slate-900">
                         {formatNumber(item.totalPrice)}
                       </div>
@@ -926,7 +1025,9 @@ export default function OrdersPage() {
                   disabled={updating}
                   onClick={async () => {
                     // Validate: at least one rejection reason should be provided
-                    const hasReasons = Object.values(rejectionReasons).some((reason) => reason.trim() !== "");
+                    const hasReasons = Object.values(rejectionReasons).some(
+                      (reason) => reason.trim() !== ""
+                    );
                     if (!hasReasons) {
                       alert("최소 하나의 거절 사유를 입력해주세요.");
                       return;
@@ -935,10 +1036,13 @@ export default function OrdersPage() {
                     setUpdating(true);
                     try {
                       // Call API to update status to rejected with reasons
-                      await apiPut(`/supplier/orders/${rejectOrder.id}/status`, {
-                        status: "rejected",
-                        rejectionReasons: rejectionReasons,
-                      });
+                      await apiPut(
+                        `/supplier/orders/${rejectOrder.id}/status`,
+                        {
+                          status: "rejected",
+                          rejectionReasons: rejectionReasons,
+                        }
+                      );
 
                       alert("주문이 거절되었습니다.");
                       setRejectOrder(null);
@@ -962,4 +1066,3 @@ export default function OrdersPage() {
     </div>
   );
 }
-
