@@ -55,6 +55,11 @@ export default function InboundNewPage() {
   const [isReturnable, setIsReturnable] = useState<boolean>(false);
   const [selectedManager, setSelectedManager] = useState<string>(""); // Current logged-in member name
   const [loading, setLoading] = useState(false);
+  const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] =
+    useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(
+    null
+  );
   const [supplierManagers, setSupplierManagers] = useState<
     Array<{
       id: string;
@@ -314,6 +319,78 @@ export default function InboundNewPage() {
 
       return newData;
     });
+  };
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = () => {
+    // Check if any important fields are filled
+    return !!(
+      formData.name ||
+      formData.barcode ||
+      formData.brand ||
+      formData.image ||
+      formData.imageUrl ||
+      formData.additionalImage ||
+      formData.batchNo ||
+      formData.manufactureDate ||
+      formData.expiryDate ||
+      formData.purchasePrice ||
+      formData.salePrice ||
+      formData.currentStock ||
+      formData.supplierName ||
+      formData.supplierContactName ||
+      selectedSupplierDetails
+    );
+  };
+
+  // Handle browser beforeunload event
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [formData, selectedSupplierDetails]);
+
+  // Handle Next.js router navigation
+  useEffect(() => {
+    // Intercept router.push calls
+    const originalPush = router.push;
+    router.push = ((url: string, options?: any) => {
+      if (hasUnsavedChanges() && url !== "/inbound/new") {
+        setPendingNavigation(url);
+        setShowUnsavedChangesDialog(true);
+        return Promise.resolve(false);
+      }
+      return originalPush.call(router, url, options);
+    }) as typeof router.push;
+
+    return () => {
+      router.push = originalPush;
+    };
+  }, [router, formData, selectedSupplierDetails]);
+
+  // Handle dialog actions
+  const handleLeavePage = () => {
+    setShowUnsavedChangesDialog(false);
+    if (pendingNavigation) {
+      router.push(pendingNavigation);
+      setPendingNavigation(null);
+    } else {
+      router.back();
+    }
+  };
+
+  const handleContinueEditing = () => {
+    setShowUnsavedChangesDialog(false);
+    setPendingNavigation(null);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -926,6 +1003,15 @@ export default function InboundNewPage() {
     }
   };
 
+  const formatNumber = (v: string | number | null | undefined) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).replace(/[^\d]/g, "");
+    if (!s) return "";
+    return Number(s).toLocaleString("en-US"); // 1,234,567
+  };
+
+  const parseNumber = (v: string) => v.replace(/[^\d]/g, ""); // faqat raqam
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -1076,7 +1162,9 @@ export default function InboundNewPage() {
       const result = await apiPost("/products", payload);
       console.log("Product created:", result);
 
-      // Redirect to inbound list page
+      // Clear unsaved changes flag and redirect to inbound list page
+      setShowUnsavedChangesDialog(false);
+      setPendingNavigation(null);
       router.push("/inbound");
     } catch (error) {
       console.error("Error creating product:", error);
@@ -1097,12 +1185,20 @@ export default function InboundNewPage() {
               신규 입고 등록
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                href="/inbound"
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (hasUnsavedChanges()) {
+                    setPendingNavigation("/inbound");
+                    setShowUnsavedChangesDialog(true);
+                  } else {
+                    router.push("/inbound");
+                  }
+                }}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
               >
                 <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
+              </button>
               <h1 className="t ext-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">
                 제품 정보 입력
               </h1>
@@ -1612,13 +1708,14 @@ export default function InboundNewPage() {
                 </label>
                 <div className="flex gap-2">
                   <input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    value={formData.purchasePrice}
-                    onChange={(e) =>
-                      handleInputChange("purchasePrice", e.target.value)
-                    }
+                    value={formatNumber(formData.purchasePrice)}
+                    onChange={(e) => {
+                      const raw = parseNumber(e.target.value);
+                      handleInputChange("purchasePrice", raw); // DBga "12345" saqlanadi
+                    }}
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
                   <div className="relative w-28">
@@ -1663,13 +1760,14 @@ export default function InboundNewPage() {
                 <div className="flex items-start gap-3">
                   <div className="flex-1 flex gap-2">
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
                       placeholder="0"
-                      value={formData.salePrice}
-                      onChange={(e) =>
-                        handleInputChange("salePrice", e.target.value)
-                      }
+                      value={formatNumber(formData.salePrice)}
+                      onChange={(e) => {
+                        const raw = parseNumber(e.target.value);
+                        handleInputChange("salePrice", raw); // "12345"
+                      }}
                       className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     />
                     {/* <div className="relative w-28">
@@ -1927,7 +2025,7 @@ export default function InboundNewPage() {
                     </label>
                   </div>
                   <div className="relative">
-                    <CalendarIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <CalendarIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
                     <input
                       type="date"
                       value={formData.expiryDate}
@@ -1935,7 +2033,13 @@ export default function InboundNewPage() {
                         handleInputChange("expiryDate", e.target.value)
                       }
                       disabled={formData.noExpiryPeriod}
-                      className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                      min={`${new Date().getFullYear() - 10}-01-01`}
+                      max={`${new Date().getFullYear() + 20}-12-31`}
+                      className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:w-6 [&::-webkit-calendar-picker-indicator]:h-6 [&::-webkit-calendar-picker-indicator]:ml-2 [&::-webkit-calendar-picker-indicator]:hover:opacity-80"
+                      style={{
+                        colorScheme: "light dark",
+                      }}
+                      title="날짜를 선택하세요. 연도와 월을 변경할 수 있습니다."
                     />
                   </div>
                 </div>
@@ -2908,6 +3012,34 @@ export default function InboundNewPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Unsaved Changes Dialog */}
+      {showUnsavedChangesDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="relative w-full max-w-md rounded-2xl border border-black bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-black">
+              작성 중인 내용
+            </h2>
+            <div className="mb-6 space-y-2 text-base text-black">
+              <p>정보가 아직 저장되지 않았습니다.</p>
+              <p>지금 나가면 입력한 내용이 모두 사라집니다.</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handleLeavePage}
+                className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-base font-medium text-black transition hover:bg-slate-50"
+              >
+                나가기
+              </button>
+              <button
+                onClick={handleContinueEditing}
+                className="rounded-lg bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-base font-medium text-white transition hover:from-blue-600 hover:to-teal-600"
+              >
+                계속 작성하기
+              </button>
             </div>
           </div>
         </div>
