@@ -1998,7 +1998,7 @@ export default function InboundNewPage() {
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        이메일 1
+                        이메일
                       </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.email1 || "-"}
@@ -2352,7 +2352,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사명
+                        회사명 *
                       </label>
                       <input
                         type="text"
@@ -2370,7 +2370,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 주소
+                        회사 주소 *
                       </label>
                       <input
                         type="text"
@@ -2388,7 +2388,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사업자 등록번호
+                        사업자 등록번호 *
                       </label>
                       <input
                         type="text"
@@ -2406,7 +2406,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 전화번호
+                        회사 전화번호 *
                       </label>
                       <input
                         type="tel"
@@ -2424,7 +2424,7 @@ export default function InboundNewPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일 1
+                        이메일 *
                       </label>
                       <input
                         type="email"
@@ -2440,7 +2440,7 @@ export default function InboundNewPage() {
                       />
                     </div>
 
-                    <div>
+                    {/* <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                         이메일 2
                       </label>
@@ -2456,11 +2456,11 @@ export default function InboundNewPage() {
                         placeholder="이메일을 입력해주세요"
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                       />
-                    </div>
+                    </div> */}
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        담당 제품
+                        담당 제품 *
                       </label>
                       <input
                         type="text"
