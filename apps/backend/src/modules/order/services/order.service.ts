@@ -843,6 +843,7 @@ export class OrderService {
               : null,
             created_by: createdBy ?? null,
             memo: supplierMemo,
+            clinic_manager_name: dto.clinicManagerName || null,
           },
         });
 
@@ -1671,10 +1672,12 @@ export class OrderService {
       });
 
       // Get member info (created_by) - also used for clinic name fallback
-      let clinicManagerName = createdBy || "담당자";
+      let clinicManagerName =
+        order.clinic_manager_name || createdBy || "담당자";
       let clinicNameFallback = null;
 
-      if (createdBy) {
+      // Only lookup member if clinic_manager_name is not set
+      if (!order.clinic_manager_name && createdBy) {
         const member = await this.prisma.member.findFirst({
           where: {
             id: createdBy,

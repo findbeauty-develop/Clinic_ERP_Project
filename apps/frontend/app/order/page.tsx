@@ -999,7 +999,7 @@ export default function OrderPage() {
 
                   {/* Search natijalari - faqat search query bo'lsa ko'rsatish */}
                   {debouncedSearchQuery.trim() && (
-                    <div className="order-page-scrollbar mt-4 max-h-96 overflow-y-auto">
+                    <div className="order-page-scrollbar mt-4 max-h-full overflow-y-auto">
                       {isSearching ? (
                         <div className="text-center text-slate-500 dark:text-slate-400 py-4">
                           검색 중...
@@ -1195,12 +1195,16 @@ export default function OrderPage() {
 
                   {/* 주문 담당자 (현재 로그인한 사용자) */}
                   <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                       주문 담당자
                     </label>
-                    <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                      {orderManagerName || "알 수 없음"}
-                    </span>
+                    <input
+                      type="text"
+                      value={orderManagerName}
+                      onChange={(e) => setOrderManagerName(e.target.value)}
+                      placeholder="주문 담당자 이름을 입력하세요"
+                      className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
+                    />
                   </div>
                 </div>
               </div>
@@ -2282,6 +2286,7 @@ export default function OrderPage() {
                             body: JSON.stringify({
                               supplierMemos: orderMemos, // Supplier ID bo'yicha memo'lar
                               items: draft?.items || [], // Local draft items
+                              clinicManagerName: orderManagerName || null, // 클리닉 담당자 이름
                             }),
                           });
 

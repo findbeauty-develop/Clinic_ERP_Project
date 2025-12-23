@@ -327,6 +327,7 @@ model Order {
   created_by             String?
   approved_by            String?
   memo                   String?
+  clinic_manager_name    String? // 클리닉 담당자 이름
 
   // Supplier confirmation data
   supplier_adjustments Json? // Supplier'ning adjustment ma'lumotlari (qty, price, reasons)

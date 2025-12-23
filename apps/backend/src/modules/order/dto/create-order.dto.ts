@@ -45,5 +45,9 @@ export class CreateOrderDto {
   // Supplier bo'yicha memo'lar (supplierId -> memo mapping)
   @IsOptional()
   supplierMemos?: Record<string, string>; // { [supplierId]: memo }
+
+  @IsString()
+  @IsOptional()
+  clinicManagerName?: string; // 클리닉 담당자 이름
 }
 
