@@ -1399,11 +1399,14 @@ export class OrderService {
         include: {
           linkedManager: {
             select: {
+              id: true,
               name: true,
               position: true,
+              phone_number: true,
               supplier: {
                 select: {
                   id: true,
+                  tenant_id: true,
                   company_name: true,
                 },
               },
@@ -1619,9 +1622,26 @@ export class OrderService {
         }
       }
 
-      // Variant 4: Fallback - first created SupplierManager (legacy behavior)
+      // Variant 4: Use linkedManager directly from clinicSupplierManager if available
+      if (!supplierManager && clinicSupplierManager.linkedManager) {
+        supplierManager = clinicSupplierManager.linkedManager;
+        this.logger.log(
+          `✅ Using linkedManager directly from ClinicSupplierManager: ${supplierManager.id}, name: ${supplierManager.name}`
+        );
+      }
+
+      // Variant 5: Fallback - first created SupplierManager (legacy behavior)
       if (!supplierManager && supplier) {
-        const fallbackManager = supplier.managers?.[0];
+        // Try to get SupplierManager by supplier_tenant_id
+        const fallbackManager = await this.prisma.supplierManager.findFirst({
+          where: {
+            supplier_tenant_id: supplier.tenant_id,
+            status: "ACTIVE",
+          },
+          orderBy: {
+            created_at: "asc",
+          },
+        });
         if (fallbackManager) {
           supplierManager = fallbackManager;
           this.logger.log(
@@ -1630,7 +1650,7 @@ export class OrderService {
         }
       }
 
-      // Variant 5: Use manual contact info from ClinicSupplierManager
+      // Variant 6: Use manual contact info from ClinicSupplierManager
       if (!supplierManager && !supplierPhoneNumber) {
         supplierPhoneNumber = clinicSupplierManager.phone_number;
         if (supplierPhoneNumber) {
@@ -2509,26 +2529,40 @@ export class OrderService {
     // Notify supplier-backend that order is completed
     if (order.supplier_id) {
       try {
-        // Get supplier's tenant_id from Supplier table
-        const supplier = await this.prisma.executeWithRetry(async () => {
-          return await (this.prisma as any).supplier.findUnique({
-            where: { id: order.supplier_id },
-            select: { tenant_id: true },
-          });
-        });
+        // Get supplier's tenant_id from ClinicSupplierManager -> linkedManager -> supplier
+        const clinicSupplierManager = await this.prisma.executeWithRetry(
+          async () => {
+            return await (this.prisma as any).clinicSupplierManager.findUnique({
+              where: { id: order.supplier_id },
+              include: {
+                linkedManager: {
+                  select: {
+                    supplier: {
+                      select: {
+                        tenant_id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          }
+        );
 
-        if (supplier && supplier.tenant_id) {
+        if (clinicSupplierManager?.linkedManager?.supplier?.tenant_id) {
+          const supplierTenantId =
+            clinicSupplierManager.linkedManager.supplier.tenant_id;
           this.logger.log(
-            `Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplier.tenant_id}, clinicTenantId=${tenantId}`
+            `Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplierTenantId}, clinicTenantId=${tenantId}`
           );
           await this.notifySupplierOrderCompleted(
             order.order_no,
-            supplier.tenant_id,
+            supplierTenantId,
             tenantId
           );
         } else {
           this.logger.warn(
-            `Supplier ${order.supplier_id} not found or missing tenant_id, skipping notification`
+            `ClinicSupplierManager ${order.supplier_id} is not linked to platform supplier, skipping notification`
           );
         }
       } catch (error: any) {

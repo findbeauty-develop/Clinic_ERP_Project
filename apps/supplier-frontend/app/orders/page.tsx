@@ -110,6 +110,19 @@ export default function OrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
+  // Auto-refresh for "주문 내역" tab to show updated badges
+  useEffect(() => {
+    if (activeTab !== "all") return;
+
+    const intervalId = setInterval(() => {
+      fetchOrders();
+    }, 10000); // Refresh every 10 seconds
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeTab, fetchOrders]);
+
   const toggleSelectItem = (itemId: string) => {
     setSelectedItems((prev) => {
       const next = new Set(prev);
