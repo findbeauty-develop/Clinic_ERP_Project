@@ -877,7 +877,13 @@ export class OrderService {
       );
 
       // Send order to supplier-backend (SupplierOrder table)
-      await this.sendOrderToSupplier(order, group, tenantId, createdBy);
+      await this.sendOrderToSupplier(
+        order,
+        group,
+        tenantId,
+        createdBy,
+        dto.clinicManagerName
+      );
     }
 
     // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
@@ -1381,7 +1387,8 @@ export class OrderService {
     order: any,
     group: any,
     tenantId: string,
-    createdBy?: string
+    createdBy?: string,
+    clinicManagerName?: string
   ): Promise<void> {
     try {
       if (!order.supplier_id) {
@@ -1672,12 +1679,13 @@ export class OrderService {
       });
 
       // Get member info (created_by) - also used for clinic name fallback
-      let clinicManagerName =
-        order.clinic_manager_name || createdBy || "담당자";
+      // Priority: 1. clinicManagerName parameter, 2. order.clinic_manager_name, 3. lookup from member
+      let finalClinicManagerName =
+        clinicManagerName || order.clinic_manager_name || createdBy || "담당자";
       let clinicNameFallback = null;
 
       // Only lookup member if clinic_manager_name is not set
-      if (!order.clinic_manager_name && createdBy) {
+      if (!clinicManagerName && !order.clinic_manager_name && createdBy) {
         const member = await this.prisma.member.findFirst({
           where: {
             id: createdBy,
@@ -1685,9 +1693,14 @@ export class OrderService {
           },
         });
         if (member) {
-          clinicManagerName = member.full_name || member.member_id;
+          finalClinicManagerName = member.full_name || member.member_id;
           clinicNameFallback = member.clinic_name; // Fallback clinic name from member
         }
+      } else {
+        finalClinicManagerName =
+          clinicManagerName ||
+          order.clinic_manager_name ||
+          finalClinicManagerName;
       }
 
       // Use clinic.name or fallback to member.clinic_name
@@ -1756,7 +1769,7 @@ export class OrderService {
 
 주문 내용을 확인하고 관리해 주세요.
 
-* 문의: ${clinicManagerName || "담당자"} / ${
+* 문의: ${finalClinicManagerName || "담당자"} / ${
               clinicSupplierManager.company_phone || "연락처 없음"
             }`;
 
@@ -1794,14 +1807,14 @@ export class OrderService {
         supplierManagerId: supplierManager?.id || null, // From linkedManager or contact_phone match
         clinicTenantId: tenantId,
         clinicName: finalClinicName,
-        clinicManagerName: clinicManagerName,
+        clinicManagerName: finalClinicManagerName,
         totalAmount: order.total_amount,
         memo: order.memo,
         items: itemsWithDetails,
       };
 
       this.logger.log(
-        `Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${clinicManagerName}`
+        `Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${finalClinicManagerName}`
       );
       this.logger.log(`📦 Order items count: ${itemsWithDetails.length}`);
       itemsWithDetails.forEach((item, idx) => {
@@ -2297,9 +2310,13 @@ export class OrderService {
         };
       });
 
-      // Get creator member info
+      // Get creator member info - Use clinic_manager_name first
       let createdByName = "알 수 없음";
-      if (order.created_by) {
+
+      // Use clinic_manager_name from order if available, otherwise lookup from member
+      if (order.clinic_manager_name) {
+        createdByName = order.clinic_manager_name;
+      } else if (order.created_by) {
         const member = await (this.prisma as any).member.findFirst({
           where: { id: order.created_by },
           select: { full_name: true, member_id: true },
