@@ -16,6 +16,14 @@ export default function DashboardPage() {
   const [holidays, setHolidays] = useState<any[]>([]);
   const [loadingHolidays, setLoadingHolidays] = useState(false);
 
+  // Weather state
+  const [weatherData, setWeatherData] = useState<any>(null);
+  const [forecastData, setForecastData] = useState<any[]>([]);
+  const [hourlyData, setHourlyData] = useState<any[]>([]);
+  const [airQualityData, setAirQualityData] = useState<any>(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [selectedCity, setSelectedCity] = useState("seoul");
+
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -170,19 +178,129 @@ export default function DashboardPage() {
     },
   ];
 
-  const weatherData = {
-    current: 6.2,
-    condition: "구름많음",
-    min: -3,
-    max: 7,
-    airQuality: { fine: "좋음", ultrafine: "좋음" },
-    hourly: [
-      { time: "18시", temp: 3, icon: "cloud" },
-      { time: "20", temp: 3, icon: "cloud" },
-      { time: "22", temp: 3, icon: "cloud" },
-      { time: "0", temp: 3, icon: "cloud" },
-      { time: "2", temp: 3, icon: "cloud" },
-    ],
+  // Fetch weather data
+  useEffect(() => {
+    const fetchWeatherData = async () => {
+      setLoadingWeather(true);
+      try {
+        // Fetch current weather
+        const currentWeather = await apiGet(`/weather/current/${selectedCity}`);
+        setWeatherData(currentWeather);
+
+        // Fetch forecast (7 days)
+        try {
+          const forecast = await apiGet(
+            `/weather/forecast/${selectedCity}?days=7`
+          );
+          console.log("Forecast API response:", forecast);
+
+          if (
+            forecast &&
+            forecast.forecast &&
+            Array.isArray(forecast.forecast)
+          ) {
+            console.log(
+              `Setting forecast data: ${forecast.forecast.length} days`,
+              forecast.forecast
+            );
+            setForecastData(forecast.forecast);
+          } else if (forecast && Array.isArray(forecast)) {
+            // Handle case where API returns array directly
+            console.log(
+              "Forecast is array, setting directly:",
+              forecast.length,
+              "days"
+            );
+            setForecastData(forecast);
+          } else {
+            console.warn("No forecast data in response:", forecast);
+            setForecastData([]);
+          }
+        } catch (error) {
+          console.error("Error fetching forecast:", error);
+          setForecastData([]);
+        }
+
+        // Fetch hourly forecast
+        const hourly = await apiGet(`/weather/hourly/${selectedCity}`);
+        if (hourly && hourly.hourly) {
+          setHourlyData(hourly.hourly.slice(0, 6)); // First 6 hours
+        }
+
+        // Fetch air quality
+        try {
+          const airQuality = await apiGet(
+            `/weather/air-quality/${selectedCity}`
+          );
+          if (airQuality && airQuality.airQuality) {
+            setAirQualityData(airQuality.airQuality);
+          }
+        } catch (error) {
+          console.error("Air quality fetch failed:", error);
+          setAirQualityData({ fine: "좋음", ultrafine: "좋음" });
+        }
+      } catch (error) {
+        console.error("Failed to fetch weather:", error);
+        // Fallback to mock data
+        setWeatherData({
+          temperature: 6.2,
+          condition: "맑음",
+          conditionEn: "Clear",
+        });
+        setForecastData([]);
+        setHourlyData([]);
+        setAirQualityData({ fine: "좋음", ultrafine: "좋음" });
+      } finally {
+        setLoadingWeather(false);
+      }
+    };
+
+    fetchWeatherData();
+    // Refresh every 30 minutes
+    const interval = setInterval(fetchWeatherData, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [selectedCity, apiUrl]);
+
+  // Debug: Log forecastData changes
+  useEffect(() => {
+    console.log(
+      "forecastData state changed:",
+      forecastData,
+      "Length:",
+      forecastData?.length
+    );
+  }, [forecastData]);
+
+  // Get weather icon based on condition
+  const getWeatherIcon = (condition: string) => {
+    const cond = condition?.toLowerCase() || "";
+    if (cond.includes("맑음") || cond.includes("clear")) {
+      return "☀️";
+    } else if (cond.includes("구름") || cond.includes("cloud")) {
+      return "☁️";
+    } else if (cond.includes("비") || cond.includes("rain")) {
+      return "🌧️";
+    } else if (cond.includes("눈") || cond.includes("snow")) {
+      return "❄️";
+    } else if (cond.includes("흐림") || cond.includes("overcast")) {
+      return "🌫️";
+    }
+    return "☀️";
+  };
+
+  // Get weather gradient based on condition
+  const getWeatherGradient = (condition: string) => {
+    const cond = condition?.toLowerCase() || "";
+    if (cond.includes("맑음") || cond.includes("clear")) {
+      return "from-yellow-400 to-orange-300";
+    } else if (cond.includes("구름") || cond.includes("cloud")) {
+      return "from-blue-300 to-gray-400";
+    } else if (cond.includes("비") || cond.includes("rain")) {
+      return "from-blue-500 to-indigo-600";
+    } else if (cond.includes("눈") || cond.includes("snow")) {
+      return "from-gray-200 to-blue-200";
+    }
+    return "from-blue-400 to-cyan-300";
   };
 
   // const scheduleEvents = [
@@ -889,52 +1007,393 @@ export default function DashboardPage() {
 
         {/* Right Column (30%) */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Weather Widget */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-4xl font-bold text-gray-900 dark:text-white">
-                  {weatherData.current}°
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {weatherData.condition}
-                </div>
-              </div>
-              <div className="text-4xl">☁️</div>
+          {/* Weather Widget - Enhanced Design */}
+          <div
+            className={`relative overflow-hidden rounded-3xl shadow-2xl bg-gradient-to-br ${getWeatherGradient(
+              weatherData?.condition || "맑음"
+            )} p-8 text-white transition-all duration-500 hover:shadow-3xl hover:scale-[1.02] group`}
+          >
+            {/* Animated Background Pattern */}
+            <div className="absolute inset-0 opacity-10 overflow-hidden">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full -mr-48 -mt-48 animate-pulse"></div>
+              <div className="absolute bottom-0 left-0 w-72 h-72 bg-white rounded-full -ml-36 -mb-36 animate-pulse delay-300"></div>
+              <div className="absolute top-1/2 right-1/4 w-48 h-48 bg-white rounded-full opacity-50 animate-pulse delay-700"></div>
+              <div className="absolute top-1/3 left-1/3 w-32 h-32 bg-white rounded-full opacity-30 animate-pulse delay-1000"></div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
-              <span>최저 {weatherData.min}°</span>
-              <span>/</span>
-              <span>최고 {weatherData.max}°</span>
-            </div>
-            <div className="space-y-2 mb-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">미세</span>
-                <span className="text-green-600 dark:text-green-400 font-medium">
-                  {weatherData.airQuality.fine}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">초미세</span>
-                <span className="text-green-600 dark:text-green-400 font-medium">
-                  {weatherData.airQuality.ultrafine}
-                </span>
-              </div>
-            </div>
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide pt-2 border-t border-gray-200 dark:border-gray-700">
-              {weatherData.hourly.map((hour, index) => (
-                <div key={index} className="flex-shrink-0 text-center">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    {hour.time}
-                  </div>
-                  <div className="text-lg mb-1">☁️</div>
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">
-                    {hour.temp}°
-                  </div>
-                </div>
+
+            {/* Floating Particles Effect */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-2 h-2 bg-white rounded-full opacity-20 animate-float"
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    animationDelay: `${i * 0.5}s`,
+                    animationDuration: `${3 + Math.random() * 2}s`,
+                  }}
+                ></div>
               ))}
             </div>
+
+            <div className="relative z-10">
+              {/* Header with Enhanced Design */}
+              <div className="flex items-start justify-between mb-8">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="p-2 bg-white/20 backdrop-blur-sm rounded-xl">
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold opacity-90">
+                        {weatherData?.city || weatherData?.nameKo || "서울"}
+                      </h3>
+                      <p className="text-xs opacity-70">
+                        {new Date().toLocaleDateString("ko-KR", {
+                          month: "long",
+                          day: "numeric",
+                          weekday: "long",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <div className="text-7xl font-extrabold tracking-tight drop-shadow-lg">
+                      {loadingWeather ? (
+                        <span className="animate-pulse">--</span>
+                      ) : (
+                        `${Math.round(weatherData?.temperature || 0)}`
+                      )}
+                    </div>
+                    <div className="text-3xl font-bold opacity-80">°</div>
+                  </div>
+                  <div className="text-xl font-semibold opacity-95 mb-4">
+                    {loadingWeather ? (
+                      <span className="animate-pulse">로딩중...</span>
+                    ) : (
+                      weatherData?.condition || "맑음"
+                    )}
+                  </div>
+                  
+                  {/* Additional Weather Details */}
+                  {weatherData && !loadingWeather && (
+                    <div className="flex items-center gap-4 text-sm opacity-80">
+                      {weatherData.humidity && (
+                        <div className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                          </svg>
+                          <span>습도 {weatherData.humidity}%</span>
+                        </div>
+                      )}
+                      {weatherData.windSpeed && (
+                        <div className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          <span>풍속 {weatherData.windSpeed}m/s</span>
+                        </div>
+                      )}
+                      {weatherData.precipitation !== undefined && (
+                        <div className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                          </svg>
+                          <span>강수 {weatherData.precipitation}mm</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-9xl drop-shadow-2xl transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12">
+                  {getWeatherIcon(weatherData?.condition || "맑음")}
+                </div>
+              </div>
+
+              {/* Temperature Range - Enhanced */}
+              {forecastData.length > 0 && (
+                <div className="flex items-center justify-between mb-6 bg-white/25 backdrop-blur-md rounded-2xl p-4 border border-white/30 shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <svg
+                        className="w-5 h-5 opacity-90"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 12h14M5 12l4-4m-4 4l4 4"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">최저</div>
+                      <div className="text-2xl font-bold">
+                        {Math.round(forecastData[0]?.minTemp || 0)}°
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-12 w-px bg-white/30"></div>
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <div className="text-xs opacity-70 mb-1">최고</div>
+                      <div className="text-2xl font-bold">
+                        {Math.round(forecastData[0]?.maxTemp || 0)}°
+                      </div>
+                    </div>
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <svg
+                        className="w-5 h-5 opacity-90"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 12h14m-4-4l4 4m-4 4l4-4"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Air Quality - Enhanced */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-white/25 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-lg hover:bg-white/30 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-xs opacity-90 mb-3 font-semibold">
+                    <div className="p-1.5 bg-white/20 rounded-lg group-hover:bg-white/30 transition-colors">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                        />
+                      </svg>
+                    </div>
+                    미세먼지
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {airQualityData?.fine || "좋음"}
+                  </div>
+                </div>
+                <div className="bg-white/25 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-lg hover:bg-white/30 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-xs opacity-90 mb-3 font-semibold">
+                    <div className="p-1.5 bg-white/20 rounded-lg group-hover:bg-white/30 transition-colors">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+                        />
+                      </svg>
+                    </div>
+                    초미세먼지
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {airQualityData?.ultrafine || "좋음"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Hourly Forecast - Enhanced */}
+              {hourlyData.length > 0 && (
+                <div className="pt-6 border-t border-white/30">
+                  <div className="flex items-center gap-2 mb-4">
+                    <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-sm opacity-90 font-semibold">시간별 예보</div>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-3 -mx-1 px-1">
+                    {hourlyData.map((hour: any, index: number) => {
+                      const time = hour.time || hour.fcstTime || "";
+                      let formattedTime = "";
+                      if (time.length === 4) {
+                        const hour24 = parseInt(time.substring(0, 2));
+                        formattedTime = `${hour24}시`;
+                      } else {
+                        formattedTime = time;
+                      }
+                      return (
+                        <div
+                          key={index}
+                          className="flex-shrink-0 text-center bg-white/20 backdrop-blur-md rounded-2xl p-4 min-w-[85px] border border-white/30 hover:bg-white/30 hover:scale-105 transition-all duration-300 shadow-lg group"
+                        >
+                          <div className="text-xs opacity-90 mb-3 font-semibold">
+                            {formattedTime}
+                          </div>
+                          <div className="text-4xl mb-3 transform group-hover:scale-110 transition-transform duration-300">
+                            {getWeatherIcon(
+                              hour.condition?.ko ||
+                                hour.data?.condition?.ko ||
+                                "맑음"
+                            )}
+                          </div>
+                          <div className="text-lg font-bold">
+                            {Math.round(
+                              hour.temperature || hour.data?.temperature || 0
+                            )}
+                            °
+                          </div>
+                          {hour.rainfall !== undefined && hour.rainfall > 0 && (
+                            <div className="text-xs opacity-70 mt-1">
+                              💧 {hour.rainfall}mm
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 7-Day Forecast - Enhanced */}
+              {forecastData && forecastData.length > 0 ? (
+                <div className="mt-6 pt-6 border-t border-white/30">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm opacity-90 font-semibold">7일 예보</span>
+                    </div>
+                    <span className="text-xs opacity-60">
+                      ({forecastData.length}일)
+                    </span>
+                  </div>
+                  <div className="space-y-3 max-h-[420px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/30 scrollbar-track-transparent pr-2">
+                    {forecastData.slice(0, 7).map((day: any, index: number) => {
+                      const tempRange = Math.max(day.maxTemp - day.minTemp, 1);
+                      const tempPercentage = Math.min((tempRange / 25) * 100, 100);
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between bg-white/20 backdrop-blur-md rounded-2xl p-4 border border-white/30 hover:bg-white/30 hover:scale-[1.02] transition-all duration-300 shadow-lg group"
+                        >
+                          <div className="flex items-center gap-4 flex-1">
+                            <span className="text-sm font-bold w-12 text-center">
+                              {day.dayOfWeek}
+                            </span>
+                            <span className="text-3xl transform group-hover:scale-110 transition-transform duration-300">
+                              {getWeatherIcon(day.condition || "맑음")}
+                            </span>
+                            <span className="text-sm opacity-90 font-medium flex-1">
+                              {day.condition || "맑음"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm opacity-75 font-medium min-w-[35px] text-right">
+                              {Math.round(day.minTemp || 0)}°
+                            </span>
+                            <div className="relative w-24 h-2 bg-white/30 rounded-full overflow-hidden">
+                              <div
+                                className="absolute inset-0 bg-gradient-to-r from-blue-300 to-yellow-300 rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${tempPercentage}%`,
+                                  left: `${((day.minTemp + 10) / 40) * 100}%`,
+                                }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-bold min-w-[35px]">
+                              {Math.round(day.maxTemp || 0)}°
+                            </span>
+                            {day.precipitationProbability !== undefined && day.precipitationProbability > 0 && (
+                              <div className="text-xs opacity-70 min-w-[40px] text-right">
+                                💧 {day.precipitationProbability}%
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-6 pt-6 border-t border-white/30">
+                  <div className="text-sm opacity-70 text-center py-8">
+                    {loadingWeather ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                        <span>예보를 불러오는 중...</span>
+                      </div>
+                    ) : (
+                      <span>예보 데이터가 없습니다</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Loading State */}
+              {loadingWeather && !weatherData && (
+                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-3 border-white"></div>
+                  <span className="text-sm opacity-80">날씨 정보를 불러오는 중...</span>
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Add CSS for floating animation */}
+          <style jsx global>{`
+            @keyframes float {
+              0%, 100% {
+                transform: translateY(0px) translateX(0px);
+                opacity: 0.2;
+              }
+              25% {
+                transform: translateY(-20px) translateX(10px);
+                opacity: 0.4;
+              }
+              50% {
+                transform: translateY(-40px) translateX(-10px);
+                opacity: 0.3;
+              }
+              75% {
+                transform: translateY(-20px) translateX(5px);
+                opacity: 0.35;
+              }
+            }
+            .animate-float {
+              animation: float 4s ease-in-out infinite;
+            }
+          `}</style>
 
           {/* Calendar/Schedule */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">

@@ -1,19 +1,12 @@
-import { Module } from '@nestjs/common';
-import { NewsController } from './controller/news.controller';
-import { NewsService } from './services/news.service';
-import { NewsCacheService } from './services/news-cache.service';
-import { PrismaService } from '../../core/prisma.service';
-import { SupabaseService } from '../../common/supabase.service';
-import { JwtTenantGuard } from '../../common/guards/jwt-tenant.guard';
+import { Module } from "@nestjs/common";
+import { HttpModule } from "@nestjs/axios";
+import { NewsController } from "./controller/news.controller";
+import { NewsService } from "./services/news.service";
+import { NewsApiService } from "./services/newsapi.service";
 
 @Module({
+  imports: [HttpModule],
   controllers: [NewsController],
-  providers: [
-    NewsService,
-    NewsCacheService,
-    PrismaService,
-    SupabaseService, 
-    JwtTenantGuard, 
-  ],
+  providers: [NewsService, NewsApiService],
 })
 export class NewsModule {}
