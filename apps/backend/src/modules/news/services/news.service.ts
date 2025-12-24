@@ -1,97 +1,86 @@
-import { Injectable } from "@nestjs/common";
-import { NewsApiService } from "./newsapi.service";
-import { Article, NewsApiResponse } from "../interface/news.interface";
+import { Injectable, Logger } from "@nestjs/common";
+import { DataGoKrService } from "./data-go-kr.service";
+import { RssFeedService } from "./rss-feed.service";
 import { SearchNewsDto } from "../dto/search-news.dto";
+import { PressReleaseResponse } from "../interface/news.interface";
 
 @Injectable()
 export class NewsService {
-  constructor(private readonly newsApiService: NewsApiService) {}
+  private readonly logger = new Logger(NewsService.name);
 
-  private filterArticlesWithImages(articles: Article[]): Article[] {
-    return articles.filter(
-      (article) =>
-        article.urlToImage &&
-        article.urlToImage.trim() !== "" &&
-        article.urlToImage !== "null"
+  constructor(
+    private readonly dataGoKrService: DataGoKrService,
+    private readonly rssFeedService: RssFeedService
+  ) {}
+
+  async getPressReleases(
+    searchDto: SearchNewsDto
+  ): Promise<PressReleaseResponse> {
+    const { pageNo, numOfRows, searchKeyword } = searchDto;
+    return this.dataGoKrService.getPressReleases(
+      pageNo,
+      numOfRows,
+      searchKeyword
     );
   }
 
-  async getTopHeadlines(
-    category?: string,
-    pageSize?: number,
-    page?: number,
-    withImage?: boolean
-  ): Promise<NewsApiResponse> {
-    const result = await this.newsApiService.getTopHeadlines(
-      category,
-      pageSize,
-      page
-    );
+  async getLatestNews(numOfRows: number = 20): Promise<PressReleaseResponse> {
+    try {
+      // Fetch only from RSS feeds (government API removed)
+      const rssItems = await this.rssFeedService.fetchAllRssFeeds(numOfRows);
 
-    if (withImage) {
-      result.articles = this.filterArticlesWithImages(result.articles);
-      result.totalResults = result.articles.length;
+      // Sort by publish date (newest first)
+      rssItems.sort((a, b) => {
+        const dateA = new Date(a.publishDate || 0).getTime();
+        const dateB = new Date(b.publishDate || 0).getTime();
+        return dateB - dateA;
+      });
+
+      // Limit to requested number
+      const limitedItems = rssItems.slice(0, numOfRows);
+
+      this.logger.log(`Returning ${limitedItems.length} RSS news items`);
+
+      return {
+        resultCode: "00",
+        resultMsg: "NORMAL_CODE",
+        totalCount: limitedItems.length,
+        items: limitedItems,
+        pageNo: 1,
+        numOfRows: limitedItems.length,
+      };
+    } catch (error) {
+      this.logger.error("Error in getLatestNews:", error);
+      // Return empty response instead of falling back to government API
+      return {
+        resultCode: "01",
+        resultMsg: "Failed to fetch RSS feeds",
+        totalCount: 0,
+        items: [],
+        pageNo: 1,
+        numOfRows: 0,
+      };
     }
-
-    return result;
   }
 
-  async searchNews(searchDto: SearchNewsDto): Promise<NewsApiResponse> {
-    const { q, pageSize, page, sortBy, withImage } = searchDto;
-
-    if (!q) {
-      throw new Error("Search query is required");
-    }
-    const result = await this.newsApiService.searchNews(
-      q,
-      pageSize,
-      page,
-      sortBy
-    );
-
-    if (withImage) {
-      result.articles = this.filterArticlesWithImages(result.articles);
-      result.totalResults = result.articles.length;
-    }
-
-    return result;
+  async searchNews(
+    keyword: string,
+    numOfRows: number = 9
+  ): Promise<PressReleaseResponse> {
+    return this.dataGoKrService.getPressReleases(1, numOfRows, keyword);
   }
 
-  async getNewsByCategory(
-    category: string,
-    pageSize?: number,
-    page?: number,
-    withImage?: boolean
-  ): Promise<NewsApiResponse> {
-    const result = await this.newsApiService.getTopHeadlines(
-      category,
-      pageSize,
-      page
-    );
-
-    if (withImage) {
-      result.articles = this.filterArticlesWithImages(result.articles);
-      result.totalResults = result.articles.length;
-    }
-
-    return result;
+  /**
+   * Get news only from RSS feeds
+   */
+  async getRssNews(numOfRows: number = 20): Promise<any[]> {
+    return this.rssFeedService.fetchAllRssFeeds(numOfRows);
   }
 
-  async getNewsSources() {
-    return this.newsApiService.getNewsSources();
-  }
-
-  async getNewsWithImages(
-    category?: string,
-    pageSize: number = 20
-  ): Promise<NewsApiResponse> {
-    const result = await this.newsApiService.getTopHeadlines(
-      category,
-      pageSize,
-      1
-    );
-    result.articles = this.filterArticlesWithImages(result.articles);
-    result.totalResults = result.articles.length;
-    return result;
+  /**
+   * Get list of RSS sources
+   */
+  getRssSources() {
+    return this.rssFeedService.getRssSources();
   }
 }

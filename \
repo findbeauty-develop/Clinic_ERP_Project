@@ -1,0 +1,22 @@
+feat: develop news api
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Date:      Wed Dec 24 14:30:46 2025 +0900
+# Committer: 개발용 <Development@findbeauty-05deMacBook-Pro.local>
+#
+# On branch develop
+# Your branch is ahead of 'origin/develop' by 3 commits.
+#   (use "git push" to publish your local commits)
+#
+# Changes to be committed:
+#	modified:   apps/backend/src/modules/news/controller/news.controller.ts
+#	new file:   apps/backend/src/modules/news/dto/search-news.dto.ts
+#	new file:   apps/backend/src/modules/news/interface/news.interface.ts
+#	modified:   apps/backend/src/modules/news/news.module.ts
+#	deleted:    apps/backend/src/modules/news/services/news-cache.service.ts
+#	modified:   apps/backend/src/modules/news/services/news.service.ts
+#	new file:   apps/backend/src/modules/news/services/newsapi.service.ts
+#	modified:   apps/frontend/app/page.tsx
+#

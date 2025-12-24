@@ -30,7 +30,7 @@ export class WeatherService {
     };
   }
 
-  async getForecast(cityName: string, days: number = 3) {
+  async getForecast(cityName: string, days: number = 7) {
     const city = this.cityService.getCityByName(cityName);
     if (!city) {
       return { error: "City not found" };

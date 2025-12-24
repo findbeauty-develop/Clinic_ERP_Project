@@ -12,140 +12,122 @@ import { SearchNewsDto } from "../dto/search-news.dto";
 export class NewsController {
   constructor(private readonly newsService: NewsService) {}
 
-  @Get("top-headlines")
-  async getTopHeadlines(
-    @Query("category") category?: string,
-    @Query("pageSize") pageSize?: number,
-    @Query("page") page?: number,
-    @Query("withImage") withImage?: string
-  ) {
+  @Get("press-releases")
+  async getPressReleases(@Query() searchDto: SearchNewsDto) {
     try {
-      const hasImage = withImage === "true";
-      return await this.newsService.getTopHeadlines(
-        category,
-        pageSize,
-        page,
-        hasImage
-      );
+      // Ensure numOfRows is parsed correctly if it's a string
+      if (searchDto.numOfRows && typeof searchDto.numOfRows === "string") {
+        const parsed = parseInt(searchDto.numOfRows, 10);
+        if (!isNaN(parsed)) {
+          searchDto.numOfRows = parsed;
+        } else {
+          delete searchDto.numOfRows;
+        }
+      }
+      return await this.newsService.getPressReleases(searchDto);
     } catch (error) {
-      throw new HttpException(
-        (error instanceof Error
+      const errorMessage =
+        error instanceof Error
           ? error.message
-          : "Failed to fetch top headlines") || "Failed to fetch top headlines",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
+          : "Failed to fetch press releases";
+      throw new HttpException(errorMessage, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get("latest")
+  async getLatestNews(@Query("numOfRows") numOfRows?: string) {
+    try {
+      const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : undefined;
+      if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
+        throw new HttpException(
+          "numOfRows must be a valid number",
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      return await this.newsService.getLatestNews(parsedNumOfRows);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch latest news";
+      throw new HttpException(errorMessage, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
   @Get("search")
-  async searchNews(@Query() searchDto: SearchNewsDto) {
-    try {
-      return await this.newsService.searchNews(searchDto);
-    } catch (error) {
-      throw new HttpException(
-        (error instanceof Error ? error.message : "Failed to search news") ||
-          "Failed to search news",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
-
-  @Get("category")
-  async getNewsByCategory(
-    @Query("category") category: string,
-    @Query("pageSize") pageSize?: number,
-    @Query("page") page?: number,
-    @Query("withImage") withImage?: string
+  async searchNews(
+    @Query("keyword") keyword: string,
+    @Query("numOfRows") numOfRows?: string
   ) {
-    if (!category) {
+    if (!keyword) {
       throw new HttpException(
-        "Category parameter is required",
-        HttpStatus.BAD_REQUEST
-      );
-    }
-
-    const validCategories = [
-      "business",
-      "entertainment",
-      "general",
-      "health",
-      "science",
-      "sports",
-      "technology",
-    ];
-    if (!validCategories.includes(category)) {
-      throw new HttpException(
-        `Invalid category. Must be one of: ${validCategories.join(", ")}`,
+        "Keyword parameter is required",
         HttpStatus.BAD_REQUEST
       );
     }
 
     try {
-      const hasImage = withImage === "true";
-      return await this.newsService.getNewsByCategory(
-        category,
-        pageSize,
-        page,
-        hasImage
-      );
+      const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : undefined;
+      if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
+        throw new HttpException(
+          "numOfRows must be a valid number",
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      return await this.newsService.searchNews(keyword, parsedNumOfRows);
     } catch (error) {
-      throw new HttpException(
-        (error instanceof Error
-          ? error.message
-          : "Failed to fetch news by category") ||
-          "Failed to fetch news by category",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to search news";
+      throw new HttpException(errorMessage, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  @Get("with-images")
-  async getNewsWithImages(
-    @Query("category") category?: string,
-    @Query("pageSize") pageSize?: number
-  ) {
+  @Get("rss")
+  async getRssNews(@Query("numOfRows") numOfRows?: string) {
     try {
-      return await this.newsService.getNewsWithImages(category, pageSize);
+      const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : 20;
+      if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
+        throw new HttpException(
+          "numOfRows must be a valid number",
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const rssItems = await this.newsService.getRssNews(parsedNumOfRows);
+      return {
+        resultCode: "00",
+        resultMsg: "NORMAL_CODE",
+        totalCount: rssItems.length,
+        items: rssItems,
+        pageNo: 1,
+        numOfRows: rssItems.length,
+      };
     } catch (error) {
-      throw new HttpException(
-        (error instanceof Error
-          ? error.message
-          : "Failed to fetch news with images") ||
-          "Failed to fetch news with images",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch RSS news";
+      throw new HttpException(errorMessage, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
   @Get("sources")
-  async getNewsSources() {
-    try {
-      return await this.newsService.getNewsSources();
-    } catch (error) {
-      throw new HttpException(
-        (error instanceof Error
-          ? error.message
-          : "Failed to fetch news sources") || "Failed to fetch news sources",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
+  getRssSources() {
+    return this.newsService.getRssSources();
   }
 
-  @Get("categories")
-  getAvailableCategories() {
+  @Get("info")
+  getApiInfo() {
     return {
-      categories: [
-        { key: "business", name: "비즈니스", description: "Business news" },
-        {
-          key: "entertainment",
-          name: "엔터테인먼트",
-          description: "Entertainment news",
-        },
-        { key: "general", name: "일반", description: "General news" },
-        { key: "health", name: "건강", description: "Health news" },
-        { key: "science", name: "과학", description: "Science news" },
-        { key: "sports", name: "스포츠", description: "Sports news" },
-        { key: "technology", name: "기술", description: "Technology news" },
+      name: "Korean News API (RSS + Government)",
+      sources: [
+        "RSS Feeds: 연합뉴스, 한겨레, 중앙일보, 조선일보",
+        "Government API: data.go.kr - 과학기술정보통신부 보도자료",
+      ],
+      description:
+        "한국 주요 언론사 RSS 피드와 정부 공식 보도자료를 통합 제공하는 API",
+      features: [
+        "RSS 피드 통합 (연합뉴스, 한겨레, 중앙일보, 조선일보)",
+        "정부 공식 보도자료",
+        "이미지 자동 추출",
+        "무료 사용",
+        "실시간 업데이트",
       ],
     };
   }

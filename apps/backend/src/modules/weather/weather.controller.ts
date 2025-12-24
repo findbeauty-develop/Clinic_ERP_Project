@@ -13,8 +13,10 @@ export class WeatherController {
 
   @Get("forecast/:city")
   async getForecast(@Param("city") city: string, @Query("days") days?: string) {
-    const numDays = days ? parseInt(days) : 3;
-    return this.weatherService.getForecast(city, numDays);
+    const numDays = days ? parseInt(days, 10) : 7; // Default to 7 days
+    const maxDays = Math.min(Math.max(numDays, 1), 7); // Ensure between 1-7 days
+    console.log(`Forecast requested for ${city}: ${maxDays} days`);
+    return this.weatherService.getForecast(city, maxDays);
   }
 
   @Get("hourly/:city")

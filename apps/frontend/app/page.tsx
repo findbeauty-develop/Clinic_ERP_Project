@@ -55,15 +55,13 @@ export default function DashboardPage() {
   ];
 
   const newsTabs = [
-    "의료·헬스케어",
-    "카테크",
-    "웹툰",
-    "패션뷰티",
-    "리빙푸드",
-    "책방",
-    "지식",
+    "추천",
     "건강",
-    "게임",
+    "비즈니스",
+    "기술",
+    "과학",
+    "스포츠",
+    "엔터테인먼트",
   ];
 
   // Category to keywords mapping
@@ -81,81 +79,81 @@ export default function DashboardPage() {
     "시장·산업 동향": ["의료시장", "헬스케어산업"],
   };
 
-  const newsArticles = [
-    {
-      id: 1,
-      title: "결국 사실로 밝혀진 호주의 6m 왕도마 뱀 목격담",
-      source: "탐사튜브",
-      image: "bg-gradient-to-br from-green-400 to-emerald-600",
-      category: "의료·헬스케어",
-    },
-    {
-      id: 2,
-      title: "하버드대가 발표한 '은근 매력적인 사람' 특징 5가지",
-      source: "오분서가",
-      image: "bg-gradient-to-br from-purple-400 to-pink-600",
-      category: "제약·바이오",
-    },
-    {
-      id: 3,
-      title: "북한에서 김일성을 우상시하는 전투가 있다?",
-      source: "역사돋보기",
-      image: "bg-gradient-to-br from-blue-400 to-indigo-600",
-      category: "의료기기",
-      isVideo: true,
-      duration: "01:02",
-    },
-    {
-      id: 4,
-      title: "4살 준이와 앞이 보이지 않는... 신장투석 중인 할머니 곁을 지...",
-      source: "밀알복지재단",
-      image: "bg-gradient-to-br from-orange-400 to-red-600",
-      category: "병원·클리닉 운영",
-      isAd: true,
-    },
-    {
-      id: 5,
-      title: "친구로도 지내선 안 되는 사람 특징 5",
-      source: "부크럼",
-      image: "bg-gradient-to-br from-yellow-400 to-orange-600",
-      category: "정책·규제",
-    },
-    {
-      id: 6,
-      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
-      source: "피카 출판사",
-      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "보험·수가",
-    },
-    {
-      id: 7,
-      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
-      source: "피카 출판사",
-      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "보안·개인정보",
-    },
-    {
-      id: 8,
-      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
-      source: "피카 출판사",
-      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "AI·기술",
-    },
-    {
-      id: 9,
-      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
-      source: "피카 출판사",
-      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "리콜·안전",
-    },
-    {
-      id: 10,
-      title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
-      source: "피카 출판사",
-      image: "bg-gradient-to-br from-teal-400 to-cyan-600",
-      category: "시장·산업 동향",
-    },
-  ];
+  // const newsArticles = [
+  //   {
+  //     id: 1,
+  //     title: "결국 사실로 밝혀진 호주의 6m 왕도마 뱀 목격담",
+  //     source: "탐사튜브",
+  //     image: "bg-gradient-to-br from-green-400 to-emerald-600",
+  //     category: "의료·헬스케어",
+  //   },
+  //   {
+  //     id: 2,
+  //     title: "하버드대가 발표한 '은근 매력적인 사람' 특징 5가지",
+  //     source: "오분서가",
+  //     image: "bg-gradient-to-br from-purple-400 to-pink-600",
+  //     category: "제약·바이오",
+  //   },
+  //   {
+  //     id: 3,
+  //     title: "북한에서 김일성을 우상시하는 전투가 있다?",
+  //     source: "역사돋보기",
+  //     image: "bg-gradient-to-br from-blue-400 to-indigo-600",
+  //     category: "의료기기",
+  //     isVideo: true,
+  //     duration: "01:02",
+  //   },
+  //   {
+  //     id: 4,
+  //     title: "4살 준이와 앞이 보이지 않는... 신장투석 중인 할머니 곁을 지...",
+  //     source: "밀알복지재단",
+  //     image: "bg-gradient-to-br from-orange-400 to-red-600",
+  //     category: "병원·클리닉 운영",
+  //     isAd: true,
+  //   },
+  //   {
+  //     id: 5,
+  //     title: "친구로도 지내선 안 되는 사람 특징 5",
+  //     source: "부크럼",
+  //     image: "bg-gradient-to-br from-yellow-400 to-orange-600",
+  //     category: "정책·규제",
+  //   },
+  //   {
+  //     id: 6,
+  //     title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+  //     source: "피카 출판사",
+  //     image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+  //     category: "보험·수가",
+  //   },
+  //   {
+  //     id: 7,
+  //     title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+  //     source: "피카 출판사",
+  //     image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+  //     category: "보안·개인정보",
+  //   },
+  //   {
+  //     id: 8,
+  //     title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+  //     source: "피카 출판사",
+  //     image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+  //     category: "AI·기술",
+  //   },
+  //   {
+  //     id: 9,
+  //     title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+  //     source: "피카 출판사",
+  //     image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+  //     category: "리콜·안전",
+  //   },
+  //   {
+  //     id: 10,
+  //     title: "센스 있다고 난리난 김호영 거절법 ㄷㄷ",
+  //     source: "피카 출판사",
+  //     image: "bg-gradient-to-br from-teal-400 to-cyan-600",
+  //     category: "시장·산업 동향",
+  //   },
+  // ];
 
   const productRecommendations = [
     {
@@ -184,13 +182,15 @@ export default function DashboardPage() {
       setLoadingWeather(true);
       try {
         // Fetch current weather
-        const currentWeather = await apiGet(`/weather/current/${selectedCity}`);
+        const currentWeather = await apiGet(
+          `/api/weather/current/${selectedCity}`
+        );
         setWeatherData(currentWeather);
 
         // Fetch forecast (7 days)
         try {
           const forecast = await apiGet(
-            `/weather/forecast/${selectedCity}?days=7`
+            `/api/weather/forecast/${selectedCity}?days=7`
           );
           console.log("Forecast API response:", forecast);
 
@@ -222,7 +222,7 @@ export default function DashboardPage() {
         }
 
         // Fetch hourly forecast
-        const hourly = await apiGet(`/weather/hourly/${selectedCity}`);
+        const hourly = await apiGet(`/api/weather/hourly/${selectedCity}`);
         if (hourly && hourly.hourly) {
           setHourlyData(hourly.hourly.slice(0, 6)); // First 6 hours
         }
@@ -230,7 +230,7 @@ export default function DashboardPage() {
         // Fetch air quality
         try {
           const airQuality = await apiGet(
-            `/weather/air-quality/${selectedCity}`
+            `/api/weather/air-quality/${selectedCity}`
           );
           if (airQuality && airQuality.airQuality) {
             setAirQualityData(airQuality.airQuality);
@@ -490,200 +490,115 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch news by category
+  // Fetch Korean government news from data.go.kr API
   useEffect(() => {
     const fetchNews = async () => {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "page.tsx:218",
-            message: "fetchNews started",
-            data: { apiUrl },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "H1",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       setLoadingNews(true);
       try {
-        // Barcha category'lardan news olish
-        const allKeywords: string[] = [];
-        Object.values(categoryKeywords).forEach((keywords) => {
-          allKeywords.push(...keywords);
-        });
+        console.log("📰 Fetching Korean government news...");
+        console.log("API URL from env:", apiUrl);
 
-        // Unique keywords
-        const uniqueKeywords = [...new Set(allKeywords)];
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:230",
-              message: "Before API call",
-              data: { uniqueKeywords: uniqueKeywords.length, apiUrl },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H1",
-            }),
+        // Backend API endpoint: /news/latest (Korean government news)
+        // Note: Backend controller is @Controller("news"), so endpoint is /news/latest
+        const apiEndpoint = `/news/latest?numOfRows=12`;
+        const fullUrl = `${apiUrl}${apiEndpoint}`;
+        console.log("API Endpoint:", apiEndpoint);
+        console.log("Full URL:", fullUrl);
+
+        const response = await apiGet<{
+          resultCode: string;
+          resultMsg: string;
+          totalCount: number;
+          items: any[];
+          pageNo: number;
+          numOfRows: number;
+        }>(apiEndpoint);
+
+        console.log("Korean News API Response:", response);
+        console.log("Response resultCode:", response?.resultCode);
+        console.log("Total count:", response?.totalCount);
+        console.log("Items count:", response?.items?.length);
+
+        if (response && response.items && Array.isArray(response.items)) {
+          if (response.items.length === 0) {
+            console.warn("No news items returned");
+            setNewsArticlesState([]);
+            return;
           }
-        ).catch(() => {});
-        // #endregion
 
-        const response = await apiGet<any[]>(
-          `${apiUrl}/news/search?keywords=${uniqueKeywords.join(",")}&limit=20`
-        );
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:234",
-              message: "API response received",
-              data: {
-                responseLength: response?.length,
-                responseType: typeof response,
-              },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H1",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
+          const formattedNews = response.items.map(
+            (item: any, index: number) => {
+              // Format date
+              const publishedDate = item.publishDate
+                ? new Date(item.publishDate).toLocaleDateString("ko-KR", {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "";
 
-        // Format news articles
-        const formattedNews = response.map((article: any, index: number) => {
-          // Category'ni aniqlash
-          let category = "의료·헬스케어";
-          for (const [cat, keywords] of Object.entries(categoryKeywords)) {
-            if (
-              keywords.some(
-                (kw) =>
-                  article.title?.includes(kw) || article.summary?.includes(kw)
-              )
-            ) {
-              category = cat;
-              break;
+              // Handle image URL - filter out placeholder images
+              let imageUrl = item.imageUrl || item.thumbnailUrl || null;
+              // Don't show placeholder images - show fallback UI instead
+              if (
+                imageUrl &&
+                (imageUrl.includes("placeholder") ||
+                  imageUrl.includes("via.placeholder"))
+              ) {
+                imageUrl = null; // Filter out placeholder URLs
+              }
+
+              console.log(`📰 News ${index}:`, {
+                title: item.title?.substring(0, 30),
+                detailUrl: item.detailUrl,
+                imageUrl: imageUrl ? "✅ Has image" : "❌ No image",
+                imageUrlValue: imageUrl,
+              });
+
+              return {
+                id: item.detailUrl || `news-${index}`,
+                title: item.title || "제목 없음",
+                description: item.department || "",
+                source: item.department || "과학기술정보통신부",
+                image: imageUrl,
+                category: currentNewsTab,
+                url: item.detailUrl,
+                publishedAt: item.publishDate,
+                publishedDate: publishedDate,
+                author: item.manager,
+                contact: item.contact,
+                attachments: item.attachments || [],
+              };
             }
-          }
+          );
 
-          return {
-            id: article.id || index + 1,
-            title: article.title || "제목 없음",
-            source: article.source || "알 수 없음",
-            image:
-              article.image ||
-              `bg-gradient-to-br from-green-400 to-emerald-600`,
-            category: category,
-            url: article.url,
-            publishedAt: article.publishedAt,
-          };
+          console.log("Formatted news count:", formattedNews.length);
+          setNewsArticlesState(formattedNews);
+        } else {
+          console.warn("Invalid response structure:", response);
+          setNewsArticlesState([]);
+        }
+      } catch (error: any) {
+        console.error("Failed to fetch Korean government news:", error);
+        console.error("Error details:", {
+          message: error?.message,
+          stack: error?.stack,
+          response: error?.response,
         });
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:258",
-              message: "Before setState",
-              data: {
-                formattedNewsLength: formattedNews.length,
-                setNewsArticlesStateType: typeof setNewsArticlesState,
-              },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H1",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
-
-        setNewsArticlesState(formattedNews);
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:260",
-              message: "After setState",
-              data: { success: true },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H1",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
-      } catch (error) {
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:262",
-              message: "Error caught",
-              data: {
-                errorMessage:
-                  error instanceof Error ? error.message : String(error),
-              },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H2",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
-        console.error("Failed to fetch news", error);
-        // Fallback to mock data
-        setNewsArticlesState(newsArticles);
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "page.tsx:264",
-              message: "Fallback to mock data",
-              data: { mockDataLength: newsArticles.length },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "H2",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
+        console.error(
+          "Full URL that failed:",
+          `${apiUrl}/news/latest?numOfRows=12`
+        );
+        // Don't fallback to mock data - show empty state to debug
+        setNewsArticlesState([]);
       } finally {
         setLoadingNews(false);
       }
     };
 
-    fetchNews();
-  }, [apiUrl]);
+    if (currentNewsTab) {
+      fetchNews();
+    }
+  }, [apiUrl, currentNewsTab]);
 
   const nextBannerSlide = () => {
     setCurrentBannerSlide((prev) => (prev + 1) % bannerSlides.length);
@@ -819,110 +734,224 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* Left Column (70%) */}
         <div className="lg:col-span-7 space-y-6">
-          {/* News Section */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            {/* News Tabs */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {/* News Section - Enhanced Design */}
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+            {/* Header with Gradient */}
+            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
+              <div className="flex items-center justify-between mb-4">
+                {/* <div>
+                  <h2 className="text-2xl font-bold mb-1">최신 뉴스</h2>
+                  <p className="text-sm opacity-90">
+                    실시간으로 업데이트되는 뉴스를 확인하세요
+                  </p>
+                </div> */}
+                {/* <div className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-xl px-4 py-2">
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <span className="text-sm font-semibold">실시간</span>
+                </div> */}
+              </div>
+
+              {/* News Tabs - Enhanced */}
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                 {newsTabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setCurrentNewsTab(tab)}
-                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
+                    className={`px-5 py-2.5 rounded-xl font-semibold whitespace-nowrap transition-all duration-300 ${
                       currentNewsTab === tab
-                        ? "bg-indigo-600 text-white shadow-md"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        ? "bg-white text-indigo-600 shadow-lg scale-105"
+                        : "bg-white/20 text-white/90 hover:bg-white/30 hover:scale-105"
                     }`}
                   >
                     {tab}
                   </button>
                 ))}
               </div>
-              <a
-                href="#"
-                className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
-              >
-                구독홈 &gt;
-              </a>
             </div>
 
-            {/* News Articles Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* #region agent log */}
-              {(() => {
-                fetch(
-                  "http://127.0.0.1:7242/ingest/c9cee861-c25e-4245-8156-2d43136bd17a",
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      location: "page.tsx:393",
-                      message: "Rendering news articles",
-                      data: {
-                        newsArticlesStateLength: newsArticlesState.length,
-                        newsArticlesLength: newsArticles.length,
-                        usingState: true,
-                      },
-                      timestamp: Date.now(),
-                      sessionId: "debug-session",
-                      runId: "run1",
-                      hypothesisId: "H3",
-                    }),
-                  }
-                ).catch(() => {});
-                return null;
-              })()}
-              {/* #endregion */}
-              {(newsArticlesState.length > 0
-                ? newsArticlesState
-                : newsArticles
-              ).map((article) => (
-                <div
-                  key={article.id}
-                  className="group cursor-pointer rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-800 hover:shadow-lg transition-all"
-                >
-                  <div className={`h-32 ${article.image} relative`}>
-                    {article.isVideo && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="bg-black/50 rounded-full p-3">
+            {/* News Articles Grid - Enhanced */}
+            <div className="p-6">
+              {loadingNews ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[...Array(6)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl overflow-hidden"
+                    >
+                      <div className="h-48 bg-gray-200 dark:bg-gray-700"></div>
+                      <div className="p-4 space-y-3">
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : newsArticlesState.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {newsArticlesState.map((article, index) => (
+                    <div
+                      key={article.id || index}
+                      onClick={() => {
+                        // Open news detail page in new tab when clicking card
+                        if (article.url) {
+                          window.open(
+                            article.url,
+                            "_blank",
+                            "noopener,noreferrer"
+                          );
+                        }
+                      }}
+                      className="group cursor-pointer rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50 to-white dark:from-gray-800 dark:to-gray-900 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] border border-gray-200 dark:border-gray-700"
+                    >
+                      {/* Image Section */}
+                      <div className="relative h-48 overflow-hidden bg-gradient-to-br from-indigo-400 to-purple-500">
+                        {article.image &&
+                        !article.image.includes("placeholder") &&
+                        !article.image.includes("via.placeholder") ? (
+                          <img
+                            src={article.image}
+                            alt={article.title}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            onError={(e) => {
+                              // Hide failed image and show fallback
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = "none";
+                              // Check if fallback already exists
+                              const parent = target.parentElement;
+                              if (
+                                parent &&
+                                !parent.querySelector(".image-fallback")
+                              ) {
+                                const fallback = document.createElement("div");
+                                fallback.className =
+                                  "image-fallback w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-400 to-purple-500";
+                                fallback.innerHTML = `
+                                  <svg class="w-16 h-16 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                                  </svg>
+                                `;
+                                parent.appendChild(fallback);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-400 to-purple-500">
+                            <svg
+                              className="w-16 h-16 text-white/30"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                        {/* Gradient Overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+
+                        {/* Category Badge */}
+                        <div className="absolute top-3 left-3">
+                          <span className="bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                            {article.category}
+                          </span>
+                        </div>
+
+                        {/* Date Badge */}
+                        {article.publishedDate && (
+                          <div className="absolute top-3 right-3">
+                            <span className="bg-black/50 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full">
+                              {article.publishedDate}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Content Section */}
+                      <div className="p-5">
+                        <h3 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-lg leading-tight">
+                          {article.title}
+                        </h3>
+                        {article.description && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                            {article.description}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">
+                                {article.source?.charAt(0) || "N"}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                {article.source}
+                              </p>
+                              {article.author && (
+                                <p className="text-xs text-gray-500 dark:text-gray-500">
+                                  {article.author}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                           <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="white"
+                            className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
+                            fill="none"
+                            stroke="currentColor"
                             viewBox="0 0 24 24"
-                            className="w-6 h-6"
                           >
-                            <path d="M8 5v14l11-7z" />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
                           </svg>
                         </div>
-                        <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                          {article.duration}
-                        </span>
                       </div>
-                    )}
-                    {article.isAd && (
-                      <span className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded">
-                        AD
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                      {article.title}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {article.source}
-                    </p>
-                    {article.isAd && (
-                      <a
-                        href="#"
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-2 inline-block"
-                      >
-                        더 알아보기 &gt;
-                      </a>
-                    )}
-                  </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <svg
+                    className="w-24 h-24 text-gray-300 dark:text-gray-700 mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                    />
+                  </svg>
+                  <p className="text-gray-500 dark:text-gray-400 text-lg font-semibold mb-2">
+                    뉴스를 불러올 수 없습니다
+                  </p>
+                  <p className="text-gray-400 dark:text-gray-500 text-sm">
+                    잠시 후 다시 시도해주세요
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1086,37 +1115,60 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-3xl font-bold opacity-80">°</div>
                   </div>
-                  <div className="text-xl font-semibold opacity-95 mb-4">
-                    {loadingWeather ? (
-                      <span className="animate-pulse">로딩중...</span>
-                    ) : (
-                      weatherData?.condition || "맑음"
-                    )}
-                  </div>
-                  
+
                   {/* Additional Weather Details */}
                   {weatherData && !loadingWeather && (
-                    <div className="flex items-center gap-4 text-sm opacity-80">
+                    <div className="flex items-center gap-7 text-sm opacity-80">
                       {weatherData.humidity && (
                         <div className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                            />
                           </svg>
                           <span>습도 {weatherData.humidity}%</span>
                         </div>
                       )}
                       {weatherData.windSpeed && (
                         <div className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 10V3L4 14h7v7l9-11h-7z"
+                            />
                           </svg>
                           <span>풍속 {weatherData.windSpeed}m/s</span>
                         </div>
                       )}
                       {weatherData.precipitation !== undefined && (
                         <div className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                            />
                           </svg>
                           <span>강수 {weatherData.precipitation}mm</span>
                         </div>
@@ -1130,7 +1182,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Temperature Range - Enhanced */}
-              {forecastData.length > 0 && (
+              {/* {forecastData.length > 0 && (
                 <div className="flex items-center justify-between mb-6 bg-white/25 backdrop-blur-md rounded-2xl p-4 border border-white/30 shadow-lg">
                   <div className="flex items-center gap-2">
                     <div className="p-2 bg-white/20 rounded-lg">
@@ -1180,10 +1232,10 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Air Quality - Enhanced */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-white/25 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-lg hover:bg-white/30 transition-all duration-300 group">
                   <div className="flex items-center gap-2 text-xs opacity-90 mb-3 font-semibold">
                     <div className="p-1.5 bg-white/20 rounded-lg group-hover:bg-white/30 transition-colors">
@@ -1230,119 +1282,93 @@ export default function DashboardPage() {
                     {airQualityData?.ultrafine || "좋음"}
                   </div>
                 </div>
-              </div>
+              </div> */}
 
               {/* Hourly Forecast - Enhanced */}
-              {hourlyData.length > 0 && (
-                <div className="pt-6 border-t border-white/30">
-                  <div className="flex items-center gap-2 mb-4">
-                    <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="text-sm opacity-90 font-semibold">시간별 예보</div>
-                  </div>
-                  <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-3 -mx-1 px-1">
-                    {hourlyData.map((hour: any, index: number) => {
-                      const time = hour.time || hour.fcstTime || "";
-                      let formattedTime = "";
-                      if (time.length === 4) {
-                        const hour24 = parseInt(time.substring(0, 2));
-                        formattedTime = `${hour24}시`;
-                      } else {
-                        formattedTime = time;
-                      }
-                      return (
-                        <div
-                          key={index}
-                          className="flex-shrink-0 text-center bg-white/20 backdrop-blur-md rounded-2xl p-4 min-w-[85px] border border-white/30 hover:bg-white/30 hover:scale-105 transition-all duration-300 shadow-lg group"
-                        >
-                          <div className="text-xs opacity-90 mb-3 font-semibold">
-                            {formattedTime}
-                          </div>
-                          <div className="text-4xl mb-3 transform group-hover:scale-110 transition-transform duration-300">
-                            {getWeatherIcon(
-                              hour.condition?.ko ||
-                                hour.data?.condition?.ko ||
-                                "맑음"
-                            )}
-                          </div>
-                          <div className="text-lg font-bold">
-                            {Math.round(
-                              hour.temperature || hour.data?.temperature || 0
-                            )}
-                            °
-                          </div>
-                          {hour.rainfall !== undefined && hour.rainfall > 0 && (
-                            <div className="text-xs opacity-70 mt-1">
-                              💧 {hour.rainfall}mm
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
-              {/* 7-Day Forecast - Enhanced */}
+              {/* 7-Day Forecast - Compact Grid */}
               {forecastData && forecastData.length > 0 ? (
                 <div className="mt-6 pt-6 border-t border-white/30">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm opacity-90 font-semibold">7일 예보</span>
-                    </div>
-                    <span className="text-xs opacity-60">
-                      ({forecastData.length}일)
+                  <div className="flex items-center gap-2 mb-4">
+                    <svg
+                      className="w-4 h-4 opacity-80"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm opacity-90 font-semibold">
+                      7일 예보
                     </span>
                   </div>
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/30 scrollbar-track-transparent pr-2">
-                    {forecastData.slice(0, 7).map((day: any, index: number) => {
-                      const tempRange = Math.max(day.maxTemp - day.minTemp, 1);
-                      const tempPercentage = Math.min((tempRange / 25) * 100, 100);
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between bg-white/20 backdrop-blur-md rounded-2xl p-4 border border-white/30 hover:bg-white/30 hover:scale-[1.02] transition-all duration-300 shadow-lg group"
-                        >
-                          <div className="flex items-center gap-4 flex-1">
-                            <span className="text-sm font-bold w-12 text-center">
-                              {day.dayOfWeek}
-                            </span>
-                            <span className="text-3xl transform group-hover:scale-110 transition-transform duration-300">
-                              {getWeatherIcon(day.condition || "맑음")}
-                            </span>
-                            <span className="text-sm opacity-90 font-medium flex-1">
-                              {day.condition || "맑음"}
-                            </span>
+                  <div className="grid grid-cols-7 gap-2 min-w-full">
+                    {(forecastData.length >= 7
+                      ? forecastData.slice(0, 7)
+                      : forecastData.concat(
+                          Array.from(
+                            { length: 7 - forecastData.length },
+                            (_, i) => ({
+                              dayOfWeek: [
+                                "일",
+                                "월",
+                                "화",
+                                "수",
+                                "목",
+                                "금",
+                                "토",
+                              ][
+                                (new Date().getDay() +
+                                  forecastData.length +
+                                  i) %
+                                  7
+                              ],
+                              condition: "맑음",
+                              maxTemp: 20,
+                              minTemp: 10,
+                              precipitationProbability: 0,
+                            })
+                          )
+                        )
+                    ).map((day: any, index: number) => (
+                      <div
+                        key={index}
+                        className="flex flex-col items-center bg-white/15 backdrop-blur-sm rounded-xl p-2 sm:p-3 border border-white/20 hover:bg-white/25 transition-all duration-300 group min-w-0"
+                      >
+                        {/* Day Name */}
+                        <div className="text-xs font-semibold opacity-90 mb-2">
+                          {day.dayOfWeek}
+                        </div>
+
+                        {/* Weather Icon */}
+                        <div className="text-3xl mb-2 transform group-hover:scale-110 transition-transform duration-300">
+                          {getWeatherIcon(day.condition || "맑음")}
+                        </div>
+
+                        {/* Temperatures */}
+                        <div className="flex flex-col items-center gap-1 w-full">
+                          {/* High Temperature */}
+                          <div className="text-xs font-bold text-black-300">
+                            {Math.round(day.maxTemp || 0)}°
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-sm opacity-75 font-medium min-w-[35px] text-right">
-                              {Math.round(day.minTemp || 0)}°
-                            </span>
-                            <div className="relative w-24 h-2 bg-white/30 rounded-full overflow-hidden">
-                              <div
-                                className="absolute inset-0 bg-gradient-to-r from-blue-300 to-yellow-300 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${tempPercentage}%`,
-                                  left: `${((day.minTemp + 10) / 40) * 100}%`,
-                                }}
-                              ></div>
-                            </div>
-                            <span className="text-sm font-bold min-w-[35px]">
-                              {Math.round(day.maxTemp || 0)}°
-                            </span>
-                            {day.precipitationProbability !== undefined && day.precipitationProbability > 0 && (
-                              <div className="text-xs opacity-70 min-w-[40px] text-right">
-                                💧 {day.precipitationProbability}%
-                              </div>
-                            )}
+                          {/* Low Temperature */}
+                          <div className="text-xs opacity-75 text-black-200">
+                            {Math.round(day.minTemp || 0)}°
                           </div>
                         </div>
-                      );
-                    })}
+
+                        {/* Precipitation Probability (if available) */}
+                        {day.precipitationProbability !== undefined &&
+                          day.precipitationProbability > 0 && (
+                            <div className="text-[10px] opacity-90 mt-1"></div>
+                          )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -1364,7 +1390,9 @@ export default function DashboardPage() {
               {loadingWeather && !weatherData && (
                 <div className="flex flex-col items-center justify-center py-12 gap-4">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-3 border-white"></div>
-                  <span className="text-sm opacity-80">날씨 정보를 불러오는 중...</span>
+                  <span className="text-sm opacity-80">
+                    날씨 정보를 불러오는 중...
+                  </span>
                 </div>
               )}
             </div>
@@ -1373,7 +1401,8 @@ export default function DashboardPage() {
           {/* Add CSS for floating animation */}
           <style jsx global>{`
             @keyframes float {
-              0%, 100% {
+              0%,
+              100% {
                 transform: translateY(0px) translateX(0px);
                 opacity: 0.2;
               }
@@ -1402,9 +1431,6 @@ export default function DashboardPage() {
                 일정
               </h2>
               <div className="flex gap-2">
-                <select className="text-sm bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1 border-0">
-                  <option>프로젝트 일정</option>
-                </select>
                 <button
                   onClick={goToToday}
                   className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1 hover:bg-indigo-700"

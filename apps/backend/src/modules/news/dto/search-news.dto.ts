@@ -1,52 +1,25 @@
-import {
-  IsString,
-  IsOptional,
-  IsNumber,
-  Min,
-  Max,
-  IsIn,
-  IsBoolean,
-} from "class-validator";
-import { Transform, Type } from "class-transformer";
+import { IsString, IsOptional, IsNumber, Min, Max } from "class-validator";
+import { Type } from "class-transformer";
 
 export class SearchNewsDto {
-  @IsString()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(1)
   @IsOptional()
-  q?: string; // 검색 키워드
-
-  @IsString()
-  @IsOptional()
-  @IsIn([
-    "business",
-    "entertainment",
-    "general",
-    "health",
-    "science",
-    "sports",
-    "technology",
-  ])
-  category?: string;
+  pageNo?: number = 1;
 
   @IsNumber()
   @Type(() => Number)
   @Min(1)
   @Max(100)
   @IsOptional()
-  pageSize?: number = 20;
-
-  @IsNumber()
-  @Type(() => Number)
-  @Min(1)
-  @IsOptional()
-  page?: number = 1;
+  numOfRows?: number = 10;
 
   @IsString()
   @IsOptional()
-  @IsIn(["relevancy", "popularity", "publishedAt"])
-  sortBy?: string = "publishedAt";
+  searchKeyword?: string;
 
-  @IsBoolean()
-  @Transform(({ value }) => value === "true" || value === true)
+  @IsString()
   @IsOptional()
-  withImage?: boolean = false;
+  withImage?: string; // 🆕 Added filter for news with images: 'true' or 'false'
 }
