@@ -13,6 +13,8 @@ import { InventoryModule } from "./modules/inventory/inventory.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { NewsModule } from "./modules/news/news.module";
 import { HiraModule } from "./modules/hira/hira.module";
+import { CalendarModule } from "./modules/calendar/calendar.module";
+import { WeatherModule } from "./modules/weather/weather.module";
 
 @Module({
   imports: [
@@ -42,7 +44,8 @@ import { HiraModule } from "./modules/hira/hira.module";
     UploadsModule,
     NewsModule,
     HiraModule,
+    CalendarModule,
+    WeatherModule,
   ],
 })
 export class AppModule {}
-

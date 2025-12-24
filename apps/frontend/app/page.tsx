@@ -10,6 +10,12 @@ export default function DashboardPage() {
   const [newsArticlesState, setNewsArticlesState] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState(false);
 
+  // Calendar state
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [holidays, setHolidays] = useState<any[]>([]);
+  const [loadingHolidays, setLoadingHolidays] = useState(false);
+
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
@@ -179,15 +185,157 @@ export default function DashboardPage() {
     ],
   };
 
-  const scheduleEvents = [
-    {
-      id: 1,
-      title: "개발팀 회의",
-      date: "2025-12-11",
-      day: "목",
-      time: "15:00 ~ 16:30",
-    },
-  ];
+  // const scheduleEvents = [
+  //   {
+  //     id: 1,
+  //     title: "개발팀 회의",
+  //     date: "2025-12-11",
+  //     day: "목",
+  //     time: "15:00 ~ 16:30",
+  //   },
+  // ];
+
+  // Fetch holidays from backend
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+
+      setLoadingHolidays(true);
+      try {
+        const response = await apiGet(`/calendar/holidays/${year}/${month}`);
+        if (response && response.holidays) {
+          // Log holidays for debugging
+          console.log("Fetched holidays:", response.holidays);
+          setHolidays(response.holidays);
+        }
+      } catch (error) {
+        console.error("Failed to fetch holidays:", error);
+        setHolidays([]);
+      } finally {
+        setLoadingHolidays(false);
+      }
+    };
+
+    fetchHolidays();
+  }, [currentDate, apiUrl]);
+
+  // Calendar navigation functions
+  const goToPreviousMonth = () => {
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
+    );
+  };
+
+  const goToNextMonth = () => {
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
+    );
+  };
+
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Get calendar days for current month
+  const getCalendarDays = () => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days: Array<{
+      date: number;
+      isCurrentMonth: boolean;
+      isToday: boolean;
+      isHoliday: boolean;
+      holidayName?: string;
+      fullDate?: Date;
+    }> = [];
+
+    // Fill empty cells before first day
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push({
+        date: 0,
+        isCurrentMonth: false,
+        isToday: false,
+        isHoliday: false,
+      });
+    }
+
+    // Fill days of current month
+    const today = new Date();
+    for (let date = 1; date <= daysInMonth; date++) {
+      const cellDate = new Date(year, month, date);
+      const isToday =
+        cellDate.getDate() === today.getDate() &&
+        cellDate.getMonth() === today.getMonth() &&
+        cellDate.getFullYear() === today.getFullYear();
+
+      // Check if this date is a holiday
+      const holiday = holidays.find((h) => {
+        // Handle both Date objects and date strings from backend
+        let holidayDate: Date;
+        if (h.date instanceof Date) {
+          holidayDate = h.date;
+        } else if (typeof h.date === "string") {
+          // Parse ISO date string (e.g., "2026-01-01T00:00:00.000Z" or "2026-01-01")
+          holidayDate = new Date(h.date);
+        } else {
+          return false;
+        }
+
+        // Normalize dates to midnight for accurate comparison (avoid timezone issues)
+        const normalizedHolidayDate = new Date(
+          holidayDate.getFullYear(),
+          holidayDate.getMonth(),
+          holidayDate.getDate()
+        );
+        const normalizedCellDate = new Date(year, month, date);
+
+        // Compare dates properly (ignore time)
+        const isMatch =
+          normalizedHolidayDate.getTime() === normalizedCellDate.getTime();
+
+        // Debug: log first holiday match
+        if (isMatch && holidays.length > 0) {
+          console.log(
+            `✅ Holiday match: ${h.name} on ${date}/${month + 1}/${year}`,
+            {
+              holidayDate: normalizedHolidayDate.toISOString(),
+              cellDate: normalizedCellDate.toISOString(),
+            }
+          );
+        }
+
+        return isMatch;
+      });
+
+      days.push({
+        date,
+        isCurrentMonth: true,
+        isToday,
+        isHoliday: !!holiday,
+        holidayName: holiday?.name,
+        fullDate: cellDate,
+      });
+    }
+
+    // Fill remaining cells to make 35 cells total (5 rows x 7 days)
+    const remainingCells = 35 - days.length;
+    for (let i = 0; i < remainingCells; i++) {
+      days.push({
+        date: 0,
+        isCurrentMonth: false,
+        isToday: false,
+        isHoliday: false,
+      });
+    }
+
+    return days;
+  };
 
   const messages = [
     {
@@ -798,14 +946,20 @@ export default function DashboardPage() {
                 <select className="text-sm bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1 border-0">
                   <option>프로젝트 일정</option>
                 </select>
-                <button className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1 hover:bg-indigo-700">
+                <button
+                  onClick={goToToday}
+                  className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1 hover:bg-indigo-700"
+                >
                   오늘
                 </button>
               </div>
             </div>
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                <button
+                  onClick={goToPreviousMonth}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -822,9 +976,13 @@ export default function DashboardPage() {
                   </svg>
                 </button>
                 <div className="font-semibold text-gray-900 dark:text-white">
-                  2025 - 12월
+                  {(selectedDate || currentDate).getFullYear()} -{" "}
+                  {(selectedDate || currentDate).getMonth() + 1}월
                 </div>
-                <button className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                <button
+                  onClick={goToNextMonth}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -849,25 +1007,85 @@ export default function DashboardPage() {
                 ))}
               </div>
               <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 35 }, (_, i) => {
-                  const date = i + 1;
-                  const isToday = date === 11;
+                {getCalendarDays().map((day, i) => {
+                  if (!day.isCurrentMonth) {
+                    return (
+                      <div
+                        key={i}
+                        className="aspect-square flex items-center justify-center text-sm rounded-lg text-gray-400 dark:text-gray-600"
+                      />
+                    );
+                  }
+
+                  // Check if this date is selected
+                  const isSelected =
+                    selectedDate &&
+                    day.fullDate &&
+                    selectedDate.getDate() === day.fullDate.getDate() &&
+                    selectedDate.getMonth() === day.fullDate.getMonth() &&
+                    selectedDate.getFullYear() === day.fullDate.getFullYear();
+
+                  let className =
+                    "aspect-square flex flex-col items-center justify-center text-sm rounded-lg cursor-pointer transition-all ";
+
+                  if (day.isToday && day.isHoliday) {
+                    // Today + Holiday: Indigo background with red text
+                    className +=
+                      "bg-indigo-600 text-red-200 font-semibold border-2 border-red-400 ";
+                  } else if (day.isToday) {
+                    className += "bg-indigo-600 text-white font-semibold ";
+                  } else if (isSelected && day.isHoliday) {
+                    // Selected + Holiday: Red background with white text
+                    className +=
+                      "bg-red-600 text-white font-semibold ring-2 ring-red-400 ";
+                  } else if (isSelected) {
+                    // Selected: Blue ring
+                    className +=
+                      "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold ring-2 ring-indigo-400 ";
+                  } else if (day.isHoliday) {
+                    // Holiday: Red background and text
+                    className +=
+                      "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-semibold hover:bg-red-200 dark:hover:bg-red-900/40 ";
+                  } else {
+                    className +=
+                      "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 ";
+                  }
+
                   return (
                     <div
                       key={i}
-                      className={`aspect-square flex items-center justify-center text-sm rounded-lg ${
-                        isToday
-                          ? "bg-indigo-600 text-white font-semibold"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      }`}
+                      onClick={() => {
+                        if (day.fullDate) {
+                          setSelectedDate(day.fullDate);
+                          // Update currentDate to show selected date's month/year in header
+                          setCurrentDate(
+                            new Date(
+                              day.fullDate.getFullYear(),
+                              day.fullDate.getMonth(),
+                              1
+                            )
+                          );
+                        }
+                      }}
+                      className={className}
+                      title={
+                        day.isHoliday
+                          ? day.holidayName
+                          : day.fullDate?.toLocaleDateString("ko-KR")
+                      }
                     >
-                      {date <= 31 ? date : ""}
+                      <span className="font-medium">{day.date}</span>
+                      {day.isHoliday && (
+                        <span className="text-[8px] mt-0.5 truncate w-full px-0.5 text-center">
+                          {day.holidayName}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               {scheduleEvents.map((event) => (
                 <div
                   key={event.id}
@@ -899,7 +1117,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
-            </div>
+            </div> */}
           </div>
 
           {/* Messages/Notifications */}
