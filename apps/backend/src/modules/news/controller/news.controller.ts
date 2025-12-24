@@ -35,7 +35,10 @@ export class NewsController {
   }
 
   @Get("latest")
-  async getLatestNews(@Query("numOfRows") numOfRows?: string) {
+  async getLatestNews(
+    @Query("numOfRows") numOfRows?: string,
+    @Query("category") category?: string
+  ) {
     try {
       const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : undefined;
       if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
@@ -44,7 +47,7 @@ export class NewsController {
           HttpStatus.BAD_REQUEST
         );
       }
-      return await this.newsService.getLatestNews(parsedNumOfRows);
+      return await this.newsService.getLatestNews(parsedNumOfRows, category);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to fetch latest news";
@@ -65,7 +68,7 @@ export class NewsController {
     }
 
     try {
-      const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : undefined;
+      const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 20) : undefined;
       if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
         throw new HttpException(
           "numOfRows must be a valid number",
@@ -81,7 +84,10 @@ export class NewsController {
   }
 
   @Get("rss")
-  async getRssNews(@Query("numOfRows") numOfRows?: string) {
+  async getRssNews(
+    @Query("numOfRows") numOfRows?: string,
+    @Query("category") category?: string
+  ) {
     try {
       const parsedNumOfRows = numOfRows ? parseInt(numOfRows, 10) : 20;
       if (parsedNumOfRows && isNaN(parsedNumOfRows)) {
@@ -91,7 +97,10 @@ export class NewsController {
         );
       }
 
-      const rssItems = await this.newsService.getRssNews(parsedNumOfRows);
+      const rssItems = await this.newsService.getRssNews(
+        parsedNumOfRows,
+        category
+      );
       return {
         resultCode: "00",
         resultMsg: "NORMAL_CODE",

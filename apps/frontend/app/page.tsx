@@ -192,32 +192,18 @@ export default function DashboardPage() {
           const forecast = await apiGet(
             `/api/weather/forecast/${selectedCity}?days=7`
           );
-          console.log("Forecast API response:", forecast);
-
           if (
             forecast &&
             forecast.forecast &&
             Array.isArray(forecast.forecast)
           ) {
-            console.log(
-              `Setting forecast data: ${forecast.forecast.length} days`,
-              forecast.forecast
-            );
             setForecastData(forecast.forecast);
           } else if (forecast && Array.isArray(forecast)) {
-            // Handle case where API returns array directly
-            console.log(
-              "Forecast is array, setting directly:",
-              forecast.length,
-              "days"
-            );
             setForecastData(forecast);
           } else {
-            console.warn("No forecast data in response:", forecast);
             setForecastData([]);
           }
         } catch (error) {
-          console.error("Error fetching forecast:", error);
           setForecastData([]);
         }
 
@@ -236,11 +222,9 @@ export default function DashboardPage() {
             setAirQualityData(airQuality.airQuality);
           }
         } catch (error) {
-          console.error("Air quality fetch failed:", error);
           setAirQualityData({ fine: "좋음", ultrafine: "좋음" });
         }
       } catch (error) {
-        console.error("Failed to fetch weather:", error);
         // Fallback to mock data
         setWeatherData({
           temperature: 6.2,
@@ -260,16 +244,6 @@ export default function DashboardPage() {
     const interval = setInterval(fetchWeatherData, 30 * 60 * 1000);
     return () => clearInterval(interval);
   }, [selectedCity, apiUrl]);
-
-  // Debug: Log forecastData changes
-  useEffect(() => {
-    console.log(
-      "forecastData state changed:",
-      forecastData,
-      "Length:",
-      forecastData?.length
-    );
-  }, [forecastData]);
 
   // Get weather icon based on condition
   const getWeatherIcon = (condition: string) => {
@@ -323,12 +297,9 @@ export default function DashboardPage() {
       try {
         const response = await apiGet(`/calendar/holidays/${year}/${month}`);
         if (response && response.holidays) {
-          // Log holidays for debugging
-          console.log("Fetched holidays:", response.holidays);
           setHolidays(response.holidays);
         }
       } catch (error) {
-        console.error("Failed to fetch holidays:", error);
         setHolidays([]);
       } finally {
         setLoadingHolidays(false);
@@ -417,17 +388,6 @@ export default function DashboardPage() {
         const isMatch =
           normalizedHolidayDate.getTime() === normalizedCellDate.getTime();
 
-        // Debug: log first holiday match
-        if (isMatch && holidays.length > 0) {
-          console.log(
-            `✅ Holiday match: ${h.name} on ${date}/${month + 1}/${year}`,
-            {
-              holidayDate: normalizedHolidayDate.toISOString(),
-              cellDate: normalizedCellDate.toISOString(),
-            }
-          );
-        }
-
         return isMatch;
       });
 
@@ -495,15 +455,12 @@ export default function DashboardPage() {
     const fetchNews = async () => {
       setLoadingNews(true);
       try {
-        console.log("📰 Fetching Korean government news...");
-        console.log("API URL from env:", apiUrl);
-
-        // Backend API endpoint: /news/latest (Korean government news)
-        // Note: Backend controller is @Controller("news"), so endpoint is /news/latest
-        const apiEndpoint = `/news/latest?numOfRows=12`;
-        const fullUrl = `${apiUrl}${apiEndpoint}`;
-        console.log("API Endpoint:", apiEndpoint);
-        console.log("Full URL:", fullUrl);
+        // Backend API endpoint: /news/latest (RSS feeds with category filtering)
+        const categoryParam =
+          currentNewsTab && currentNewsTab !== "추천"
+            ? `&category=${encodeURIComponent(currentNewsTab)}`
+            : "";
+        const apiEndpoint = `/news/latest?numOfRows=9${categoryParam}`;
 
         const response = await apiGet<{
           resultCode: string;
@@ -514,14 +471,8 @@ export default function DashboardPage() {
           numOfRows: number;
         }>(apiEndpoint);
 
-        console.log("Korean News API Response:", response);
-        console.log("Response resultCode:", response?.resultCode);
-        console.log("Total count:", response?.totalCount);
-        console.log("Items count:", response?.items?.length);
-
         if (response && response.items && Array.isArray(response.items)) {
           if (response.items.length === 0) {
-            console.warn("No news items returned");
             setNewsArticlesState([]);
             return;
           }
@@ -547,13 +498,6 @@ export default function DashboardPage() {
                 imageUrl = null; // Filter out placeholder URLs
               }
 
-              console.log(`📰 News ${index}:`, {
-                title: item.title?.substring(0, 30),
-                detailUrl: item.detailUrl,
-                imageUrl: imageUrl ? "✅ Has image" : "❌ No image",
-                imageUrlValue: imageUrl,
-              });
-
               return {
                 id: item.detailUrl || `news-${index}`,
                 title: item.title || "제목 없음",
@@ -571,24 +515,12 @@ export default function DashboardPage() {
             }
           );
 
-          console.log("Formatted news count:", formattedNews.length);
-          setNewsArticlesState(formattedNews);
+          // Limit to 9 items for dashboard
+          setNewsArticlesState(formattedNews.slice(0, 9));
         } else {
-          console.warn("Invalid response structure:", response);
           setNewsArticlesState([]);
         }
       } catch (error: any) {
-        console.error("Failed to fetch Korean government news:", error);
-        console.error("Error details:", {
-          message: error?.message,
-          stack: error?.stack,
-          response: error?.response,
-        });
-        console.error(
-          "Full URL that failed:",
-          `${apiUrl}/news/latest?numOfRows=12`
-        );
-        // Don't fallback to mock data - show empty state to debug
         setNewsArticlesState([]);
       } finally {
         setLoadingNews(false);

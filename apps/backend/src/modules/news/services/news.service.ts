@@ -24,22 +24,26 @@ export class NewsService {
     );
   }
 
-  async getLatestNews(numOfRows: number = 20): Promise<PressReleaseResponse> {
+  async getLatestNews(
+    numOfRows: number = 40,
+    category?: string
+  ): Promise<PressReleaseResponse> {
     try {
-      // Fetch only from RSS feeds (government API removed)
-      const rssItems = await this.rssFeedService.fetchAllRssFeeds(numOfRows);
+      // Fetch only from RSS feeds with category filtering
+      const rssItems = await this.rssFeedService.fetchAllRssFeeds(
+        numOfRows,
+        category
+      );
 
-      // Sort by publish date (newest first)
-      rssItems.sort((a, b) => {
-        const dateA = new Date(a.publishDate || 0).getTime();
-        const dateB = new Date(b.publishDate || 0).getTime();
-        return dateB - dateA;
-      });
-
+      // Sort by publish date (newest first) - already sorted in fetchAllRssFeeds
       // Limit to requested number
       const limitedItems = rssItems.slice(0, numOfRows);
 
-      this.logger.log(`Returning ${limitedItems.length} RSS news items`);
+      this.logger.log(
+        `Returning ${limitedItems.length} RSS news items${
+          category ? ` for category: ${category}` : ""
+        }`
+      );
 
       return {
         resultCode: "00",
@@ -65,16 +69,16 @@ export class NewsService {
 
   async searchNews(
     keyword: string,
-    numOfRows: number = 9
+    numOfRows: number = 20
   ): Promise<PressReleaseResponse> {
     return this.dataGoKrService.getPressReleases(1, numOfRows, keyword);
   }
 
   /**
-   * Get news only from RSS feeds
+   * Get news only from RSS feeds with optional category filtering
    */
-  async getRssNews(numOfRows: number = 20): Promise<any[]> {
-    return this.rssFeedService.fetchAllRssFeeds(numOfRows);
+  async getRssNews(numOfRows: number = 20, category?: string): Promise<any[]> {
+    return this.rssFeedService.fetchAllRssFeeds(numOfRows, category);
   }
 
   /**
