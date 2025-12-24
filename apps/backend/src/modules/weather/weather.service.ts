@@ -1,6 +1,8 @@
+// weather/weather.service.ts
 import { Injectable } from "@nestjs/common";
 import { KmaApiService } from "./kma-api.service";
 import { CityService, City } from "./city.service";
+
 @Injectable()
 export class WeatherService {
   constructor(
@@ -8,7 +10,7 @@ export class WeatherService {
     private readonly cityService: CityService
   ) {}
 
-  async getCurrentWeather(cityName: string): Promise<any> {
+  async getCurrentWeather(cityName: string) {
     const city = this.cityService.getCityByName(cityName);
     if (!city) {
       return {
