@@ -60,6 +60,7 @@ export default function InboundNewPage() {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null
   );
+  const [isSaving, setIsSaving] = useState(false); // Flag to bypass unsaved changes check when saving
   const [supplierManagers, setSupplierManagers] = useState<
     Array<{
       id: string;
@@ -321,6 +322,15 @@ export default function InboundNewPage() {
     });
   };
 
+  // Check if all required fields are filled
+  const isFormValid = () => {
+    return !!(
+      formData.name?.trim() &&
+      formData.brand?.trim() &&
+      formData.category?.trim()
+    );
+  };
+
   // Check if there are unsaved changes
   const hasUnsavedChanges = () => {
     // Check if any important fields are filled
@@ -364,6 +374,10 @@ export default function InboundNewPage() {
     // Intercept router.push calls
     const originalPush = router.push;
     router.push = ((url: string, options?: any) => {
+      // Don't show unsaved changes dialog if we're in the process of saving
+      if (isSaving) {
+        return originalPush.call(router, url, options);
+      }
       if (hasUnsavedChanges() && url !== "/inbound/new") {
         setPendingNavigation(url);
         setShowUnsavedChangesDialog(true);
@@ -375,7 +389,7 @@ export default function InboundNewPage() {
     return () => {
       router.push = originalPush;
     };
-  }, [router, formData, selectedSupplierDetails]);
+  }, [router, formData, selectedSupplierDetails, isSaving]);
 
   // Handle dialog actions
   const handleLeavePage = () => {
@@ -1014,6 +1028,7 @@ export default function InboundNewPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true); // Set flag to bypass unsaved changes check
     setLoading(true);
 
     try {
@@ -1084,6 +1099,15 @@ export default function InboundNewPage() {
       if (formData.barcode) payload.barcode = formData.barcode;
       if (formData.image) payload.image = formData.image;
       else if (formData.imageUrl) payload.image = formData.imageUrl;
+      
+      // Add alert_days at product level if not noExpiryPeriod
+      if (
+        !formData.noExpiryPeriod &&
+        formData.alertDays &&
+        formData.alertDays.trim() !== ""
+      ) {
+        payload.alertDays = formData.alertDays;
+      }
 
       // Add return policy if returnable
       if (isReturnable) {
@@ -1121,7 +1145,9 @@ export default function InboundNewPage() {
               : formData.expiryUnit || undefined,
             qty: Number(formData.currentStock) || 0,
             alert_days:
-              formData.alertDays && formData.alertDays.trim() !== ""
+              !formData.noExpiryPeriod &&
+              formData.alertDays &&
+              formData.alertDays.trim() !== ""
                 ? formData.alertDays
                 : undefined,
             inbound_manager:
@@ -1159,6 +1185,12 @@ export default function InboundNewPage() {
 
       // Call API using authenticated request
       const { apiPost } = await import("../../../lib/api");
+      console.log("Sending payload with alertDays:", {
+        productLevel: payload.alertDays,
+        batchLevel: payload.initial_batches?.[0]?.alert_days,
+        formDataAlertDays: formData.alertDays,
+        noExpiryPeriod: formData.noExpiryPeriod,
+      });
       const result = await apiPost("/products", payload);
       console.log("Product created:", result);
 
@@ -1166,8 +1198,10 @@ export default function InboundNewPage() {
       setShowUnsavedChangesDialog(false);
       setPendingNavigation(null);
       router.push("/inbound");
+      // isSaving will be reset when component unmounts or navigation completes
     } catch (error) {
       console.error("Error creating product:", error);
+      setIsSaving(false); // Reset flag on error
       alert(
         error instanceof Error ? error.message : "제품 저장에 실패했습니다."
       );
@@ -1219,7 +1253,7 @@ export default function InboundNewPage() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || !isFormValid()}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <SaveIcon className="h-5 w-5" />
@@ -1996,8 +2030,9 @@ export default function InboundNewPage() {
                           const isChecked = e.target.checked;
                           handleInputChange("noExpiryPeriod", isChecked);
                           if (isChecked) {
-                            // Checkbox bosilganda expiryDate ni tozalash
+                            // Checkbox bosilganda expiryDate va alertDays ni tozalash
                             handleInputChange("expiryDate", "");
+                            handleInputChange("alertDays", "");
                           }
                         }}
                         className="
@@ -2053,7 +2088,8 @@ export default function InboundNewPage() {
                       onChange={(e) =>
                         handleInputChange("alertDays", e.target.value)
                       }
-                      className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      disabled={formData.noExpiryPeriod}
+                      className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     >
                       <option value="">선택(30일전/60일전/90일전)</option>
                       <option value="30">30일전</option>
@@ -2904,7 +2940,7 @@ export default function InboundNewPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || !isFormValid()}
               className="inline-flex h-12 items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <SaveIcon className="h-5 w-5" />

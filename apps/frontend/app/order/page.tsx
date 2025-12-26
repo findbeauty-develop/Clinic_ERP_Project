@@ -860,6 +860,7 @@ export default function OrderPage() {
                                     -
                                   </button>
                                   <input
+                                    placeholder="0"
                                     type="number"
                                     min="0"
                                     onChange={(e) => {
@@ -1060,9 +1061,9 @@ export default function OrderPage() {
                                       -
                                     </button>
                                     <input
+                                      placeholder="0"
                                       type="number"
                                       min="0"
-                                      value={currentQty}
                                       onChange={(e) => {
                                         const val = Math.max(
                                           0,
