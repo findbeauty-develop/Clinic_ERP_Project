@@ -16,9 +16,30 @@ const inboundFilters = [
   { label: "이름순", value: "name" },
 ];
 
-const categories = ["전체 카테고리", "스킨케어", "바디케어", "헤어케어"];
-const statuses = ["전체 상태", "입고 완료", "입고 대기", "재고 부족"];
-const suppliers = ["전체 공급업체", "뷰티랩", "글로우웰", "퍼스트메드"];
+// Helper functions to get dynamic options from products
+const getCategories = (products: ProductListItem[]): string[] => {
+  const cats = new Set<string>();
+  products.forEach((p) => {
+    if (p.category) cats.add(p.category);
+  });
+  return ["전체 카테고리", ...Array.from(cats).sort()];
+};
+
+const getStatuses = (products: ProductListItem[]): string[] => {
+  const stats = new Set<string>();
+  products.forEach((p) => {
+    if (p.status) stats.add(p.status);
+  });
+  return ["전체 상태", ...Array.from(stats).sort()];
+};
+
+const getSuppliers = (products: ProductListItem[]): string[] => {
+  const supps = new Set<string>();
+  products.forEach((p) => {
+    if (p.supplierName) supps.add(p.supplierName);
+  });
+  return ["전체 공급업체", ...Array.from(supps).sort()];
+};
 
 type ProductBatch = {
   batch_no: string;
@@ -64,6 +85,13 @@ export default function InboundPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 10;
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("recent");
+  const [selectedCategory, setSelectedCategory] = useState("전체 카테고리");
+  const [selectedStatus, setSelectedStatus] = useState("전체 상태");
+  const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
 
   // Fetch products for "빠른 입고" tab
   useEffect(() => {
@@ -160,11 +188,80 @@ export default function InboundPage() {
     fetchPendingOrders();
   }, [fetchPendingOrders]);
 
+  // Filter and sort products
+  const filteredAndSortedProducts = useMemo(() => {
+    let filtered = [...products];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.productName?.toLowerCase().includes(query) ||
+          p.brand?.toLowerCase().includes(query) ||
+          p.category?.toLowerCase().includes(query) ||
+          p.id?.toLowerCase().includes(query)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== "전체 카테고리") {
+      filtered = filtered.filter((p) => p.category === selectedCategory);
+    }
+
+    // Status filter
+    if (selectedStatus !== "전체 상태") {
+      filtered = filtered.filter((p) => p.status === selectedStatus);
+    }
+
+    // Supplier filter
+    if (selectedSupplier !== "전체 공급업체") {
+      filtered = filtered.filter((p) => p.supplierName === selectedSupplier);
+    }
+
+    // Sort
+    switch (sortBy) {
+      case "recent":
+        // Keep original order (already sorted by backend)
+        break;
+      case "newest":
+        // Sort by newest (by id)
+        filtered.sort((a, b) => {
+          return b.id.localeCompare(a.id);
+        });
+        break;
+      case "name":
+        // Sort by name
+        filtered.sort((a, b) => {
+          const nameA = a.productName?.toLowerCase() || "";
+          const nameB = b.productName?.toLowerCase() || "";
+          return nameA.localeCompare(nameB);
+        });
+        break;
+    }
+
+    return filtered;
+  }, [
+    products,
+    searchQuery,
+    sortBy,
+    selectedCategory,
+    selectedStatus,
+    selectedSupplier,
+  ]);
+
   // Pagination calculations
-  const totalPages = Math.ceil(products.length / itemsPerPage);
+  const totalPages = Math.ceil(
+    filteredAndSortedProducts.length / itemsPerPage
+  );
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentProducts = products.slice(startIndex, endIndex);
+  const currentProducts = filteredAndSortedProducts.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortBy, selectedCategory, selectedStatus, selectedSupplier]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -241,6 +338,8 @@ export default function InboundPage() {
                   <input
                     aria-label="제품 검색"
                     placeholder="제품명, 브랜드, 입고번호 등을 검색하세요"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
                   />
                 </div>
@@ -248,21 +347,29 @@ export default function InboundPage() {
                   <FilterChip
                     label="정렬"
                     options={inboundFilters}
+                    value={sortBy}
+                    onChange={(value) => setSortBy(value)}
                     defaultValue="최근 업데이트순"
                   />
                   <FilterChip
                     label="카테고리"
-                    options={categories}
+                    options={getCategories(products)}
+                    value={selectedCategory}
+                    onChange={(value) => setSelectedCategory(value)}
                     defaultValue="전체 카테고리"
                   />
                   <FilterChip
                     label="상태"
-                    options={statuses}
+                    options={getStatuses(products)}
+                    value={selectedStatus}
+                    onChange={(value) => setSelectedStatus(value)}
                     defaultValue="전체 상태"
                   />
                   <FilterChip
                     label="공급업체"
-                    options={suppliers}
+                    options={getSuppliers(products)}
+                    value={selectedSupplier}
+                    onChange={(value) => setSelectedSupplier(value)}
                     defaultValue="전체 공급업체"
                   />
                 </div>
@@ -276,7 +383,7 @@ export default function InboundPage() {
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  총 {products.length.toLocaleString()}개의 제품
+                  총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
                 </h2>
               </div>
 
@@ -294,6 +401,10 @@ export default function InboundPage() {
                 ) : products.length === 0 ? (
                   <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
                     등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
+                  </div>
+                ) : filteredAndSortedProducts.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    검색 조건에 맞는 제품이 없습니다.
                   </div>
                 ) : (
                   <>
