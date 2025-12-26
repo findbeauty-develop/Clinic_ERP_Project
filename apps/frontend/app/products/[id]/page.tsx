@@ -445,16 +445,18 @@ export default function ProductDetailPage() {
                   <ReadOnlyField
                     label="구매가"
                     value={
-                      product.purchasePrice
-                        ? `${product.purchasePrice.toLocaleString()} 원`
+                      product.purchasePrice !== null &&
+                      product.purchasePrice !== undefined
+                        ? `${product.purchasePrice.toLocaleString()} 원${product.unit ? ` / ${product.unit}` : ""}`
                         : "—"
                     }
                   />
                   <ReadOnlyField
                     label="판매가"
                     value={
-                      product.salePrice
-                        ? `${product.salePrice.toLocaleString()} 원`
+                      product.salePrice !== null &&
+                      product.salePrice !== undefined
+                        ? `${product.salePrice.toLocaleString()} 원${product.unit ? ` / ${product.unit}` : ""}`
                         : "—"
                     }
                   />

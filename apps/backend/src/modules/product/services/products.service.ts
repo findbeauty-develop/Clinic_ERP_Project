@@ -95,6 +95,7 @@ export class ProductsService {
           expiry_months: dto.expiryMonths ?? null,
           expiry_unit: dto.expiryUnit ?? null,
           alert_days: dto.alertDays ?? null,
+          inbound_manager: dto.inboundManager ?? null,
           // Packaging unit conversion
           has_different_packaging_quantity:
             dto.hasDifferentPackagingQuantity ?? false,

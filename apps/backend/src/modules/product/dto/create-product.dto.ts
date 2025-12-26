@@ -211,6 +211,10 @@ export class CreateProductDto {
   @IsString()
   alertDays?: string;
 
+  @IsOptional()
+  @IsString()
+  inboundManager?: string;
+
   // Packaging unit conversion
   @IsOptional()
   @IsBoolean()

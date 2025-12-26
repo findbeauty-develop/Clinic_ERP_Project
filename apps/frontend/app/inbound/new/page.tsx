@@ -1108,6 +1108,11 @@ export default function InboundNewPage() {
       ) {
         payload.alertDays = formData.alertDays;
       }
+      
+      // Add inbound_manager at product level
+      if (selectedManager && selectedManager.trim() !== "" && selectedManager !== "성함 선택") {
+        payload.inboundManager = selectedManager;
+      }
 
       // Add return policy if returnable
       if (isReturnable) {

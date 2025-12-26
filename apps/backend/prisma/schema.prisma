@@ -35,6 +35,7 @@ model Product {
   expiry_months Int? // 유통기한 기간 (default for all batches)
   expiry_unit   String? // 유통기한 단위 ("months" or "days")
   alert_days    String? // 알림 일수 (유효기간 임박 alert)
+  inbound_manager String? // 입고 담당자 (Product-level manager)
 
   // Packaging unit conversion
   has_different_packaging_quantity Boolean @default(false) // 포장 단위 내 제품 수량이 다른 경우
