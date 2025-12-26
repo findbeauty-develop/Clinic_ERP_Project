@@ -75,7 +75,7 @@ export default function InboundPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");

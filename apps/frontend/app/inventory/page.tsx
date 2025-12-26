@@ -75,7 +75,9 @@ export default function InventoryPage() {
     []
   );
   const [locations, setLocations] = useState<LocationInventory[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(
+    new Set()
+  );
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<"7" | "30" | "90" | "other">("7");
   const [customStartDate, setCustomStartDate] = useState<string>("");
@@ -178,11 +180,6 @@ export default function InventoryPage() {
     return imageUrl;
   };
 
-  const selectedLocationData = useMemo(() => {
-    if (!selectedLocation) return null;
-    return locations.find((loc) => loc.location === selectedLocation);
-  }, [selectedLocation, locations]);
-
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
@@ -210,134 +207,144 @@ export default function InventoryPage() {
           </h2>
 
           {/* Date Range Selector */}
-          <div className="mb-4 flex items-center gap-4">
-            <label className="text-sm font-medium text-slate-700">기간:</label>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dateRange"
-                  value="7"
-                  checked={dateRange === "7"}
-                  onChange={(e) => setDateRange(e.target.value as any)}
-                  className="
-  h-4 w-4 shrink-0 rounded-full
-  appearance-none bg-white
-  border border-slate-300
-  relative
-  checked:border-blue-600
-  focus:outline-none focus:ring-2 focus:ring-blue-500
-  after:content-['']
-  after:absolute after:left-1/2 after:top-1/2
-  after:h-2 after:w-2
-  after:-translate-x-1/2 after:-translate-y-1/2
-  after:rounded-full
-  after:bg-transparent
-  checked:after:bg-blue-600
-  dark:bg-white dark:border-slate-400
-"
-                />
-                <span className="text-sm text-slate-700">7일</span>
+          <div className="mb-4 flex items-center gap-4 justify-between">
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-slate-700">
+                기간:
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dateRange"
-                  value="30"
-                  checked={dateRange === "30"}
-                  onChange={(e) => setDateRange(e.target.value as any)}
-                  className="
-  h-4 w-4 shrink-0 rounded-full
-  appearance-none bg-white
-  border border-slate-300
-  relative
-  checked:border-blue-600
-  focus:outline-none focus:ring-2 focus:ring-blue-500
-  after:content-['']
-  after:absolute after:left-1/2 after:top-1/2
-  after:h-2 after:w-2
-  after:-translate-x-1/2 after:-translate-y-1/2
-  after:rounded-full
-  after:bg-transparent
-  checked:after:bg-blue-600
-  dark:bg-white dark:border-slate-400
-"
-                />
-                <span className="text-sm text-slate-700">30일</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dateRange"
-                  value="90"
-                  checked={dateRange === "90"}
-                  onChange={(e) => setDateRange(e.target.value as any)}
-                  className="
-  h-4 w-4 shrink-0 rounded-full
-  appearance-none bg-white
-  border border-slate-300
-  relative
-  checked:border-blue-600
-  focus:outline-none focus:ring-2 focus:ring-blue-500
-  after:content-['']
-  after:absolute after:left-1/2 after:top-1/2
-  after:h-2 after:w-2
-  after:-translate-x-1/2 after:-translate-y-1/2
-  after:rounded-full
-  after:bg-transparent
-  checked:after:bg-blue-600
-  dark:bg-white dark:border-slate-400
-"
-                />
-                <span className="text-sm text-slate-700">90일</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="dateRange"
-                  value="other"
-                  checked={dateRange === "other"}
-                  onChange={(e) => setDateRange(e.target.value as any)}
-                  className="
-  h-4 w-4 shrink-0 rounded-full
-  appearance-none bg-white
-  border border-slate-300
-  relative
-  checked:border-blue-600
-  focus:outline-none focus:ring-2 focus:ring-blue-500
-  after:content-['']
-  after:absolute after:left-1/2 after:top-1/2
-  after:h-2 after:w-2
-  after:-translate-x-1/2 after:-translate-y-1/2
-  after:rounded-full
-  after:bg-transparent
-  checked:after:bg-blue-600
-  dark:bg-white dark:border-slate-400
-"
-                />
-                <span className="text-sm text-slate-700">기타</span>
-              </label>
-            </div>
-
-            {dateRange === "other" && (
               <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
-                           [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
-                />
-                <span className="text-slate-500">~</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
-                           [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
-                />
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dateRange"
+                    value="7"
+                    checked={dateRange === "7"}
+                    onChange={(e) => setDateRange(e.target.value as any)}
+                    className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
+                  />
+                  <span className="text-sm text-slate-700">7일</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dateRange"
+                    value="30"
+                    checked={dateRange === "30"}
+                    onChange={(e) => setDateRange(e.target.value as any)}
+                    className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
+                  />
+                  <span className="text-sm text-slate-700">30일</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dateRange"
+                    value="90"
+                    checked={dateRange === "90"}
+                    onChange={(e) => setDateRange(e.target.value as any)}
+                    className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
+                  />
+                  <span className="text-sm text-slate-700">90일</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dateRange"
+                    value="other"
+                    checked={dateRange === "other"}
+                    onChange={(e) => setDateRange(e.target.value as any)}
+                    className="
+  h-4 w-4 shrink-0 rounded-full
+  appearance-none bg-white
+  border border-slate-300
+  relative
+  checked:border-blue-600
+  focus:outline-none focus:ring-2 focus:ring-blue-500
+  after:content-['']
+  after:absolute after:left-1/2 after:top-1/2
+  after:h-2 after:w-2
+  after:-translate-x-1/2 after:-translate-y-1/2
+  after:rounded-full
+  after:bg-transparent
+  checked:after:bg-blue-600
+  dark:bg-white dark:border-slate-400
+"
+                  />
+                  <span className="text-sm text-slate-700">기타</span>
+                </label>
               </div>
-            )}
+
+              {dateRange === "other" && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                             [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
+                  />
+                  <span className="text-slate-500">~</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="px-3 py-1 border border-slate-300 rounded text-sm bg-white text-slate-900
+                             [color-scheme:light] dark:bg-white dark:text-slate-900 dark:border-slate-300"
+                  />
+                </div>
+              )}
+            </div>
+            <Link
+              href="/order"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              주문하기
+            </Link>
           </div>
 
           {/* Summary Boxes */}
@@ -383,13 +390,6 @@ export default function InventoryPage() {
                 )}
               </div>
             </div>
-
-            <Link
-              href="/order"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              주문하기
-            </Link>
           </div>
         </section>
 
@@ -598,39 +598,73 @@ export default function InventoryPage() {
                 위치 정보가 없습니다.
               </p>
             ) : (
-              <div className="space-y-4">
-                <select
-                  value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
-                  className="w-full px-3 py-2 mb-2 rounded-lg text-sm
-             border border-slate-300
-             bg-white text-slate-900
-             [color-scheme:light]
-             dark:bg-white dark:text-slate-900 dark:border-slate-300"
-                >
-                  <option value="">위치를 선택하세요</option>
-                  {locations.map((loc) => (
-                    <option key={loc.location} value={loc.location}>
-                      {loc.location} 제품종류 {loc.productCount}종
-                    </option>
-                  ))}
-                </select>
-
-                {selectedLocationData && (
-                  <div className="mt-2 space-y-1">
-                    {selectedLocationData.items.map((item) => (
-                      <div
-                        key={item.batchNo}
-                        className="flex justify-between text-sm text-slate-700 bg-slate-50 p-2 rounded"
+              <div className="space-y-3">
+                {locations.map((location) => {
+                  const isExpanded = expandedLocations.has(location.location);
+                  return (
+                    <div
+                      key={location.location}
+                      className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden"
+                    >
+                      {/* Header */}
+                      <button
+                        onClick={() => {
+                          const newExpanded = new Set(expandedLocations);
+                          if (isExpanded) {
+                            newExpanded.delete(location.location);
+                          } else {
+                            newExpanded.add(location.location);
+                          }
+                          setExpandedLocations(newExpanded);
+                        }}
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
                       >
-                        <span>{item.productName}</span>
-                        <span>
-                          {item.batchNo}, {item.quantity}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="font-medium text-slate-900">
+                            {location.location}
+                          </span>
+                          <span className="text-slate-600">
+                            제품종류 {location.productCount}종
+                          </span>
+                        </div>
+                        <svg
+                          className={`w-5 h-5 text-slate-500 transition-transform ${
+                            isExpanded ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div className="px-4 pb-3 space-y-1 border-t border-slate-100">
+                          {location.items.map((item) => (
+                            <div
+                              key={`${location.location}-${item.batchNo}`}
+                              className="flex justify-between items-center py-2 text-sm text-slate-700"
+                            >
+                              <span className="font-medium">
+                                {item.productName}
+                              </span>
+                              <span className="text-slate-600">
+                                {item.batchNo}, {item.quantity}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
