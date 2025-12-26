@@ -69,7 +69,7 @@ export class NewsService {
 
   async searchNews(
     keyword: string,
-    numOfRows: number = 20
+    numOfRows: number = 50
   ): Promise<PressReleaseResponse> {
     return this.dataGoKrService.getPressReleases(1, numOfRows, keyword);
   }
@@ -77,7 +77,7 @@ export class NewsService {
   /**
    * Get news only from RSS feeds with optional category filtering
    */
-  async getRssNews(numOfRows: number = 20, category?: string): Promise<any[]> {
+  async getRssNews(numOfRows: number = 50, category?: string): Promise<any[]> {
     return this.rssFeedService.fetchAllRssFeeds(numOfRows, category);
   }
 

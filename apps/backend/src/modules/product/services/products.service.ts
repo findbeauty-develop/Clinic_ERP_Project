@@ -292,6 +292,7 @@ export class ProductsService {
       id: product.id,
       productName: product.name,
       brand: product.brand,
+      barcode: product.barcode ?? null, // ✅ Qo'shildi
       productImage: product.image_url,
       category: product.category,
       status: product.status,

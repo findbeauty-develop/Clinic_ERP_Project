@@ -8,6 +8,7 @@ type ProductDetail = {
   id: string;
   productName: string;
   brand: string;
+  barcode?: string | null;
   productImage?: string | null;
   category: string;
   status: string;
@@ -95,7 +96,9 @@ export default function ProductDetailPage() {
           id: data.id,
           productName: data.productName || data.name,
           brand: data.brand,
+          barcode: data.barcode || null,
           productImage: formattedImageUrl,
+
           category: data.category,
           status: data.status,
           currentStock: data.currentStock || data.current_stock,
@@ -333,26 +336,71 @@ export default function ProductDetailPage() {
                           value={product.category || "—"}
                         />
                         <ReadOnlyField
-                          label="상태"
-                          value={
-                            <span
-                              className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                                product.status === "재고 부족"
-                                  ? "bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"
-                                  : product.status === "단종"
-                                    ? "bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"
-                                    : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
-                              }`}
-                            >
-                              {product.status || "—"}
-                            </span>
-                          }
+                          label="바코드 번호"
+                          value={product.barcode || "-"}
                         />
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* 배치 목록 Section */}
+              {batches && Array.isArray(batches) && batches.length > 0 && (
+                <>
+                  <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                    <BoxIcon className="h-5 w-5 text-slate-500" />
+                    배치 목록
+                  </h2>
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+                    <div className="space-y-3">
+                      {batches.map((batch) => (
+                        <div
+                          key={batch.id}
+                          className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50"
+                        >
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                            {" "}
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-800 dark:text-white">
+                                Batch:
+                              </span>
+                              <span className="text-sm font-semibold text-slate-800 dark:text-white">
+                                {batch.batch_no}
+                              </span>
+                            </div>
+                            {batch.storage && (
+                              <span className="inline-flex items-center gap-1">
+                                <WarehouseIcon className="h-3.5 w-3.5" />
+                                보관위치: {batch.storage}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarIcon className="h-3.5 w-3.5" />
+                              입고 날짜:{" "}
+                              {new Date(batch.created_at).toLocaleDateString()}
+                            </span>
+                            {batch.expiry_date && (
+                              <span className="inline-flex items-center gap-1">
+                                유효기간:{" "}
+                                {typeof batch.expiry_date === "string"
+                                  ? batch.expiry_date
+                                  : new Date(batch.expiry_date)
+                                      .toISOString()
+                                      .split("T")[0]}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-white ml-auto">
+                              {batch.qty.toLocaleString()}{" "}
+                              {product.unit || "EA"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* 수량 및 용량 Section */}
               <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -549,62 +597,6 @@ export default function ProductDetailPage() {
                   </div>
                 </>
               )}
-
-              {/* 배치 목록 Section */}
-              {batches && Array.isArray(batches) && batches.length > 0 && (
-                <>
-                  <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-                    <BoxIcon className="h-5 w-5 text-slate-500" />
-                    배치 목록
-                  </h2>
-                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-                    <div className="space-y-3">
-                      {batches.map((batch) => (
-                        <div
-                          key={batch.id}
-                          className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-800 dark:text-white">
-                              Batch:
-                            </span>
-                            <span className="text-sm font-semibold text-slate-800 dark:text-white">
-                              {batch.batch_no}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                            {batch.storage && (
-                              <span className="inline-flex items-center gap-1">
-                                <WarehouseIcon className="h-3.5 w-3.5" />
-                                보관위치: {batch.storage}
-                              </span>
-                            )}
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarIcon className="h-3.5 w-3.5" />
-                              입고 날짜:{" "}
-                              {new Date(batch.created_at).toLocaleDateString()}
-                            </span>
-                            {batch.expiry_date && (
-                              <span className="inline-flex items-center gap-1">
-                                유효기간:{" "}
-                                {typeof batch.expiry_date === "string"
-                                  ? batch.expiry_date
-                                  : new Date(batch.expiry_date)
-                                      .toISOString()
-                                      .split("T")[0]}
-                              </span>
-                            )}
-                            <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-white ml-auto">
-                              {batch.qty.toLocaleString()}{" "}
-                              {product.unit || "EA"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
             </section>
           )
         ) : null}
@@ -631,6 +623,7 @@ function ProductEditForm({
   const [formData, setFormData] = useState({
     name: product.productName || "",
     brand: product.brand || "",
+    barcode: product.barcode || "",
     category: product.category || "",
     status: product.status || "활성",
     unit: product.unit || "",
@@ -681,6 +674,7 @@ function ProductEditForm({
       const payload: any = {
         name: formData.name,
         brand: formData.brand,
+        barcode: formData.barcode || undefined,
         category: formData.category,
         status: formData.status,
         unit: formData.unit || undefined,
@@ -989,24 +983,12 @@ function ProductEditForm({
                     handleInputChange("category", e.target.value)
                   }
                 />
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    상태
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) =>
-                      handleInputChange("status", e.target.value)
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  >
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <InputField
+                  label="바코드 번호"
+                  placeholder="바코드 번호"
+                  value={formData.barcode}
+                  onChange={(e) => handleInputChange("barcode", e.target.value)}
+                />
               </div>
             </div>
           </div>

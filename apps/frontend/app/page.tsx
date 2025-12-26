@@ -1,5 +1,6 @@
 "use client";
 
+import KoreanClockWidget from "@/components/watch";
 import { apiGet } from "@/lib/api";
 import { useState, useEffect, useMemo } from "react";
 
@@ -23,11 +24,40 @@ export default function DashboardPage() {
   const [airQualityData, setAirQualityData] = useState<any>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [selectedCity, setSelectedCity] = useState("seoul");
+  const [scheduleType, setScheduleType] = useState("프로젝트 일정");
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
+
+  // Add mock order data (after line 56, before newsTabs)
+  const mockOrders = [
+    {
+      id: 1,
+      company: "A사",
+      status: "접수대기",
+      statusColor: "bg-green-600",
+    },
+    {
+      id: 2,
+      company: "B사",
+      status: "진행중",
+      statusColor: "bg-orange-500",
+    },
+    {
+      id: 3,
+      company: "C사",
+      status: "거절",
+      statusColor: "bg-red-500",
+    },
+    {
+      id: 4,
+      company: "D사",
+      status: "완료",
+      statusColor: "bg-gray-500",
+    },
+  ];
 
   // Mock data
   const bannerSlides = [
@@ -295,9 +325,15 @@ export default function DashboardPage() {
 
       setLoadingHolidays(true);
       try {
-        const response = await apiGet(`/calendar/holidays/${year}/${month}`);
+        const response = await apiGet(
+          `/api/calendar/holidays/${year}/${month}`
+        );
+        console.log("Holidays response:", response); // Debug
         if (response && response.holidays) {
+          console.log("Holidays array:", response.holidays); // Debug
           setHolidays(response.holidays);
+        } else {
+          console.log("No holidays in response"); // Debug
         }
       } catch (error) {
         setHolidays([]);
@@ -340,6 +376,7 @@ export default function DashboardPage() {
       isCurrentMonth: boolean;
       isToday: boolean;
       isHoliday: boolean;
+      isSunday: boolean; // ✅ Qo'shildi
       holidayName?: string;
       fullDate?: Date;
     }> = [];
@@ -351,6 +388,7 @@ export default function DashboardPage() {
         isCurrentMonth: false,
         isToday: false,
         isHoliday: false,
+        isSunday: false, // ✅ Qo'shildi
       });
     }
 
@@ -363,8 +401,13 @@ export default function DashboardPage() {
         cellDate.getMonth() === today.getMonth() &&
         cellDate.getFullYear() === today.getFullYear();
 
+      // Check if this date is Sunday (0 = Sunday in JavaScript Date)
+      const isSunday = cellDate.getDay() === 0;
+
       // Check if this date is a holiday
       const holiday = holidays.find((h) => {
+        if (!h.date) return false;
+
         // Handle both Date objects and date strings from backend
         let holidayDate: Date;
         if (h.date instanceof Date) {
@@ -373,6 +416,11 @@ export default function DashboardPage() {
           // Parse ISO date string (e.g., "2026-01-01T00:00:00.000Z" or "2026-01-01")
           holidayDate = new Date(h.date);
         } else {
+          return false;
+        }
+
+        // Check if date is valid
+        if (isNaN(holidayDate.getTime())) {
           return false;
         }
 
@@ -386,7 +434,10 @@ export default function DashboardPage() {
 
         // Compare dates properly (ignore time)
         const isMatch =
-          normalizedHolidayDate.getTime() === normalizedCellDate.getTime();
+          normalizedHolidayDate.getFullYear() ===
+            normalizedCellDate.getFullYear() &&
+          normalizedHolidayDate.getMonth() === normalizedCellDate.getMonth() &&
+          normalizedHolidayDate.getDate() === normalizedCellDate.getDate();
 
         return isMatch;
       });
@@ -396,6 +447,7 @@ export default function DashboardPage() {
         isCurrentMonth: true,
         isToday,
         isHoliday: !!holiday,
+        isSunday, // ✅ Qo'shildi
         holidayName: holiday?.name,
         fullDate: cellDate,
       });
@@ -409,6 +461,7 @@ export default function DashboardPage() {
         isCurrentMonth: false,
         isToday: false,
         isHoliday: false,
+        isSunday: false, // ✅ Qo'shildi
       });
     }
 
@@ -460,7 +513,7 @@ export default function DashboardPage() {
           currentNewsTab && currentNewsTab !== "추천"
             ? `&category=${encodeURIComponent(currentNewsTab)}`
             : "";
-        const apiEndpoint = `/news/latest?numOfRows=9${categoryParam}`;
+        const apiEndpoint = `/news/latest?numOfRows=6${categoryParam}`;
 
         const response = await apiGet<{
           resultCode: string;
@@ -515,8 +568,8 @@ export default function DashboardPage() {
             }
           );
 
-          // Limit to 9 items for dashboard
-          setNewsArticlesState(formattedNews.slice(0, 9));
+          // Limit to 6 items for dashboard
+          setNewsArticlesState(formattedNews.slice(0, 6));
         } else {
           setNewsArticlesState([]);
         }
@@ -559,17 +612,17 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       {/* Header */}
-      <div className="mb-6">
+      {/* <div className="mb-6">
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
           대시보드
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-400">
           클리닉의 재고 현황을 한눈에 확인하세요
         </p>
-      </div>
+      </div> */}
 
       {/* Top Banner Carousel */}
-      <div className="relative mb-6 h-64 rounded-2xl overflow-hidden shadow-lg">
+      <div className="relative mb-6 h-96 rounded-2xl overflow-hidden shadow-lg">
         <div className="relative h-full">
           {bannerSlides.map((slide, index) => (
             <div
@@ -669,7 +722,7 @@ export default function DashboardPage() {
           {/* News Section - Enhanced Design */}
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
             {/* Header with Gradient */}
-            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
+            <div className="bg-white from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
               <div className="flex items-center justify-between mb-4">
                 {/* <div>
                   <h2 className="text-2xl font-bold mb-1">최신 뉴스</h2>
@@ -696,15 +749,15 @@ export default function DashboardPage() {
               </div>
 
               {/* News Tabs - Enhanced */}
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 bg-white rounded-2xl p-2">
                 {newsTabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setCurrentNewsTab(tab)}
                     className={`px-5 py-2.5 rounded-xl font-semibold whitespace-nowrap transition-all duration-300 ${
                       currentNewsTab === tab
-                        ? "bg-white text-indigo-600 shadow-lg scale-105"
-                        : "bg-white/20 text-white/90 hover:bg-white/30 hover:scale-105"
+                        ? "bg-indigo-600 text-white shadow-lg scale-105"
+                        : "bg-gray-100 text-gray-800 hover:bg-gray-200 hover:scale-105"
                     }`}
                   >
                     {tab}
@@ -714,7 +767,7 @@ export default function DashboardPage() {
             </div>
 
             {/* News Articles Grid - Enhanced */}
-            <div className="p-6">
+            <div className="p-2">
               {loadingNews ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[...Array(6)].map((_, i) => (
@@ -887,81 +940,232 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Product Recommendations (Ads) */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                주목할 만한 상품 추천
-              </h2>
-              <span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded">
-                AD
-              </span>
-            </div>
+          <div className="bg-white dark:bg-gray-900 h-96 rounded-2xl shadow-lg p-4 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                  일정
+                </h2>
 
-            <div className="relative">
-              <div className="overflow-hidden rounded-xl">
-                <div
-                  className="flex transition-transform duration-300 ease-in-out"
-                  style={{
-                    transform: `translateX(-${currentProductSlide * 100}%)`,
-                  }}
-                >
-                  {productRecommendations.map((product) => (
-                    <div key={product.id} className="min-w-full flex-shrink-0">
-                      <div className="flex gap-4 items-center bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-xl p-4">
-                        <div
-                          className={`w-24 h-24 ${product.image} rounded-lg flex-shrink-0`}
-                        ></div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 dark:text-white">
-                            {product.name}
-                          </h3>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="relative">
+                  <select
+                    value={scheduleType}
+                    onChange={(e) => setScheduleType(e.target.value)}
+                    className="appearance-none bg-transparent border-none text-gray-700 dark:text-gray-300 font-medium cursor-pointer pr-6 focus:outline-none text-sm"
+                  >
+                    <option value="개인 일정">개인 일정</option>
+                    <option value="회의 일정">회의 일정</option>
+                  </select>
+                  <svg
+                    className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
                 </div>
               </div>
 
-              {/* Product Carousel Navigation */}
-              <button
-                onClick={prevProductSlide}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-5 h-5"
+              <div className="flex gap-2">
+                <button
+                  onClick={goToToday}
+                  className="text-xs bg-indigo-600 text-white rounded-lg px-2.5 py-1 hover:bg-indigo-700 flex items-center gap-1.5"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15.75 19.5L8.25 12l7.5-7.5"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={nextProductSlide}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-5 h-5"
+                  <span className="w-2 h-2 bg-white rounded-full"></span>
+                  오늘
+                </button>
+              </div>
+            </div>
+
+            {/* Calendar and Order List Grid */}
+            <div className="grid grid-cols-[1fr_auto] gap-4 flex-1 min-h-0">
+              {/* Calendar Section */}
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* Month Nav */}
+                <div className="flex items-center justify-between mb-2 shrink-0">
+                  <button
+                    onClick={goToPreviousMonth}
+                    className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-5 h-5"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 19.5L8.25 12l7.5-7.5"
+                      />
+                    </svg>
+                  </button>
+
+                  <div className="relative">
+                    <input
+                      type="month"
+                      value={`${(selectedDate || currentDate).getFullYear()}-${String((selectedDate || currentDate).getMonth() + 1).padStart(2, "0")}`}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const [year, month] = e.target.value
+                            .split("-")
+                            .map(Number);
+                          setCurrentDate(new Date(year, month - 1, 1));
+                        }
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1 cursor-pointer text-sm pointer-events-none">
+                      {(selectedDate || currentDate).getFullYear()} -{" "}
+                      {(selectedDate || currentDate).getMonth() + 1}월 -{" "}
+                      {(selectedDate || currentDate).getDate()}일{" "}
+                      <svg
+                        className="w-4 h-4 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={goToNextMonth}
+                    className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-5 h-5"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Weekdays */}
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-600 dark:text-gray-400 mb-1 shrink-0">
+                  {["일", "월", "화", "수", "목", "금", "토"].map(
+                    (day, index) => (
+                      <div
+                        key={day}
+                        className={`py-0.5 font-medium ${index === 0 ? "text-red-600 dark:text-red-400" : ""}`}
+                      >
+                        {day}
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {/* Days Grid (fills remaining height) */}
+                <div
+                  className="grid grid-cols-7 gap-1 flex-1 min-h-0"
+                  style={{ gridAutoRows: "1fr" }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                  />
-                </svg>
-              </button>
+                  {getCalendarDays().map((day, i) => {
+                    if (!day.isCurrentMonth) {
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-center justify-center text-xs rounded-lg text-gray-400 dark:text-gray-600"
+                        />
+                      );
+                    }
+
+                    const isSelected =
+                      selectedDate &&
+                      day.fullDate &&
+                      selectedDate.getDate() === day.fullDate.getDate() &&
+                      selectedDate.getMonth() === day.fullDate.getMonth() &&
+                      selectedDate.getFullYear() === day.fullDate.getFullYear();
+
+                    // Check if should be marked in red (holiday or Sunday)
+                    const isRedDay = day.isHoliday || day.isSunday;
+
+                    let className =
+                      "flex flex-col items-center justify-center text-xs rounded-lg cursor-pointer transition-all ";
+
+                    if (day.isToday && isRedDay) {
+                      // Today + Holiday/Sunday: Indigo background with red text
+                      className +=
+                        "bg-indigo-600 text-red-200 font-semibold border-2 border-red-400 ";
+                    } else if (day.isToday) {
+                      className += "bg-indigo-600 text-white font-semibold ";
+                    } else if (isSelected && isRedDay) {
+                      // Selected + Holiday/Sunday: Red background with white text
+                      className +=
+                        "bg-red-600 text-white font-semibold ring-2 ring-red-400 ";
+                    } else if (isSelected) {
+                      className += "bg-purple-600 text-white font-semibold ";
+                    } else if (isRedDay) {
+                      // Holiday/Sunday: Red background and text
+                      className +=
+                        "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-semibold hover:bg-red-200 dark:hover:bg-red-900/40 ";
+                    } else {
+                      className +=
+                        "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 ";
+                    }
+
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => {
+                          if (day.fullDate) {
+                            setSelectedDate(day.fullDate);
+                            setCurrentDate(
+                              new Date(
+                                day.fullDate.getFullYear(),
+                                day.fullDate.getMonth(),
+                                1
+                              )
+                            );
+                          }
+                        }}
+                        className={className}
+                        title={
+                          day.isHoliday
+                            ? day.holidayName
+                            : day.fullDate?.toLocaleDateString("ko-KR")
+                        }
+                      >
+                        <span className="font-medium leading-none">
+                          {day.date}
+                        </span>
+
+                        {day.isHoliday && (
+                          <span className="text-[7px] mt-0.5 truncate w-full px-0.5 text-center leading-none">
+                            {day.holidayName}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Order List Section - Right side */}
             </div>
           </div>
         </div>
@@ -969,6 +1173,8 @@ export default function DashboardPage() {
         {/* Right Column (30%) */}
         <div className="lg:col-span-3 space-y-6">
           {/* Weather Widget - Enhanced Design */}
+          {/* Korean Clock Widgate
+          <KoreanClockWidget /> */}
           <div
             className={`relative overflow-hidden rounded-3xl shadow-2xl bg-gradient-to-br ${getWeatherGradient(
               weatherData?.condition || "맑음"
@@ -1356,193 +1562,15 @@ export default function DashboardPage() {
             }
           `}</style>
 
-          {/* Calendar/Schedule */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                일정
-              </h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={goToToday}
-                  className="text-sm bg-indigo-600 text-white rounded-lg px-3 py-1 hover:bg-indigo-700"
-                >
-                  오늘
-                </button>
-              </div>
-            </div>
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  onClick={goToPreviousMonth}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M15.75 19.5L8.25 12l7.5-7.5"
-                    />
-                  </svg>
-                </button>
-                <div className="font-semibold text-gray-900 dark:text-white">
-                  {(selectedDate || currentDate).getFullYear()} -{" "}
-                  {(selectedDate || currentDate).getMonth() + 1}월
-                </div>
-                <button
-                  onClick={goToNextMonth}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-600 dark:text-gray-400 mb-2">
-                {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
-                  <div key={day} className="py-1 font-medium">
-                    {day}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {getCalendarDays().map((day, i) => {
-                  if (!day.isCurrentMonth) {
-                    return (
-                      <div
-                        key={i}
-                        className="aspect-square flex items-center justify-center text-sm rounded-lg text-gray-400 dark:text-gray-600"
-                      />
-                    );
-                  }
-
-                  // Check if this date is selected
-                  const isSelected =
-                    selectedDate &&
-                    day.fullDate &&
-                    selectedDate.getDate() === day.fullDate.getDate() &&
-                    selectedDate.getMonth() === day.fullDate.getMonth() &&
-                    selectedDate.getFullYear() === day.fullDate.getFullYear();
-
-                  let className =
-                    "aspect-square flex flex-col items-center justify-center text-sm rounded-lg cursor-pointer transition-all ";
-
-                  if (day.isToday && day.isHoliday) {
-                    // Today + Holiday: Indigo background with red text
-                    className +=
-                      "bg-indigo-600 text-red-200 font-semibold border-2 border-red-400 ";
-                  } else if (day.isToday) {
-                    className += "bg-indigo-600 text-white font-semibold ";
-                  } else if (isSelected && day.isHoliday) {
-                    // Selected + Holiday: Red background with white text
-                    className +=
-                      "bg-red-600 text-white font-semibold ring-2 ring-red-400 ";
-                  } else if (isSelected) {
-                    // Selected: Blue ring
-                    className +=
-                      "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold ring-2 ring-indigo-400 ";
-                  } else if (day.isHoliday) {
-                    // Holiday: Red background and text
-                    className +=
-                      "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-semibold hover:bg-red-200 dark:hover:bg-red-900/40 ";
-                  } else {
-                    className +=
-                      "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 ";
-                  }
-
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        if (day.fullDate) {
-                          setSelectedDate(day.fullDate);
-                          // Update currentDate to show selected date's month/year in header
-                          setCurrentDate(
-                            new Date(
-                              day.fullDate.getFullYear(),
-                              day.fullDate.getMonth(),
-                              1
-                            )
-                          );
-                        }
-                      }}
-                      className={className}
-                      title={
-                        day.isHoliday
-                          ? day.holidayName
-                          : day.fullDate?.toLocaleDateString("ko-KR")
-                      }
-                    >
-                      <span className="font-medium">{day.date}</span>
-                      {day.isHoliday && (
-                        <span className="text-[8px] mt-0.5 truncate w-full px-0.5 text-center">
-                          {day.holidayName}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            {/* <div className="space-y-2">
-              {scheduleEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg"
-                >
-                  <div className="text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                      className="w-5 h-5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                      />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900 dark:text-white">
-                      {event.title}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      {event.date} ({event.day}), {event.time}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div> */}
-          </div>
+          {/* Product Recommendations (Ads) */}
 
           {/* Messages/Notifications */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 h-[410px] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 shrink-0">
               쪽지함
             </h2>
-            <div className="space-y-2">
+
+            <div className="space-y-2 flex-1 overflow-y-auto">
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -1554,6 +1582,7 @@ export default function DashboardPage() {
                         {message.clinic.charAt(0)}
                       </div>
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 dark:text-white truncate">
                         {message.clinic}
@@ -1563,6 +1592,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
+
                   {message.unread > 0 && (
                     <div className="flex-shrink-0">
                       <div className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
