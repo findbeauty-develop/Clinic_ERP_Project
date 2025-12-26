@@ -314,9 +314,19 @@ export class ProductsService {
       managerName: supplierManager?.name ?? null,
       contactPhone: supplierManager?.phone_number ?? null,
       contactEmail: supplierManager?.email1 ?? null,
+      // Full supplier details for edit page
+      supplierCompanyAddress: supplierManager?.company_address ?? null,
+      supplierBusinessNumber: supplierManager?.business_number ?? null,
+      supplierCompanyPhone: supplierManager?.company_phone ?? null,
+      supplierCompanyEmail: supplierManager?.company_email ?? null,
+      supplierPosition: supplierManager?.position ?? null,
+      supplierEmail2: supplierManager?.email2 ?? null,
+      supplierResponsibleProducts: supplierManager?.responsible_products ?? [],
+      supplierMemo: supplierManager?.memo ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
       storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch level yoki Product level
       productStorage: product.storage ?? null, // Product level storage (fallback uchun)
+      inboundManager: product.inbound_manager ?? null, // 입고 담당자
       memo: product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
@@ -479,6 +489,7 @@ export class ProductsService {
           capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
           usage_capacity: dto.usageCapacity ?? (existing as any).usage_capacity,
           storage: dto.storage !== undefined ? dto.storage : undefined, // Update storage
+          inbound_manager: dto.inboundManager !== undefined ? dto.inboundManager : undefined, // Update inbound manager
         } as any,
       });
 

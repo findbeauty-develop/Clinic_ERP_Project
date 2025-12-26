@@ -22,8 +22,17 @@ type ProductDetail = {
   managerName?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
+  supplierCompanyAddress?: string | null;
+  supplierBusinessNumber?: string | null;
+  supplierCompanyPhone?: string | null;
+  supplierCompanyEmail?: string | null;
+  supplierPosition?: string | null;
+  supplierEmail2?: string | null;
+  supplierResponsibleProducts?: string[];
+  supplierMemo?: string | null;
   expiryDate?: string | null;
   storageLocation?: string | null;
+  inboundManager?: string | null;
   memo?: string | null;
   isReturnable?: boolean;
   refundAmount?: number | null;
@@ -111,8 +120,17 @@ export default function ProductDetailPage() {
           managerName: data.managerName,
           contactPhone: data.contactPhone || data.contact_phone,
           contactEmail: data.contactEmail || data.contact_email,
+          supplierCompanyAddress: data.supplierCompanyAddress || null,
+          supplierBusinessNumber: data.supplierBusinessNumber || null,
+          supplierCompanyPhone: data.supplierCompanyPhone || null,
+          supplierCompanyEmail: data.supplierCompanyEmail || null,
+          supplierPosition: data.supplierPosition || null,
+          supplierEmail2: data.supplierEmail2 || null,
+          supplierResponsibleProducts: data.supplierResponsibleProducts || [],
+          supplierMemo: data.supplierMemo || null,
           expiryDate: data.expiryDate || data.expiry_date,
           storageLocation: data.storageLocation || data.storage_location,
+          inboundManager: data.inboundManager || data.inbound_manager || null,
           memo: data.memo,
           isReturnable: data.isReturnable ?? false,
           refundAmount: data.refundAmount || data.refund_amount || null,
@@ -571,7 +589,9 @@ export default function ProductDetailPage() {
               )}
 
               {/* 보관 정보 Section */}
-              {(product.storageLocation || product.memo) && (
+              {(product.storageLocation ||
+                product.inboundManager ||
+                product.memo) && (
                 <>
                   <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
                     <WarehouseIcon className="h-5 w-5 text-slate-500" />
@@ -583,6 +603,12 @@ export default function ProductDetailPage() {
                         <ReadOnlyField
                           label="보관 위치"
                           value={product.storageLocation}
+                        />
+                      )}
+                      {product.inboundManager && (
+                        <ReadOnlyField
+                          label="입고 담당자"
+                          value={product.inboundManager}
                         />
                       )}
                       {product.memo && (
@@ -621,7 +647,77 @@ function ProductEditForm({
   onCancel,
   onSuccess,
 }: ProductEditFormProps) {
+  const unitOptions = [
+    "cc / mL",
+    "unit / U",
+    "mg",
+    "vial/bottel",
+    "shot",
+    "ea",
+    "box",
+    "set",
+    "roll",
+  ];
+
   const [loading, setLoading] = useState(false);
+
+  // Supplier state
+  const [supplierSearchCompanyName, setSupplierSearchCompanyName] =
+    useState("");
+  const [supplierSearchManagerName, setSupplierSearchManagerName] =
+    useState("");
+  const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] =
+    useState("");
+  const [supplierSearchResults, setSupplierSearchResults] = useState<any[]>([]);
+  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
+  const [showSupplierEditModal, setShowSupplierEditModal] = useState(false);
+  const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
+    id?: string;
+    supplierId?: string;
+    companyName: string;
+    companyAddress: string | null;
+    businessNumber: string;
+    companyPhone: string | null;
+    companyEmail: string;
+    managerId: string;
+    managerName: string;
+    position: string | null;
+    phoneNumber: string;
+    email1: string | null;
+    email2: string | null;
+    responsibleProducts: string[];
+  } | null>(
+    product.supplierName && product.managerName
+      ? {
+          companyName: product.supplierName,
+          companyAddress: product.supplierCompanyAddress || null,
+          businessNumber: product.supplierBusinessNumber || "",
+          companyPhone: product.supplierCompanyPhone || null,
+          companyEmail: product.supplierCompanyEmail || "",
+          managerId: product.supplierId || "",
+          managerName: product.managerName,
+          position: product.supplierPosition || null,
+          phoneNumber: product.contactPhone || "",
+          email1: product.contactEmail || null,
+          email2: product.supplierEmail2 || null,
+          responsibleProducts: product.supplierResponsibleProducts || [],
+          supplierId: product.supplierId || undefined,
+        }
+      : null
+  );
+  const [editingSupplierDetails, setEditingSupplierDetails] = useState<{
+    companyName: string;
+    companyAddress: string;
+    businessNumber: string;
+    companyPhone: string;
+    companyEmail: string;
+    managerName: string;
+    position: string;
+    phoneNumber: string;
+    email1: string;
+    memo: string;
+  } | null>(null);
+
   const [formData, setFormData] = useState({
     name: product.productName || "",
     brand: product.brand || "",
@@ -629,19 +725,27 @@ function ProductEditForm({
     category: product.category || "",
     status: product.status || "활성",
     unit: product.unit || "",
+    // Separate unit fields for synchronization
+    currentStockUnit: product.unit || unitOptions[0] || "cc / mL",
+    minStockUnit: product.unit || unitOptions[0] || "cc / mL",
+    purchasePriceUnit: product.unit || unitOptions[0] || "cc / mL",
+    capacityUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
+    usageCapacityUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
+    salePriceUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
     purchasePrice: product.purchasePrice?.toString() || "",
     salePrice: product.salePrice?.toString() || "",
     currentStock: product.currentStock?.toString() || "0",
     minStock: product.minStock?.toString() || "0",
     capacityPerProduct: product.capacityPerProduct?.toString() || "",
-    capacityUnit: product.capacityUnit || "",
     usageCapacity: product.usageCapacity?.toString() || "",
+    enableUsageCapacity: !!product.usageCapacity,
     image: product.productImage || "",
     imageFile: null as File | null,
     expiryDate: product.expiryDate
       ? new Date(product.expiryDate).toISOString().split("T")[0]
       : "",
     storageLocation: product.storageLocation || "",
+    inboundManager: product.inboundManager || "",
     memo: product.memo || "",
     isReturnable: product.isReturnable || false,
     refundAmount: product.refundAmount?.toString() || "",
@@ -650,7 +754,177 @@ function ProductEditForm({
   });
 
   const handleInputChange = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+
+      // 제품 재고 수량, 최소 제품 재고, 구매가 unit'lari bir-biriga bog'langan
+      const syncedUnitFields = [
+        "currentStockUnit",
+        "minStockUnit",
+        "purchasePriceUnit",
+      ];
+
+      if (syncedUnitFields.includes(field)) {
+        syncedUnitFields.forEach((unitField) => {
+          if (unitField !== field) {
+            (newData as Record<string, any>)[unitField] = value;
+          }
+        });
+        // Also update the main unit field
+        newData.unit = value;
+      }
+
+      // 제품 용량 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
+      // Faqat "사용 단위" checkbox o'chirilgan bo'lsa
+      if (field === "capacityUnit") {
+        // Agar "사용 단위" checkbox o'chirilgan bo'lsa, 판매가 unit 제품 용량 unit'iga o'zgaradi
+        if (!prev.enableUsageCapacity) {
+          newData.salePriceUnit = value;
+        }
+      }
+
+      // 사용 단위 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
+      // Faqat "사용 단위" checkbox yoqilgan bo'lsa
+      if (field === "usageCapacityUnit") {
+        // Agar "사용 단위" checkbox yoqilgan bo'lsa, 판매가 unit 사용 단위 unit'iga o'zgaradi
+        if (prev.enableUsageCapacity) {
+          newData.salePriceUnit = value;
+        }
+      }
+
+      // 사용 단위 checkbox bosilganda, 판매가 unit mos ravishda o'zgaradi
+      if (field === "enableUsageCapacity") {
+        if (value === true) {
+          // Checkbox yoqilganda, 판매가 unit 사용 단위 unit'iga o'zgaradi
+          newData.salePriceUnit = prev.usageCapacityUnit;
+        } else {
+          // Checkbox o'chirilganda, 판매가 unit 제품 용량 unit'iga qaytadi
+          newData.salePriceUnit = prev.capacityUnit;
+        }
+      }
+
+      return newData;
+    });
+  };
+
+  // Supplier search function
+  const searchSuppliers = async (
+    companyName?: string,
+    managerName?: string,
+    phoneNumber?: string
+  ) => {
+    if (!companyName && !managerName && !phoneNumber) {
+      setSupplierSearchResults([]);
+      return;
+    }
+
+    setSupplierSearchLoading(true);
+    try {
+      const token =
+        localStorage.getItem("erp_access_token") ||
+        localStorage.getItem("token");
+      const tenantId =
+        localStorage.getItem("erp_tenant_id") ||
+        localStorage.getItem("tenantId");
+
+      const params = new URLSearchParams();
+      if (companyName) params.append("companyName", companyName);
+      if (managerName) params.append("managerName", managerName);
+      if (phoneNumber) params.append("phoneNumber", phoneNumber);
+
+      const response = await fetch(
+        `${apiUrl}/supplier/search?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Tenant-Id": tenantId || "",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const results = data.map((item: any) => ({
+          companyName: item.companyName || "",
+          companyAddress: item.companyAddress || null,
+          businessNumber: item.businessNumber || "",
+          companyPhone: item.companyPhone || null,
+          companyEmail: item.companyEmail || "",
+          managerId: item.managerId || "",
+          managerName: item.managerName || "",
+          position: item.position || null,
+          phoneNumber: item.phoneNumber || "",
+          email1: item.email1 || null,
+          email2: item.email2 || null,
+          responsibleProducts: item.responsibleProducts || [],
+          supplierId: item.supplierId || item.id || null,
+        }));
+        setSupplierSearchResults(results);
+      } else {
+        setSupplierSearchResults([]);
+      }
+    } catch (error) {
+      console.error("Error searching suppliers:", error);
+      setSupplierSearchResults([]);
+    } finally {
+      setSupplierSearchLoading(false);
+    }
+  };
+
+  const handleSupplierSearch = () => {
+    if (supplierSearchCompanyName && supplierSearchManagerName) {
+      searchSuppliers(
+        supplierSearchCompanyName,
+        supplierSearchManagerName,
+        undefined
+      );
+    } else {
+      setSupplierSearchResults([]);
+    }
+  };
+
+  const handleSupplierSearchByPhone = () => {
+    if (supplierSearchPhoneNumber) {
+      searchSuppliers(undefined, undefined, supplierSearchPhoneNumber);
+    }
+  };
+
+  const handleSupplierSelect = (result: any) => {
+    setSelectedSupplierDetails(result);
+    setEditingSupplierDetails({
+      companyName: result.companyName,
+      companyAddress: result.companyAddress || "",
+      businessNumber: result.businessNumber,
+      companyPhone: result.companyPhone || "",
+      companyEmail: result.companyEmail || "",
+      managerName: result.managerName,
+      position: result.position || "",
+      phoneNumber: result.phoneNumber,
+      email1: result.email1 || "",
+      memo: "",
+    });
+    setShowSupplierEditModal(true);
+    setSupplierSearchResults([]);
+  };
+
+  const handleSupplierEditSave = () => {
+    if (editingSupplierDetails && selectedSupplierDetails) {
+      setSelectedSupplierDetails({
+        ...selectedSupplierDetails,
+        companyName: editingSupplierDetails.companyName,
+        companyAddress: editingSupplierDetails.companyAddress,
+        businessNumber: editingSupplierDetails.businessNumber,
+        companyPhone: editingSupplierDetails.companyPhone,
+        companyEmail: editingSupplierDetails.companyEmail,
+        managerName: editingSupplierDetails.managerName,
+        position: editingSupplierDetails.position,
+        phoneNumber: editingSupplierDetails.phoneNumber,
+        email1: editingSupplierDetails.email1,
+      });
+      setShowSupplierEditModal(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -724,6 +998,16 @@ function ProductEditForm({
       // Alert days - must be string, not number (backend expects string)
       if (formData.alertDays) {
         payload.alertDays = formData.alertDays.toString();
+      }
+
+      // Storage location
+      if (formData.storageLocation !== undefined) {
+        payload.storage = formData.storageLocation || null;
+      }
+
+      // Inbound manager
+      if (formData.inboundManager !== undefined) {
+        payload.inboundManager = formData.inboundManager || null;
       }
 
       console.log("Sending payload:", payload);
@@ -818,7 +1102,12 @@ function ProductEditForm({
         storageLocation:
           finalProductResponse.storageLocation ||
           finalProductResponse.storage_location ||
+          finalProductResponse.storage ||
           product.storageLocation,
+        inboundManager:
+          finalProductResponse.inboundManager ||
+          finalProductResponse.inbound_manager ||
+          product.inboundManager,
         memo: finalProductResponse.memo || product.memo,
         isReturnable:
           finalProductResponse.isReturnable ?? product.isReturnable ?? false,
@@ -873,17 +1162,6 @@ function ProductEditForm({
   };
 
   const statusOptions = ["활성", "재고 부족", "만료", "단종"];
-  const unitOptions = [
-    "cc / mL",
-    "unit / U",
-    "mg",
-    "vial/bottel",
-    "shot",
-    "ea",
-    "box",
-    "set",
-    "roll",
-  ];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -1021,8 +1299,10 @@ function ProductEditForm({
               />
               <div className="relative w-28">
                 <select
-                  value={formData.unit}
-                  onChange={(e) => handleInputChange("unit", e.target.value)}
+                  value={formData.currentStockUnit}
+                  onChange={(e) =>
+                    handleInputChange("currentStockUnit", e.target.value)
+                  }
                   className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
                   <option value="">단위 선택</option>
@@ -1065,8 +1345,10 @@ function ProductEditForm({
               />
               <div className="relative w-28">
                 <select
-                  value={formData.unit}
-                  onChange={(e) => handleInputChange("unit", e.target.value)}
+                  value={formData.minStockUnit}
+                  onChange={(e) =>
+                    handleInputChange("minStockUnit", e.target.value)
+                  }
                   className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
                   <option value="">단위 선택</option>
@@ -1147,9 +1429,42 @@ function ProductEditForm({
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              사용 단위
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                사용 단위
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.enableUsageCapacity}
+                  onChange={(e) =>
+                    handleInputChange("enableUsageCapacity", e.target.checked)
+                  }
+                  className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-white-300
+        checked:bg-white-500 checked:border-white-500
+        focus:outline-none focus:ring-2 focus:ring-white-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-black
+        after:opacity-0
+        checked:after:opacity-100
+      "
+                />
+
+                <span className="text-xs text-slate-600 dark:text-slate-400">
+                  사용 단위 활성화
+                </span>
+              </label>
+            </div>
             <div className="flex gap-2">
               <input
                 type="number"
@@ -1158,16 +1473,18 @@ function ProductEditForm({
                 onChange={(e) =>
                   handleInputChange("usageCapacity", e.target.value)
                 }
+                disabled={!formData.enableUsageCapacity}
                 placeholder="전체 사용 아닌 경우, 실제 사용량을 입력하세요"
-                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <div className="relative w-28">
                 <select
-                  value={formData.capacityUnit}
+                  value={formData.usageCapacityUnit}
                   onChange={(e) =>
-                    handleInputChange("capacityUnit", e.target.value)
+                    handleInputChange("usageCapacityUnit", e.target.value)
                   }
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  disabled={!formData.enableUsageCapacity}
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                 >
                   <option value="">단위 선택</option>
                   {unitOptions.map((option) => (
@@ -1208,22 +1525,55 @@ function ProductEditForm({
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               구매가
             </label>
-            <input
-              type="number"
-              value={formData.purchasePrice}
-              onChange={(e) =>
-                handleInputChange("purchasePrice", e.target.value)
-              }
-              onWheel={(e) => e.currentTarget.blur()}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={formData.purchasePrice}
+                onChange={(e) =>
+                  handleInputChange("purchasePrice", e.target.value)
+                }
+                onWheel={(e) => e.currentTarget.blur()}
+                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <div className="relative w-28">
+                <select
+                  value={formData.purchasePriceUnit}
+                  onChange={(e) =>
+                    handleInputChange("purchasePriceUnit", e.target.value)
+                  }
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="">단위 선택</option>
+                  {unitOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                  <svg
+                    className="h-4 w-4 text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              판매가
+            </label>
             <div className="flex items-start gap-3">
-              <div className="flex-1 flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  판매가
-                </label>
+              <div className="flex-1 flex gap-2">
                 <input
                   type="number"
                   value={formData.salePrice}
@@ -1231,32 +1581,72 @@ function ProductEditForm({
                     handleInputChange("salePrice", e.target.value)
                   }
                   onWheel={(e) => e.currentTarget.blur()}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
+                {/* <div className="relative w-28">
+                  <select
+                    value={formData.salePriceUnit}
+                    onChange={() => {}} // Read-only, synced automatically
+                    disabled
+                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-100 px-3 pr-8 text-sm text-slate-500 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                    title={
+                      formData.enableUsageCapacity
+                        ? `사용 단위: ${formData.usageCapacityUnit || "—"}`
+                        : `제품 용량: ${formData.capacityUnit || "—"}`
+                    }
+                  >
+                    <option value={formData.salePriceUnit}>
+                      {formData.salePriceUnit || "단위 선택"}
+                    </option>
+                  </select>
+                  <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                    <svg
+                      className="h-4 w-4 text-slate-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                </div> */}
               </div>
               {/* Unit Display Card */}
-              {(formData.capacityPerProduct || formData.usageCapacity) && (
-                <div className="mt-7 flex-shrink-0">
+              {(formData.enableUsageCapacity && formData.usageCapacity) ||
+              formData.capacityPerProduct ? (
+                <div className="mt-0 flex-shrink-0">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                    <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                      {formData.usageCapacity &&
-                      formData.usageCapacity.trim() !== ""
-                        ? "사용 단위"
-                        : "제품 용량"}
-                    </div>
-                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {formData.usageCapacity &&
-                      formData.usageCapacity.trim() !== ""
-                        ? `${formData.usageCapacity} ${formData.capacityUnit || ""}`
-                        : formData.capacityPerProduct &&
-                            formData.capacityPerProduct.trim() !== ""
-                          ? `${formData.capacityPerProduct} ${formData.capacityUnit || ""}`
-                          : "-"}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {formData.enableUsageCapacity && formData.usageCapacity
+                          ? "사용 단위"
+                          : "제품 용량"}
+                      </div>
+
+                      <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 text-right">
+                        {formData.enableUsageCapacity && formData.usageCapacity
+                          ? `${formData.usageCapacity} ${formData.usageCapacityUnit || ""}`
+                          : formData.capacityPerProduct
+                            ? `${formData.capacityPerProduct} ${formData.capacityUnit || ""}`
+                            : "-"}
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
+            {/* {formData.salePriceUnit && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {formData.enableUsageCapacity
+                  ? `사용 단위와 동기화됨 (${formData.usageCapacityUnit})`
+                  : `제품 용량과 동기화됨 (${formData.capacityUnit})`}
+              </p>
+            )} */}
           </div>
         </div>
       </div>
@@ -1350,6 +1740,507 @@ function ProductEditForm({
         </div>
       </div>
 
+      {/* 공급업체 정보 Section */}
+      <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+        <TruckIcon className="h-5 w-5 text-indigo-500" />
+        공급업체 정보 *
+      </h2>
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+        {selectedSupplierDetails ? (
+          /* Full Supplier Details Card */
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                공급업체 상세 정보
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingSupplierDetails({
+                    companyName: selectedSupplierDetails.companyName,
+                    companyAddress:
+                      selectedSupplierDetails.companyAddress || "",
+                    businessNumber: selectedSupplierDetails.businessNumber,
+                    companyPhone: selectedSupplierDetails.companyPhone || "",
+                    companyEmail: selectedSupplierDetails.companyEmail,
+                    managerName: selectedSupplierDetails.managerName,
+                    position: selectedSupplierDetails.position || "",
+                    phoneNumber: selectedSupplierDetails.phoneNumber,
+                    email1: selectedSupplierDetails.email1 || "",
+                    memo: "",
+                  });
+                  setShowSupplierEditModal(true);
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                담당자 수정
+              </button>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Left Column */}
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    회사명
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.companyName}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    회사 주소
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.companyAddress || "-"}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    이름
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.managerName}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    직함
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.position || "-"}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    이메일
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.email1 || "-"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    사업자 등록번호
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.businessNumber}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    회사 전화번호
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.companyPhone || "-"}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    핸드폰 번호
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.phoneNumber}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    담당 제품
+                  </label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    {selectedSupplierDetails.responsibleProducts &&
+                    selectedSupplierDetails.responsibleProducts.length > 0
+                      ? selectedSupplierDetails.responsibleProducts.join(", ")
+                      : "-"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Search Fields */
+          <>
+            <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  공급업체명
+                </label>
+                <input
+                  type="text"
+                  value={supplierSearchCompanyName}
+                  onChange={(e) => setSupplierSearchCompanyName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      supplierSearchCompanyName &&
+                      supplierSearchManagerName
+                    ) {
+                      handleSupplierSearch();
+                    }
+                  }}
+                  placeholder="공급업체명을 입력해주세요."
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  담당자
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={supplierSearchManagerName}
+                    onChange={(e) =>
+                      setSupplierSearchManagerName(e.target.value)
+                    }
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        supplierSearchCompanyName &&
+                        supplierSearchManagerName
+                      ) {
+                        handleSupplierSearch();
+                      }
+                    }}
+                    placeholder="담당자 이름"
+                    className="h-12 flex-1 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSupplierSearch}
+                    disabled={
+                      supplierSearchLoading ||
+                      !supplierSearchCompanyName ||
+                      !supplierSearchManagerName
+                    }
+                    className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    title="검색"
+                  >
+                    {supplierSearchLoading ? (
+                      <svg
+                        className="h-5 w-5 animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning Message */}
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+              <svg
+                className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해 보세요.
+              </p>
+            </div>
+
+            {/* Phone Search */}
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  핸드폰 번호
+                </label>
+                <input
+                  type="text"
+                  value={supplierSearchPhoneNumber}
+                  onChange={(e) => setSupplierSearchPhoneNumber(e.target.value)}
+                  placeholder="000-0000-0000"
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleSupplierSearchByPhone}
+                  disabled={supplierSearchLoading || !supplierSearchPhoneNumber}
+                  className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
+                >
+                  검색하기
+                </button>
+              </div>
+            </div>
+
+            {/* Search Results */}
+            {supplierSearchResults.length > 0 && (
+              <div className="mt-6">
+                <div className="space-y-2">
+                  {supplierSearchResults.map((result, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => handleSupplierSelect(result)}
+                      className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+                    >
+                      <div className="font-semibold text-slate-900 dark:text-white">
+                        {result.companyName} - {result.managerName}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        {result.phoneNumber} • {result.email1 || "-"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Supplier Edit Modal */}
+      {showSupplierEditModal && editingSupplierDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="p-6">
+              <h3 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                공급업체 상세 정보
+              </h3>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Left Column */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사명
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyName}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyName: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사 주소
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyAddress}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyAddress: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      이름
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.managerName}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          managerName: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      직함
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.position}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          position: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      이메일
+                    </label>
+                    <input
+                      type="email"
+                      value={editingSupplierDetails.email1}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          email1: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      사업자 등록번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.businessNumber}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          businessNumber: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사 전화번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyPhone}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyPhone: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  {/* <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      담당자 ID
+                    </label>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                      {selectedSupplierDetails?.managerId || "-"}
+                    </div>
+                  </div> */}
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      핸드폰 번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.phoneNumber}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          phoneNumber: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      담당 제품
+                    </label>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                      {selectedSupplierDetails?.responsibleProducts &&
+                      selectedSupplierDetails.responsibleProducts.length > 0
+                        ? selectedSupplierDetails.responsibleProducts.join(", ")
+                        : "-"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 메모 - Full Width */}
+              <div className="mt-4">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  메모
+                </label>
+                <textarea
+                  rows={4}
+                  value={editingSupplierDetails.memo}
+                  onChange={(e) =>
+                    setEditingSupplierDetails({
+                      ...editingSupplierDetails,
+                      memo: e.target.value,
+                    })
+                  }
+                  placeholder="메모를 입력하세요"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierEditModal(false)}
+                  className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSupplierEditSave}
+                  className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                  확인하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 보관 정보 Section */}
       <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
         <WarehouseIcon className="h-5 w-5 text-slate-500" />
@@ -1363,6 +2254,14 @@ function ProductEditForm({
             onChange={(e) =>
               handleInputChange("storageLocation", e.target.value)
             }
+          />
+          <InputField
+            label="입고 담당자"
+            value={formData.inboundManager}
+            onChange={(e) =>
+              handleInputChange("inboundManager", e.target.value)
+            }
+            placeholder="입고 담당자 이름을 입력하세요"
           />
         </div>
       </div>
