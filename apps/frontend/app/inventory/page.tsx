@@ -545,9 +545,10 @@ export default function InventoryPage() {
             ) : (
               <div className="space-y-3">
                 {topValueProducts.map((product, index) => (
-                  <div
+                  <Link
                     key={product.productId}
-                    className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200"
+                    href={`/products/${product.productId}`}
+                    className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     <div className="w-10 h-10 bg-slate-200 rounded flex items-center justify-center text-slate-600 font-bold">
                       {index + 1}
@@ -580,7 +581,7 @@ export default function InventoryPage() {
                         ₩{formatCurrency(product.unitValue)}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

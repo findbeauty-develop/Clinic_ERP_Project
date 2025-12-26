@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost } from "../../lib/api";
 
 type Batch = {
@@ -23,6 +23,10 @@ type ProductForOutbound = {
   productImage?: string | null;
   category: string;
   unit?: string | null;
+  usageCapacity?: number | null;
+  usageCapacityUnit?: string | null;
+  capacityPerProduct?: number | null;
+  capacityUnit?: string | null;
   batches: Batch[];
   isLowStock?: boolean;
   minStock?: number;
@@ -78,10 +82,17 @@ type PackageItemForOutbound = {
 
 export default function OutboundPage() {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // Rejim o'zgarishi - segmentli control orqali
   const [isPackageMode, setIsPackageMode] = useState(
     pathname === "/outbound/package"
   );
+
+  // Update isPackageMode when pathname changes
+  useEffect(() => {
+    setIsPackageMode(pathname === "/outbound/package");
+  }, [pathname]);
   // Tab o'zgarishi - 출고 처리 yoki 출고 내역
   const [activeTab, setActiveTab] = useState<"processing" | "history">(
     "processing"
@@ -135,14 +146,7 @@ export default function OutboundPage() {
   const [historyTotalItems, setHistoryTotalItems] = useState(0);
   const historyItemsPerPage = 20;
 
-  // Initialize manager name from localStorage (current logged-in member)
-  useEffect(() => {
-    const memberData = localStorage.getItem("erp_member_data");
-    if (memberData) {
-      const member = JSON.parse(memberData);
-      setManagerName(member.full_name || member.member_id || "");
-    }
-  }, []);
+  // Manager name should be empty on page load - user must enter it manually
 
   useEffect(() => {
     if (activeTab === "processing") {
@@ -156,6 +160,89 @@ export default function OutboundPage() {
       fetchHistory();
     }
   }, [apiUrl, searchQuery, isPackageMode, activeTab]);
+
+  // Handle highlight from URL parameter (when navigating from package mode)
+  useEffect(() => {
+    const highlightProductId = searchParams.get("highlight");
+    if (highlightProductId && !isPackageMode && pathname === "/outbound") {
+      // Find which page the product is on
+      const productIndex = products.findIndex(
+        (p) => p.id === highlightProductId
+      );
+      if (productIndex !== -1) {
+        const productPage = Math.floor(productIndex / itemsPerPage) + 1;
+        if (productPage !== currentPage) {
+          setCurrentPage(productPage);
+        }
+      }
+
+      // Wait for products to load and page to change, then scroll and highlight
+      const highlightProduct = () => {
+        const productElement = document.getElementById(
+          `product-card-${highlightProductId}`
+        );
+        if (productElement) {
+          productElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+          productElement.style.border = "2px solid rgb(14 165 233)";
+          productElement.style.backgroundColor = "rgb(240 249 255)";
+          productElement.style.borderRadius = "0.75rem";
+          productElement.style.boxSizing = "border-box";
+          productElement.style.position = "relative";
+          productElement.style.zIndex = "10";
+          setTimeout(() => {
+            productElement.style.border = "";
+            productElement.style.backgroundColor = "";
+            productElement.style.borderRadius = "";
+            productElement.style.boxSizing = "";
+            productElement.style.position = "";
+            productElement.style.zIndex = "";
+            // Remove highlight parameter from URL
+            router.replace("/outbound", { scroll: false });
+          }, 2000);
+          return true;
+        }
+        return false;
+      };
+
+      // Try multiple times with increasing delays
+      const tryHighlight = (attempt = 0) => {
+        if (attempt > 5) return; // Max 5 attempts
+
+        setTimeout(
+          () => {
+            if (!highlightProduct() && attempt < 5) {
+              tryHighlight(attempt + 1);
+            }
+          },
+          attempt === 0 ? 300 : attempt * 200
+        );
+      };
+
+      // Start trying after products are loaded
+      if (products.length > 0 && !loading) {
+        tryHighlight();
+      } else {
+        // Wait for products to load first
+        setTimeout(() => {
+          if (products.length > 0) {
+            tryHighlight();
+          }
+        }, 500);
+      }
+    }
+  }, [
+    searchParams,
+    isPackageMode,
+    pathname,
+    products,
+    loading,
+    router,
+    currentPage,
+    itemsPerPage,
+  ]);
 
   useEffect(() => {
     if (activeTab === "history") {
@@ -569,6 +656,12 @@ export default function OutboundPage() {
       return;
     }
 
+    // 파손 yoki 불량 tanlanganida 메모 majburiy
+    if (statusType && !memo.trim()) {
+      alert("메모를 입력해주세요.");
+      return;
+    }
+
     // Check for temporary batch IDs (package items not fully loaded)
     const packageItems = scheduledItems.filter((item) => item.isPackageItem);
     const hasTemporaryBatchIds = packageItems.some(
@@ -784,6 +877,13 @@ export default function OutboundPage() {
 
   // Product'ni chap panel'da ko'rsatish va scroll qilish
   const scrollToProduct = (productId: string) => {
+    // Agar package mode'da bo'lsa, avval 제품 출고 pagega o'tish
+    if (isPackageMode) {
+      // URL parameter bilan productId'ni uzatish
+      router.push(`/outbound?highlight=${productId}`);
+      return;
+    }
+
     // Product card'ni topish
     const productElement = document.getElementById(`product-card-${productId}`);
     if (productElement) {
@@ -1111,15 +1211,10 @@ export default function OutboundPage() {
           </div>
 
           {/* Quick Outbound Bar - faqat processing tab'da */}
-          {activeTab === "processing" && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400">
-              바코드 스캐너로 빠른 출고
-            </div>
-          )}
         </header>
 
         {activeTab === "processing" ? (
-          <div className="grid gap-6 lg:grid-cols-[1fr,400px] lg:h-[calc(100vh-10rem)]">
+          <div className="grid gap-6 lg:grid-cols-[1fr,420px] lg:h-[calc(100vh-10rem)]">
             {/* Left Panel - Product/Package List */}
             <div className="flex flex-col overflow-hidden">
               <div className="flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex flex-col overflow-hidden">
@@ -1161,7 +1256,7 @@ export default function OutboundPage() {
                         placeholder={
                           isPackageMode
                             ? "패키지명, 제품명으로 검색..."
-                            : "제품명, 브랜드, 배치번호로 검색..."
+                            : "제품명, 브랜드로 검색"
                         }
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -1528,10 +1623,10 @@ export default function OutboundPage() {
             </div>
 
             {/* Right Panel - Outbound Processing */}
-            <div className="flex flex-col">
+            <div className="flex flex-col ">
               <div className="flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex flex-col overflow-hidden">
                 {/* Header - Fixed */}
-                <div className="mb-4 flex items-center justify-between flex-shrink-0">
+                <div className="mb-4 flex items-center  justify-between flex-shrink-0">
                   <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
                       <svg
@@ -1550,14 +1645,19 @@ export default function OutboundPage() {
                     </div>
                     출고 처리
                   </h2>
-                  {/* 출고 담당자 (현재 로그인한 사용자) */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                      출고 담당자
+                  {/* 출고 담당자 */}
+                  <div className="flex items-center ">
+                    <label className="w-42 shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      출고 담당자 <span className="text-red-500">*</span>
                     </label>
-                    <span className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                      {managerName || "알 수 없음"}
-                    </span>
+
+                    <input
+                      type="text"
+                      value={managerName}
+                      onChange={(e) => setManagerName(e.target.value)}
+                      placeholder="담당자 이름"
+                      className="flex-1 rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+                    />
                   </div>
                 </div>
 
@@ -1630,7 +1730,7 @@ export default function OutboundPage() {
                     {statusType && (
                       <div className="mt-4">
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                          메모
+                          메모 <span className="text-red-500">*</span>
                         </label>
                         <textarea
                           placeholder="상태가 나쁜 이유를 입력하세요"
@@ -1642,19 +1742,21 @@ export default function OutboundPage() {
                       </div>
                     )}
 
-                    {/* 차트번호 Field */}
-                    <div className="mt-4">
-                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                        차트번호
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="차트번호"
-                        value={chartNumber}
-                        onChange={(e) => setChartNumber(e.target.value)}
-                        className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      />
-                    </div>
+                    {/* 차트번호 Field - faqat 파손 yoki 불량 tanlanmaganida */}
+                    {!statusType && (
+                      <div className="mt-4">
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                          차트번호
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="차트번호"
+                          value={chartNumber}
+                          onChange={(e) => setChartNumber(e.target.value)}
+                          className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Scheduled Outbound List */}
@@ -1669,7 +1771,16 @@ export default function OutboundPage() {
                           : "출고할 제품을 선택해주세요."}
                       </div>
                     ) : (
-                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                      <div
+                        className="space-y-3 flex-1 min-h-0 overflow-y-auto
+  [&::-webkit-scrollbar]:w-1
+  [&::-webkit-scrollbar-track]:bg-slate-100
+  [&::-webkit-scrollbar-thumb]:bg-slate-300
+  [&::-webkit-scrollbar-thumb]:rounded-full
+  dark:[&::-webkit-scrollbar-track]:bg-slate-800
+  dark:[&::-webkit-scrollbar-thumb]:bg-slate-600
+"
+                      >
                         {/* 실패한 항목 표시 */}
                         {failedItems.length > 0 && (
                           <div className="mb-3 rounded-lg border-2 border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
@@ -1849,8 +1960,7 @@ export default function OutboundPage() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="text-sm text-slate-600 dark:text-slate-400">
-                                            {packageCount}
-                                            {unit}
+                                            {packageCount} {unit}
                                           </span>
                                           <button
                                             onClick={(e) => {
@@ -1928,30 +2038,34 @@ export default function OutboundPage() {
                                   return (
                                     <div
                                       key={`${item.productId}-${item.batchId}`}
-                                      className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                                      onClick={() =>
+                                        scrollToProduct(item.productId)
+                                      }
+                                      className={`flex items-center justify-between rounded-lg border px-3 py-4  cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800 ${
                                         isFailed
                                           ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
                                           : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60"
                                       }`}
                                     >
                                       <span
-                                        className={`text-sm ${
+                                        className={`text-sm flex-1 ${
                                           isFailed
                                             ? "text-red-700 dark:text-red-300"
                                             : "text-slate-700 dark:text-slate-200"
                                         }`}
                                       >
                                         {item.productName} {item.batchNo}{" "}
-                                        {item.quantity}
+                                        {item.quantity} {"   "}
                                         {item.unit || "개"}
                                         {isFailed && (
-                                          <span className="ml-2 text-xs text-red-600 dark:text-red-400">
+                                          <span className="ml-2 text-xs text-red-600 dark:text-red-400 ">
                                             (실패)
                                           </span>
                                         )}
                                       </span>
                                       <button
-                                        onClick={() =>
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           handleQuantityChange(
                                             item.productId,
                                             item.batchId,
@@ -1959,8 +2073,8 @@ export default function OutboundPage() {
                                             item.productName,
                                             item.unit || "개",
                                             item.quantity - 1
-                                          )
-                                        }
+                                          );
+                                        }}
                                         className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                       >
                                         <svg
@@ -2072,6 +2186,7 @@ export default function OutboundPage() {
                       submitting ||
                       scheduledItems.length === 0 ||
                       !managerName.trim() ||
+                      (statusType && !memo.trim()) ||
                       scheduledItems.some((item) => {
                         // Package items uchun tekshiruv yo'q
                         if (item.isPackageItem) return false;
@@ -2600,8 +2715,8 @@ function ProductCard({
                       day: "2-digit",
                     })
 
-                    .replace(/\./g, "-")
-                    .replace(/\s/g, "")
+                    .replace(/\s/g, "-")
+                    .replace(/\./g, "")
                 : "00-00-00";
 
               // Check if THIS batch has low stock (batch.qty <= minStock)
@@ -2609,15 +2724,21 @@ function ProductCard({
                 ? batch.qty <= product.minStock
                 : false;
 
+              // Unit logic: if usageCapacity exists, use usageCapacityUnit, otherwise use unit
+              const displayUnit =
+                product.usageCapacity && product.usageCapacityUnit
+                  ? product.usageCapacityUnit
+                  : product.unit || "단위";
+
               return (
                 <div
                   key={batch.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60"
                 >
                   {/* Left Section - Product Info */}
                   <div className="flex-1">
                     {/* Top Line - Product Name and Batch */}
-                    <div className="mb-2 flex items-center gap-3">
+                    <div className="mb-3 flex items-center gap-3">
                       <h3 className="text-base font-bold text-slate-900 dark:text-white">
                         {product.productName}
                       </h3>
@@ -2673,7 +2794,7 @@ function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          product.unit || "개",
+                          displayUnit,
                           Math.max(0, quantity - 1),
                           batch.qty
                         )
@@ -2694,7 +2815,7 @@ function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          product.unit || "개",
+                          displayUnit,
                           Math.min(newQty, batch.qty),
                           batch.qty
                         );
@@ -2708,7 +2829,7 @@ function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          product.unit || "개",
+                          displayUnit,
                           Math.min(quantity + 1, batch.qty),
                           batch.qty
                         )
@@ -2718,7 +2839,7 @@ function ProductCard({
                       +
                     </button>
                     <span className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {product.unit || "단위"}
+                      {displayUnit}
                     </span>
                   </div>
                 </div>

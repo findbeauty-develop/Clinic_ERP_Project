@@ -410,6 +410,10 @@ export class ProductsService {
         purchasePrice: product.purchase_price,
         salePrice: product.sale_price,
         unit: product.unit,
+        usageCapacity: product.usage_capacity,
+        usageCapacityUnit: product.capacity_unit, // usage_capacity uses capacity_unit as its unit
+        capacityPerProduct: product.capacity_per_product,
+        capacityUnit: product.capacity_unit,
         supplierName: companyName, // Company name from ClinicSupplierManager
         managerName: managerName, // Manager name from ClinicSupplierManager
         supplierId: supplierManager?.id ?? null, // ClinicSupplierManager ID
