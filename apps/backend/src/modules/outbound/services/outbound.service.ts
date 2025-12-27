@@ -710,91 +710,347 @@ export class OutboundService {
       ];
     }
 
-    const [outbounds, total] = await Promise.all([
-      (this.prisma as any).outbound.findMany({
-        where,
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              brand: true,
-              category: true,
-              sale_price: true,
-              unit: true,
+    // Get both Outbound and PackageOutbound records
+    const [outbounds, packageOutbounds, outboundTotal, packageOutboundTotal] =
+      await Promise.all([
+        // Regular outbounds (제품 출고)
+        (this.prisma as any).outbound.findMany({
+          where,
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                brand: true,
+                category: true,
+                sale_price: true,
+                unit: true,
+              },
+            },
+            batch: {
+              select: {
+                id: true,
+                batch_no: true,
+                expiry_date: true,
+              },
             },
           },
-          batch: {
-            select: {
-              id: true,
-              batch_no: true,
-              expiry_date: true,
+          orderBy: { outbound_date: "desc" },
+          skip,
+          take: limit,
+        }),
+        // Package outbounds (패키지 출고)
+        (this.prisma as any).packageOutbound.findMany({
+          where: {
+            tenant_id: tenantId,
+            ...(filters?.startDate || filters?.endDate
+              ? {
+                  outbound_date: {
+                    ...(filters.startDate ? { gte: filters.startDate } : {}),
+                    ...(filters.endDate ? { lte: filters.endDate } : {}),
+                  },
+                }
+              : {}),
+            ...(filters?.productId ? { product_id: filters.productId } : {}),
+            ...(filters?.packageId ? { package_id: filters.packageId } : {}),
+            ...(filters?.managerName
+              ? {
+                  manager_name: {
+                    contains: filters.managerName,
+                    mode: "insensitive",
+                  },
+                }
+              : {}),
+            ...(filters?.search
+              ? {
+                  OR: [
+                    {
+                      product: {
+                        name: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                    {
+                      product: {
+                        brand: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                    {
+                      manager_name: {
+                        contains: filters.search.toLowerCase().trim(),
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      batch: {
+                        batch_no: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          },
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                brand: true,
+                category: true,
+                sale_price: true,
+                unit: true,
+              },
+            },
+            batch: {
+              select: {
+                id: true,
+                batch_no: true,
+                expiry_date: true,
+              },
+            },
+            package: {
+              include: {
+                items: {
+                  include: {
+                    product: {
+                      select: {
+                        id: true,
+                        name: true,
+                        brand: true,
+                        unit: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    order: "asc",
+                  },
+                },
+              },
             },
           },
-        },
-        orderBy: { outbound_date: "desc" }, // 시간차 순서 (최신순)
-        skip,
-        take: limit,
-      }),
-      (this.prisma as any).outbound.count({ where }),
-    ]);
+          orderBy: { outbound_date: "desc" },
+          skip,
+          take: limit,
+        }),
+        (this.prisma as any).outbound.count({ where }),
+        (this.prisma as any).packageOutbound.count({
+          where: {
+            tenant_id: tenantId,
+            ...(filters?.startDate || filters?.endDate
+              ? {
+                  outbound_date: {
+                    ...(filters.startDate ? { gte: filters.startDate } : {}),
+                    ...(filters.endDate ? { lte: filters.endDate } : {}),
+                  },
+                }
+              : {}),
+            ...(filters?.productId ? { product_id: filters.productId } : {}),
+            ...(filters?.packageId ? { package_id: filters.packageId } : {}),
+            ...(filters?.managerName
+              ? {
+                  manager_name: {
+                    contains: filters.managerName,
+                    mode: "insensitive",
+                  },
+                }
+              : {}),
+            ...(filters?.search
+              ? {
+                  OR: [
+                    {
+                      product: {
+                        name: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                    {
+                      product: {
+                        brand: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                    {
+                      manager_name: {
+                        contains: filters.search.toLowerCase().trim(),
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      batch: {
+                        batch_no: {
+                          contains: filters.search.toLowerCase().trim(),
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          },
+        }),
+      ]);
 
-    // Package nomlarini alohida olish (package_id mavjud bo'lgan outbound'lar uchun)
-    const packageIds = outbounds
-      .filter((outbound: any) => outbound.package_id)
-      .map((outbound: any) => outbound.package_id);
+    // Get package items for all package outbounds
+    const packageIds = [
+      ...new Set(
+        packageOutbounds.map((p: any) => p.package_id).filter(Boolean)
+      ),
+    ];
+    const packagesWithItems: Record<string, any> = {};
 
-    const packagesMap: Record<string, string> = {};
     if (packageIds.length > 0) {
       const packages = await (this.prisma as any).package.findMany({
         where: {
           id: { in: packageIds },
           tenant_id: tenantId,
         },
-        select: {
-          id: true,
-          name: true,
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  brand: true,
+                  unit: true,
+                  sale_price: true,
+                },
+              },
+            },
+            orderBy: {
+              order: "asc",
+            },
+          },
         },
       });
 
       packages.forEach((pkg: any) => {
-        packagesMap[pkg.id] = pkg.name;
+        packagesWithItems[pkg.id] = pkg;
       });
     }
 
+    // Combine and sort all outbounds (both Outbound and PackageOutbound)
+    const allOutbounds = [
+      ...outbounds.map((outbound: any) => ({
+        ...outbound,
+        _type: "outbound" as const,
+      })),
+      ...packageOutbounds.map((pkgOutbound: any) => ({
+        ...pkgOutbound,
+        _type: "packageOutbound" as const,
+        packageWithItems: packagesWithItems[pkgOutbound.package_id] || null,
+      })),
+    ]
+      .sort((a, b) => {
+        const dateA = new Date(a.outbound_date || a.outboundDate).getTime();
+        const dateB = new Date(b.outbound_date || b.outboundDate).getTime();
+        return dateB - dateA; // 최신순
+      })
+      .slice(0, limit); // Pagination
+
+    const total = outboundTotal + packageOutboundTotal;
+
     // Response format - 패키지 출고와 단품 출고 구분 표시
     return {
-      items: outbounds.map((outbound: any) => ({
-        id: outbound.id,
-        outboundType: outbound.outbound_type || "제품", // 패키지 출고와 단품 출고 구분
-        outboundDate: outbound.outbound_date,
-        outboundQty: outbound.outbound_qty,
-        managerName: outbound.manager_name,
-        patientName: outbound.patient_name,
-        chartNumber: outbound.chart_number,
-        memo: outbound.memo,
-        isDamaged: outbound.is_damaged,
-        isDefective: outbound.is_defective,
-        packageId: outbound.package_id,
-        packageName: outbound.package_id
-          ? packagesMap[outbound.package_id] || null
-          : null, // 패키지 출고인 경우 패키지명
-        product: {
-          id: outbound.product?.id,
-          name: outbound.product?.name,
-          brand: outbound.product?.brand,
-          category: outbound.product?.category,
-          salePrice: outbound.product?.sale_price,
-          unit: outbound.product?.unit,
-        },
-        batch: {
-          id: outbound.batch?.id,
-          batchNo: outbound.batch?.batch_no,
-          expiryDate: outbound.batch?.expiry_date,
-        },
-        createdAt: outbound.created_at,
-        updatedAt: outbound.updated_at,
-      })),
+      items: allOutbounds.map((item: any) => {
+        if (item._type === "packageOutbound") {
+          // PackageOutbound record
+          // package_qty is the number of packages outbounded
+          // For display, we'll show package_qty, but actual product quantity
+          // would need to be calculated from package items
+          // For now, we'll use package_qty as the display quantity
+
+          // Get package items
+          const packageItems =
+            item.packageWithItems?.items || item.package?.items || [];
+
+          return {
+            id: item.id,
+            outboundType: "패키지", // 패키지 출고
+            outboundDate: item.outbound_date,
+            outboundQty: item.package_qty, // Package count (will be displayed as "X packages")
+            managerName: item.manager_name,
+            patientName: null,
+            chartNumber: item.chart_number,
+            memo: item.memo,
+            isDamaged: item.is_damaged,
+            isDefective: item.is_defective,
+            packageId: item.package_id,
+            packageName:
+              item.package_name ||
+              item.package?.name ||
+              item.packageWithItems?.name ||
+              null, // 패키지명 (denormalized yoki relation)
+            packageQty: item.package_qty, // 패키지 수량
+            packageItems: packageItems.map((pkgItem: any) => ({
+              productId: pkgItem.product_id || pkgItem.product?.id,
+              productName: pkgItem.product?.name || "",
+              brand: pkgItem.product?.brand || "",
+              unit: pkgItem.product?.unit || "",
+              quantity: pkgItem.quantity || 1,
+              salePrice: pkgItem.product?.sale_price || 0,
+            })),
+            product: {
+              id: item.product?.id,
+              name: item.product?.name,
+              brand: item.product?.brand,
+              category: item.product?.category,
+              salePrice: item.product?.sale_price,
+              unit: item.product?.unit,
+            },
+            batch: {
+              id: item.batch?.id,
+              batchNo: item.batch?.batch_no,
+              expiryDate: item.batch?.expiry_date,
+            },
+            createdAt: item.created_at,
+            updatedAt: null,
+          };
+        } else {
+          // Regular Outbound record
+          return {
+            id: item.id,
+            outboundType: item.outbound_type || "제품", // 단품 출고
+            outboundDate: item.outbound_date,
+            outboundQty: item.outbound_qty,
+            managerName: item.manager_name,
+            patientName: item.patient_name,
+            chartNumber: item.chart_number,
+            memo: item.memo,
+            isDamaged: item.is_damaged,
+            isDefective: item.is_defective,
+            packageId: item.package_id,
+            packageName: item.package_id ? item.package?.name || null : null, // 패키지 출고인 경우 패키지명
+            product: {
+              id: item.product?.id,
+              name: item.product?.name,
+              brand: item.product?.brand,
+              category: item.product?.category,
+              salePrice: item.product?.sale_price,
+              unit: item.product?.unit,
+            },
+            batch: {
+              id: item.batch?.id,
+              batchNo: item.batch?.batch_no,
+              expiryDate: item.batch?.expiry_date,
+            },
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+          };
+        }
+      }),
       total,
       page,
       limit,
@@ -1130,12 +1386,62 @@ export class OutboundService {
       async (tx: any) => {
         console.log(`\n🟢 [createUnifiedOutbound] Transaction ichida...`);
         const createdOutbounds: any[] = [];
+        const createdPackageOutbounds: any[] = [];
         const logs: any[] = [];
         // Product'larni bir marta yangilash uchun map
         const productStockUpdates: Map<string, number> = new Map<
           string,
           number
         >();
+
+        // Package outbound uchun package items va package names'ni olish
+        const packageItemsMap = new Map<string, number>(); // packageId -> package item quantity
+        const packageNamesMap = new Map<string, string>(); // packageId -> package name
+        if (dto.outboundType === "패키지") {
+          const packageIds = [
+            ...new Set(
+              validItems.map((item) => item.packageId).filter(Boolean)
+            ),
+          ];
+          if (packageIds.length > 0) {
+            // Get package items
+            const packageItems = await (tx as any).packageItem.findMany({
+              where: {
+                package_id: { in: packageIds },
+                tenant_id: tenantId,
+              },
+              select: {
+                package_id: true,
+                product_id: true,
+                quantity: true,
+                package_name: true,
+              },
+            });
+
+            // Get packages for names
+            const packages = await (tx as any).package.findMany({
+              where: {
+                id: { in: packageIds },
+                tenant_id: tenantId,
+              },
+              select: {
+                id: true,
+                name: true,
+              },
+            });
+
+            // Group by packageId and productId to get package item quantity
+            packageItems.forEach((pkgItem: any) => {
+              const key = `${pkgItem.package_id}-${pkgItem.product_id}`;
+              packageItemsMap.set(key, pkgItem.quantity);
+            });
+
+            // Map package names
+            packages.forEach((pkg: any) => {
+              packageNamesMap.set(pkg.id, pkg.name);
+            });
+          }
+        }
 
         for (const item of validItems) {
           console.log(
@@ -1151,25 +1457,65 @@ export class OutboundService {
           }
 
           try {
-            // Outbound record yaratish
-            const outbound = await (tx as any).outbound.create({
-              data: {
-                tenant_id: tenantId,
-                product_id: item.productId,
-                batch_id: item.batchId,
-                batch_no: batch.batch_no,
-                outbound_qty: item.outboundQty,
-                outbound_type: dto.outboundType,
-                manager_name: dto.managerName,
-                patient_name: dto.patientName ?? null,
-                chart_number: dto.chartNumber ?? null,
-                is_damaged: false,
-                is_defective: false,
-                memo: dto.memo ?? null,
-                package_id: item.packageId ?? null,
-                created_by: null, // TODO: User ID qo'shish
-              },
-            });
+            // Package outbound bo'lsa, PackageOutbound tablega yozish
+            if (dto.outboundType === "패키지" && item.packageId) {
+              // Package qty'ni frontend'dan olish yoki hisoblash
+              let packageQty = item.packageQty;
+              if (!packageQty) {
+                // Fallback: outboundQty / package item quantity
+                const packageItemKey = `${item.packageId}-${item.productId}`;
+                const packageItemQuantity =
+                  packageItemsMap.get(packageItemKey) || 1;
+                packageQty = Math.floor(item.outboundQty / packageItemQuantity);
+              }
+
+              // Get package name
+              const packageName =
+                packageNamesMap.get(item.packageId || "") || null;
+
+              const packageOutbound = await (tx as any).packageOutbound.create({
+                data: {
+                  tenant_id: tenantId,
+                  package_id: item.packageId,
+                  package_name: packageName, // Denormalized package name
+                  product_id: item.productId,
+                  batch_id: item.batchId,
+                  package_qty: packageQty,
+                  manager_name: dto.managerName,
+                  chart_number: dto.chartNumber ?? null,
+                  memo: dto.memo ?? null,
+                  is_damaged: dto.isDamaged || false,
+                  is_defective: dto.isDefective || false,
+                },
+              });
+
+              createdPackageOutbounds.push(packageOutbound);
+              console.log(
+                `  ✅ PackageOutbound created: package_qty=${packageQty}`
+              );
+            } else {
+              // Product outbound bo'lsa, Outbound tablega yozish
+              const outbound = await (tx as any).outbound.create({
+                data: {
+                  tenant_id: tenantId,
+                  product_id: item.productId,
+                  batch_id: item.batchId,
+                  batch_no: batch.batch_no,
+                  outbound_qty: item.outboundQty,
+                  outbound_type: dto.outboundType,
+                  manager_name: dto.managerName,
+                  patient_name: dto.patientName ?? null,
+                  chart_number: dto.chartNumber ?? null,
+                  is_damaged: dto.isDamaged || false,
+                  is_defective: dto.isDefective || false,
+                  memo: dto.memo ?? null,
+                  package_id: null, // Product outbound'da package_id null
+                  created_by: null, // TODO: User ID qo'shish
+                },
+              });
+
+              createdOutbounds.push(outbound);
+            }
 
             // 사용 단위 mantiqi: used_count yangilash va bo'sh box aniqlash
             const product = productMap.get(item.productId);
@@ -1295,8 +1641,14 @@ export class OutboundService {
             );
 
             // 출고 로그 생성
+            const recordId =
+              dto.outboundType === "패키지" && item.packageId
+                ? createdPackageOutbounds[createdPackageOutbounds.length - 1]
+                    ?.id
+                : createdOutbounds[createdOutbounds.length - 1]?.id;
+
             const log = {
-              outboundId: outbound.id,
+              outboundId: recordId || null,
               outboundType: dto.outboundType,
               timestamp: new Date().toISOString(),
               managerName: dto.managerName,
@@ -1307,8 +1659,6 @@ export class OutboundService {
               status: "success",
             };
             logs.push(log);
-
-            createdOutbounds.push(outbound);
           } catch (error) {
             // Transaction ichida xato bo'lsa, itemni failed qilish
             console.error(
@@ -1370,6 +1720,7 @@ export class OutboundService {
         return {
           success: true,
           outboundIds: createdOutbounds.map((o: any) => o.id),
+          packageOutboundIds: createdPackageOutbounds.map((o: any) => o.id),
           failedItems: failedItems.length > 0 ? failedItems : undefined,
           logs,
           message:

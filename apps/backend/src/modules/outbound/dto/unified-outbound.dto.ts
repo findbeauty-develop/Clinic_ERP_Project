@@ -6,6 +6,7 @@ import {
   ValidateNested,
   Min,
   IsEnum,
+  IsBoolean,
 } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -29,6 +30,11 @@ export class UnifiedOutboundItemDto {
   @IsOptional()
   @IsString()
   packageId?: string; // 패키지 ID (패키지 출고인 경우)
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  packageQty?: number; // 패키지 수량 (nechta package outbound qilingan)
 }
 
 export class UnifiedOutboundDto {
@@ -49,6 +55,14 @@ export class UnifiedOutboundDto {
   @IsOptional()
   @IsString()
   memo?: string; // 메모 (optional)
+
+  @IsOptional()
+  @IsBoolean()
+  isDamaged?: boolean; // 파손 (optional)
+
+  @IsOptional()
+  @IsBoolean()
+  isDefective?: boolean; // 불량 (optional)
 
   @IsArray()
   @ValidateNested({ each: true })

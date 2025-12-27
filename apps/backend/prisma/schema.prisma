@@ -49,6 +49,7 @@ model Product {
   orderItems       OrderItem[]
   outbounds        Outbound[]
   packageItems     PackageItem[]
+  packageOutbounds PackageOutbound[]
   returns          Return[]
   returnPolicy     ReturnPolicy?
   supplierProducts SupplierProduct[] // DEPRECATED: Will be removed after migration
@@ -141,6 +142,7 @@ model Batch {
   product          Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
   orderItems       OrderItem[]
   outbounds        Outbound[]
+  packageOutbounds PackageOutbound[]
   returns          Return[]
 
   @@index([tenant_id])
@@ -235,6 +237,35 @@ model Outbound {
   @@index([tenant_id, outbound_date])
 }
 
+model PackageOutbound {
+  id            String    @id @default(uuid())
+  tenant_id     String
+  package_id    String
+  package_name  String?   // Denormalized package name for faster access
+  product_id    String
+  batch_id      String
+  package_qty   Int       // 패키지 수량 (nechta package outbound qilingan)
+  outbound_date DateTime  @default(now())
+  manager_name  String
+  chart_number  String?
+  memo          String?
+  created_at    DateTime  @default(now())
+  is_damaged    Boolean   @default(false)
+  is_defective  Boolean   @default(false)
+  
+  // Relations
+  package Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  batch   Batch   @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([package_id])
+  @@index([product_id])
+  @@index([batch_id])
+  @@index([outbound_date])
+  @@index([tenant_id, outbound_date])
+}
+
 model Package {
   id          String        @id @default(uuid())
   tenant_id   String
@@ -246,20 +277,22 @@ model Package {
   created_by  String?
   updated_by  String?
   items       PackageItem[]
+  packageOutbounds PackageOutbound[]
 
   @@index([tenant_id])
   @@index([tenant_id, is_active])
 }
 
 model PackageItem {
-  id         String  @id @default(uuid())
-  tenant_id  String
-  package_id String
-  product_id String
-  quantity   Int     @default(1)
-  order      Int     @default(0)
-  package    Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
-  product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  id           String  @id @default(uuid())
+  tenant_id    String
+  package_id  String
+  package_name String? // Denormalized package name for faster access
+  product_id  String
+  quantity    Int     @default(1)
+  order       Int     @default(0)
+  package     Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([package_id, product_id])
   @@index([tenant_id])

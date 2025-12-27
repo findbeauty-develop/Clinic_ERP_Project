@@ -287,6 +287,7 @@ export class PackageService {
             create: dto.items.map((item, index) => ({
               tenant_id: tenantId,
               product_id: item.productId,
+              package_name: dto.name, // Denormalized package name
               quantity: item.quantity,
               order: item.order ?? index,
             })),
@@ -379,10 +380,15 @@ export class PackageService {
 
       // Add items if provided
       if (dto.items) {
+        // Get package name for denormalization
+        const packageData = await this.packageRepository.findById(id, tenantId, tx);
+        const packageName = dto.name || packageData?.name || "";
+        
         updateData.items = {
           create: dto.items.map((item, index) => ({
             tenant_id: tenantId,
             product_id: item.productId,
+            package_name: packageName, // Denormalized package name
             quantity: item.quantity,
             order: item.order ?? index,
           })),

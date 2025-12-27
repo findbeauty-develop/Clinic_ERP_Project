@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { apiGet, apiPost } from "../../../lib/api";
+import { apiGet, apiPost, apiDelete } from "../../../lib/api";
 
 type Batch = {
   id: string;
@@ -87,14 +87,63 @@ export default function PackageOutboundPage() {
     {}
   );
 
+  // Package outbound history state
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotalItems, setHistoryTotalItems] = useState(0);
+  const historyItemsPerPage = 5;
+
   useEffect(() => {
     fetchPackages();
+    fetchHistory();
   }, []);
+
+  useEffect(() => {
+    setHistoryCurrentPage(1);
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historySearchQuery]);
+
+  useEffect(() => {
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyCurrentPage]);
 
   // Reset to page 1 when search query changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
+
+  const handleDeletePackage = async (
+    packageId: string,
+    packageName: string
+  ) => {
+    if (!confirm(`정말로 "${packageName}" 패키지를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      await apiDelete(`${apiUrl}/packages/${packageId}`);
+      // Remove from scheduled items if exists
+      setScheduledItems((prev) =>
+        prev.filter((item) => item.packageId !== packageId)
+      );
+      // Remove from package counts
+      setPackageCounts((prev) => {
+        const updated = { ...prev };
+        delete updated[packageId];
+        return updated;
+      });
+      // Refresh packages list
+      fetchPackages();
+    } catch (error: any) {
+      alert(`패키지 삭제 실패: ${error.message || "알 수 없는 오류"}`);
+    }
+  };
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -161,6 +210,38 @@ export default function PackageOutboundPage() {
     } catch (err) {
       console.error("Failed to load package items", err);
       alert("패키지 구성품 정보를 불러오지 못했습니다.");
+    }
+  };
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append("outboundType", "패키지"); // Only package outbounds
+      if (historySearchQuery) {
+        queryParams.append("search", historySearchQuery);
+      }
+      queryParams.append("page", historyCurrentPage.toString());
+      queryParams.append("limit", historyItemsPerPage.toString());
+
+      const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
+      const data = await apiGet<{
+        items: any[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      }>(url);
+
+      setHistoryData(data.items || []);
+      setHistoryTotalPages(data.totalPages || 1);
+      setHistoryTotalItems(data.total || 0);
+    } catch (err) {
+      console.error("Failed to load history", err);
+      setHistoryError("출고 내역을 불러오지 못했습니다.");
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -674,12 +755,23 @@ export default function PackageOutboundPage() {
                                 <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                                   {pkg.name}
                                 </h3>
-                                <Link
-                                  href={`/packages/${pkg.id}/edit`}
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                >
-                                  수정
-                                </Link>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeletePackage(pkg.id, pkg.name)
+                                    }
+                                    className="inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-900/20"
+                                  >
+                                    삭제
+                                  </button>
+                                  <Link
+                                    href={`/packages/${pkg.id}/edit`}
+                                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                  >
+                                    수정
+                                  </Link>
+                                </div>
                               </div>
                               {pkg.items && pkg.items.length > 0 && (
                                 <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
@@ -1163,6 +1255,273 @@ export default function PackageOutboundPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Package Outbound History Section */}
+          <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-500/20">
+                  <svg
+                    className="h-5 w-5 text-sky-600 dark:text-sky-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  최근 출고 내역
+                </h2>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  {historyTotalItems}건
+                </span>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+              </span>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative mb-4">
+              <input
+                type="text"
+                placeholder="제품명, 출고자명, 출고상태..."
+                value={historySearchQuery}
+                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              />
+              <svg
+                className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+
+            {/* History List */}
+            {historyLoading ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="text-slate-500">로딩 중...</div>
+              </div>
+            ) : historyError ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-red-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                {historyError}
+              </div>
+            ) : historyData.length === 0 ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="text-slate-500">출고 내역이 없습니다.</div>
+              </div>
+            ) : (
+              (() => {
+                // Group package outbounds by date, time, manager, package name, and chart number
+                const groups: { [key: string]: any[] } = {};
+
+                historyData
+                  .filter(
+                    (item) =>
+                      (item.outboundType || item.outbound_type) === "패키지"
+                  )
+                  .forEach((item: any) => {
+                    const outboundDateValue =
+                      item.outboundDate || item.outbound_date;
+                    if (!outboundDateValue) return;
+
+                    const outboundDate = new Date(outboundDateValue);
+                    if (isNaN(outboundDate.getTime())) return;
+
+                    const date = outboundDate.toISOString().split("T")[0];
+                    const roundedTime = new Date(outboundDate);
+                    roundedTime.setSeconds(0, 0);
+                    const time = roundedTime.toLocaleTimeString("ko-KR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const manager =
+                      item.managerName || item.manager_name || "Unknown";
+                    const packageName =
+                      item.packageName || item.package_name || "";
+                    const chartNumber =
+                      item.chartNumber || item.chart_number || "";
+
+                    const groupKey = `${date} ${time} ${manager}님 출고 (패키지) ${packageName} ${chartNumber}`;
+
+                    if (!groups[groupKey]) {
+                      groups[groupKey] = [];
+                    }
+                    groups[groupKey].push(item);
+                  });
+
+                const groupedHistory = Object.entries(groups).sort((a, b) => {
+                  return b[0].localeCompare(a[0]);
+                });
+
+                return (
+                  <div className="space-y-4">
+                    {groupedHistory.map(([groupKey, items]) => {
+                      const parts = groupKey.split(" ");
+                      const date = parts[0];
+                      const time = parts[1];
+                      const managerText = parts
+                        .slice(2)
+                        .join(" ")
+                        .replace(" (패키지)", "")
+                        .replace("님 출고", "");
+                      const manager = managerText;
+                      const packageName =
+                        items[0]?.packageName ||
+                        items[0]?.package_name ||
+                        "패키지";
+                      const chartNumber =
+                        items[0]?.chartNumber || items[0]?.chart_number;
+                      const totalPackageQty = items.reduce(
+                        (sum: number, item: any) =>
+                          sum + (item.packageQty || item.package_qty || 1),
+                        0
+                      );
+                      const packageItems = items[0]?.packageItems || [];
+
+                      return (
+                        <div
+                          key={groupKey}
+                          className="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+                        >
+                          {/* Group Header */}
+                          <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                                  {date} {time} {manager}님 출고
+                                  {chartNumber && ` 차트번호: ${chartNumber}`}
+                                </h3>
+                                <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                  {packageName} -{totalPackageQty}개
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Package Items */}
+                          {packageItems.length > 0 && (
+                            <div className="px-6 py-4">
+                              <div className="space-y-3">
+                                {packageItems.map(
+                                  (pkgItem: any, idx: number) => (
+                                    <div
+                                      key={idx}
+                                      className="flex items-center justify-between"
+                                    >
+                                      <span className="text-sm text-slate-700 dark:text-slate-300">
+                                        {pkgItem.productName ||
+                                          pkgItem.product_name}
+                                      </span>
+                                      <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                                        {pkgItem.quantity || 1}{" "}
+                                        {pkgItem.unit || "unit"}
+                                      </span>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            )}
+
+            {/* Pagination */}
+            {historyTotalPages > 1 && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {historyCurrentPage}
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {" "}
+                      / {historyTotalPages} 페이지
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        setHistoryCurrentPage(historyCurrentPage - 1)
+                      }
+                      disabled={historyCurrentPage === 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 19l-7-7 7-7"
+                        />
+                      </svg>
+                    </button>
+                    {Array.from(
+                      { length: historyTotalPages },
+                      (_, i) => i + 1
+                    ).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => setHistoryCurrentPage(page)}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition ${
+                          page === historyCurrentPage
+                            ? "bg-blue-500 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() =>
+                        setHistoryCurrentPage(historyCurrentPage + 1)
+                      }
+                      disabled={historyCurrentPage === historyTotalPages}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
