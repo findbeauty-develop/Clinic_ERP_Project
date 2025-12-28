@@ -136,46 +136,55 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(4);
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (isOpen && !target.closest('.sidebar-container') && !target.closest('.hamburger-button')) {
+      if (
+        isOpen &&
+        !target.closest(".sidebar-container") &&
+        !target.closest(".hamburger-button")
+      ) {
         setIsOpen(false);
       }
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.body.style.overflow = 'hidden';
+      document.addEventListener("mousedown", handleClickOutside);
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.body.style.overflow = '';
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
   // Get user info from localStorage
-  const [userInfo, setUserInfo] = useState<{ managerId?: string; name?: string; companyName?: string }>({});
-  
+  const [userInfo, setUserInfo] = useState<{
+    managerId?: string;
+    name?: string;
+    companyName?: string;
+  }>({});
+
   // Load user info from localStorage
   const loadUserInfo = () => {
-    if (typeof window !== 'undefined') {
-      const managerData = localStorage.getItem('supplier_manager_data');
+    if (typeof window !== "undefined") {
+      const managerData = localStorage.getItem("supplier_manager_data");
       if (managerData) {
         try {
           const data = JSON.parse(managerData);
           setUserInfo({
-            managerId: data.manager_id || '',
-            name: data.name || '',
-            companyName: data.company_name || '',
+            managerId: data.manager_id || "",
+            name: data.name || "",
+            companyName: data.company_name || "",
           });
         } catch (e) {
-          console.error('Failed to parse user data', e);
+          console.error("Failed to parse user data", e);
           setUserInfo({});
         }
       } else {
@@ -183,21 +192,21 @@ export function Sidebar() {
       }
     }
   };
-  
+
   useEffect(() => {
     loadUserInfo();
-    
+
     // Listen for storage changes (e.g., login/logout in another tab)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'supplier_manager_data') {
+      if (e.key === "supplier_manager_data") {
         loadUserInfo();
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
+
+    window.addEventListener("storage", handleStorageChange);
+
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
@@ -205,11 +214,11 @@ export function Sidebar() {
     if (typeof window !== "undefined") {
       // State'ni darhol tozalash
       setUserInfo({});
-      
+
       // Barcha localStorage ma'lumotlarini tozalash
       localStorage.removeItem("supplier_access_token");
       localStorage.removeItem("supplier_manager_data");
-      
+
       // Login sahifasiga yo'naltirish
       router.push("/login");
     }
@@ -223,7 +232,7 @@ export function Sidebar() {
     if (userInfo.managerId) {
       return userInfo.managerId.charAt(0).toUpperCase();
     }
-    return 'S';
+    return "S";
   };
 
   // Sidebar is now visible on all pages
@@ -234,23 +243,29 @@ export function Sidebar() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="hamburger-button fixed top-4 left-4 z-50 rounded-lg bg-white p-2 shadow-lg"
+          className="hamburger-button fixed top-4 left-4 z-50 rounded-lg bg-white p-2 shadow-lg relative border border-gray-200 hover:bg-white active:bg-white"
+          style={{ backgroundColor: "#ffffff" }}
           aria-label="Toggle menu"
         >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="h-6 w-6 text-slate-900"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-          />
-        </svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-6 w-6 text-gray-700"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+            />
+          </svg>
+          {notificationCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+              {notificationCount}
+            </span>
+          )}
         </button>
       )}
 
@@ -265,7 +280,7 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`sidebar-container fixed left-0 top-0 z-40 h-full w-64 transform bg-slate-100 transition-transform duration-300 ease-in-out lg:sticky lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div className="flex h-full flex-col">
@@ -276,16 +291,14 @@ export function Sidebar() {
                 {getInitials()}
               </div>
               <div className="flex flex-col overflow-hidden">
-              {userInfo.companyName && (
+                {userInfo.companyName && (
                   <span className="truncate text-xs text-indigo-100">
                     {userInfo.companyName}
                   </span>
                 )}
                 <span className="truncate text-sm font-bold text-white">
-                  {userInfo.name || userInfo.managerId || 'Supplier'}
+                  {userInfo.name || userInfo.managerId || "Supplier"}
                 </span>
-               
-               
               </div>
             </div>
           </div>
@@ -304,8 +317,8 @@ export function Sidebar() {
                   onClick={() => setIsOpen(false)}
                   className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-indigo-500 text-white shadow-lg'
-                      : 'text-slate-700 hover:bg-slate-200'
+                      ? "bg-indigo-500 text-white shadow-lg"
+                      : "text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   <span className="flex-shrink-0">{item.icon}</span>
@@ -343,4 +356,3 @@ export function Sidebar() {
     </>
   );
 }
-

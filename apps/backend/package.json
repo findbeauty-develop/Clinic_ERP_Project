@@ -36,7 +36,8 @@
     "rxjs": "^7.8.2",
     "solapi": "^5.5.3",
     "uuid": "^9.0.1",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "aws-sdk": "^2.1500.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.0",

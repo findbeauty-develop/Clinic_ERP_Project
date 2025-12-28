@@ -18,6 +18,8 @@ import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
 import { SolapiProvider } from "./services/providers/solapi.provider";
 import { HiraModule } from "../hira/hira.module";
 import { PhoneVerificationService } from "./services/phone-verification.service";
+import { EmailService } from "./services/email.service";
+import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
 
 @Module({
   imports: [HiraModule],
@@ -39,7 +41,9 @@ import { PhoneVerificationService } from "./services/phone-verification.service"
     KTCommunisProvider,
     SolapiProvider,
     PhoneVerificationService,
+    EmailService,
+    AmazonSESProvider,
   ],
-  exports: [MessageService],
+  exports: [MessageService, EmailService],
 })
 export class MemberModule {}

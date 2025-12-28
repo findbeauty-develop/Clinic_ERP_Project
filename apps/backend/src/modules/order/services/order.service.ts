@@ -14,6 +14,7 @@ import {
 } from "../dto/update-order-draft.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { MessageService } from "../../member/services/message.service";
+import { EmailService } from "../../member/services/email.service";
 
 @Injectable()
 export class OrderService {
@@ -23,7 +24,8 @@ export class OrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderRepository: OrderRepository,
-    private readonly messageService: MessageService
+    private readonly messageService: MessageService,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -1708,9 +1710,18 @@ export class OrderService {
         if (fallbackManager) {
           supplierManager = fallbackManager;
           this.logger.log(
-            `Using fallback SupplierManager (first created): ${supplierManager.id}`
+            `Using fallback SupplierManager (first created): ${fallbackManager.id}`
           );
         }
+      }
+
+      // Get supplier with company_email for email fallback
+      let supplierWithEmail: any = null;
+      if (supplier && supplier.tenant_id) {
+        supplierWithEmail = await this.prisma.supplier.findUnique({
+          where: { tenant_id: supplier.tenant_id },
+          select: { company_email: true },
+        });
       }
 
       // Variant 6: Use manual contact info from ClinicSupplierManager
@@ -2018,6 +2029,74 @@ export class OrderService {
       } else {
         this.logger.warn(
           `No phone number found for supplier ${order.supplier_id} (checked SupplierManager, SupplierProduct, and Supplier.company_phone), skipping SMS notification`
+        );
+      }
+
+      // Send Email notification to supplier manager
+      // Email yuborish supplier-backend API muvaffaqiyatli bo'lgan yoki bo'lmaganidan qat'iy nazar
+      // (chunki email address mavjud bo'lsa, email yuborish kerak)
+      try {
+        // Get supplier email (priority: supplierManager.email1 > supplierManager.email2 > supplier.company_email > clinicSupplierManager.company_email > clinicSupplierManager.email1 > clinicSupplierManager.email2)
+        const supplierEmail =
+          supplierManager?.email1 ||
+          supplierManager?.email2 ||
+          supplierWithEmail?.company_email ||
+          clinicSupplierManager?.company_email ||
+          clinicSupplierManager?.email1 ||
+          clinicSupplierManager?.email2 ||
+          null;
+
+        if (supplierEmail) {
+          // Products ma'lumotlarini formatlash (quantity bilan)
+          const products = itemsWithDetails.map((item: any) => ({
+            productName: item.productName || "제품",
+            brand: item.brand || "",
+            quantity: item.quantity || 0,
+          }));
+
+          // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
+          const totalQuantity = itemsWithDetails.reduce(
+            (sum: number, item: any) => {
+              return sum + (item.quantity || 0);
+            },
+            0
+          );
+
+          await this.emailService.sendOrderNotificationEmail(
+            supplierEmail,
+            finalClinicName,
+            order.order_no,
+            order.total_amount,
+            totalQuantity,
+            clinicManagerName,
+            products
+          );
+
+          const emailSource = supplierManager?.email1
+            ? "SupplierManager.email1"
+            : supplierManager?.email2
+            ? "SupplierManager.email2"
+            : supplierWithEmail?.company_email
+            ? "Supplier.company_email"
+            : clinicSupplierManager?.company_email
+            ? "ClinicSupplierManager.company_email"
+            : clinicSupplierManager?.email1
+            ? "ClinicSupplierManager.email1"
+            : "ClinicSupplierManager.email2";
+          this.logger.log(
+            `Order notification email sent to supplier: ${supplierEmail} (source: ${emailSource})`
+          );
+        } else {
+          this.logger.warn(
+            `No email address found for supplier ${order.supplier_id} (checked SupplierManager.email1, SupplierManager.email2, Supplier.company_email, ClinicSupplierManager.company_email, ClinicSupplierManager.email1, ClinicSupplierManager.email2), skipping email notification`
+          );
+        }
+      } catch (emailError: any) {
+        // Log error but don't fail the order creation
+        this.logger.error(
+          `Failed to send email notification to supplier: ${
+            emailError?.message || "Unknown error"
+          }`
         );
       }
     } catch (error: any) {
