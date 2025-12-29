@@ -6,18 +6,29 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
       ? localStorage.getItem("supplier_access_token")
       : null;
 
-  const response = await fetch(`${apiUrl}${endpoint}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  try {
+    const response = await fetch(`${apiUrl}${endpoint}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => response.statusText);
+      throw new Error(`API Error (${response.status}): ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error: any) {
+    // Handle network errors (connection refused, etc.)
+    if (error.message?.includes("Failed to fetch") || error.message?.includes("ERR_CONNECTION_REFUSED")) {
+      throw new Error(
+        `서버에 연결할 수 없습니다. 백엔드 서버(${apiUrl})가 실행 중인지 확인해주세요.`
+      );
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 export async function apiPost<T>(

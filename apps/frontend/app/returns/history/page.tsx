@@ -14,9 +14,11 @@ type ReturnHistoryItem = {
   returnQty: number;
   refundAmount: number;
   totalRefund: number;
-  managerName: string;
+  managerName: string; // Return qilgan manager nomi
   returnDate: string;
-  supplierName?: string | null;
+  supplierName?: string | null; // Supplier company name
+  supplierManagerName?: string | null; // Supplier manager name
+  supplierManagerPosition?: string | null; // Supplier manager position
   outboundDate?: string | null;
   outboundManager?: string | null;
   supplierStatus?: "PENDING" | "ACCEPTED" | "REJECTED" | null; // Supplier notification status
@@ -24,7 +26,9 @@ type ReturnHistoryItem = {
 
 type GroupedReturnHistory = {
   supplierName: string | null;
-  managerName: string | null;
+  supplierManagerName: string | null; // Supplier manager name
+  supplierManagerPosition: string | null; // Supplier manager position
+  managerName: string | null; // Return qilgan manager nomi
   outboundDate: string | null;
   outboundManager: string | null;
   returnDate: string | null;
@@ -85,14 +89,11 @@ export default function ReturnHistoryPage() {
             returnQty: item.return_qty || item.returnQty || 0,
             refundAmount: item.refund_amount || item.refundAmount || 0,
             totalRefund: item.total_refund || item.totalRefund || 0,
-            managerName: item.manager_name || item.managerName || "",
+            managerName: item.manager_name || item.managerName || "", // Return qilgan manager nomi
             returnDate: item.return_date || item.returnDate || "",
-            supplierName:
-              item.product?.supplierProducts?.[0]?.supplier_id ||
-              item.supplier_id ||
-              item.supplier_name ||
-              item.supplierName ||
-              null,
+            supplierName: item.supplier_name || item.supplierName || null, // Supplier company name
+            supplierManagerName: item.supplier_manager_name || null, // Supplier manager name
+            supplierManagerPosition: item.supplier_manager_position || null, // Supplier manager position
             outboundDate:
               item.outbound?.outbound_date || item.outboundDate || null,
             outboundManager:
@@ -124,7 +125,9 @@ export default function ReturnHistoryPage() {
       if (!groups[key]) {
         groups[key] = {
           supplierName: item.supplierName ?? null,
-          managerName: item.managerName ?? null,
+          supplierManagerName: item.supplierManagerName ?? null,
+          supplierManagerPosition: item.supplierManagerPosition ?? null,
+          managerName: item.managerName ?? null, // Return qilgan manager nomi
           outboundDate: item.outboundDate ?? null,
           outboundManager: item.outboundManager ?? null,
           returnDate: item.returnDate ?? null,
@@ -267,9 +270,9 @@ export default function ReturnHistoryPage() {
                       })}
                     </div>
                   )}
-                  {group.outboundManager && (
+                  {group.managerName && (
                     <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {group.outboundManager}님 출고
+                      {group.managerName}님 출고
                     </div>
                   )}
                 </div>
@@ -278,7 +281,14 @@ export default function ReturnHistoryPage() {
                 <div className="mb-4 flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
                   <div>
                     공급처: {group.supplierName || "공급처 없음"}{" "}
-                    {group.managerName || ""}
+                    {group.supplierManagerName && (
+                      <>
+                        {group.supplierManagerName}
+                        {group.supplierManagerPosition
+                          ? ` ${group.supplierManagerPosition}`
+                          : " 대리"}
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-4">
                     {/* Status Button - tepada */}

@@ -154,7 +154,21 @@ export class ReturnRepository {
     const [returns, total] = await Promise.all([
       (this.prisma as any).return.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          tenant_id: true,
+          product_id: true,
+          batch_id: true,
+          outbound_id: true,
+          batch_no: true,
+          supplier_id: true,
+          return_qty: true,
+          refund_amount: true,
+          total_refund: true,
+          manager_name: true, // Return qilgan manager nomi
+          return_date: true,
+          memo: true,
+          return_no: true,
           product: {
             select: {
               id: true,
@@ -167,14 +181,18 @@ export class ReturnRepository {
                   clinicSupplierManager: {
                     select: {
                       id: true,
-                      company_name: true,
-                      name: true,
+                      company_name: true, // Supplier company name
+                      name: true, // Supplier manager name
+                      position: true, // Supplier manager position
                       linkedManager: {
                         select: {
                           id: true,
+                          name: true, // Platform supplier manager name
+                          position: true, // Platform supplier manager position
                           supplier: {
                             select: {
                               id: true,
+                              company_name: true, // Platform supplier company name
                             },
                           },
                         },
@@ -256,13 +274,40 @@ export class ReturnRepository {
       }
     });
 
-    // Attach notification status to each return
-    const returnsWithStatus = returns.map((returnItem: any) => ({
-      ...returnItem,
-      supplierReturnNotifications: notificationsByReturnId[returnItem.id]
-        ? [notificationsByReturnId[returnItem.id]]
-        : [],
-    }));
+    // Attach notification status and format supplier info for each return
+    const returnsWithStatus = returns.map((returnItem: any) => {
+      // Get supplier information
+      let supplierName: string | null = null;
+      let supplierManagerName: string | null = null;
+      let supplierManagerPosition: string | null = null;
+
+      if (returnItem.product?.productSupplier?.clinicSupplierManager) {
+        const clinicSupplierManager = returnItem.product.productSupplier.clinicSupplierManager;
+        
+        // If linked to platform supplier, use platform supplier info
+        if (clinicSupplierManager.linkedManager?.supplier) {
+          supplierName = clinicSupplierManager.linkedManager.supplier.company_name || null;
+          supplierManagerName = clinicSupplierManager.linkedManager.name || clinicSupplierManager.name || null;
+          supplierManagerPosition = clinicSupplierManager.linkedManager.position || clinicSupplierManager.position || null;
+        } else {
+          // Otherwise use clinic supplier manager info (manual supplier)
+          supplierName = clinicSupplierManager.company_name || null;
+          supplierManagerName = clinicSupplierManager.name || null;
+          supplierManagerPosition = clinicSupplierManager.position || null;
+        }
+      }
+
+      return {
+        ...returnItem,
+        manager_name: returnItem.manager_name || null, // Return qilgan manager nomi
+        supplier_name: supplierName,
+        supplier_manager_name: supplierManagerName,
+        supplier_manager_position: supplierManagerPosition,
+        supplierReturnNotifications: notificationsByReturnId[returnItem.id]
+          ? [notificationsByReturnId[returnItem.id]]
+          : [],
+      };
+    });
 
     return {
       items: returnsWithStatus,

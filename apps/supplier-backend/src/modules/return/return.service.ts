@@ -1,11 +1,15 @@
 import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
+import { SolapiProvider } from "../../services/providers/solapi.provider";
 
 @Injectable()
 export class ReturnService {
   private readonly logger = new Logger(ReturnService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly solapiProvider: SolapiProvider
+  ) {}
 
   /**
    * SupplierManager uchun return request'larni olish
@@ -822,6 +826,16 @@ export class ReturnService {
           });
         });
 
+        // Send SMS notification to supplier managers when items are added to existing request
+        this.sendReturnNotificationToManagers(updatedRequest, supplierTenantId)
+          .catch((error: any) => {
+            this.logger.error(
+              `Failed to send return notification SMS: ${error.message}`,
+              error.stack
+            );
+            // Don't throw - SMS failure shouldn't break return creation
+          });
+
         return this.formatReturnRequest(updatedRequest);
       } else {
         // Check if return_no already exists (to avoid unique constraint error)
@@ -872,6 +886,16 @@ export class ReturnService {
             });
           });
 
+          // Send SMS notification to supplier managers when items are added to existing request
+          this.sendReturnNotificationToManagers(updatedRequest, supplierTenantId)
+            .catch((error: any) => {
+              this.logger.error(
+                `Failed to send return notification SMS: ${error.message}`,
+                error.stack
+              );
+              // Don't throw - SMS failure shouldn't break return creation
+            });
+
           return this.formatReturnRequest(updatedRequest);
         }
 
@@ -919,11 +943,100 @@ export class ReturnService {
           });
         });
 
+        // Send SMS notification to supplier managers
+        this.sendReturnNotificationToManagers(returnRequest, supplierTenantId)
+          .catch((error: any) => {
+            this.logger.error(
+              `Failed to send return notification SMS: ${error.message}`,
+              error.stack
+            );
+            // Don't throw - SMS failure shouldn't break return creation
+          });
+
         return this.formatReturnRequest(returnRequest);
       }
     } catch (error: any) {
       this.logger.error(`Return request create failed: ${error.message}`, error.stack);
       throw new BadRequestException(`Return request create failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send SMS notification to supplier managers about new return request
+   */
+  private async sendReturnNotificationToManagers(
+    returnRequest: any,
+    supplierTenantId: string
+  ): Promise<void> {
+    try {
+      // Find all active supplier managers with receive_sms = true
+      const managers = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierManager.findMany({
+          where: {
+            supplier_tenant_id: supplierTenantId,
+            status: "ACTIVE",
+            receive_sms: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            phone_number: true,
+          },
+        });
+      });
+
+      if (!managers || managers.length === 0) {
+        this.logger.log(
+          `No active managers with SMS enabled found for supplier ${supplierTenantId}`
+        );
+        return;
+      }
+
+      // Format SMS message
+      const clinicName = returnRequest.clinic_name || "알 수 없음";
+      const returnNo = returnRequest.return_no || "N/A";
+      const itemCount = returnRequest.items?.length || 0;
+      
+      const smsMessage = `새로운 반품 요청이 접수되었습니다.
+
+병의원: ${clinicName}
+반품번호: ${returnNo}
+상품 수: ${itemCount}개
+
+앱에서 확인해주세요.`;
+
+      // Send SMS to each manager
+      const smsPromises = managers.map(async (manager: any) => {
+        if (!manager.phone_number) {
+          this.logger.warn(
+            `Manager ${manager.id} (${manager.name}) has no phone number, skipping SMS`
+          );
+          return;
+        }
+
+        const smsSent = await this.solapiProvider.sendSMS(
+          manager.phone_number,
+          smsMessage
+        );
+
+        if (smsSent) {
+          this.logger.log(
+            `Return notification SMS sent to manager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
+          );
+        } else {
+          this.logger.error(
+            `Failed to send return notification SMS to manager ${manager.name} (${manager.phone_number})`
+          );
+        }
+      });
+
+      await Promise.all(smsPromises);
+    } catch (error: any) {
+      this.logger.error(
+        `Error sending return notification SMS: ${error.message}`,
+        error.stack
+      );
+      // Don't throw - SMS failure shouldn't break return creation
     }
   }
 
