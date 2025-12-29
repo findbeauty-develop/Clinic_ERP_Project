@@ -20,6 +20,7 @@ type AvailableProduct = {
   productId: string;
   productName: string;
   brand: string;
+  supplierManagerName: string | null;
   unit: string | null;
   supplierId: string | null;
   supplierName: string | null;
@@ -553,9 +554,9 @@ export default function ReturnsPage() {
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
                                 <span>브랜드: {product.brand}</span>
 
-                                {product.batches[0]?.managerName && (
+                                {product.supplierManagerName && (
                                   <span>
-                                    담당자: {product.batches[0].managerName}
+                                    담당자: {product.supplierManagerName}
                                   </span>
                                 )}
 

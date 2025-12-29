@@ -9,6 +9,7 @@ import { PrismaService } from "../../../core/prisma.service";
 import { ReturnRepository } from "../repositories/return.repository";
 import { SupplierReturnNotificationService } from "./supplier-return-notification.service";
 import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
+import { MessageService } from "../../member/services/message.service";
 
 @Injectable()
 export class ReturnService {
@@ -17,7 +18,8 @@ export class ReturnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly returnRepository: ReturnRepository,
-    private readonly supplierReturnNotificationService: SupplierReturnNotificationService
+    private readonly supplierReturnNotificationService: SupplierReturnNotificationService,
+    private readonly messageService: MessageService
   ) {}
 
   /**
@@ -53,26 +55,37 @@ export class ReturnService {
       // Product bo'yicha qaytarilgan miqdorni yig'ish
       if (ret.product_id) {
         const productSum = returnedByProduct.get(ret.product_id) || 0;
-        returnedByProduct.set(ret.product_id, productSum + (ret.return_qty || 0));
-        
+        returnedByProduct.set(
+          ret.product_id,
+          productSum + (ret.return_qty || 0)
+        );
+
         // Empty box return'larni alohida hisoblash (memo ichida "자동 반납: 빈 박스" bor bo'lsa)
         if (ret.memo && ret.memo.includes("자동 반납: 빈 박스")) {
           const emptyBoxSum = emptyBoxReturnsByProduct.get(ret.product_id) || 0;
-          emptyBoxReturnsByProduct.set(ret.product_id, emptyBoxSum + (ret.return_qty || 0));
+          emptyBoxReturnsByProduct.set(
+            ret.product_id,
+            emptyBoxSum + (ret.return_qty || 0)
+          );
         }
       }
 
       // Outbound bo'yicha qaytarilgan miqdorni yig'ish
       if (ret.outbound_id) {
         const outboundSum = returnedByOutbound.get(ret.outbound_id) || 0;
-        returnedByOutbound.set(ret.outbound_id, outboundSum + (ret.return_qty || 0));
+        returnedByOutbound.set(
+          ret.outbound_id,
+          outboundSum + (ret.return_qty || 0)
+        );
       }
     });
 
     // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
-    console.log(`\n🔍 [getAvailableProducts] Querying products with is_returnable=true...`);
+    console.log(
+      `\n🔍 [getAvailableProducts] Querying products with is_returnable=true...`
+    );
     console.log(`  tenantId: ${tenantId}`);
-    
+
     // Avval barcha product'larni olish (debug uchun)
     const allProductsCount = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.count({
@@ -80,30 +93,36 @@ export class ReturnService {
       });
     });
     console.log(`  Total products in DB: ${allProductsCount}`);
-    
+
     // ReturnPolicy bilan product'larni olish (debug uchun)
-    const productsWithReturnPolicy = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).product.findMany({
-        where: { 
-          tenant_id: tenantId,
-          returnPolicy: { isNot: null }, // returnPolicy mavjud bo'lganlar (Prisma'da isNot camelCase)
-        },
-        select: {
-          id: true,
-          name: true,
-          returnPolicy: {
-            select: {
-              is_returnable: true,
+    const productsWithReturnPolicy = await this.prisma.executeWithRetry(
+      async () => {
+        return await (this.prisma as any).product.findMany({
+          where: {
+            tenant_id: tenantId,
+            returnPolicy: { isNot: null }, // returnPolicy mavjud bo'lganlar (Prisma'da isNot camelCase)
+          },
+          select: {
+            id: true,
+            name: true,
+            returnPolicy: {
+              select: {
+                is_returnable: true,
+              },
             },
           },
-        },
-      });
-    });
-    console.log(`  Products with returnPolicy: ${productsWithReturnPolicy.length}`);
+        });
+      }
+    );
+    console.log(
+      `  Products with returnPolicy: ${productsWithReturnPolicy.length}`
+    );
     productsWithReturnPolicy.forEach((p: any) => {
-      console.log(`    - ${p.name}: is_returnable=${p.returnPolicy?.is_returnable}`);
+      console.log(
+        `    - ${p.name}: is_returnable=${p.returnPolicy?.is_returnable}`
+      );
     });
-    
+
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.findMany({
         where: {
@@ -135,6 +154,7 @@ export class ReturnService {
                   linkedManager: {
                     select: {
                       id: true,
+                      name: true,
                       supplier: {
                         select: {
                           id: true,
@@ -167,11 +187,15 @@ export class ReturnService {
         },
       });
     });
-    
-    console.log(`  Products found (returnPolicy.is_returnable=true only): ${products.length}`);
+
+    console.log(
+      `  Products found (returnPolicy.is_returnable=true only): ${products.length}`
+    );
 
     // 4. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash (Map'lardan foydalanish)
-    console.log(`\n🔍 [getAvailableProducts] Processing ${products.length} products...`);
+    console.log(
+      `\n🔍 [getAvailableProducts] Processing ${products.length} products...`
+    );
     const availableProducts = products
       .map((product: any) => {
         // Chiqarilgan jami miqdor
@@ -188,47 +212,74 @@ export class ReturnService {
 
         // 사용 단위 mantiqi: used_count va capacity_per_product asosida empty boxes hisoblash (avval hisoblash)
         let emptyBoxes: number | undefined = undefined;
-        if (product.usage_capacity && product.usage_capacity > 0 && product.capacity_per_product && product.capacity_per_product > 0) {
+        if (
+          product.usage_capacity &&
+          product.usage_capacity > 0 &&
+          product.capacity_per_product &&
+          product.capacity_per_product > 0
+        ) {
           // Latest batch'ning used_count'ini olish
           const latestBatch = product.batches?.[0];
           const usedCount = latestBatch?.used_count || 0;
-          
+
           // previousEmptyBoxes = Math.floor(used_count / capacity_per_product)
-          const previousEmptyBoxes = Math.floor(usedCount / product.capacity_per_product);
-          
+          const previousEmptyBoxes = Math.floor(
+            usedCount / product.capacity_per_product
+          );
+
           // Return qilingan empty box'lar sonini olish (faqat empty box return'lar)
-          const returnedEmptyBoxes = emptyBoxReturnsByProduct.get(product.id) || 0;
-          
+          const returnedEmptyBoxes =
+            emptyBoxReturnsByProduct.get(product.id) || 0;
+
           // Qolgan empty box'lar soni: previousEmptyBoxes - returnedEmptyBoxes
           emptyBoxes = Math.max(0, previousEmptyBoxes - returnedEmptyBoxes);
         }
 
-        console.log(`  Product ${product.name}: unreturnedQty=${unreturnedQty}, emptyBoxes=${emptyBoxes !== undefined ? emptyBoxes : 'undefined'}, totalOutbound=${totalOutbound}, totalReturned=${totalReturned}`);
+        console.log(
+          `  Product ${
+            product.name
+          }: unreturnedQty=${unreturnedQty}, emptyBoxes=${
+            emptyBoxes !== undefined ? emptyBoxes : "undefined"
+          }, totalOutbound=${totalOutbound}, totalReturned=${totalReturned}`
+        );
 
         // Agar qaytarilishi mumkin bo'lgan miqdor 0 yoki kichik bo'lsa VA emptyBoxes ham 0 yoki undefined bo'lsa, o'tkazib yuborish
         // Lekin agar unreturnedQty > 0 yoki emptyBoxes > 0 bo'lsa, product'ni ko'rsatish
-        if (unreturnedQty <= 0 && (emptyBoxes === undefined || emptyBoxes <= 0)) {
-          console.log(`    ❌ Filtered out: unreturnedQty=${unreturnedQty} <= 0 && emptyBoxes=${emptyBoxes !== undefined ? emptyBoxes : 'undefined'} <= 0 (or undefined)`);
+        if (
+          unreturnedQty <= 0 &&
+          (emptyBoxes === undefined || emptyBoxes <= 0)
+        ) {
+          console.log(
+            `    ❌ Filtered out: unreturnedQty=${unreturnedQty} <= 0 && emptyBoxes=${
+              emptyBoxes !== undefined ? emptyBoxes : "undefined"
+            } <= 0 (or undefined)`
+          );
           return null;
         }
-        
-        console.log(`    ✅ Product included: unreturnedQty=${unreturnedQty} > 0 ${emptyBoxes !== undefined ? `OR emptyBoxes=${emptyBoxes} > 0` : '(emptyBoxes undefined, using unreturnedQty only)'}`);
+
+        console.log(
+          `    ✅ Product included: unreturnedQty=${unreturnedQty} > 0 ${
+            emptyBoxes !== undefined
+              ? `OR emptyBoxes=${emptyBoxes} > 0`
+              : "(emptyBoxes undefined, using unreturnedQty only)"
+          }`
+        );
 
         // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
         const batchDetails = (product.outbounds || []).map((outbound: any) => {
           const batchReturned = returnedByOutbound.get(outbound.id) || 0;
-            const availableQty = outbound.outbound_qty - batchReturned;
+          const availableQty = outbound.outbound_qty - batchReturned;
 
-            return {
-              batchId: outbound.batch_id,
-              batchNo: outbound.batch_no,
-              outboundId: outbound.id,
-              outboundQty: outbound.outbound_qty,
-              returnedQty: batchReturned,
-              availableQty: availableQty > 0 ? availableQty : 0,
-              outboundDate: outbound.outbound_date,
-              managerName: outbound.manager_name,
-            };
+          return {
+            batchId: outbound.batch_id,
+            batchNo: outbound.batch_no,
+            outboundId: outbound.id,
+            outboundQty: outbound.outbound_qty,
+            returnedQty: batchReturned,
+            availableQty: availableQty > 0 ? availableQty : 0,
+            outboundDate: outbound.outbound_date,
+            managerName: outbound.manager_name,
+          };
         });
 
         // Search filter
@@ -250,8 +301,14 @@ export class ReturnService {
           productName: product.name,
           brand: product.brand,
           unit: product.unit,
-          supplierId: product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || null,
-          supplierName: product.productSupplier?.clinicSupplierManager?.company_name || null,
+          supplierId:
+            product.productSupplier?.clinicSupplierManager?.linkedManager
+              ?.supplier?.id || null,
+          supplierName:
+            product.productSupplier?.clinicSupplierManager?.company_name ||
+            null,
+          supplierManagerName:
+            product.productSupplier?.clinicSupplierManager?.name || null,
           storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
           unreturnedQty,
           emptyBoxes, // 사용 단위 mantiqi: bo'sh box'lar soni (previousEmptyBoxes)
@@ -262,7 +319,9 @@ export class ReturnService {
       .filter((p: any) => p !== null);
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
-    console.log(`✅ [getAvailableProducts] Returning ${availableProducts.length} available products\n`);
+    console.log(
+      `✅ [getAvailableProducts] Returning ${availableProducts.length} available products\n`
+    );
     return availableProducts;
   }
 
@@ -380,12 +439,23 @@ export class ReturnService {
 
             // 6. Supplier ID olish (productSupplier orqali)
             // First try to get supplier_tenant_id from linkedManager (most reliable)
-            const linkedManager = product.productSupplier?.clinicSupplierManager?.linkedManager;
+            const linkedManager =
+              product.productSupplier?.clinicSupplierManager?.linkedManager;
             const supplierId = linkedManager?.supplier?.id || undefined;
-            
+
             // Debug: Log supplier chain
             this.logger.log(
-              `[ReturnService] Product ${item.productId} supplier chain: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!linkedManager}, linkedManagerId=${linkedManager?.id}, supplier_tenant_id=${linkedManager?.supplier_tenant_id}, supplierId=${supplierId}, supplierTenantId=${linkedManager?.supplier?.tenant_id}`
+              `[ReturnService] Product ${
+                item.productId
+              } supplier chain: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product
+                ?.productSupplier
+                ?.clinicSupplierManager}, hasLinkedManager=${!!linkedManager}, linkedManagerId=${
+                linkedManager?.id
+              }, supplier_tenant_id=${
+                linkedManager?.supplier_tenant_id
+              }, supplierId=${supplierId}, supplierTenantId=${
+                linkedManager?.supplier?.tenant_id
+              }`
             );
 
             // 7. Refund amount olish
@@ -394,7 +464,7 @@ export class ReturnService {
 
             // 8. Empty box return ekanligini tekshirish va memo'ga qo'shish
             let memo = dto.memo || "";
-            
+
             // Product'ning usage_capacity va capacity_per_product ni olish (include bilan kelmaydi, shuning uchun alohida query)
             const productDetails = await (tx as any).product.findFirst({
               where: { id: item.productId },
@@ -403,17 +473,22 @@ export class ReturnService {
                 capacity_per_product: true,
               },
             });
-            
+
             // Product'ning usage_capacity va capacity_per_product ni tekshirish
-            if (productDetails?.usage_capacity && productDetails.usage_capacity > 0 && 
-                productDetails?.capacity_per_product && productDetails.capacity_per_product > 0) {
-              
+            if (
+              productDetails?.usage_capacity &&
+              productDetails.usage_capacity > 0 &&
+              productDetails?.capacity_per_product &&
+              productDetails.capacity_per_product > 0
+            ) {
               // Batch'ning used_count'ini olish (allaqachon olingan, lekin select'da bor)
               const usedCount = batch.used_count || 0;
-              
+
               // Qolgan empty box'lar sonini hisoblash
-              const previousEmptyBoxes = Math.floor(usedCount / productDetails.capacity_per_product);
-              
+              const previousEmptyBoxes = Math.floor(
+                usedCount / productDetails.capacity_per_product
+              );
+
               // Return qilingan empty box'lar sonini olish (hozirgi return'dan oldin)
               const emptyBoxReturns = await (tx as any).return.findMany({
                 where: {
@@ -423,12 +498,19 @@ export class ReturnService {
                 },
                 select: { return_qty: true },
               });
-              
-              const returnedEmptyBoxes = emptyBoxReturns.reduce((sum: number, ret: any) => sum + (ret.return_qty || 0), 0);
-              const availableEmptyBoxes = previousEmptyBoxes - returnedEmptyBoxes;
-              
+
+              const returnedEmptyBoxes = emptyBoxReturns.reduce(
+                (sum: number, ret: any) => sum + (ret.return_qty || 0),
+                0
+              );
+              const availableEmptyBoxes =
+                previousEmptyBoxes - returnedEmptyBoxes;
+
               // Agar return qilinayotgan miqdor available empty boxes dan kichik yoki teng bo'lsa, bu empty box return
-              if (availableEmptyBoxes > 0 && item.returnQty <= availableEmptyBoxes) {
+              if (
+                availableEmptyBoxes > 0 &&
+                item.returnQty <= availableEmptyBoxes
+              ) {
                 memo = `자동 반납: 빈 박스`;
               }
             }
@@ -452,7 +534,6 @@ export class ReturnService {
             );
 
             // 9. Batch stock'ini yangilash
-            
 
             createdReturns.push(returnRecord);
           } catch (error: any) {
@@ -470,6 +551,13 @@ export class ReturnService {
 
         // Transaction commit bo'lgandan keyin notification'larni yaratish
         // Bu muvaffaqiyatsiz bo'lsa ham return jarayoni to'xtamasligi kerak
+
+        // Group returns by supplier_tenant_id to send one request per supplier
+        const returnsBySupplier = new Map<
+          string,
+          Array<{ returnRecord: any; product: any }>
+        >();
+
         for (const returnRecord of createdReturns) {
           // Product'ni qayta olish (transaction tashqarisida)
           const product = await (this.prisma as any).product.findFirst({
@@ -515,14 +603,19 @@ export class ReturnService {
 
             // Yangi: Supplier backend'ga API call qilish
             // supplier_id bo'lmasa ham, linkedManager orqali supplier tenant_id ni topishga harakat qilamiz
-            const supplierId = returnRecord.supplier_id || 
-              product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || 
+            const supplierId =
+              returnRecord.supplier_id ||
+              product.productSupplier?.clinicSupplierManager?.linkedManager
+                ?.supplier?.id ||
               null;
-            
+
             this.logger.log(
-              `Processing return ${returnRecord.id}: supplier_id=${returnRecord.supplier_id}, found_supplier_id=${supplierId}, has_linkedManager=${!!product.productSupplier?.clinicSupplierManager?.linkedManager}`
+              `Processing return ${returnRecord.id}: supplier_id=${
+                returnRecord.supplier_id
+              }, found_supplier_id=${supplierId}, has_linkedManager=${!!product
+                .productSupplier?.clinicSupplierManager?.linkedManager}`
             );
-            
+
             if (supplierId) {
               // supplier_id ni yangilash (agar u bo'lmasa)
               if (!returnRecord.supplier_id) {
@@ -537,23 +630,89 @@ export class ReturnService {
                   `Updated return ${returnRecord.id} with supplier_id=${supplierId}`
                 );
               }
-              
-              this.logger.log(
-                `Sending return ${returnRecord.id} to supplier-backend (supplier_id=${supplierId})`
-              );
-              
-              this.sendReturnToSupplier(returnRecord, product, tenantId)
-                .catch((error) => {
+
+              // Get supplier_tenant_id for grouping
+              const linkedManager =
+                product.productSupplier?.clinicSupplierManager?.linkedManager;
+              const supplierTenantId =
+                linkedManager?.supplier_tenant_id ||
+                linkedManager?.supplier?.tenant_id ||
+                null;
+
+              if (supplierTenantId) {
+                // Group returns by supplier_tenant_id
+                if (!returnsBySupplier.has(supplierTenantId)) {
+                  returnsBySupplier.set(supplierTenantId, []);
+                }
+                returnsBySupplier
+                  .get(supplierTenantId)!
+                  .push({ returnRecord, product });
+              } else {
+                this.logger.warn(
+                  `Return ${returnRecord.id} has supplier_id but no supplier_tenant_id. Skipping supplier notification.`
+                );
+              }
+            } else {
+              // linkedManager bo'lmasa ham, ClinicSupplierManager telefon raqami bo'lsa SMS yuborish
+              const clinicSupplierManager =
+                product.productSupplier?.clinicSupplierManager;
+              const phoneNumber = clinicSupplierManager?.phone_number;
+
+              if (phoneNumber) {
+                // linkedManager bo'lmasa ham, ClinicSupplierManager telefon raqamiga SMS yuborish
+                this.logger.log(
+                  `Return ${returnRecord.id} has no linkedManager, but ClinicSupplierManager phone number exists. Will send SMS directly to ${phoneNumber}`
+                );
+                // sendReturnToSupplier funksiyasida linkedManager bo'lmasa ham SMS yuboriladi
+                this.sendReturnToSupplier(
+                  returnRecord,
+                  product,
+                  tenantId
+                ).catch((error) => {
                   // Log error but don't fail the return process
                   this.logger.error(
-                    `Failed to send return to supplier-backend for return ${returnRecord.id}:`,
+                    `Failed to send return to supplier for product ${product.name} (no linkedManager):`,
                     error
                   );
                 });
-            } else {
-              this.logger.warn(
-                `Return ${returnRecord.id} has no supplier_id and no linked supplier manager. Product: ${product.name}, Has productSupplier: ${!!product.productSupplier}, Has clinicSupplierManager: ${!!product.productSupplier?.clinicSupplierManager}, Has linkedManager: ${!!product.productSupplier?.clinicSupplierManager?.linkedManager}, skipping supplier notification`
-              );
+              } else {
+                this.logger.warn(
+                  `Return ${
+                    returnRecord.id
+                  } has no supplier_id, no linked supplier manager, and no ClinicSupplierManager phone number. Product: ${
+                    product.name
+                  }, Has productSupplier: ${!!product.productSupplier}, Has clinicSupplierManager: ${!!product
+                    .productSupplier
+                    ?.clinicSupplierManager}, Has linkedManager: ${!!product
+                    .productSupplier?.clinicSupplierManager
+                    ?.linkedManager}, Has phoneNumber: ${!!phoneNumber}, skipping supplier notification`
+                );
+              }
+            }
+          }
+        }
+
+        // Send one request per return (har bir product o'z supplier'iga SMS yuboriladi)
+        for (const [supplierTenantId, returns] of returnsBySupplier.entries()) {
+          if (returns.length > 0) {
+            this.logger.log(
+              `Sending ${returns.length} return(s) to supplier-backend (supplier_tenant_id=${supplierTenantId})`
+            );
+
+            // Har bir return uchun alohida SMS yuborish
+            // Har bir product o'z supplier'iga SMS yuboriladi
+            for (const returnItem of returns) {
+              this.sendReturnToSupplier(
+                returnItem.returnRecord,
+                returnItem.product,
+                tenantId
+              ).catch((error) => {
+                // Log error but don't fail the return process
+                this.logger.error(
+                  `Failed to send return to supplier-backend for product ${returnItem.product.name} (supplier_tenant_id=${supplierTenantId}):`,
+                  error
+                );
+              });
             }
           }
         }
@@ -596,7 +755,9 @@ export class ReturnService {
    */
   async handleReturnAccept(dto: { return_no: string; status: string }) {
     try {
-      this.logger.log(`Received return accept webhook: return_no=${dto.return_no}, status=${dto.status}`);
+      this.logger.log(
+        `Received return accept webhook: return_no=${dto.return_no}, status=${dto.status}`
+      );
 
       // Find return by return_no
       const returnRecord = await this.prisma.executeWithRetry(async () => {
@@ -607,7 +768,10 @@ export class ReturnService {
 
       if (!returnRecord) {
         this.logger.warn(`Return not found for return_no: ${dto.return_no}`);
-        return { success: false, message: `Return not found for return_no: ${dto.return_no}` };
+        return {
+          success: false,
+          message: `Return not found for return_no: ${dto.return_no}`,
+        };
       }
 
       // Update SupplierReturnNotification status to ACCEPTED
@@ -625,18 +789,54 @@ export class ReturnService {
         });
       });
 
-      this.logger.log(`Return accept webhook processed for return_no: ${dto.return_no}, return_id: ${returnRecord.id}, SupplierReturnNotification status updated to ACCEPTED`);
-      
+      this.logger.log(
+        `Return accept webhook processed for return_no: ${dto.return_no}, return_id: ${returnRecord.id}, SupplierReturnNotification status updated to ACCEPTED`
+      );
+
       return { success: true, message: "Return accept webhook processed" };
     } catch (error: any) {
-      this.logger.error(`Error handling return accept: ${error.message}`, error.stack);
-      return { success: false, message: `Failed to handle return accept: ${error.message}` };
+      this.logger.error(
+        `Error handling return accept: ${error.message}`,
+        error.stack
+      );
+      return {
+        success: false,
+        message: `Failed to handle return accept: ${error.message}`,
+      };
     }
   }
 
   /**
+   * Format SMS message for return notification
+   */
+  private formatReturnSMSMessage(
+    returnNo: string,
+    clinicName: string,
+    clinicManagerName: string,
+    productName: string,
+    returnQty: number,
+    totalRefund: number,
+    isPlatformSupplier: boolean = true
+  ): string {
+    const footer = isPlatformSupplier
+      ? "자세한 내용은 공급옵제 플렛폼에서 확인하세요"
+      : "자세한 내용은 확인해주세요.";
+
+    return `[반납 알림]
+반납번호: ${returnNo}
+병의원: ${clinicName}
+반납담당자: ${clinicManagerName}
+제품명: ${productName}
+수량: ${returnQty}개
+총 금액: ${totalRefund.toLocaleString()}원
+
+${footer}`;
+  }
+
+  /**
    * Generate unique return number for /returns page
-   * Format: R + YYYYMMDD + 6 random digits
+   * Format: YYYYMMDD + 000000 + 6 random digits
+   * Example: 20251229000000123456
    */
   private async generateReturnNumber(): Promise<string> {
     const maxAttempts = 10;
@@ -653,19 +853,28 @@ export class ReturnService {
       const randomDigits = Math.floor(
         100000 + Math.random() * 900000
       ).toString();
-      const returnNo = `R${dateStr}${randomDigits}`;
+      const returnNo = `${dateStr}000000${randomDigits}`; // YYYYMMDD + 000000 + 6 random digits
 
-      // Check if this return_no already exists in OrderReturn table
+      // Check if this return_no already exists in OrderReturn and Return tables
       // (to avoid conflicts, since both OrderReturn and Return send to supplier-backend)
-      const existing = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
+      const existingOrderReturn = await this.prisma.executeWithRetry(
+        async () => {
+          return (this.prisma as any).orderReturn.findFirst({
+            where: { return_no: returnNo },
+            select: { id: true },
+          });
+        }
+      );
+
+      const existingReturn = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).return.findFirst({
           where: { return_no: returnNo },
           select: { id: true },
         });
       });
 
       // If not exists, return this number
-      if (!existing) {
+      if (!existingOrderReturn && !existingReturn) {
         return returnNo;
       }
 
@@ -678,7 +887,7 @@ export class ReturnService {
     const year = String(date.getFullYear());
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
-    return `R${year}${month}${day}${timestamp}`;
+    return `${year}${month}${day}000000${timestamp}`;
   }
 
   /**
@@ -693,13 +902,21 @@ export class ReturnService {
     let supplierTenantId: string | null = null;
 
     this.logger.log(
-      `[ReturnService] sendReturnToSupplier: returnId=${returnRecord.id}, returnSupplierId=${returnRecord.supplier_id}, hasProduct=${!!product}, hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}`
+      `[ReturnService] sendReturnToSupplier: returnId=${
+        returnRecord.id
+      }, returnSupplierId=${
+        returnRecord.supplier_id
+      }, hasProduct=${!!product}, hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product
+        ?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!product
+        ?.productSupplier?.clinicSupplierManager?.linkedManager}`
     );
 
-    // If supplier_id is not set, try to get it from product's linkedManager
-    if (!supplierId && product?.productSupplier?.clinicSupplierManager?.linkedManager) {
-      const linkedManager = product.productSupplier.clinicSupplierManager.linkedManager;
-      
+    // ALWAYS try to get supplier_tenant_id from product's linkedManager first (most reliable)
+    // This is the same approach as order-return service
+    if (product?.productSupplier?.clinicSupplierManager?.linkedManager) {
+      const linkedManager =
+        product.productSupplier.clinicSupplierManager.linkedManager;
+
       this.logger.log(
         `[ReturnService] 🔍 Debug linkedManager: ${JSON.stringify({
           id: linkedManager.id,
@@ -709,36 +926,136 @@ export class ReturnService {
           supplierTenantId: linkedManager.supplier?.tenant_id,
         })}`
       );
-      
-      // First, try to get supplier_tenant_id from linkedManager (this is the correct field)
-      // This is the most reliable way to get supplier tenant_id
-      if (linkedManager.supplier_tenant_id) {
+
+      // CRITICAL FIX: Prioritize supplier_tenant_id from SupplierManager (most reliable)
+      // Check if supplier_tenant_id exists and is different from clinic tenant_id
+      if (
+        linkedManager.supplier_tenant_id &&
+        linkedManager.supplier_tenant_id !== tenantId
+      ) {
         supplierTenantId = linkedManager.supplier_tenant_id;
-        supplierId = linkedManager.supplier?.id || null;
+        if (!supplierId) {
+          supplierId = linkedManager.supplier?.id || null;
+        }
         this.logger.log(
-          `[ReturnService] ✅ Found supplier_tenant_id from linkedManager: supplierTenantId=${supplierTenantId}, supplierId=${supplierId}`
+          `[ReturnService] ✅ Using supplier_tenant_id from SupplierManager (most reliable): supplierTenantId=${supplierTenantId}, supplierId=${supplierId}`
         );
-      } else if (linkedManager.supplier?.tenant_id) {
-        // Fallback: use supplier.tenant_id if supplier_tenant_id is not available
-        supplierId = linkedManager.supplier.id;
+      } else if (
+        linkedManager.supplier?.tenant_id &&
+        linkedManager.supplier.tenant_id !== tenantId
+      ) {
+        // Fallback: Use supplier.tenant_id if supplier_tenant_id is invalid
         supplierTenantId = linkedManager.supplier.tenant_id;
+        if (!supplierId) {
+          supplierId = linkedManager.supplier.id;
+        }
         this.logger.log(
-          `[ReturnService] ⚠️ Using supplier.tenant_id as fallback (supplier_tenant_id not available): supplierId=${supplierId}, supplierTenantId=${supplierTenantId}`
+          `[ReturnService] ⚠️ Using supplier.tenant_id as fallback (supplier_tenant_id is invalid): supplierTenantId=${supplierTenantId}, supplierId=${supplierId}`
         );
       } else {
+        // Both are missing or equal to clinic tenant_id - this is an error
         this.logger.error(
-          `[ReturnService] ❌ linkedManager exists but has no supplier_tenant_id or supplier.tenant_id. linkedManager: ${JSON.stringify(linkedManager)}`
+          `[ReturnService] ❌ linkedManager exists but supplier_tenant_id (${
+            linkedManager.supplier_tenant_id
+          }) and supplier.tenant_id (${
+            linkedManager.supplier?.tenant_id
+          }) are both missing or equal to clinic tenant_id (${tenantId}). This indicates incorrect data in the database. linkedManager: ${JSON.stringify(
+            {
+              id: linkedManager.id,
+              supplier_tenant_id: linkedManager.supplier_tenant_id,
+              supplier_id: linkedManager.supplier?.id,
+              supplier_tenant_id_from_supplier:
+                linkedManager.supplier?.tenant_id,
+            }
+          )}`
         );
       }
     }
 
+    // Agar linkedManager bo'lmasa, lekin ClinicSupplierManager telefon raqami bo'lsa, SMS yuborish
     if (!supplierId) {
-      this.logger.warn(
-        `[ReturnService] Return ${returnRecord.id} has no supplier_id and no linked supplier manager, skipping supplier notification`
-      );
-      this.logger.warn(
-        `[ReturnService] Product supplier chain: productSupplier=${!!product?.productSupplier}, clinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, linkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}, supplier=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager?.supplier}`
-      );
+      const clinicSupplierManager =
+        product?.productSupplier?.clinicSupplierManager;
+      const phoneNumber = clinicSupplierManager?.phone_number;
+
+      if (phoneNumber) {
+        // ClinicSupplierManager telefon raqamiga to'g'ridan-to'g'ri SMS yuborish
+        this.logger.log(
+          `[ReturnService] linkedManager yo'q, lekin ClinicSupplierManager telefon raqami mavjud. To'g'ridan-to'g'ri SMS yuboriladi: ${phoneNumber}`
+        );
+
+        try {
+          // Get clinic details
+          const clinic = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).clinic.findFirst({
+              where: { tenant_id: tenantId },
+              select: { name: true },
+            });
+          });
+
+          const clinicName = clinic?.name || "알 수 없음";
+          const clinicManagerName = returnRecord.manager_name || "알 수 없음";
+          const productName = product?.name || "알 수 없음";
+          const returnQty = returnRecord.return_qty || 0;
+          const totalRefund = returnRecord.total_refund || 0;
+
+          // Generate return_no
+          const returnNo = await this.generateReturnNumber();
+
+          // Format SMS message (manual supplier uchun)
+          const smsMessage = this.formatReturnSMSMessage(
+            returnNo,
+            clinicName,
+            clinicManagerName,
+            productName,
+            returnQty,
+            totalRefund,
+            false // Manual supplier
+          );
+
+          // Send SMS
+          const smsSent = await this.messageService.sendSMS(
+            phoneNumber,
+            smsMessage
+          );
+
+          if (smsSent) {
+            this.logger.log(
+              `[ReturnService] ✅ SMS sent successfully to ClinicSupplierManager (${phoneNumber}) for return ${returnNo}`
+            );
+
+            // Save return_no to Return record
+            await this.prisma.executeWithRetry(async () => {
+              return (this.prisma as any).return.update({
+                where: { id: returnRecord.id },
+                data: { return_no: returnNo },
+              });
+            });
+          } else {
+            this.logger.error(
+              `[ReturnService] ❌ Failed to send SMS to ClinicSupplierManager (${phoneNumber})`
+            );
+          }
+        } catch (smsError: any) {
+          this.logger.error(
+            `[ReturnService] Error sending SMS to ClinicSupplierManager: ${
+              smsError?.message || "Unknown error"
+            }`
+          );
+        }
+      } else {
+        this.logger.warn(
+          `[ReturnService] Return ${returnRecord.id} has no supplier_id, no linked supplier manager, and no ClinicSupplierManager phone number. Skipping supplier notification.`
+        );
+        this.logger.warn(
+          `[ReturnService] Product supplier chain: productSupplier=${!!product?.productSupplier}, clinicSupplierManager=${!!product
+            ?.productSupplier?.clinicSupplierManager}, linkedManager=${!!product
+            ?.productSupplier?.clinicSupplierManager
+            ?.linkedManager}, supplier=${!!product?.productSupplier
+            ?.clinicSupplierManager?.linkedManager
+            ?.supplier}, phoneNumber=${!!clinicSupplierManager?.phone_number}`
+        );
+      }
       return;
     }
 
@@ -749,7 +1066,7 @@ export class ReturnService {
           this.logger.log(
             `[ReturnService] Supplier tenant_id not found in linkedManager, fetching from Supplier table: supplierId=${supplierId}`
           );
-          
+
           const supplier = await this.prisma.executeWithRetry(async () => {
             return (this.prisma as any).supplier.findFirst({
               where: { id: supplierId },
@@ -759,7 +1076,9 @@ export class ReturnService {
 
           if (!supplier || !supplier.tenant_id) {
             this.logger.error(
-              `[ReturnService] Supplier ${supplierId} not found or missing tenant_id. Supplier object: ${JSON.stringify(supplier)}`
+              `[ReturnService] Supplier ${supplierId} not found or missing tenant_id. Supplier object: ${JSON.stringify(
+                supplier
+              )}`
             );
             return;
           }
@@ -776,14 +1095,43 @@ export class ReturnService {
       }
 
       // Validate supplierTenantId is different from clinic tenantId
+      // If they're the same, try fetching from Supplier table as a fallback
       if (supplierTenantId === tenantId) {
-        this.logger.error(
-          `[ReturnService] ⚠️ ERROR: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}). This is incorrect!`
+        this.logger.warn(
+          `[ReturnService] ⚠️ WARNING: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}). Attempting to fetch correct tenant_id from Supplier table...`
         );
-        this.logger.error(
-          `[ReturnService] This means the product's supplier is not properly linked to a platform supplier. Please check ProductSupplier -> ClinicSupplierManager -> linkedManager -> supplier relationship.`
-        );
-        return;
+
+        if (supplierId) {
+          const supplier = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplier.findFirst({
+              where: { id: supplierId },
+              select: { id: true, tenant_id: true },
+            });
+          });
+
+          if (supplier?.tenant_id && supplier.tenant_id !== tenantId) {
+            supplierTenantId = supplier.tenant_id;
+            this.logger.log(
+              `[ReturnService] ✅ Corrected supplierTenantId from Supplier table: ${supplierTenantId}`
+            );
+          } else {
+            this.logger.error(
+              `[ReturnService] ❌ ERROR: Supplier ${supplierId} has tenant_id (${supplier?.tenant_id}) that is missing or same as clinic tenant_id (${tenantId}). This indicates incorrect data in the database.`
+            );
+            this.logger.error(
+              `[ReturnService] This means the product's supplier is not properly linked to a platform supplier. Please check ProductSupplier -> ClinicSupplierManager -> linkedManager -> supplier relationship.`
+            );
+            return;
+          }
+        } else {
+          this.logger.error(
+            `[ReturnService] ❌ ERROR: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}) and no supplierId available to fetch correct tenant_id.`
+          );
+          this.logger.error(
+            `[ReturnService] This means the product's supplier is not properly linked to a platform supplier. Please check ProductSupplier -> ClinicSupplierManager -> linkedManager -> supplier relationship.`
+          );
+          return;
+        }
       }
 
       // Get clinic details
@@ -820,7 +1168,10 @@ export class ReturnService {
       // /returns page'dan kelgan product'lar "불량|반품" format'ida bo'lishi kerak
       // (chunki bu outbound'dan kelgan defective product'lar)
       let returnType = "불량|반품"; // Default for /returns page (defective products from outbound)
-      if (returnRecord.memo && returnRecord.memo.includes("자동 반납: 빈 박스")) {
+      if (
+        returnRecord.memo &&
+        returnRecord.memo.includes("자동 반납: 빈 박스")
+      ) {
         returnType = "불량|반품"; // Empty box is also a return, not exchange
       }
 
@@ -836,10 +1187,16 @@ export class ReturnService {
         ? new Date(batchData.created_at).toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0];
 
+      // Get supplierManagerId from linkedManager (faqat shu manager'ga SMS yuboriladi)
+      const linkedManager =
+        product?.productSupplier?.clinicSupplierManager?.linkedManager;
+      const supplierManagerId = linkedManager?.id || null;
+
       // Prepare return data for supplier
       const returnData = {
         returnNo: returnNo,
         supplierTenantId: supplierTenantId,
+        supplierManagerId: supplierManagerId, // Faqat shu manager'ga SMS yuboriladi
         clinicTenantId: tenantId,
         clinicName: clinicName,
         clinicManagerName: clinicManagerName,
@@ -880,14 +1237,19 @@ export class ReturnService {
       this.logger.log(
         `[ReturnService] Request details: supplierTenantId=${supplierTenantId}, supplierId=${supplierId}, clinicTenantId=${tenantId}, returnNo=${returnNo}`
       );
-      
+
       // Validate supplierTenantId is not clinic tenant_id
       if (supplierTenantId === tenantId) {
         this.logger.error(
           `[ReturnService] ⚠️ ERROR: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}). This means supplier tenant_id was not found correctly.`
         );
         this.logger.error(
-          `[ReturnService] Product supplier info: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}, hasSupplier=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager?.supplier}`
+          `[ReturnService] Product supplier info: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product
+            ?.productSupplier
+            ?.clinicSupplierManager}, hasLinkedManager=${!!product
+            ?.productSupplier?.clinicSupplierManager
+            ?.linkedManager}, hasSupplier=${!!product?.productSupplier
+            ?.clinicSupplierManager?.linkedManager?.supplier}`
         );
         return;
       }
@@ -904,12 +1266,16 @@ export class ReturnService {
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `Failed to send return to supplier-backend: ${response.status} ${errorText}. Request data: ${JSON.stringify(returnData)}`
+          `Failed to send return to supplier-backend: ${
+            response.status
+          } ${errorText}. Request data: ${JSON.stringify(returnData)}`
         );
       } else {
         const result: any = await response.json();
         this.logger.log(
-          `Return ${returnNo} sent to supplier-backend successfully: ${result.id || "OK"}. SMS notification should be sent to supplier managers.`
+          `Return ${returnNo} sent to supplier-backend successfully: ${
+            result.id || "OK"
+          }`
         );
 
         // Save return_no to Return record
@@ -920,6 +1286,96 @@ export class ReturnService {
           });
         });
       }
+
+      // Send SMS notification to supplier managers (clinic-backend'da)
+      // linkedManager bo'lsa ham SMS yuborish
+      if (linkedManager && supplierTenantId) {
+        try {
+          // Barcha ACTIVE SupplierManager'larni topish
+          const allManagers = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplierManager.findMany({
+              where: {
+                supplier_tenant_id: supplierTenantId,
+                status: "ACTIVE",
+                receive_sms: true,
+              },
+              select: {
+                id: true,
+                name: true,
+                phone_number: true,
+              },
+            });
+          });
+
+          // Agar supplierManagerId bo'lsa, faqat shu manager'ga SMS yuborish
+          // Agar bo'lmasa, barcha ACTIVE manager'larga SMS yuborish
+          const managersToNotify = supplierManagerId
+            ? allManagers.filter((m: any) => m.id === supplierManagerId)
+            : allManagers;
+
+          if (managersToNotify.length > 0) {
+            const productName = product.name || "알 수 없음";
+            const returnQty = returnRecord.return_qty || 0;
+            const totalRefund = returnRecord.total_refund || 0;
+
+            // Format SMS message (platform supplier uchun)
+            const smsMessage = this.formatReturnSMSMessage(
+              returnNo,
+              clinicName,
+              clinicManagerName,
+              productName,
+              returnQty,
+              totalRefund,
+              true // Platform supplier
+            );
+
+            // Har bir manager'ga SMS yuborish
+            const smsPromises = managersToNotify
+              .filter((manager: any) => manager.phone_number)
+              .map(async (manager: any) => {
+                try {
+                  const smsSent = await this.messageService.sendSMS(
+                    manager.phone_number,
+                    smsMessage
+                  );
+
+                  if (smsSent) {
+                    this.logger.log(
+                      `[ReturnService] ✅ SMS sent successfully to SupplierManager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
+                    );
+                  } else {
+                    this.logger.error(
+                      `[ReturnService] ❌ Failed to send SMS to SupplierManager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
+                    );
+                  }
+                } catch (smsError: any) {
+                  this.logger.error(
+                    `[ReturnService] ❌ Failed to send SMS to SupplierManager ${
+                      manager.name
+                    } (${manager.phone_number}) for return ${returnNo}: ${
+                      smsError?.message || "Unknown error"
+                    }`
+                  );
+                }
+              });
+
+            await Promise.all(smsPromises);
+          } else {
+            this.logger.warn(
+              `[ReturnService] No active managers with SMS enabled found for supplier ${supplierTenantId} (supplierManagerId: ${
+                supplierManagerId || "not specified"
+              })`
+            );
+          }
+        } catch (smsError: any) {
+          this.logger.error(
+            `[ReturnService] Error sending SMS to supplier managers: ${
+              smsError?.message || "Unknown error"
+            }`
+          );
+          // Don't throw - SMS failure shouldn't break return process
+        }
+      }
     } catch (error: any) {
       this.logger.error(
         `Error sending return to supplier-backend: ${error.message}`,
@@ -929,4 +1385,3 @@ export class ReturnService {
     }
   }
 }
-

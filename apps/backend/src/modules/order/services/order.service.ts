@@ -1779,7 +1779,7 @@ export class OrderService {
         })`
       );
 
-      // Get product details for items
+      // Get product details for items with ProductSupplier information
       const itemsWithDetails = await Promise.all(
         group.items.map(async (item: any) => {
           const product = await this.prisma.product.findUnique({
@@ -1796,6 +1796,31 @@ export class OrderService {
             batchNo = batch?.batch_no || null;
           }
 
+          // Get ProductSupplier for this product
+          const productSupplier = await this.prisma.productSupplier.findUnique({
+            where: {
+              tenant_id_product_id: {
+                tenant_id: tenantId,
+                product_id: item.productId,
+              },
+            },
+            include: {
+              clinicSupplierManager: {
+                include: {
+                  linkedManager: {
+                    include: {
+                      supplier: {
+                        select: {
+                          tenant_id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          });
+
           return {
             productId: item.productId,
             productName: product?.name || "제품",
@@ -1805,6 +1830,7 @@ export class OrderService {
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
             memo: item.memo || null,
+            productSupplier: productSupplier, // ProductSupplier ma'lumotlari
           };
         })
       );
@@ -1817,36 +1843,37 @@ export class OrderService {
           `Skipping supplier-backend notification for manual supplier ${order.supplier_id}, will send SMS only`
         );
 
-        // Send SMS to manual supplier
+        // Send SMS to manual supplier (yangi format bilan)
         const manualPhoneNumber = clinicSupplierManager.phone_number;
         if (manualPhoneNumber) {
           try {
-            // Professional SMS format
-            const smsMessage = `[Web발신]
-[주문 도착] ${finalClinicName}에서 주문 요청이 등록되었습니다.
+            // Products ma'lumotlarini formatlash
+            const products = itemsWithDetails.map((item: any) => ({
+              productName: item.productName || "제품",
+              brand: item.brand || "",
+            }));
 
-
-
-주문번호: ${order.order_no}
-상품 항목 수: ${itemsWithDetails.length}
-총 금액: ${order.total_amount?.toLocaleString()}원
-
-
-
-주문 내용을 확인하고 관리해 주세요.
-
-* 문의: ${finalClinicManagerName || "담당자"} / ${
-              clinicSupplierManager.company_phone || "연락처 없음"
-            }`;
+            // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
+            const totalQuantity = itemsWithDetails.reduce(
+              (sum: number, item: any) => {
+                return sum + (item.quantity || 0);
+              },
+              0
+            );
 
             this.logger.log(
               `Sending SMS to manual supplier: ${manualPhoneNumber}`
             );
 
-            // Send SMS via MessageService
-            const smsSent = await this.messageService.sendSMS(
+            // Send SMS via MessageService (yangi format bilan)
+            const smsSent = await this.messageService.sendOrderNotification(
               manualPhoneNumber,
-              smsMessage
+              finalClinicName,
+              order.order_no,
+              order.total_amount,
+              totalQuantity,
+              finalClinicManagerName,
+              products
             );
 
             if (smsSent) {
@@ -1982,53 +2009,252 @@ export class OrderService {
         }
       }
 
-      // Send SMS notification to supplier manager
-      // SMS yuborish supplier-backend API muvaffaqiyatli bo'lgan yoki bo'lmaganidan qat'iy nazar
-      // (chunki telefon raqami mavjud bo'lsa, SMS yuborish kerak)
-      if (finalSupplierPhoneNumber) {
-        try {
-          // Products ma'lumotlarini formatlash
-          const products = itemsWithDetails.map((item: any) => ({
-            productName: item.productName || "제품",
+      // Send SMS notification grouped by supplier manager
+      // Product'larni supplier manager bo'yicha guruhlab, har bir manager'ga bitta SMS yuborish
+      try {
+        // Product'larni supplier manager bo'yicha guruhlash
+        const itemsByManager = new Map<
+          string,
+          {
+            managerId: string | null;
+            supplierTenantId: string | null;
+            phoneNumber: string | null;
+            phoneSource: string;
+            items: Array<{
+              productName: string;
+              brand: string;
+              quantity: number;
+              totalPrice: number;
+            }>;
+            isPlatformSupplier: boolean;
+          }
+        >();
+
+        // Har bir product'ni guruhlash
+        for (const item of itemsWithDetails) {
+          const productSupplier = item.productSupplier;
+
+          if (!productSupplier) {
+            this.logger.warn(
+              `No ProductSupplier found for product ${item.productId}, skipping SMS`
+            );
+            continue;
+          }
+
+          const clinicSupplierManager = productSupplier.clinicSupplierManager;
+          if (!clinicSupplierManager) {
+            this.logger.warn(
+              `No ClinicSupplierManager found for product ${item.productId}, skipping SMS`
+            );
+            continue;
+          }
+
+          // ProductSupplier → ClinicSupplierManager → linkedManager (SupplierManager)
+          const linkedManager = clinicSupplierManager.linkedManager;
+          const supplier = linkedManager?.supplier;
+
+          // Telefon raqamini topish (priority: SupplierManager.phone_number > ClinicSupplierManager.phone_number)
+          let phoneNumber: string | null = null;
+          let phoneSource = "";
+          let managerId: string | null = null;
+          let supplierTenantId: string | null = null;
+          let isPlatformSupplier = false;
+
+          if (linkedManager?.phone_number) {
+            phoneNumber = linkedManager.phone_number;
+            phoneSource = "SupplierManager";
+            managerId = linkedManager.id;
+            supplierTenantId =
+              supplier?.tenant_id || linkedManager.supplier_tenant_id || null;
+            isPlatformSupplier = true;
+          } else if (clinicSupplierManager.phone_number) {
+            phoneNumber = clinicSupplierManager.phone_number;
+            phoneSource = "ClinicSupplierManager";
+            isPlatformSupplier = false;
+          }
+
+          if (!phoneNumber) {
+            this.logger.warn(
+              `No phone number found for product ${item.productId} (supplier: ${
+                clinicSupplierManager.company_name || "unknown"
+              }), skipping SMS`
+            );
+            continue;
+          }
+
+          // Guruhlash uchun key yaratish
+          // Platform supplier bo'lsa: supplierTenantId + managerId
+          // Manual supplier bo'lsa: phoneNumber
+          const groupKey = isPlatformSupplier
+            ? `${supplierTenantId}_${managerId || "all"}`
+            : `manual_${phoneNumber}`;
+
+          if (!itemsByManager.has(groupKey)) {
+            itemsByManager.set(groupKey, {
+              managerId,
+              supplierTenantId,
+              phoneNumber,
+              phoneSource,
+              items: [],
+              isPlatformSupplier,
+            });
+          }
+
+          itemsByManager.get(groupKey)!.items.push({
+            productName: item.productName,
             brand: item.brand || "",
-          }));
-
-          // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
-          const totalQuantity = itemsWithDetails.reduce(
-            (sum: number, item: any) => {
-              return sum + (item.quantity || 0);
-            },
-            0
-          );
-
-          await this.messageService.sendOrderNotification(
-            finalSupplierPhoneNumber,
-            finalClinicName,
-            order.order_no,
-            order.total_amount,
-            totalQuantity, // itemsWithDetails.length o'rniga totalQuantity
-            clinicManagerName,
-            products
-          );
-          const phoneSource = supplierManager?.phone_number
-            ? "SupplierManager"
-            : supplierPhoneNumber
-            ? "SupplierProduct"
-            : "Supplier.company_phone";
-          this.logger.log(
-            `Order notification SMS sent to supplier: ${finalSupplierPhoneNumber} (source: ${phoneSource})`
-          );
-        } catch (smsError: any) {
-          // Log error but don't fail the order creation
-          this.logger.error(
-            `Failed to send SMS notification to supplier: ${
-              smsError?.message || "Unknown error"
-            }`
-          );
+            quantity: item.quantity,
+            totalPrice: item.totalPrice,
+          });
         }
-      } else {
-        this.logger.warn(
-          `No phone number found for supplier ${order.supplier_id} (checked SupplierManager, SupplierProduct, and Supplier.company_phone), skipping SMS notification`
+
+        // Har bir manager'ga bitta SMS yuborish (barcha product'lar bilan)
+        const smsPromises = Array.from(itemsByManager.values()).map(
+          async (group) => {
+            try {
+              // Agar platform supplier bo'lsa, barcha ACTIVE manager'larga SMS yuborish
+              if (group.isPlatformSupplier && group.supplierTenantId) {
+                const allManagers = await this.prisma.supplierManager.findMany({
+                  where: {
+                    supplier_tenant_id: group.supplierTenantId,
+                    status: "ACTIVE",
+                    receive_sms: true,
+                  },
+                  select: {
+                    id: true,
+                    name: true,
+                    phone_number: true,
+                  },
+                });
+
+                if (allManagers.length > 0) {
+                  // Agar managerId bo'lsa, faqat shu manager'ga SMS yuborish
+                  // Agar bo'lmasa, barcha ACTIVE manager'larga SMS yuborish
+                  const managersToNotify = group.managerId
+                    ? allManagers.filter((m) => m.id === group.managerId)
+                    : allManagers;
+
+                  const managerSmsPromises = managersToNotify
+                    .filter((manager) => manager.phone_number)
+                    .map(async (manager) => {
+                      try {
+                        // Barcha product'lar uchun umumiy miqdor va narx
+                        const totalQuantity = group.items.reduce(
+                          (sum, item) => sum + item.quantity,
+                          0
+                        );
+                        const totalAmount = group.items.reduce(
+                          (sum, item) => sum + item.totalPrice,
+                          0
+                        );
+
+                        // Barcha product'lar ro'yxati
+                        const products = group.items.map((item) => ({
+                          productName: item.productName,
+                          brand: item.brand,
+                        }));
+
+                        await this.messageService.sendOrderNotification(
+                          manager.phone_number,
+                          finalClinicName,
+                          order.order_no,
+                          totalAmount,
+                          totalQuantity,
+                          clinicManagerName,
+                          products
+                        );
+                        this.logger.log(
+                          `✅ SMS sent to SupplierManager ${manager.name} (${manager.phone_number}) for ${group.items.length} product(s)`
+                        );
+                      } catch (smsError: any) {
+                        this.logger.error(
+                          `❌ Failed to send SMS to SupplierManager ${
+                            manager.name
+                          } (${manager.phone_number}): ${
+                            smsError?.message || "Unknown error"
+                          }`
+                        );
+                      }
+                    });
+
+                  await Promise.all(managerSmsPromises);
+                } else {
+                  // Fallback: Agar ACTIVE manager bo'lmasa, ClinicSupplierManager telefoniga SMS
+                  if (group.phoneNumber) {
+                    const totalQuantity = group.items.reduce(
+                      (sum, item) => sum + item.quantity,
+                      0
+                    );
+                    const totalAmount = group.items.reduce(
+                      (sum, item) => sum + item.totalPrice,
+                      0
+                    );
+                    const products = group.items.map((item) => ({
+                      productName: item.productName,
+                      brand: item.brand,
+                    }));
+
+                    await this.messageService.sendOrderNotification(
+                      group.phoneNumber,
+                      finalClinicName,
+                      order.order_no,
+                      totalAmount,
+                      totalQuantity,
+                      clinicManagerName,
+                      products
+                    );
+                    this.logger.log(
+                      `✅ SMS sent to ${group.phoneSource} (${group.phoneNumber}) for ${group.items.length} product(s)`
+                    );
+                  }
+                }
+              } else {
+                // Manual supplier: ClinicSupplierManager telefoniga SMS
+                if (group.phoneNumber) {
+                  const totalQuantity = group.items.reduce(
+                    (sum, item) => sum + item.quantity,
+                    0
+                  );
+                  const totalAmount = group.items.reduce(
+                    (sum, item) => sum + item.totalPrice,
+                    0
+                  );
+                  const products = group.items.map((item) => ({
+                    productName: item.productName,
+                    brand: item.brand,
+                  }));
+
+                  await this.messageService.sendOrderNotification(
+                    group.phoneNumber,
+                    finalClinicName,
+                    order.order_no,
+                    totalAmount,
+                    totalQuantity,
+                    clinicManagerName,
+                    products
+                  );
+                  this.logger.log(
+                    `✅ SMS sent to ${group.phoneSource} (${group.phoneNumber}) for ${group.items.length} product(s)`
+                  );
+                }
+              }
+            } catch (error: any) {
+              this.logger.error(
+                `Error sending SMS for ${group.items.length} product(s): ${
+                  error?.message || "Unknown error"
+                }`
+              );
+            }
+          }
+        );
+
+        await Promise.all(smsPromises);
+      } catch (error: any) {
+        // Log error but don't fail the order creation
+        this.logger.error(
+          `Error sending SMS notifications: ${
+            error?.message || "Unknown error"
+          }`
         );
       }
 

@@ -6,8 +6,10 @@ import { SupplierReturnNotificationService } from "./services/supplier-return-no
 import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
+import { MemberModule } from "../member/member.module";
 
 @Module({
+  imports: [MemberModule], // Import MemberModule to use MessageService
   controllers: [ReturnController],
   providers: [
     ReturnService,
