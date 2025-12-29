@@ -944,10 +944,14 @@ export class ReturnService {
         });
 
         // Send SMS notification to supplier managers
+        this.logger.log(
+          `[Return Create] Return request created successfully. ReturnNo: ${returnNo}, SupplierTenantId: ${supplierTenantId}. Now sending SMS notifications...`
+        );
+        
         this.sendReturnNotificationToManagers(returnRequest, supplierTenantId)
           .catch((error: any) => {
             this.logger.error(
-              `Failed to send return notification SMS: ${error.message}`,
+              `[Return Create] Failed to send return notification SMS: ${error.message}`,
               error.stack
             );
             // Don't throw - SMS failure shouldn't break return creation
@@ -969,6 +973,10 @@ export class ReturnService {
     supplierTenantId: string
   ): Promise<void> {
     try {
+      this.logger.log(
+        `[SMS Notification] Starting SMS notification for return ${returnRequest.return_no || returnRequest.id}, supplierTenantId=${supplierTenantId}`
+      );
+
       // Find all active supplier managers with receive_sms = true
       const managers = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).supplierManager.findMany({
@@ -981,13 +989,38 @@ export class ReturnService {
             id: true,
             name: true,
             phone_number: true,
+            receive_sms: true,
+            status: true,
           },
         });
       });
 
+      this.logger.log(
+        `[SMS Notification] Found ${managers?.length || 0} active managers with SMS enabled for supplier ${supplierTenantId}`
+      );
+
       if (!managers || managers.length === 0) {
-        this.logger.log(
-          `No active managers with SMS enabled found for supplier ${supplierTenantId}`
+        // Check if there are any managers at all (for debugging)
+        const allManagers = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierManager.findMany({
+            where: {
+              supplier_tenant_id: supplierTenantId,
+            },
+            select: {
+              id: true,
+              name: true,
+              phone_number: true,
+              receive_sms: true,
+              status: true,
+            },
+          });
+        });
+
+        this.logger.warn(
+          `[SMS Notification] ⚠️ No active managers with SMS enabled found for supplier ${supplierTenantId}. Total managers: ${allManagers?.length || 0}. Managers details: ${JSON.stringify(allManagers?.map((m: any) => ({ name: m.name, status: m.status, receive_sms: m.receive_sms })) || [])}`
+        );
+        this.logger.warn(
+          `[SMS Notification] 💡 To enable SMS notifications, please go to Settings page (http://localhost:3003/settings) and enable "문자(SMS) 알림 받기" toggle for the supplier manager.`
         );
         return;
       }
@@ -1006,13 +1039,21 @@ export class ReturnService {
 앱에서 확인해주세요.`;
 
       // Send SMS to each manager
+      this.logger.log(
+        `[SMS Notification] Preparing to send SMS to ${managers.length} manager(s)`
+      );
+
       const smsPromises = managers.map(async (manager: any) => {
         if (!manager.phone_number) {
           this.logger.warn(
-            `Manager ${manager.id} (${manager.name}) has no phone number, skipping SMS`
+            `[SMS Notification] Manager ${manager.id} (${manager.name}) has no phone number, skipping SMS`
           );
           return;
         }
+
+        this.logger.log(
+          `[SMS Notification] Sending SMS to manager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
+        );
 
         const smsSent = await this.solapiProvider.sendSMS(
           manager.phone_number,
@@ -1021,16 +1062,20 @@ export class ReturnService {
 
         if (smsSent) {
           this.logger.log(
-            `Return notification SMS sent to manager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
+            `[SMS Notification] ✅ SMS sent successfully to manager ${manager.name} (${manager.phone_number}) for return ${returnNo}`
           );
         } else {
           this.logger.error(
-            `Failed to send return notification SMS to manager ${manager.name} (${manager.phone_number})`
+            `[SMS Notification] ❌ Failed to send SMS to manager ${manager.name} (${manager.phone_number}) for return ${returnNo}. Check SolapiProvider logs for details.`
           );
         }
       });
 
       await Promise.all(smsPromises);
+      
+      this.logger.log(
+        `[SMS Notification] Completed SMS notification process for return ${returnNo}`
+      );
     } catch (error: any) {
       this.logger.error(
         `Error sending return notification SMS: ${error.message}`,

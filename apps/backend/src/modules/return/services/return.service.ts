@@ -108,10 +108,9 @@ export class ReturnService {
       return await (this.prisma as any).product.findMany({
         where: {
           tenant_id: tenantId,
-          OR: [
-            { returnPolicy: null }, // returnPolicy null bo'lsa ham qo'shish
-            { returnPolicy: { is_returnable: true } }, // is_returnable = true bo'lsa qo'shish
-          ],
+          returnPolicy: {
+            is_returnable: true, // Faqat returnPolicy mavjud va is_returnable = true bo'lgan product'lar
+          },
         },
         select: {
           id: true,
@@ -169,7 +168,7 @@ export class ReturnService {
       });
     });
     
-    console.log(`  Products found (returnPolicy=null OR is_returnable=true): ${products.length}`);
+    console.log(`  Products found (returnPolicy.is_returnable=true only): ${products.length}`);
 
     // 4. Har bir product uchun qaytarilishi mumkin bo'lgan miqdorni hisoblash (Map'lardan foydalanish)
     console.log(`\n🔍 [getAvailableProducts] Processing ${products.length} products...`);
@@ -301,9 +300,11 @@ export class ReturnService {
                         linkedManager: {
                           select: {
                             id: true,
+                            supplier_tenant_id: true, // This is the correct field for supplier tenant_id
                             supplier: {
                               select: {
                                 id: true,
+                                tenant_id: true,
                               },
                             },
                           },
@@ -378,7 +379,14 @@ export class ReturnService {
             }
 
             // 6. Supplier ID olish (productSupplier orqali)
-            const supplierId = product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || undefined;
+            // First try to get supplier_tenant_id from linkedManager (most reliable)
+            const linkedManager = product.productSupplier?.clinicSupplierManager?.linkedManager;
+            const supplierId = linkedManager?.supplier?.id || undefined;
+            
+            // Debug: Log supplier chain
+            this.logger.log(
+              `[ReturnService] Product ${item.productId} supplier chain: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!linkedManager}, linkedManagerId=${linkedManager?.id}, supplier_tenant_id=${linkedManager?.supplier_tenant_id}, supplierId=${supplierId}, supplierTenantId=${linkedManager?.supplier?.tenant_id}`
+            );
 
             // 7. Refund amount olish
             const refundAmount = product.returnPolicy?.refund_amount ?? 0;
@@ -474,7 +482,18 @@ export class ReturnService {
                 include: {
                   clinicSupplierManager: {
                     include: {
-                      linkedManager: true,
+                      linkedManager: {
+                        select: {
+                          id: true,
+                          supplier_tenant_id: true, // This is the correct field for supplier tenant_id
+                          supplier: {
+                            select: {
+                              id: true,
+                              tenant_id: true,
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },
@@ -495,7 +514,34 @@ export class ReturnService {
               });
 
             // Yangi: Supplier backend'ga API call qilish
-            if (returnRecord.supplier_id) {
+            // supplier_id bo'lmasa ham, linkedManager orqali supplier tenant_id ni topishga harakat qilamiz
+            const supplierId = returnRecord.supplier_id || 
+              product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier?.id || 
+              null;
+            
+            this.logger.log(
+              `Processing return ${returnRecord.id}: supplier_id=${returnRecord.supplier_id}, found_supplier_id=${supplierId}, has_linkedManager=${!!product.productSupplier?.clinicSupplierManager?.linkedManager}`
+            );
+            
+            if (supplierId) {
+              // supplier_id ni yangilash (agar u bo'lmasa)
+              if (!returnRecord.supplier_id) {
+                await this.prisma.executeWithRetry(async () => {
+                  return (this.prisma as any).return.update({
+                    where: { id: returnRecord.id },
+                    data: { supplier_id: supplierId },
+                  });
+                });
+                returnRecord.supplier_id = supplierId;
+                this.logger.log(
+                  `Updated return ${returnRecord.id} with supplier_id=${supplierId}`
+                );
+              }
+              
+              this.logger.log(
+                `Sending return ${returnRecord.id} to supplier-backend (supplier_id=${supplierId})`
+              );
+              
               this.sendReturnToSupplier(returnRecord, product, tenantId)
                 .catch((error) => {
                   // Log error but don't fail the return process
@@ -504,6 +550,10 @@ export class ReturnService {
                     error
                   );
                 });
+            } else {
+              this.logger.warn(
+                `Return ${returnRecord.id} has no supplier_id and no linked supplier manager. Product: ${product.name}, Has productSupplier: ${!!product.productSupplier}, Has clinicSupplierManager: ${!!product.productSupplier?.clinicSupplierManager}, Has linkedManager: ${!!product.productSupplier?.clinicSupplierManager?.linkedManager}, skipping supplier notification`
+              );
             }
           }
         }
@@ -639,25 +689,99 @@ export class ReturnService {
     product: any,
     tenantId: string
   ): Promise<void> {
-    if (!returnRecord.supplier_id) {
+    let supplierId = returnRecord.supplier_id;
+    let supplierTenantId: string | null = null;
+
+    this.logger.log(
+      `[ReturnService] sendReturnToSupplier: returnId=${returnRecord.id}, returnSupplierId=${returnRecord.supplier_id}, hasProduct=${!!product}, hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}`
+    );
+
+    // If supplier_id is not set, try to get it from product's linkedManager
+    if (!supplierId && product?.productSupplier?.clinicSupplierManager?.linkedManager) {
+      const linkedManager = product.productSupplier.clinicSupplierManager.linkedManager;
+      
+      this.logger.log(
+        `[ReturnService] 🔍 Debug linkedManager: ${JSON.stringify({
+          id: linkedManager.id,
+          supplier_tenant_id: linkedManager.supplier_tenant_id,
+          hasSupplier: !!linkedManager.supplier,
+          supplierId: linkedManager.supplier?.id,
+          supplierTenantId: linkedManager.supplier?.tenant_id,
+        })}`
+      );
+      
+      // First, try to get supplier_tenant_id from linkedManager (this is the correct field)
+      // This is the most reliable way to get supplier tenant_id
+      if (linkedManager.supplier_tenant_id) {
+        supplierTenantId = linkedManager.supplier_tenant_id;
+        supplierId = linkedManager.supplier?.id || null;
+        this.logger.log(
+          `[ReturnService] ✅ Found supplier_tenant_id from linkedManager: supplierTenantId=${supplierTenantId}, supplierId=${supplierId}`
+        );
+      } else if (linkedManager.supplier?.tenant_id) {
+        // Fallback: use supplier.tenant_id if supplier_tenant_id is not available
+        supplierId = linkedManager.supplier.id;
+        supplierTenantId = linkedManager.supplier.tenant_id;
+        this.logger.log(
+          `[ReturnService] ⚠️ Using supplier.tenant_id as fallback (supplier_tenant_id not available): supplierId=${supplierId}, supplierTenantId=${supplierTenantId}`
+        );
+      } else {
+        this.logger.error(
+          `[ReturnService] ❌ linkedManager exists but has no supplier_tenant_id or supplier.tenant_id. linkedManager: ${JSON.stringify(linkedManager)}`
+        );
+      }
+    }
+
+    if (!supplierId) {
       this.logger.warn(
-        `Return ${returnRecord.id} has no supplier_id, skipping supplier notification`
+        `[ReturnService] Return ${returnRecord.id} has no supplier_id and no linked supplier manager, skipping supplier notification`
+      );
+      this.logger.warn(
+        `[ReturnService] Product supplier chain: productSupplier=${!!product?.productSupplier}, clinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, linkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}, supplier=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager?.supplier}`
       );
       return;
     }
 
     try {
-      // Get supplier details
-      const supplier = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplier.findFirst({
-          where: { id: returnRecord.supplier_id },
-          select: { tenant_id: true },
-        });
-      });
+      // Get supplier details if tenant_id is not already available
+      if (!supplierTenantId) {
+        if (supplierId) {
+          this.logger.log(
+            `[ReturnService] Supplier tenant_id not found in linkedManager, fetching from Supplier table: supplierId=${supplierId}`
+          );
+          
+          const supplier = await this.prisma.executeWithRetry(async () => {
+            return (this.prisma as any).supplier.findFirst({
+              where: { id: supplierId },
+              select: { id: true, tenant_id: true },
+            });
+          });
 
-      if (!supplier || !supplier.tenant_id) {
-        this.logger.warn(
-          `Supplier ${returnRecord.supplier_id} not found or missing tenant_id`
+          if (!supplier || !supplier.tenant_id) {
+            this.logger.error(
+              `[ReturnService] Supplier ${supplierId} not found or missing tenant_id. Supplier object: ${JSON.stringify(supplier)}`
+            );
+            return;
+          }
+          supplierTenantId = supplier.tenant_id;
+          this.logger.log(
+            `[ReturnService] Found supplier tenant_id from Supplier table: supplierTenantId=${supplierTenantId}`
+          );
+        } else {
+          this.logger.error(
+            `[ReturnService] Cannot find supplier tenant_id: no supplierId and no supplierTenantId available`
+          );
+          return;
+        }
+      }
+
+      // Validate supplierTenantId is different from clinic tenantId
+      if (supplierTenantId === tenantId) {
+        this.logger.error(
+          `[ReturnService] ⚠️ ERROR: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}). This is incorrect!`
+        );
+        this.logger.error(
+          `[ReturnService] This means the product's supplier is not properly linked to a platform supplier. Please check ProductSupplier -> ClinicSupplierManager -> linkedManager -> supplier relationship.`
         );
         return;
       }
@@ -715,7 +839,7 @@ export class ReturnService {
       // Prepare return data for supplier
       const returnData = {
         returnNo: returnNo,
-        supplierTenantId: supplier.tenant_id,
+        supplierTenantId: supplierTenantId,
         clinicTenantId: tenantId,
         clinicName: clinicName,
         clinicManagerName: clinicManagerName,
@@ -750,6 +874,24 @@ export class ReturnService {
         return;
       }
 
+      this.logger.log(
+        `[ReturnService] Calling supplier-backend API: ${supplierApiUrl}/supplier/returns`
+      );
+      this.logger.log(
+        `[ReturnService] Request details: supplierTenantId=${supplierTenantId}, supplierId=${supplierId}, clinicTenantId=${tenantId}, returnNo=${returnNo}`
+      );
+      
+      // Validate supplierTenantId is not clinic tenant_id
+      if (supplierTenantId === tenantId) {
+        this.logger.error(
+          `[ReturnService] ⚠️ ERROR: supplierTenantId (${supplierTenantId}) is the same as clinicTenantId (${tenantId}). This means supplier tenant_id was not found correctly.`
+        );
+        this.logger.error(
+          `[ReturnService] Product supplier info: hasProductSupplier=${!!product?.productSupplier}, hasClinicSupplierManager=${!!product?.productSupplier?.clinicSupplierManager}, hasLinkedManager=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager}, hasSupplier=${!!product?.productSupplier?.clinicSupplierManager?.linkedManager?.supplier}`
+        );
+        return;
+      }
+
       const response = await fetch(`${supplierApiUrl}/supplier/returns`, {
         method: "POST",
         headers: {
@@ -762,12 +904,12 @@ export class ReturnService {
       if (!response.ok) {
         const errorText = await response.text();
         this.logger.error(
-          `Failed to send return to supplier-backend: ${response.status} ${errorText}`
+          `Failed to send return to supplier-backend: ${response.status} ${errorText}. Request data: ${JSON.stringify(returnData)}`
         );
       } else {
         const result: any = await response.json();
         this.logger.log(
-          `Return ${returnNo} sent to supplier-backend successfully: ${result.id || "OK"}`
+          `Return ${returnNo} sent to supplier-backend successfully: ${result.id || "OK"}. SMS notification should be sent to supplier managers.`
         );
 
         // Save return_no to Return record

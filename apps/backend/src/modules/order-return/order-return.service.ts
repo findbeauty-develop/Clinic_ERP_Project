@@ -560,7 +560,9 @@ export class OrderReturnService {
               clinicSupplierManager: {
                 include: {
                   linkedManager: {
-                    include: {
+                    select: {
+                      id: true,
+                      supplier_tenant_id: true, // This is the correct field for supplier tenant_id
                       supplier: {
                         select: { tenant_id: true },
                       },
@@ -573,13 +575,13 @@ export class OrderReturnService {
         });
 
         if (productSupplier?.clinicSupplierManager?.linkedManager) {
-          supplierManagerId =
-            productSupplier.clinicSupplierManager.linkedManager.id;
-          supplierTenantId =
-            productSupplier.clinicSupplierManager.linkedManager.supplier
-              ?.tenant_id || null;
+          const linkedManager = productSupplier.clinicSupplierManager.linkedManager;
+          supplierManagerId = linkedManager.id;
+          // Use supplier_tenant_id first (most reliable), fallback to supplier.tenant_id
+          supplierTenantId = linkedManager.supplier_tenant_id || 
+            linkedManager.supplier?.tenant_id || null;
           this.logger.log(
-            `✅ Found supplierManagerId via ProductSupplier: ${supplierManagerId}`
+            `✅ Found supplierManagerId via ProductSupplier: ${supplierManagerId}, supplierTenantId=${supplierTenantId}`
           );
         } else if (productSupplier?.clinicSupplierManager) {
           // Manual supplier - no platform notification
@@ -640,7 +642,9 @@ export class OrderReturnService {
                       clinicSupplierManager: {
                         include: {
                           linkedManager: {
-                            include: {
+                            select: {
+                              id: true,
+                              supplier_tenant_id: true, // This is the correct field for supplier tenant_id
                               supplier: {
                                 select: { tenant_id: true },
                               },
@@ -660,14 +664,13 @@ export class OrderReturnService {
           outbound?.product?.productSupplier?.clinicSupplierManager
             ?.linkedManager
         ) {
-          supplierManagerId =
-            outbound.product.productSupplier.clinicSupplierManager.linkedManager
-              .id;
-          supplierTenantId =
-            outbound.product.productSupplier.clinicSupplierManager.linkedManager
-              .supplier?.tenant_id || null;
+          const linkedManager = outbound.product.productSupplier.clinicSupplierManager.linkedManager;
+          supplierManagerId = linkedManager.id;
+          // Use supplier_tenant_id first (most reliable), fallback to supplier.tenant_id
+          supplierTenantId = linkedManager.supplier_tenant_id || 
+            linkedManager.supplier?.tenant_id || null;
           this.logger.log(
-            `✅ Found supplierManagerId via Outbound -> ProductSupplier: ${supplierManagerId}`
+            `✅ Found supplierManagerId via Outbound -> ProductSupplier: ${supplierManagerId}, supplierTenantId=${supplierTenantId}`
           );
         } else if (outbound?.product?.productSupplier?.clinicSupplierManager) {
           // Manual supplier - no platform notification

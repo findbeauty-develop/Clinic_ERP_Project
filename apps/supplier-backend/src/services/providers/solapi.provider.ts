@@ -10,31 +10,36 @@ export class SolapiProvider {
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
     const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
+    const fromNumber = this.configService.get<string>('SOLAPI_FROM_NUMBER');
+
+    this.logger.log(`[SolapiProvider] Initializing... API_KEY present: ${!!apiKey}, API_SECRET present: ${!!apiSecret}, FROM_NUMBER: ${fromNumber || 'NOT SET'}`);
 
     if (apiKey && apiSecret) {
       try {
         this.messageService = new SolapiMessageService(apiKey, apiSecret);
-        this.logger.log('Solapi provider initialized');
-      } catch (error) {
-        this.logger.error(`Failed to initialize Solapi: ${error}`);
+        this.logger.log('[SolapiProvider] ✅ Solapi provider initialized successfully');
+      } catch (error: any) {
+        this.logger.error(`[SolapiProvider] ❌ Failed to initialize Solapi: ${error.message}`, error.stack);
       }
     } else {
-      this.logger.warn('Solapi credentials not configured');
+      this.logger.warn('[SolapiProvider] ⚠️ Solapi credentials not configured. SMS will not work. Please set SOLAPI_API_KEY and SOLAPI_API_SECRET in .env file');
     }
   }
 
   async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
     try {
       if (!this.messageService) {
-        this.logger.warn('Solapi message service not initialized');
+        this.logger.warn('[SolapiProvider] ❌ Solapi message service not initialized. Check SOLAPI_API_KEY and SOLAPI_API_SECRET in .env');
         return false;
       }
 
       const fromNumber = this.configService.get<string>('SOLAPI_FROM_NUMBER');
       if (!fromNumber) {
-        this.logger.warn('Solapi from number not configured');
+        this.logger.warn('[SolapiProvider] ❌ Solapi from number not configured. Please set SOLAPI_FROM_NUMBER in .env');
         return false;
       }
+
+      this.logger.log(`[SolapiProvider] Sending SMS to ${phoneNumber} from ${fromNumber}`);
 
       // Remove any non-numeric characters (Solapi accepts Korean local format like 01012345678)
       const formattedPhone = phoneNumber.replace(/[^\d]/g, '');
