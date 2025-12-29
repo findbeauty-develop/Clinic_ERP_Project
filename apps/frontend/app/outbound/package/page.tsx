@@ -77,6 +77,7 @@ export default function PackageOutboundPage() {
 
   // Outbound processing form state
   const [managerName, setManagerName] = useState("");
+  const [chartNumber, setChartNumber] = useState("");
   const [isDamaged, setIsDamaged] = useState(false);
   const [isDefective, setIsDefective] = useState(false);
   const [additionalMemo, setAdditionalMemo] = useState("");
@@ -379,32 +380,57 @@ export default function PackageOutboundPage() {
 
     setSubmitting(true);
     try {
-      // Group items by package to multiply quantity by package count
-      const itemsByPackage = scheduledItems.reduce(
+      // Group items by packageId first
+      const itemsByPackageId = scheduledItems.reduce(
         (acc, item) => {
-          const key = `${item.packageId}-${item.productId}-${item.batchId}`;
-          if (!acc[key]) {
-            acc[key] = {
-              ...item,
-              quantity: item.quantity * (packageCounts[item.packageId] || 1), // Multiply by package count
-            };
+          if (!item.packageId) return acc;
+          if (!acc[item.packageId]) {
+            acc[item.packageId] = [];
           }
+          acc[item.packageId].push(item);
           return acc;
         },
-        {} as Record<string, ScheduledItem & { quantity: number }>
+        {} as Record<string, ScheduledItem[]>
       );
+
+      // Har bir package uchun faqat bitta item yaratish (birinchi product va batch bilan)
+      // Lekin barcha product'lar uchun stock yangilash kerak bo'ladi
+      const payloadItems: Array<{
+        productId: string;
+        batchId: string;
+        outboundQty: number;
+        packageId: string;
+        packageQty: number;
+      }> = [];
+
+      for (const [packageId, packageItems] of Object.entries(itemsByPackageId)) {
+        if (packageItems.length === 0) continue;
+
+        // Package count'ni olish
+        const packageQty = packageCounts[packageId] || 1;
+
+        // Har bir product uchun item yaratish (stock yangilash uchun)
+        // Lekin backend'da faqat bitta PackageOutbound record yoziladi
+        for (const item of packageItems) {
+          payloadItems.push({
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: item.quantity * packageQty, // Product quantity * package count
+            packageId: packageId,
+            packageQty: packageQty, // Nechta package outbound qilingan
+          });
+        }
+      }
 
       // Use unified outbound API for package outbound
       const payload = {
         outboundType: "패키지",
         managerName: managerName.trim(),
         memo: additionalMemo.trim() || undefined,
-        items: Object.values(itemsByPackage).map((item) => ({
-          productId: item.productId,
-          batchId: item.batchId,
-          outboundQty: item.quantity, // Already multiplied by package count
-          packageId: item.packageId, // 패키지 ID 포함
-        })),
+        chartNumber: chartNumber.trim() || undefined,
+        isDamaged: isDamaged,
+        isDefective: isDefective,
+        items: payloadItems,
       };
 
       const response = await apiPost(`${apiUrl}/outbound/unified`, payload);
@@ -437,6 +463,7 @@ export default function PackageOutboundPage() {
         // Clear form
         setScheduledItems([]);
         setManagerName("");
+        setChartNumber("");
         setAdditionalMemo("");
         setIsDamaged(false);
         setIsDefective(false);

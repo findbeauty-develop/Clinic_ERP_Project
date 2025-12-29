@@ -603,56 +603,83 @@ export class SupplierService {
       `Getting clinics for supplier manager: ${supplierManagerId}`
     );
 
-    // Get ClinicSupplierLink records for this supplier manager
-    const links = await this.prisma.clinicSupplierLink.findMany({
-      where: {
-        supplier_manager_id: supplierManagerId,
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-    });
-
-    // Get clinic data for each tenant_id
-    const clinics = await Promise.all(
-      links.map(async (link) => {
-        const clinic = await this.prisma.clinic.findFirst({
-          where: {
-            tenant_id: link.tenant_id,
-          },
-        });
-        return {
-          ...link,
-          clinic: clinic || null,
-        };
-      })
-    );
-
-    // Filter out null clinics and format response
-    const result = clinics
-      .filter((item) => item.clinic !== null)
-      .map((item) => ({
-        tenant_id: item.tenant_id,
-        status: item.status,
-        requested_at: item.requested_at,
-        approved_at: item.approved_at,
-        memo: (item as any).memo ?? null,
-        clinic: {
-          id: item.clinic!.id,
-          name: item.clinic!.name,
-          english_name: item.clinic!.english_name,
-          category: item.clinic!.category,
-          location: item.clinic!.location,
-          phone_number: item.clinic!.phone_number,
-          medical_subjects: item.clinic!.medical_subjects,
-          doctor_name: item.clinic!.doctor_name || null, // 성명 (owner's name)
-          license_type: item.clinic!.license_type,
-          license_number: item.clinic!.license_number,
-          document_issue_number: item.clinic!.document_issue_number,
+    try {
+      // Get ClinicSupplierLink records for this supplier manager
+      const links = await this.prisma.clinicSupplierLink.findMany({
+        where: {
+          supplier_manager_id: supplierManagerId,
         },
-      }));
+        orderBy: {
+          created_at: "desc",
+        },
+      });
 
-    return result;
+      this.logger.log(
+        `Found ${links.length} ClinicSupplierLink records for supplier manager ${supplierManagerId}`
+      );
+
+      // Get clinic data for each tenant_id
+      const clinics = await Promise.all(
+        links.map(async (link) => {
+          try {
+            const clinic = await this.prisma.clinic.findFirst({
+              where: {
+                tenant_id: link.tenant_id,
+              },
+            });
+            return {
+              ...link,
+              clinic: clinic || null,
+            };
+          } catch (error: any) {
+            this.logger.error(
+              `Error fetching clinic for tenant_id ${link.tenant_id}: ${error.message}`
+            );
+            return {
+              ...link,
+              clinic: null,
+            };
+          }
+        })
+      );
+
+      // Filter out null clinics and format response
+      const result = clinics
+        .filter((item) => item.clinic !== null)
+        .map((item) => ({
+          tenant_id: item.tenant_id,
+          status: item.status,
+          requested_at: item.requested_at,
+          approved_at: item.approved_at,
+          memo: (item as any).memo ?? null,
+          clinic: {
+            id: item.clinic!.id,
+            name: item.clinic!.name,
+            english_name: item.clinic!.english_name,
+            category: item.clinic!.category,
+            location: item.clinic!.location,
+            phone_number: item.clinic!.phone_number,
+            medical_subjects: item.clinic!.medical_subjects,
+            doctor_name: item.clinic!.doctor_name || null, // 성명 (owner's name)
+            license_type: item.clinic!.license_type,
+            license_number: item.clinic!.license_number,
+            document_issue_number: item.clinic!.document_issue_number,
+          },
+        }));
+
+      this.logger.log(
+        `Returning ${result.length} clinics for supplier manager ${supplierManagerId}`
+      );
+
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        `Error in getClinicsForSupplier for supplier manager ${supplierManagerId}: ${error.message}`,
+        error.stack
+      );
+      // Return empty array instead of throwing to prevent 500 error
+      return [];
+    }
   }
 
   /**

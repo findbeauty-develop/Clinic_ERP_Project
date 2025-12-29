@@ -110,11 +110,20 @@ export default function DashboardPage() {
           const clinicsData = await clinicsResponse.json();
 
           // Format clinics data - get latest 2 clinics
+          // Use Set to ensure unique clinics by tenant_id
+          const seenTenantIds = new Set<string>();
           const formattedClinics: NewClinic[] = clinicsData
-            .slice(0, 2)
-            .map((item: any) => {
+            .map((item: any, index: number) => {
               const clinic = item.clinic;
               if (!clinic) return null;
+
+              const tenantId = item.tenant_id || clinic.id;
+
+              // Skip if we've already seen this tenant_id
+              if (seenTenantIds.has(tenantId)) {
+                return null;
+              }
+              seenTenantIds.add(tenantId);
 
               // Format location (extract district and dong from location)
               const location = clinic.location || "";
@@ -133,13 +142,14 @@ export default function DashboardPage() {
               const registrationTime = `${year}-${month}-${day}`;
 
               return {
-                id: item.tenant_id || clinic.id,
+                id: `${tenantId}_${index}`, // Ensure unique ID
                 name: clinic.name || "알 수 없음",
                 area: area,
                 registrationTime: registrationTime,
               };
             })
-            .filter((clinic: NewClinic | null) => clinic !== null);
+            .filter((clinic: NewClinic | null) => clinic !== null)
+            .slice(0, 2); // Get only first 2 unique clinics
 
           setNewClinics(formattedClinics);
         } else {
@@ -201,8 +211,12 @@ export default function DashboardPage() {
               const timeType =
                 order.status === "pending" ? "요청시간" : "확인시간";
 
+              // Get clinic tenant ID for settlement page link
+              const clinicTenantId =
+                order.clinic?.tenantId || order.clinicTenantId || order.id;
+
               return {
-                id: order.id,
+                id: clinicTenantId, // Use clinic tenant ID for settlement page
                 clinicName:
                   order.clinic?.name || order.clinicName || "알 수 없음",
                 status: koreanStatus,
@@ -360,7 +374,7 @@ export default function DashboardPage() {
                     {order.status}
                   </span>
                   <Link
-                    href={`/orders/${order.id}`}
+                    href={`/settlement/${order.id}`}
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {order.clinicName}

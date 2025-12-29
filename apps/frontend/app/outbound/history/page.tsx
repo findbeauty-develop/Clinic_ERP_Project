@@ -1,38 +1,54 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet } from "../../../lib/api";
+import { apiGet, apiDelete } from "../../../lib/api";
 
-type PackageOutboundHistoryItem = {
+type OutboundHistoryItem = {
   id: string;
-  outboundType: string;
+  outboundType: string; // "패키지" or "제품"
   outboundDate: string;
   managerName: string;
   chartNumber?: string | null;
-  packageQty: number;
-  packageName?: string | null;
-  packageItems: {
+  packageQty?: number; // Only for package outbounds
+  packageName?: string | null; // Only for package outbounds
+  packageItems?: {
     productId: string;
     productName: string;
     brand: string;
     unit: string;
     quantity: number;
     salePrice: number;
-  }[];
+  }[]; // Only for package outbounds
+  // For regular outbounds
+  outboundQty?: number;
+  isDamaged?: boolean;
+  isDefective?: boolean;
+  product?: {
+    id: string;
+    name: string;
+    brand: string;
+    category: string;
+    salePrice: number;
+    unit: string;
+  };
+  batch?: {
+    id: string;
+    batchNo: string;
+    expiryDate?: string | null;
+  };
 };
 
 export default function OutboundHistoryPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
     []
   );
 
-  const [historyData, setHistoryData] = useState<PackageOutboundHistoryItem[]>(
-    []
-  );
+  const [historyData, setHistoryData] = useState<OutboundHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,6 +56,14 @@ export default function OutboundHistoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
+
+  // Cancel outbound modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<{
+    outboundDate: string;
+    managerName: string;
+  } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     fetchHistory();
@@ -50,7 +74,7 @@ export default function OutboundHistoryPage() {
     setError(null);
     try {
       const queryParams = new URLSearchParams();
-      queryParams.append("outboundType", "패키지"); // Only package outbounds
+      // Remove outboundType filter to get all outbounds (both package and regular)
       if (searchQuery) {
         queryParams.append("search", searchQuery);
       }
@@ -59,7 +83,7 @@ export default function OutboundHistoryPage() {
 
       const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
       const data = await apiGet<{
-        items: PackageOutboundHistoryItem[];
+        items: OutboundHistoryItem[];
         total: number;
         page: number;
         limit: number;
@@ -92,16 +116,61 @@ export default function OutboundHistoryPage() {
     }
   };
 
-  // Calculate total price for a package outbound
-  const calculateTotalPrice = (item: PackageOutboundHistoryItem) => {
-    return item.packageItems.reduce((total, pkgItem) => {
-      return total + pkgItem.salePrice * pkgItem.quantity * item.packageQty;
-    }, 0);
+  // Calculate total price for an outbound item
+  const calculateTotalPrice = (item: OutboundHistoryItem) => {
+    if (
+      item.outboundType === "패키지" &&
+      item.packageItems &&
+      item.packageQty
+    ) {
+      // Package outbound
+      return item.packageItems.reduce((total, pkgItem) => {
+        return total + pkgItem.salePrice * pkgItem.quantity * item.packageQty!;
+      }, 0);
+    } else if (
+      item.outboundType === "제품" &&
+      item.product &&
+      item.outboundQty
+    ) {
+      // Regular outbound
+      return item.product.salePrice * item.outboundQty;
+    }
+    return 0;
   };
 
-  // Group package outbounds by date, time (rounded to nearest minute), manager, and chart number
+  // Handle cancel outbound
+  const handleCancelOutbound = (outboundDate: string, managerName: string) => {
+    setCancelTarget({ outboundDate, managerName });
+    setShowCancelModal(true);
+  };
+
+  // Confirm cancel outbound
+  const confirmCancelOutbound = async () => {
+    if (!cancelTarget) return;
+
+    setCancelling(true);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append("outboundTimestamp", cancelTarget.outboundDate);
+      queryParams.append("managerName", cancelTarget.managerName);
+
+      await apiDelete(`${apiUrl}/outbound/cancel?${queryParams.toString()}`);
+
+      // Close modal and redirect to outbound page
+      setShowCancelModal(false);
+      setCancelTarget(null);
+      router.push("/outbound");
+    } catch (err: any) {
+      console.error("Failed to cancel outbound", err);
+      alert(err?.message || "출고 취소 중 오류가 발생했습니다.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // Group outbounds by date, time (rounded to nearest minute), manager, and chart number
   const groupedHistory = useMemo(() => {
-    const groups: { [key: string]: PackageOutboundHistoryItem[] } = {};
+    const groups: { [key: string]: OutboundHistoryItem[] } = {};
 
     historyData.forEach((item) => {
       const outboundDate = new Date(item.outboundDate);
@@ -218,19 +287,30 @@ export default function OutboundHistoryPage() {
               const [dateTimeStr, manager, chartNumber] = groupKey.split("|||");
               const firstItem = items[0];
 
-              // Calculate total package quantity for the group
-              const totalPackageQty = items.reduce((sum, item) => {
-                return sum + (item.packageQty || 1);
-              }, 0);
+              // Check if this is a package outbound group or regular outbound group
+              const isPackageOutbound = firstItem.outboundType === "패키지";
+
+              // Calculate total quantity for the group
+              let totalQty = 0;
+              if (isPackageOutbound) {
+                // Package outbound: sum package quantities
+                totalQty = items.reduce((sum, item) => {
+                  return sum + (item.packageQty || 1);
+                }, 0);
+              } else {
+                // Regular outbound: sum outbound quantities
+                totalQty = items.reduce((sum, item) => {
+                  return sum + (item.outboundQty || 0);
+                }, 0);
+              }
 
               // Calculate total price for the group
               const totalPrice = items.reduce((sum, item) => {
                 return sum + calculateTotalPrice(item);
               }, 0);
 
-              // Collect all unique package items from all items in the group
-              // Show product quantity per package (not multiplied by packageQty)
-              const allPackageItems: {
+              // Collect items for display
+              const displayItems: {
                 productId: string;
                 productName: string;
                 brand: string;
@@ -239,23 +319,47 @@ export default function OutboundHistoryPage() {
                 salePrice: number;
               }[] = [];
 
-              items.forEach((item) => {
-                item.packageItems.forEach((pkgItem) => {
-                  const existingItem = allPackageItems.find(
-                    (p) => p.productId === pkgItem.productId
-                  );
-                  if (existingItem) {
-                    // If product already exists, add quantity (per package, not multiplied)
-                    existingItem.quantity += pkgItem.quantity;
-                  } else {
-                    // Add new product item (quantity per package)
-                    allPackageItems.push({
-                      ...pkgItem,
-                      quantity: pkgItem.quantity,
+              if (isPackageOutbound) {
+                // Package outbound: collect package items
+                items.forEach((item) => {
+                  if (item.packageItems) {
+                    item.packageItems.forEach((pkgItem) => {
+                      const existingItem = displayItems.find(
+                        (p) => p.productId === pkgItem.productId
+                      );
+                      if (existingItem) {
+                        existingItem.quantity += pkgItem.quantity;
+                      } else {
+                        displayItems.push({
+                          ...pkgItem,
+                          quantity: pkgItem.quantity,
+                        });
+                      }
                     });
                   }
                 });
-              });
+              } else {
+                // Regular outbound: collect product items
+                items.forEach((item) => {
+                  if (item.product && item.outboundQty) {
+                    const existingItem = displayItems.find(
+                      (p) => p.productId === item.product!.id
+                    );
+                    if (existingItem) {
+                      existingItem.quantity += item.outboundQty;
+                    } else {
+                      displayItems.push({
+                        productId: item.product.id,
+                        productName: item.product.name,
+                        brand: item.product.brand || "",
+                        unit: item.product.unit || "",
+                        quantity: item.outboundQty,
+                        salePrice: item.product.salePrice || 0,
+                      });
+                    }
+                  }
+                });
+              }
 
               return (
                 <div
@@ -264,32 +368,72 @@ export default function OutboundHistoryPage() {
                 >
                   {/* Header */}
                   <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
-                    <div className="text-base font-semibold text-slate-900 dark:text-white">
-                      {formatDateTime(firstItem.outboundDate)} {manager}님 출고
-                      {chartNumber && <> 차트번호: {chartNumber}</>}
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap flex-1">
+                        {/* Outbound Type Badge */}
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                            isPackageOutbound
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                              : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                          }`}
+                        >
+                          {isPackageOutbound ? "패키지" : "단품"}
+                        </span>
+
+                        {/* Defective Badge */}
+                        {firstItem.isDefective && (
+                          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                            불량
+                          </span>
+                        )}
+
+                        {/* Damaged Badge */}
+                        {firstItem.isDamaged && (
+                          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                            파손
+                          </span>
+                        )}
+
+                        <div className="text-base font-semibold text-slate-900 dark:text-white">
+                          {formatDateTime(firstItem.outboundDate)} {manager}님
+                          출고
+                          {chartNumber && <> 차트번호: {chartNumber}</>}
+                        </div>
+                      </div>
+
+                      {/* Cancel Button */}
+                      <button
+                        onClick={() =>
+                          handleCancelOutbound(firstItem.outboundDate, manager)
+                        }
+                        className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/30"
+                      >
+                        출고 취소
+                      </button>
                     </div>
                   </div>
 
-                  {/* Body - Package Items with Quantity and Price */}
+                  {/* Body - Items with Quantity and Price */}
                   <div className="px-6 py-4">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4 flex-wrap flex-1">
-                        {allPackageItems.map((pkgItem, idx) => (
+                        {displayItems.map((item, idx) => (
                           <div
-                            key={`${pkgItem.productId}-${idx}`}
+                            key={`${item.productId}-${idx}`}
                             className="text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap"
                           >
                             <span className="font-medium">
-                              {pkgItem.productName}
+                              {item.productName}
                             </span>
-                            {pkgItem.brand && (
+                            {item.brand && (
                               <span className="text-slate-500 dark:text-slate-400">
                                 {" "}
-                                ({pkgItem.brand})
+                                ({item.brand})
                               </span>
                             )}
                             <span className="ml-1 text-slate-600 dark:text-slate-400">
-                              {pkgItem.quantity} {pkgItem.unit}
+                              {item.quantity} {item.unit}
                             </span>
                           </div>
                         ))}
@@ -297,7 +441,10 @@ export default function OutboundHistoryPage() {
                       {/* Total Quantity and Price (right aligned) */}
                       <div className="flex items-center gap-4 shrink-0">
                         <div className="text-base font-bold text-slate-900 dark:text-white">
-                          -{totalPackageQty}개
+                          -{totalQty}
+                          {isPackageOutbound
+                            ? "개"
+                            : displayItems[0]?.unit || "개"}
                         </div>
                         {totalPrice > 0 && (
                           <div className="text-base font-semibold text-slate-600 dark:text-slate-400">
@@ -384,6 +531,39 @@ export default function OutboundHistoryPage() {
                       d="M9 5l7 7-7 7"
                     />
                   </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Outbound Modal */}
+        {showCancelModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4 dark:bg-slate-800">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                출고 취소 확인
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                정말로 이 출고를 취소하시겠습니까?
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowCancelModal(false);
+                    setCancelTarget(null);
+                  }}
+                  disabled={cancelling}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={confirmCancelOutbound}
+                  disabled={cancelling}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cancelling ? "처리 중..." : "확인"}
                 </button>
               </div>
             </div>
