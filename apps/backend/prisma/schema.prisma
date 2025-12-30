@@ -58,6 +58,7 @@ model Product {
   @@index([tenant_id])
   @@index([tenant_id, name])
   @@index([tenant_id, barcode])
+  @@index([tenant_id, created_at]) // Performance: Optimize orderBy created_at queries
 }
 
 model Clinic {
@@ -148,6 +149,7 @@ model Batch {
   @@index([tenant_id])
   @@index([product_id])
   @@index([tenant_id, product_id])
+  @@index([product_id, created_at]) // Performance: Optimize orderBy created_at queries for batches
 }
 
 // DEPRECATED: Will be removed after migration to ProductSupplier
