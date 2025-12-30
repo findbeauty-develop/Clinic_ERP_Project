@@ -10,6 +10,7 @@ import { ReturnRepository } from "../repositories/return.repository";
 import { SupplierReturnNotificationService } from "./supplier-return-notification.service";
 import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
 import { MessageService } from "../../member/services/message.service";
+import { EmailService } from "../../member/services/email.service";
 
 @Injectable()
 export class ReturnService {
@@ -19,7 +20,8 @@ export class ReturnService {
     private readonly prisma: PrismaService,
     private readonly returnRepository: ReturnRepository,
     private readonly supplierReturnNotificationService: SupplierReturnNotificationService,
-    private readonly messageService: MessageService
+    private readonly messageService: MessageService,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -1036,6 +1038,49 @@ ${footer}`;
               `[ReturnService] ❌ Failed to send SMS to ClinicSupplierManager (${phoneNumber})`
             );
           }
+
+          // Send Email notification to manual supplier
+          try {
+            const supplierEmail =
+              clinicSupplierManager?.company_email ||
+              clinicSupplierManager?.email1 ||
+              clinicSupplierManager?.email2 ||
+              null;
+
+            if (supplierEmail) {
+              const products = [
+                {
+                  productName: productName,
+                  brand: product?.brand || "",
+                  quantity: returnQty,
+                },
+              ];
+
+              await this.emailService.sendReturnNotificationEmail(
+                supplierEmail,
+                clinicName,
+                returnNo,
+                totalRefund,
+                returnQty,
+                clinicManagerName,
+                products,
+                "반품"
+              );
+
+              this.logger.log(
+                `[ReturnService] ✅ Return notification email sent to ${supplierEmail} for return ${returnNo}`
+              );
+            } else {
+              this.logger.warn(
+                `[ReturnService] ⚠️ No supplier email found for return ${returnNo}, skipping email notification`
+              );
+            }
+          } catch (emailError: any) {
+            this.logger.error(
+              `[ReturnService] Failed to send return notification email: ${emailError.message}`
+            );
+            // Don't throw - email failure shouldn't break the return process
+          }
         } catch (smsError: any) {
           this.logger.error(
             `[ReturnService] Error sending SMS to ClinicSupplierManager: ${
@@ -1360,6 +1405,90 @@ ${footer}`;
               });
 
             await Promise.all(smsPromises);
+
+            // Send Email notification to supplier managers
+            try {
+              // Get supplier email addresses (priority: supplierManager.email1 > supplier.company_email)
+              const managersWithEmail = await this.prisma.executeWithRetry(
+                async () => {
+                  return (this.prisma as any).supplierManager.findMany({
+                    where: {
+                      supplier_tenant_id: supplierTenantId,
+                      status: "ACTIVE",
+                      id: supplierManagerId
+                        ? { in: [supplierManagerId] }
+                        : undefined,
+                    },
+                    select: {
+                      id: true,
+                      name: true,
+                      email1: true,
+                      supplier: {
+                        select: {
+                          company_email: true,
+                        },
+                      },
+                    },
+                  });
+                }
+              );
+
+              // Har bir manager'ga email yuborish
+              const emailPromises = managersWithEmail
+                .filter((manager: any) => {
+                  const email =
+                    manager.email1 ||
+                    manager.supplier?.company_email;
+                  return !!email;
+                })
+                .map(async (manager: any) => {
+                  try {
+                    const supplierEmail =
+                      manager.email1 ||
+                      manager.supplier?.company_email;
+
+                    if (supplierEmail) {
+                      const products = [
+                        {
+                          productName: productName,
+                          brand: product?.brand || "",
+                          quantity: returnQty,
+                        },
+                      ];
+
+                      await this.emailService.sendReturnNotificationEmail(
+                        supplierEmail,
+                        clinicName,
+                        returnNo,
+                        totalRefund,
+                        returnQty,
+                        clinicManagerName,
+                        products,
+                        "반품"
+                      );
+
+                      this.logger.log(
+                        `[ReturnService] ✅ Return notification email sent to SupplierManager ${manager.name} (${supplierEmail}) for return ${returnNo}`
+                      );
+                    }
+                  } catch (emailError: any) {
+                    this.logger.error(
+                      `[ReturnService] ❌ Failed to send return notification email to SupplierManager ${
+                        manager.name
+                      }: ${emailError?.message || "Unknown error"}`
+                    );
+                  }
+                });
+
+              await Promise.all(emailPromises);
+            } catch (emailError: any) {
+              this.logger.error(
+                `[ReturnService] Error sending return notification emails: ${
+                  emailError?.message || "Unknown error"
+                }`
+              );
+              // Don't throw - email failure shouldn't break return process
+            }
           } else {
             this.logger.warn(
               `[ReturnService] No active managers with SMS enabled found for supplier ${supplierTenantId} (supplierManagerId: ${

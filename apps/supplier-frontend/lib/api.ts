@@ -1,5 +1,22 @@
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
 
+/**
+ * Clear authentication data and redirect to login
+ */
+const clearAuthAndRedirect = () => {
+  if (typeof window !== "undefined") {
+    // Clear all auth-related data
+    localStorage.removeItem("supplier_access_token");
+    localStorage.removeItem("supplier_manager_data");
+    localStorage.removeItem("supplier_token");
+    localStorage.removeItem("access_token");
+    
+    // Redirect to login page
+    // Use window.location.href for full page reload
+    window.location.href = "/login";
+  }
+};
+
 export async function apiGet<T>(endpoint: string): Promise<T> {
   const token =
     typeof window !== "undefined"
@@ -14,6 +31,12 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
       },
     });
 
+    // Handle 401 Unauthorized (token expired or invalid)
+    if (response.status === 401) {
+      clearAuthAndRedirect();
+      throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+    }
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => response.statusText);
       throw new Error(`API Error (${response.status}): ${errorText}`);
@@ -21,6 +44,10 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
 
     return response.json();
   } catch (error: any) {
+    // Re-throw auth expiration error
+    if (error.message?.includes("인증이 만료되었습니다")) {
+      throw error;
+    }
     // Handle network errors (connection refused, etc.)
     if (error.message?.includes("Failed to fetch") || error.message?.includes("ERR_CONNECTION_REFUSED")) {
       throw new Error(
@@ -49,6 +76,12 @@ export async function apiPost<T>(
     body: JSON.stringify(data),
   });
 
+  // Handle 401 Unauthorized (token expired or invalid)
+  if (response.status === 401) {
+    clearAuthAndRedirect();
+    throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+  }
+
   if (!response.ok) {
     throw new Error(`API Error: ${response.statusText}`);
   }
@@ -74,6 +107,12 @@ export async function apiPut<T>(
     body: JSON.stringify(data),
   });
 
+  // Handle 401 Unauthorized (token expired or invalid)
+  if (response.status === 401) {
+    clearAuthAndRedirect();
+    throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+  }
+
   if (!response.ok) {
     throw new Error(`API Error: ${response.statusText}`);
   }
@@ -98,6 +137,12 @@ export async function apiDelete<T>(
     },
     ...(data ? { body: JSON.stringify(data) } : {}),
   });
+
+  // Handle 401 Unauthorized (token expired or invalid)
+  if (response.status === 401) {
+    clearAuthAndRedirect();
+    throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+  }
 
   if (!response.ok) {
     throw new Error(`API Error: ${response.statusText}`);

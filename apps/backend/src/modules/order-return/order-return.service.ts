@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
 import { MessageService } from "../member/services/message.service";
+import { EmailService } from "../member/services/email.service";
 import { saveBase64Images } from "../../common/utils/upload.utils";
 
 @Injectable()
@@ -9,7 +10,8 @@ export class OrderReturnService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly messageService: MessageService
+    private readonly messageService: MessageService,
+    private readonly emailService: EmailService
   ) {}
 
   async getReturns(tenantId: string, status?: string) {
@@ -881,6 +883,97 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
           this.logger.warn(
             `⚠️ No supplier phone number found for return ${returnItem.return_no}, skipping SMS notification`
           );
+        }
+
+        // Send Email notification to supplier
+        try {
+          // Get supplier email (priority: supplierManager.email1 > supplier.company_email > clinicSupplierManager.company_email > clinicSupplierManager.email1 > clinicSupplierManager.email2)
+          let supplierEmail: string | null = null;
+
+          if (supplierManagerId) {
+            const supplierManager = await this.prisma.executeWithRetry(
+              async () => {
+                return (this.prisma as any).supplierManager.findUnique({
+                  where: { id: supplierManagerId },
+                  select: {
+                    email1: true,
+                    supplier: {
+                      select: {
+                        company_email: true,
+                      },
+                    },
+                  },
+                });
+              }
+            );
+
+            supplierEmail =
+              supplierManager?.email1 ||
+              supplierManager?.supplier?.company_email ||
+              null;
+          }
+
+          // Fallback: Try ClinicSupplierManager email
+          if (!supplierEmail) {
+            const clinicSupplierManager = await this.prisma.executeWithRetry(
+              async () => {
+                return (this.prisma as any).clinicSupplierManager.findFirst({
+                  where: {
+                    linked_manager_id: supplierManagerId,
+                  },
+                  select: {
+                    company_email: true,
+                    email1: true,
+                    email2: true,
+                  },
+                });
+              }
+            );
+
+            supplierEmail =
+              clinicSupplierManager?.company_email ||
+              clinicSupplierManager?.email1 ||
+              clinicSupplierManager?.email2 ||
+              null;
+          }
+
+          if (supplierEmail) {
+            const returnTypeText = returnData.items[0].returnType.includes(
+              "교환"
+            )
+              ? "교환"
+              : "반품";
+
+            const products = returnData.items.map((item: any) => ({
+              productName: item.productName,
+              brand: item.brand,
+              quantity: item.quantity,
+            }));
+
+            await this.emailService.sendReturnNotificationEmail(
+              supplierEmail,
+              clinicName,
+              returnItem.return_no,
+              returnData.items[0].totalPrice,
+              returnData.items[0].quantity,
+              clinicManagerName,
+              products,
+              returnTypeText
+            );
+
+            this.logger.log(
+              `✅ Return notification email sent to ${supplierEmail} for return ${returnItem.return_no}`
+            );
+          } else {
+            this.logger.warn(
+              `⚠️ No supplier email found for return ${returnItem.return_no}, skipping email notification`
+            );
+          }
+        } catch (emailError: any) {
+          this.logger.error(
+            `Failed to send return notification email: ${emailError.message}`
+          );
+          // Don't throw - email failure shouldn't break the return process
         }
       }
     } catch (error: any) {

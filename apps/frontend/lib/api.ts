@@ -11,6 +11,26 @@ const getApiUrl = () => {
   }
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 };
+
+/**
+ * Clear authentication data and redirect to login
+ */
+const clearAuthAndRedirect = () => {
+  if (typeof window !== "undefined") {
+    // Clear all auth-related data
+    localStorage.removeItem("erp_access_token");
+    localStorage.removeItem("erp_token");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("erp_member_data");
+    localStorage.removeItem("erp_tenant_id");
+    localStorage.removeItem("tenantId");
+
+    // Redirect to login page
+    // Use window.location.href for full page reload
+    window.location.href = "/login";
+  }
+};
+
 /**
  * Get authentication token from localStorage
  */
@@ -67,12 +87,24 @@ export const apiRequest = async (
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers,
     });
+
+    // Handle 401 Unauthorized (token expired or invalid)
+    if (response.status === 401) {
+      clearAuthAndRedirect();
+      throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+    }
+
+    return response;
   } catch (networkError: any) {
     // Handle network errors (CORS, connection refused, etc.)
+    // Don't redirect on network errors, only on 401
+    if (networkError.message?.includes("인증이 만료되었습니다")) {
+      throw networkError;
+    }
     throw new Error(
       `Network error: ${networkError.message || "Failed to fetch"}`
     );
