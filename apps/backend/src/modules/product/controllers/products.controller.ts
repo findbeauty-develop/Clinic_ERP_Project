@@ -73,11 +73,22 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "List all products for current tenant" })
-  getAllProducts(@Tenant() tenantId: string) {
+  async getAllProducts(@Tenant() tenantId: string) {
+    const t0 = Date.now();
+    
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-    return this.productsService.getAllProducts(tenantId);
+    
+    const t1 = Date.now();
+    const result = await this.productsService.getAllProducts(tenantId);
+    const t2 = Date.now();
+    
+    console.log(
+      `[/products] auth: ${t1 - t0}ms, service: ${t2 - t1}ms, total: ${t2 - t0}ms`
+    );
+    
+    return result;
   }
 
   @Get("storages/list")

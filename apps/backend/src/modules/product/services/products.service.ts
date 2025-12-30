@@ -340,6 +340,8 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    const t0 = Date.now();
+
     // Use executeWithRetry to handle connection errors automatically
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma.product.findMany as any)({
@@ -367,7 +369,9 @@ export class ProductsService {
       });
     });
 
-    return products.map((product: any) => {
+    const t1 = Date.now();
+
+    const payload = products.map((product: any) => {
       const latestBatch = product.batches?.[0];
 
       // Get supplier info from ProductSupplier -> ClinicSupplierManager
@@ -427,6 +431,14 @@ export class ProductsService {
         batches: batchesWithStatus, // ← FEFO sorted va status bilan
       };
     });
+
+    const t2 = Date.now();
+
+    console.log(
+      `[/products service] db: ${t1 - t0}ms, build: ${t2 - t1}ms, total: ${t2 - t0}ms, products: ${products.length}`
+    );
+
+    return payload;
   }
 
   async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {

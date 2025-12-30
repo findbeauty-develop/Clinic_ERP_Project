@@ -86,6 +86,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // This prevents blocking startup and connection error spam
     this.logger.log("PrismaService initialized. Database will connect automatically on first query.");
     this.isConnected = false; // Will be set to true when first query succeeds
+
+    // Enable query logging for performance diagnostics
+    if (process.env.ENABLE_PRISMA_QUERY_LOG === "true") {
+      try {
+        (this as any).$on("query", (e: any) => {
+          const query = e.query || "";
+          const duration = e.duration || 0;
+          const truncatedQuery = query.length > 100 ? query.substring(0, 100) + "..." : query;
+          console.log(`[PRISMA QUERY] ${duration}ms - ${truncatedQuery}`);
+        });
+        this.logger.log("✅ Prisma query logging enabled. Set ENABLE_PRISMA_QUERY_LOG=true to enable.");
+      } catch (error) {
+        this.logger.warn("Failed to enable Prisma query logging:", error);
+      }
+    }
   }
 
   /**
