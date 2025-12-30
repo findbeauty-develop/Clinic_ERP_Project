@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost, apiDelete } from "../../lib/api";
@@ -80,7 +80,7 @@ type PackageItemForOutbound = {
   }[];
 };
 
-export default function OutboundPage() {
+function OutboundPageContent() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2475,5 +2475,13 @@ function ProductCard({
         </>
       )}
     </div>
+  );
+}
+
+export default function OutboundPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+      <OutboundPageContent />
+    </Suspense>
   );
 }

@@ -34,8 +34,7 @@ export default function CompletePage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Temporarily hardcoded for local development
-  const apiUrl = "http://localhost:3002";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
 
   useEffect(() => {
     // Load all registration data from localStorage

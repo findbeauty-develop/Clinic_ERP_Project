@@ -392,7 +392,7 @@ export class DataGoKrService {
         // 1. Look for img tags with src attribute
         const images: string[] = [];
 
-        $("img").each((_: number, element: Element) => {
+        $("img").each((_: number, element: any) => {
           const src = $(element).attr("src");
           if (
             src &&
@@ -409,7 +409,7 @@ export class DataGoKrService {
 
         // 2. Look for images in content areas
         $(".content img, .article img, .post img, #content img").each(
-          (_: number, element: Element) => {
+          (_: number, element: any) => {
             const src = $(element).attr("src");
             if (
               src &&
