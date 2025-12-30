@@ -35,6 +35,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           console.log("✅ Added ?pgbouncer=true to DATABASE_URL to disable prepared statements for connection pooling");
         }
         
+        // Add connection pooling parameters for better performance
+        if (isPooler) {
+          if (!url.searchParams.has("connection_limit")) {
+            url.searchParams.set("connection_limit", "10");
+          }
+          if (!url.searchParams.has("pool_timeout")) {
+            url.searchParams.set("pool_timeout", "30");
+          }
+          if (!url.searchParams.has("connect_timeout")) {
+            url.searchParams.set("connect_timeout", "10");
+          }
+          databaseUrl = url.toString();
+          console.log("✅ Added connection pooling parameters (connection_limit=10, pool_timeout=30, connect_timeout=10)");
+        }
+        
         // Check if using port 5432 and suggest port 6543 for pgbouncer
         if (url.port === "5432" && url.hostname.includes("pooler.supabase.com")) {
           console.warn(

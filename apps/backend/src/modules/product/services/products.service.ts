@@ -347,9 +347,25 @@ export class ProductsService {
       return await (this.prisma.product.findMany as any)({
         where: { tenant_id: tenantId },
         include: {
-          returnPolicy: true,
+          returnPolicy: {
+            select: {
+              id: true,
+              note: true,
+              is_returnable: true,
+            },
+          },
           batches: {
             orderBy: { created_at: "desc" },
+            take: 10, // ✅ Faqat eng so'nggi 10 ta batch'ni yuklash (performance optimizatsiya)
+            select: {
+              id: true,
+              batch_no: true,
+              qty: true,
+              expiry_date: true,
+              storage: true,
+              created_at: true,
+              alert_days: true,
+            },
           },
           productSupplier: {
             include: {
