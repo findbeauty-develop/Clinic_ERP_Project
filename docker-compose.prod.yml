@@ -59,6 +59,9 @@ services:
       - "3002:3002"
     env_file:
       - ./apps/supplier-backend/.env
+    volumes:
+      # Mount Google Cloud Vision credentials
+      - ./apps/supplier-backend/keys:/app/apps/supplier-backend/keys:ro
     networks:
       - clinic-erp-network
     healthcheck:

@@ -191,15 +191,15 @@ nano ~/clinic-erp/apps/backend/.env
 # O'zgarishlarni qo'shing va saqlang (Ctrl+X, Y, Enter)
 
 # Clinic Frontend .env.local
-nano ~/clinic-erp-project/apps/frontend/.env.local
+nano ~/clinic-erp/apps/frontend/.env.local
 # O'zgarishlarni qo'shing va saqlang
 
 # Supplier Backend .env
-nano ~/clinic-erp-project/apps/supplier-backend/.env
+nano ~/clinic-erp/apps/supplier-backend/.env
 # O'zgarishlarni qo'shing va saqlang
 
 # Supplier Frontend .env.local
-nano ~/clinic-erp-project/apps/supplier-frontend/.env.local
+nano ~/clinic-erp/apps/supplier-frontend/.env.local
 # O'zgarishlarni qo'shing va saqlang
 ```
 
@@ -239,6 +239,8 @@ docker rm clinic-erp-backend-prod clinic-erp-frontend-prod supplier-erp-backend-
 docker stop clinic-erp-frontend-prod 2>/dev/null
 
 docker rm clinic-erp-frontend-prod 2>/dev/null
+
+docker rm supplier-erp-backend-prod 2>/dev/null
 
 ### 10.2. Yangi Container'larni Ishga Tushirish
 
