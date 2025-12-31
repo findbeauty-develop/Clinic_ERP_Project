@@ -520,56 +520,97 @@ export class ProductsService {
         });
       }
 
-      if (dto.suppliers) {
-        await tx.supplierProduct.deleteMany({
-          where: { product_id: id, tenant_id: tenantId },
-        });
+      // ✅ ClinicSupplierManager table'ni yangilash va ProductSupplier'ni yangilash
+      if (dto.suppliers && dto.suppliers.length > 0) {
+        const supplier = dto.suppliers[0];
+        
+        // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
+        if (supplier.contact_name || supplier.contact_phone) {
+          let clinicSupplierManagerId: string;
 
-        for (const supplier of dto.suppliers) {
-          // Skip entries without required data
-          if (!supplier?.contact_name && !supplier?.contact_phone) {
-            continue;
+          // 1. Avval ClinicSupplierManager'ni topish (phone_number yoki business_number bo'yicha)
+          let existingClinicSupplierManager = null;
+
+          if (supplier.contact_phone) {
+            existingClinicSupplierManager = await tx.clinicSupplierManager.findFirst({
+              where: {
+                tenant_id: tenantId,
+                phone_number: supplier.contact_phone,
+              },
+            });
           }
 
-          // Try to find Supplier by supplier_id to get tenant_id and company_name
-          let supplierTenantId = null;
-          let companyName = null;
-
-          if (supplier.supplier_id) {
-            try {
-              // Check if supplier_id is a UUID (Supplier.id)
-              const supplierRecord = await tx.supplier.findUnique({
-                where: { id: supplier.supplier_id },
-                select: { tenant_id: true, company_name: true },
-              });
-
-              if (supplierRecord) {
-                supplierTenantId = supplierRecord.tenant_id;
-                companyName = supplierRecord.company_name;
-              } else {
-                // Not a UUID, maybe it's a company name or manager_id (legacy)
-                companyName = supplier.supplier_id;
-              }
-            } catch (e) {
-              // Invalid UUID format - treat as company name
-              companyName = supplier.supplier_id;
-            }
+          if (!existingClinicSupplierManager && supplier.business_number) {
+            existingClinicSupplierManager = await tx.clinicSupplierManager.findFirst({
+              where: {
+                tenant_id: tenantId,
+                business_number: supplier.business_number,
+              },
+            });
           }
 
-          await tx.supplierProduct.create({
-            data: {
+          // 2. Agar topilsa, yangilash (UPDATE)
+          if (existingClinicSupplierManager) {
+            await tx.clinicSupplierManager.update({
+              where: { id: existingClinicSupplierManager.id },
+              data: {
+                company_name: supplier.company_name || existingClinicSupplierManager.company_name,
+                business_number: supplier.business_number || existingClinicSupplierManager.business_number,
+                company_phone: supplier.company_phone || existingClinicSupplierManager.company_phone,
+                company_email: supplier.company_email || existingClinicSupplierManager.company_email,
+                company_address: supplier.company_address || existingClinicSupplierManager.company_address,
+                name: supplier.contact_name || existingClinicSupplierManager.name,
+                phone_number: supplier.contact_phone || existingClinicSupplierManager.phone_number,
+                email1: supplier.contact_email || existingClinicSupplierManager.email1,
+              },
+            });
+            clinicSupplierManagerId = existingClinicSupplierManager.id;
+          } else {
+            // 3. Agar topilmasa, yangi yaratish (CREATE)
+            const newClinicSupplierManager = await tx.clinicSupplierManager.create({
+              data: {
+                tenant_id: tenantId,
+                company_name: supplier.company_name || "공급업체 없음",
+                business_number: supplier.business_number || null,
+                company_phone: supplier.company_phone || null,
+                company_email: supplier.company_email || null,
+                company_address: supplier.company_address || null,
+                name: supplier.contact_name || "담당자 없음",
+                phone_number: supplier.contact_phone || "000-0000-0000",
+                email1: supplier.contact_email || null,
+                // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
+                linked_supplier_manager_id: supplier.supplier_id && 
+                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplier.supplier_id)
+                  ? supplier.supplier_id
+                  : null,
+              },
+            });
+            clinicSupplierManagerId = newClinicSupplierManager.id;
+          }
+
+          // 4. ProductSupplier'ni upsert qilish (mapping table)
+          await tx.productSupplier.upsert({
+            where: {
+              tenant_id_product_id: {
+                tenant_id: tenantId,
+                product_id: id,
+              },
+            },
+            create: {
               tenant_id: tenantId,
               product_id: id,
-              supplier_id: supplier.supplier_id ?? null, // Optional - legacy field
-              supplier_tenant_id: supplierTenantId,
-              company_name: companyName,
-              purchase_price: supplier.purchase_price ?? null,
+              clinic_supplier_manager_id: clinicSupplierManagerId,
+              purchase_price: supplier.purchase_price ?? dto.purchasePrice ?? null,
               moq: supplier.moq ?? null,
               lead_time_days: supplier.lead_time_days ?? null,
               note: supplier.note ?? null,
-              contact_name: supplier.contact_name ?? null,
-              contact_phone: supplier.contact_phone ?? null,
-              contact_email: supplier.contact_email ?? null,
+            },
+            update: {
+              clinic_supplier_manager_id: clinicSupplierManagerId,
+              purchase_price: supplier.purchase_price ?? dto.purchasePrice ?? null,
+              moq: supplier.moq ?? null,
+              lead_time_days: supplier.lead_time_days ?? null,
+              note: supplier.note ?? null,
             },
           });
         }

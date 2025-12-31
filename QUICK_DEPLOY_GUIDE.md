@@ -234,11 +234,13 @@ docker compose -f docker-compose.prod.yml down
 # Yoki alohida to'xtatish
 docker stop clinic-erp-backend-prod clinic-erp-frontend-prod supplier-erp-backend-prod supplier-erp-frontend-prod 2>/dev/null
 docker rm clinic-erp-backend-prod clinic-erp-frontend-prod supplier-erp-backend-prod supplier-erp-frontend-prod 2>/dev/null
+
+docker rm clinic-erp-backend-prod supplier-erp-backend-prod 2>/dev/null
 ```
 
-docker stop clinic-erp-frontend-prod 2>/dev/null
+docker stop clinic-erp-backend-prod 2>/dev/null
 
-docker rm clinic-erp-frontend-prod 2>/dev/null
+docker rm clinic-erp-backend-prod 2>/dev/null
 
 docker rm supplier-erp-backend-prod 2>/dev/null
 
@@ -256,7 +258,7 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate
 docker compose -f docker-compose.prod.yml ps
 ```
 
----
+---echo "ENABLE_PRISMA_QUERY_LOG=true" >> /apps/backend/.env
 
 ## 📊 QADAM 11: Log'larni Tekshirish
 
