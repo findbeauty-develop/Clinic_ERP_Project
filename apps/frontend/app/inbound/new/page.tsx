@@ -613,10 +613,17 @@ export default function InboundNewPage() {
         if (results.length > 0) {
           const supplier = results[0];
           console.log("Supplier found:", supplier); // Debug log
+          console.log("Supplier isClinicCreated:", supplier.isClinicCreated); // Debug log
 
-          // Check if supplier is registered on platform
-          // SupplierManager with ACTIVE status means registered on platform
-          if (supplier.isRegisteredOnPlatform) {
+          // ✅ Agar ClinicSupplierManager bo'lsa (isClinicCreated = true), natijalarni ko'rsatish
+          // Bu clinic tomonidan yaratilgan supplier, demak allaqachon ma'lumotlar bor
+          if (supplier.isClinicCreated) {
+            console.log(
+              "Supplier is clinic-created - showing in results"
+            ); // Debug log
+            // Clinic yaratgan supplier - natijalarni ko'rsatish (ma'lumotlar allaqachon bor)
+            setSupplierSearchResults(results);
+          } else if (supplier.isRegisteredOnPlatform) {
             console.log(
               "Supplier is registered on platform - showing approval modal"
             ); // Debug log

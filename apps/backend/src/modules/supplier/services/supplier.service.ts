@@ -229,25 +229,32 @@ export class SupplierService {
 
     // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
     return suppliers.map((supplier: any) => {
-      // Get the first manager (use SupplierManager since clinicManagers not included)
+      // Get the first manager (use SupplierManager or ClinicSupplierManager)
       // IMPORTANT: For phone search, we want the manager that matches the phone number
       const manager = supplier.managers?.[0];
 
       // Check if supplier is registered on platform (has ACTIVE SupplierManager)
+      // ✅ Agar isClinicCreated flag bo'lsa, bu ClinicSupplierManager
       const isRegisteredOnPlatform =
-        supplier.managers?.some((m: any) => m.status === "ACTIVE") || false;
+        !supplier.isClinicCreated &&
+        (supplier.managers?.some((m: any) => m.status === "ACTIVE") || false);
 
       // Get the SupplierManager ID (not manager_id, but the actual database ID)
-      // This is needed for creating ClinicSupplierLink
-      const supplierManagerId = supplier.managers?.[0]?.id || null;
+      // ✅ Agar ClinicSupplierManager bo'lsa, clinicSupplierManagerId'ni qaytarish
+      const supplierManagerId = supplier.isClinicCreated
+        ? null // ClinicSupplierManager uchun SupplierManager ID yo'q
+        : supplier.managers?.[0]?.id || null;
+
+      // ✅ ClinicSupplierManager ID'ni olish
+      const clinicSupplierManagerId = supplier.clinicSupplierManagerId || null;
 
       // Debug logging
       this.logger.log(
-        `Supplier: ${supplier.company_name}, isRegisteredOnPlatform: ${isRegisteredOnPlatform}, supplierManagerId: ${supplierManagerId}, managerId: ${manager?.manager_id}`
+        `Supplier: ${supplier.company_name}, isRegisteredOnPlatform: ${isRegisteredOnPlatform}, isClinicCreated: ${supplier.isClinicCreated || false}, supplierManagerId: ${supplierManagerId}, clinicSupplierManagerId: ${clinicSupplierManagerId}, managerId: ${manager?.manager_id}`
       );
 
       return {
-        id: supplier.id, // Supplier company ID
+        id: supplier.id, // Supplier company ID yoki ClinicSupplierManager ID
         supplierId: supplier.id, // Alias for clarity
         companyName: supplier.company_name,
         companyAddress: supplier.company_address,
@@ -256,11 +263,13 @@ export class SupplierService {
         companyEmail: supplier.company_email,
         businessType: supplier.business_type,
         businessItem: supplier.business_item,
-        productCategories: supplier.product_categories,
+        productCategories: supplier.product_categories || [],
         status: supplier.status,
         isRegisteredOnPlatform, // Flag: supplier platformada ro'yxatdan o'tgan
-        managerId: manager?.manager_id || null, // manager_id (like "회사명0001")
+        isClinicCreated: supplier.isClinicCreated || false, // ✅ Flag: Clinic yaratgan supplier
+        managerId: manager?.manager_id || null, // manager_id (like "회사명0001") yoki null ClinicSupplierManager uchun
         supplierManagerId: supplierManagerId, // Database ID of SupplierManager (for creating ClinicSupplierLink)
+        clinicSupplierManagerId: clinicSupplierManagerId, // ✅ ClinicSupplierManager ID
         managerName: manager?.name || null,
         position: manager?.position || null,
         phoneNumber: manager?.phone_number || null,
@@ -271,17 +280,15 @@ export class SupplierService {
         managers:
           supplier.managers?.map((m: any) => ({
             id: m.id, // Database ID
-            managerId: m.manager_id, // manager_id (like "회사명0001")
+            managerId: m.manager_id || null, // manager_id (like "회사명0001") yoki null ClinicSupplierManager uchun
             name: m.name,
             position: m.position,
             phoneNumber: m.phone_number,
             email1: m.email1,
             email2: m.email2,
-            responsibleProducts: m.responsible_products,
+            responsibleProducts: m.responsible_products || [],
             status: m.status,
           })) || [],
-        
-        // Note: clinicManagers removed - no direct relation in Supplier model
       };
     });
   }

@@ -228,6 +228,7 @@ export class SupplierRepository {
     });
 
     // 2. Search in ClinicSupplierManager (clinic-created suppliers) if tenantId provided
+    let clinicManagersWithoutLink: any[] = [];
     if (tenantId) {
       const clinicManagers = await prisma.clinicSupplierManager.findMany({
         where: {
@@ -259,59 +260,96 @@ export class SupplierRepository {
       clinicManagers.forEach((cm: any) => {
         if (cm.linkedManager && cm.linkedManager.supplier_id) {
           supplierIds.add(cm.linkedManager.supplier_id);
+        } else {
+          // ✅ Agar linkedManager yo'q bo'lsa, ClinicSupplierManager'ni saqlash
+          clinicManagersWithoutLink.push(cm);
         }
       });
     }
 
-    if (supplierIds.size === 0) {
-      return [];
-    }
-
-    // Return suppliers with their managers
-    // Note: We don't include clinicManagers here because there's no direct relation
-    // in the Supplier model. ClinicSupplierManager data is fetched separately if needed.
-    return prisma.supplier.findMany({
-      where: {
-        id: {
-          in: Array.from(supplierIds),
-        },
-      },
-      include: {
-        managers: {
+    // Return suppliers from Supplier table (platform-registered suppliers)
+    const suppliersFromPlatform = supplierIds.size > 0
+      ? await prisma.supplier.findMany({
           where: {
-            OR: [
-              {
-                phone_number: {
-                  contains: phoneNumber,
-                  mode: "insensitive",
-                },
-              },
-              {
-                phone_number: {
-                  contains: cleanPhoneNumber,
-                  mode: "insensitive",
-                },
-              },
-            ],
-            status: "ACTIVE",
+            id: {
+              in: Array.from(supplierIds),
+            },
           },
-          select: {
-            id: true,
-            manager_id: true,
-            name: true,
-            position: true,
-            phone_number: true,
-            email1: true,
-            manager_address: true,
-            responsible_products: true,
-            status: true,
+          include: {
+            managers: {
+              where: {
+                OR: [
+                  {
+                    phone_number: {
+                      contains: phoneNumber,
+                      mode: "insensitive",
+                    },
+                  },
+                  {
+                    phone_number: {
+                      contains: cleanPhoneNumber,
+                      mode: "insensitive",
+                    },
+                  },
+                ],
+                status: "ACTIVE",
+              },
+              select: {
+                id: true,
+                manager_id: true,
+                name: true,
+                position: true,
+                phone_number: true,
+                email1: true,
+                manager_address: true,
+                responsible_products: true,
+                status: true,
+              },
+            },
           },
+          orderBy: {
+            created_at: "desc",
+          },
+        })
+      : [];
+
+    // ✅ ClinicSupplierManager ma'lumotlarini Supplier format'iga o'girish
+    const clinicSuppliers = clinicManagersWithoutLink.map((cm: any) => ({
+      id: cm.id, // ClinicSupplierManager ID (temporary, will be used as identifier)
+      company_name: cm.company_name,
+      company_address: cm.company_address,
+      business_number: cm.business_number,
+      company_phone: cm.company_phone,
+      company_email: cm.company_email,
+      business_type: cm.business_type || null,
+      business_item: cm.business_item || null,
+      product_categories: [],
+      status: "MANUAL_ONLY", // Clinic yaratgan supplier
+      created_at: cm.created_at,
+      updated_at: cm.updated_at,
+      // ✅ ClinicSupplierManager'ni manager sifatida qo'shish
+      managers: [
+        {
+          id: cm.id, // ClinicSupplierManager ID
+          manager_id: null, // ClinicSupplierManager'da manager_id yo'q
+          name: cm.name,
+          position: cm.position,
+          phone_number: cm.phone_number,
+          email1: cm.email1,
+          email2: cm.email2,
+          manager_address: cm.address || null,
+          responsible_products: [],
+          status: "ACTIVE",
         },
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-    });
+      ],
+      // ✅ Flag: Bu ClinicSupplierManager, linkedManager yo'q
+      isClinicCreated: true,
+      clinicSupplierManagerId: cm.id,
+      linkedManagerId: cm.linked_supplier_manager_id,
+    }));
+
+    // Barcha natijalarni birlashtirish
+    return [...suppliersFromPlatform, ...clinicSuppliers];
   }
 
   /**
