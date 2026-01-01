@@ -24,6 +24,7 @@ import { RegisterContactDto } from "./dto/register-contact.dto";
 import { RegisterCompleteDto } from "./dto/register-complete.dto";
 import { GoogleVisionService } from "../../services/google-vision.service";
 import { BusinessCertificateParserService } from "../../services/business-certificate-parser.service";
+import { BusinessVerificationService } from "../../services/business-verification.service";
 import { PhoneVerificationService } from "../../services/phone-verification.service";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import type { Request } from "express";
@@ -39,6 +40,7 @@ export class ManagerController {
     private readonly managerService: ManagerService,
     private readonly googleVisionService: GoogleVisionService,
     private readonly certificateParser: BusinessCertificateParserService,
+    private readonly businessVerificationService: BusinessVerificationService,
     private readonly phoneVerificationService: PhoneVerificationService
   ) {}
 
@@ -128,9 +130,39 @@ export class ManagerController {
       // Parse fields from OCR text
       const parsedFields = this.certificateParser.parseBusinessCertificate(rawText);
 
+      // Format for data.go.kr API
+      const dataGoKrFormat = this.certificateParser.formatForDataGoKr(parsedFields);
+
+      // Verify business number with data.go.kr API (immediately after OCR)
+      let verificationResult = null;
+      let verificationError = null;
+
+      // Only verify if required fields are present
+      if (parsedFields.businessNumber && parsedFields.representativeName && parsedFields.openingDate) {
+        try {
+          verificationResult = await this.businessVerificationService.verifyBusinessNumber({
+            businessNumber: parsedFields.businessNumber,
+            dataGoKrFormat: dataGoKrFormat,
+          });
+        } catch (error: any) {
+          verificationError = error?.message || "사업자 정보 확인 중 오류 발생";
+          console.error("Business verification failed:", error);
+        }
+      }
+
       ocrResult = {
         rawText,
         parsedFields,
+        dataGoKrFormat: {
+          businesses: [dataGoKrFormat],
+        },
+        verification: verificationResult ? {
+          isValid: verificationResult.isValid,
+          businessStatus: verificationResult.businessStatus,
+          businessStatusCode: verificationResult.businessStatusCode,
+          error: verificationResult.error,
+        } : null,
+        verificationError: verificationError || undefined,
       };
     } catch (error) {
       // OCR failed, but continue with file upload

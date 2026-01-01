@@ -20,6 +20,9 @@ export default function RegisterPage() {
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [phoneCheckLoading, setPhoneCheckLoading] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<any>(null);
+  const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
 
@@ -58,11 +61,11 @@ export default function RegisterPage() {
         return false;
       }
 
-      setErrors((prev => {
+      setErrors((prev) => {
         const newErrors = { ...prev };
         delete newErrors.phoneNumber;
         return newErrors;
-      }));
+      });
       return true;
     } catch (error) {
       console.error("Phone check error:", error);
@@ -95,11 +98,11 @@ export default function RegisterPage() {
     }
 
     setCertificateImage(file);
-    setErrors((prev => {
+    setErrors((prev) => {
       const newErrors = { ...prev };
       delete newErrors.certificate;
       return newErrors;
-    }));
+    });
 
     // Preview
     const reader = new FileReader();
@@ -114,10 +117,13 @@ export default function RegisterPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${apiUrl}/supplier/manager/upload-certificate`, {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        `${apiUrl}/supplier/manager/upload-certificate`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         throw new Error("파일 업로드에 실패했습니다");
@@ -125,15 +131,41 @@ export default function RegisterPage() {
 
       const data = await response.json();
       setCertificateUrl(data.fileUrl);
-      
+
       // OCR natijalarini saqlash
       if (data.ocrResult) {
         setOcrResult(data.ocrResult);
-        
+
         // Auto-fill form fields if OCR extracted data
         if (data.ocrResult.parsedFields) {
           const fields = data.ocrResult.parsedFields;
           // OCR data will be used in the next step (company info page)
+        }
+
+        // Show verification result modal
+        if (
+          data.ocrResult.verification !== null &&
+          data.ocrResult.verification !== undefined
+        ) {
+          setVerificationResult(data.ocrResult.verification);
+          setIsBusinessValid(data.ocrResult.verification.isValid);
+          setShowVerificationModal(true);
+        } else if (data.ocrResult.verificationError) {
+          // Verification error occurred
+          setVerificationResult({
+            isValid: false,
+            error: data.ocrResult.verificationError,
+          });
+          setIsBusinessValid(false);
+          setShowVerificationModal(true);
+        } else {
+          // Verification is null - disable registration
+          setIsBusinessValid(false);
+          setVerificationResult({
+            isValid: false,
+            error: "사업자등록번호 확인이 완료되지 않았습니다",
+          });
+          setShowVerificationModal(true);
         }
       }
     } catch (error: any) {
@@ -156,8 +188,6 @@ export default function RegisterPage() {
     // Validation
     const newErrors: Record<string, string> = {};
 
- 
-
     if (!formData.name.trim()) {
       newErrors.name = "이름을 입력하세요";
     } else if (formData.name.trim().length < 2) {
@@ -167,11 +197,20 @@ export default function RegisterPage() {
     if (!formData.phoneNumber.trim()) {
       newErrors.phoneNumber = "휴대폰 번호를 입력하세요";
     } else if (!validatePhoneNumber(formData.phoneNumber)) {
-      newErrors.phoneNumber = "올바른 휴대폰 번호 형식이 아닙니다 (010XXXXXXXX)";
+      newErrors.phoneNumber =
+        "올바른 휴대폰 번호 형식이 아닙니다 (010XXXXXXXX)";
     }
 
     if (!certificateUrl) {
       newErrors.certificate = "사업자등록증 이미지를 업로드하세요";
+    }
+
+    // Check verification status
+    if (isBusinessValid === null || isBusinessValid === false) {
+      newErrors.certificate =
+        "사업자등록증 확인이 필요합니다. 유효한 사업자등록번호만 가입 신청할 수 있습니다.";
+      setErrors(newErrors);
+      return;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -207,17 +246,23 @@ export default function RegisterPage() {
 
       // OCR natijalarini va step 2 data'ni localStorage'ga saqlash
       if (ocrResult) {
-        localStorage.setItem('supplier_registration_ocr', JSON.stringify(ocrResult));
+        localStorage.setItem(
+          "supplier_registration_ocr",
+          JSON.stringify(ocrResult)
+        );
       }
-      localStorage.setItem('supplier_registration_step2', JSON.stringify({
-        name: formData.name,
-        phoneNumber: formData.phoneNumber,
-        position: formData.position || undefined,
-        certificateUrl: certificateUrl,
-      }));
+      localStorage.setItem(
+        "supplier_registration_step2",
+        JSON.stringify({
+          name: formData.name,
+          phoneNumber: formData.phoneNumber,
+          position: formData.position || undefined,
+          certificateUrl: certificateUrl,
+        })
+      );
 
       // S 0-3 company info page'ga o'tish
-      router.push('/register/company');
+      router.push("/register/company");
     } catch (error: any) {
       setErrors({ submit: error.message || "가입 신청에 실패했습니다" });
     } finally {
@@ -271,9 +316,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Header */}
       <div className="p-4 sm:p-6">
-        <div className="mb-6 flex items-center justify-between sm:mb-8">
-          
-        </div>
+        <div className="mb-6 flex items-center justify-between sm:mb-8"></div>
 
         {/* Progress Indicator - 4 steps */}
         <div className="mb-6 flex items-center justify-between gap-1 sm:mb-8 sm:gap-2">
@@ -281,28 +324,36 @@ export default function RegisterPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
               1
             </div>
-            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">계정 정보</span>
+            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">
+              계정 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               2
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">회사 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              회사 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               3
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              담당자 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               4
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 ID</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              담당자 ID
+            </span>
           </div>
         </div>
       </div>
@@ -365,7 +416,10 @@ export default function RegisterPage() {
             )}
 
             {/* Registration Form */}
-            <form onSubmit={handleSubmit} className="space-y-4 pb-20 sm:space-y-5 sm:pb-5">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 pb-20 sm:space-y-5 sm:pb-5"
+            >
               {/* Name and 직함 side by side */}
               <div className="flex flex-row gap-3 sm:gap-4">
                 {/* Name - Left side */}
@@ -391,7 +445,9 @@ export default function RegisterPage() {
                     }`}
                   />
                   {errors.name && (
-                    <p className="mt-1 text-xs text-red-600 sm:text-xs">{errors.name}</p>
+                    <p className="mt-1 text-xs text-red-600 sm:text-xs">
+                      {errors.name}
+                    </p>
                   )}
                 </div>
 
@@ -414,25 +470,30 @@ export default function RegisterPage() {
                         // Scroll to ensure dropdown opens downward on mobile
                         const target = e.currentTarget as HTMLSelectElement;
                         if (!target) return;
-                        
+
                         setTimeout(() => {
                           try {
                             const rect = target.getBoundingClientRect();
-                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const scrollTop =
+                              window.pageYOffset ||
+                              document.documentElement.scrollTop;
                             const viewportHeight = window.innerHeight;
                             const elementBottom = rect.bottom + scrollTop;
                             const spaceBelow = viewportHeight - rect.bottom;
-                            
+
                             // If less than 200px space below, scroll down
                             if (spaceBelow < 200) {
                               window.scrollTo({
                                 top: elementBottom - viewportHeight + 250,
-                                behavior: 'smooth'
+                                behavior: "smooth",
                               });
                             }
                           } catch (error) {
                             // Silently handle any errors
-                            console.error('Error scrolling for dropdown:', error);
+                            console.error(
+                              "Error scrolling for dropdown:",
+                              error
+                            );
                           }
                         }, 100);
                       }}
@@ -440,8 +501,10 @@ export default function RegisterPage() {
                         errors.position
                           ? "border-red-300 focus:border-red-500 focus:ring-red-200"
                           : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
-                      } ${!formData.position ? "text-slate-400" : "text-slate-900"}`}
-                      style={{ 
+                      } ${
+                        !formData.position ? "text-slate-400" : "text-slate-900"
+                      }`}
+                      style={{
                         WebkitAppearance: "none",
                         MozAppearance: "none",
                         appearance: "none",
@@ -473,7 +536,9 @@ export default function RegisterPage() {
                     </div>
                   </div>
                   {errors.position && (
-                    <p className="mt-1 text-xs text-red-600 sm:text-xs">{errors.position}</p>
+                    <p className="mt-1 text-xs text-red-600 sm:text-xs">
+                      {errors.position}
+                    </p>
                   )}
                 </div>
               </div>
@@ -612,7 +677,7 @@ export default function RegisterPage() {
                         </div>
                       )}
                       {/* OCR Results */}
-                      {ocrResult && !uploading && ocrResult.parsedFields && (
+                      {/* {ocrResult && !uploading && ocrResult.parsedFields && (
                         <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3">
                           <div className="mb-2 flex items-center gap-2">
                             <svg
@@ -648,7 +713,7 @@ export default function RegisterPage() {
                             </div>
                           )}
                         </div>
-                      )}
+                      )} */}
                     </div>
                   ) : (
                     <label
@@ -701,7 +766,12 @@ export default function RegisterPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading || uploading}
+                disabled={
+                  loading ||
+                  uploading ||
+                  isBusinessValid === null ||
+                  isBusinessValid === false
+                }
                 className="w-full rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:from-purple-700 hover:to-pink-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
               >
                 {loading ? (
@@ -734,6 +804,125 @@ export default function RegisterPage() {
               </button>
             </form>
 
+            {/* Verification Modal */}
+            {showVerificationModal && verificationResult && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+                <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-slate-900">
+                      사업자등록번호 확인
+                    </h3>
+                    <button
+                      onClick={() => setShowVerificationModal(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <svg
+                        className="h-6 w-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {verificationResult.isValid ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 rounded-lg bg-green-50 p-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+                          <svg
+                            className="h-6 w-6 text-green-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-900">
+                            사업자등록번호가 확인되었습니다
+                          </p>
+                          <p className="text-sm text-green-700">
+                            {verificationResult.businessStatus ||
+                              "유효한 사업자입니다"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setShowVerificationModal(false)}
+                        className="w-full rounded-lg bg-green-600 px-4 py-2.5 font-semibold text-white hover:bg-green-700"
+                      >
+                        확인
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 rounded-lg bg-red-50 p-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                          <svg
+                            className="h-6 w-6 text-red-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-red-900">
+                            사업자등록번호 확인 실패
+                          </p>
+                          <p className="text-sm text-red-700">
+                            {verificationResult.error ||
+                              "사업자등록번호가 유효하지 않습니다"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-yellow-50 p-4">
+                        <p className="text-sm text-yellow-800">
+                          유효하지 않은 사업자등록번호이므로 가입 신청을 진행할
+                          수 없습니다.
+                          <br />
+                          사업자등록증 이미지를 확인하고 다시 업로드해주세요.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowVerificationModal(false);
+                          setCertificateImage(null);
+                          setCertificatePreview("");
+                          setCertificateUrl("");
+                          setOcrResult(null);
+                          setIsBusinessValid(null);
+                          setVerificationResult(null);
+                        }}
+                        className="w-full rounded-lg bg-red-600 px-4 py-2.5 font-semibold text-white hover:bg-red-700"
+                      >
+                        다시 업로드
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Login Link */}
             <div className="mt-6 space-y-3 text-center">
               <p className="text-sm text-slate-600">
@@ -745,7 +934,6 @@ export default function RegisterPage() {
                   로그인
                 </Link>
               </p>
-             
             </div>
           </div>
         </div>
@@ -753,4 +941,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

@@ -190,129 +190,100 @@ export class ManagerService {
           // STEP 1: ALL VALIDATIONS FIRST - before any database writes
 
         // 1. Extract OCR data from certificate if provided (for verification)
-        let representativeName: string | undefined;
-        let openingDate: string | undefined;
+        // REQUIRED: businessNumber, representativeName, openingDate must be extracted from OCR
+        let parsedFields: any = null;
+        let dataGoKrFormat: any = null;
 
-        if (dto.manager.certificateImageUrl) {
-          try {
-            // Extract file path from URL
-            // URL format: /uploads/supplier/certificate/filename.jpg
-            const uploadRoot = join(process.cwd(), "uploads");
-            const relativePath = dto.manager.certificateImageUrl.replace(
-              /^\/uploads\//,
-              ""
-            );
-            const filePath = join(uploadRoot, relativePath);
-
-            // Read file and extract OCR
-            const buffer = await fs.readFile(filePath);
-            const rawText =
-              await this.googleVisionService.extractTextFromBuffer(buffer);
-            const parsedFields =
-              this.certificateParser.parseBusinessCertificate(rawText);
-
-            representativeName = parsedFields.representativeName;
-            openingDate = parsedFields.openingDate;
-
-            // Log extracted data
-            if (representativeName && openingDate) {
-              console.log(
-                `✅ OCR extracted - Representative: ${representativeName}, Opening Date: ${openingDate}`
-              );
-            } else {
-              console.warn(
-                `⚠️ OCR extraction incomplete - Representative: ${
-                  representativeName || "undefined"
-                }, Opening Date: ${openingDate || "undefined"}`
-              );
-              console.warn(
-                `Parsed fields: ${JSON.stringify({
-                  representativeName: parsedFields.representativeName,
-                  openingDate: parsedFields.openingDate,
-                  businessNumber: parsedFields.businessNumber,
-                  companyName: parsedFields.companyName,
-                })}`
-              );
-            }
-          } catch (error) {
-            console.error(
-              "Failed to extract OCR data from certificate:",
-              error
-            );
-            // Continue without OCR data - verification will fail if required
-          }
+        if (!dto.manager.certificateImageUrl) {
+          throw new BadRequestException(
+            "사업자등록증 이미지가 필요합니다. 이미지를 업로드해주세요."
+          );
         }
 
-        // 2. Verify business number with data.go.kr API (only if all required data is available)
-        // Verification is only performed when ALL required fields are extracted from OCR
-        // NOTE: API verification is optional - if API fails (404, connection error, etc.), registration continues
-        if (representativeName && openingDate && dto.company.businessNumber) {
-          try {
-            // All required data is available - attempt verification
-            const verification =
-              await this.businessVerificationService.verifyBusinessNumber({
-                businessNumber: dto.company.businessNumber,
-                representativeName: representativeName,
-                openingDate: openingDate,
-              });
-
-            if (verification.isValid) {
-              // Log verification success
-              this.logger.log(
-                `Business verification successful - Status: ${verification.businessStatus}`
-              );
-            } else {
-              // Verification failed - check if it's an API error or data mismatch
-              const errorMessage = verification.error || "";
-
-              // If it's an API error (404, connection failed, etc.), log warning but continue registration
-              if (
-                errorMessage.includes("404") ||
-                errorMessage.includes("Not Found") ||
-                errorMessage.includes("API request failed") ||
-                errorMessage.includes("Cannot connect") ||
-                errorMessage.includes("timeout") ||
-                errorMessage.includes("API key is not configured")
-              ) {
-                this.logger.warn(
-                  `Business verification API error: ${errorMessage}. Registration will continue without verification.`
-                );
-                // Continue registration - API errors don't block registration
-              } else {
-                // Data mismatch - this is a real validation error
-                throw new BadRequestException(
-                  verification.error ||
-                    "사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보(사업자등록번호, 대표자명, 개업일자)가 정확한지 확인해주세요."
-                );
-              }
-            }
-          } catch (error: any) {
-            // If it's already a BadRequestException (data mismatch), re-throw it
-            if (error instanceof BadRequestException) {
-              throw error;
-            }
-
-            // For other errors (network, API unavailable, etc.), log and continue
-            this.logger.warn(
-              `Business verification failed due to API error: ${
-                error?.message || "Unknown error"
-              }. Registration will continue without verification.`
-            );
-            // Continue registration - API errors don't block registration
-          }
-        } else {
-          // OCR data incomplete - skip verification but log warning
-          const missingFields = [];
-          if (!representativeName) missingFields.push("대표자명");
-          if (!openingDate) missingFields.push("개업일자");
-          if (!dto.company.businessNumber) missingFields.push("사업자등록번호");
-
-          this.logger.warn(
-            `OCR data incomplete for business verification. Missing: ${missingFields.join(
-              ", "
-            )}. Skipping verification.`
+        try {
+          // Extract file path from URL
+          // URL format: /uploads/supplier/certificate/filename.jpg
+          const uploadRoot = join(process.cwd(), "uploads");
+          const relativePath = dto.manager.certificateImageUrl.replace(
+            /^\/uploads\//,
+            ""
           );
-          // Registration continues without verification when data is incomplete
+          const filePath = join(uploadRoot, relativePath);
+
+          // Read file and extract OCR
+          const buffer = await fs.readFile(filePath);
+          const rawText =
+            await this.googleVisionService.extractTextFromBuffer(buffer);
+          parsedFields =
+            this.certificateParser.parseBusinessCertificate(rawText);
+
+          // Format for data.go.kr API
+          dataGoKrFormat = this.certificateParser.formatForDataGoKr(parsedFields);
+
+          // Log extracted data
+          this.logger.log(
+            `✅ OCR extracted - Business: ${parsedFields.businessNumber}, Representative: ${parsedFields.representativeName}, Opening Date: ${parsedFields.openingDate}`
+          );
+        } catch (error) {
+          this.logger.error(
+            "Failed to extract OCR data from certificate:",
+            error
+          );
+          throw new BadRequestException(
+            "사업자등록증 OCR 처리 중 오류가 발생했습니다. 이미지를 다시 업로드해주세요."
+          );
+        }
+
+        // 2. Validate required fields from OCR
+        // REQUIRED: businessNumber, representativeName, openingDate
+        if (!parsedFields.businessNumber || !parsedFields.representativeName || !parsedFields.openingDate) {
+          const missingFields = [];
+          if (!parsedFields.businessNumber) missingFields.push("사업자등록번호");
+          if (!parsedFields.representativeName) missingFields.push("대표자명");
+          if (!parsedFields.openingDate) missingFields.push("개업일자");
+
+          throw new BadRequestException(
+            `사업자등록증에서 필수 정보를 추출할 수 없습니다. 누락된 정보: ${missingFields.join(", ")}. 사업자등록증 이미지가 명확한지 확인해주세요.`
+          );
+        }
+
+        // 3. Verify business number with data.go.kr API
+        // REQUIRED: Verification must pass (valid === "01") for registration to continue
+        try {
+          const verification =
+            await this.businessVerificationService.verifyBusinessNumber({
+              businessNumber: parsedFields.businessNumber,
+              dataGoKrFormat: dataGoKrFormat, // Use formatted data from OCR
+            });
+
+          if (!verification.isValid) {
+            // Verification failed - block registration
+            this.logger.warn(
+              `❌ Business verification failed: ${verification.error}`
+            );
+            throw new BadRequestException(
+              verification.error ||
+                "사업자등록번호 진위확인에 실패했습니다. 사업자등록증의 정보가 정확한지 확인해주세요."
+            );
+          }
+
+          // Verification successful
+          this.logger.log(
+            `✅ Business verification successful - Status: ${verification.businessStatus || "N/A"}`
+          );
+        } catch (error: any) {
+          // If it's already a BadRequestException, re-throw it
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+
+          // For other errors (network, API unavailable, etc.), block registration
+          this.logger.error(
+            `Business verification API error: ${error?.message || "Unknown error"}`
+          );
+          throw new BadRequestException(
+            `사업자 정보 확인 중 오류 발생: ${error?.message || "알 수 없는 오류"}. 잠시 후 다시 시도해주세요.`
+          );
         }
 
         // 3. Hash password
