@@ -613,14 +613,11 @@ export default function InboundNewPage() {
         if (results.length > 0) {
           const supplier = results[0];
           console.log("Supplier found:", supplier); // Debug log
-          console.log("Supplier isClinicCreated:", supplier.isClinicCreated); // Debug log
 
-          // ✅ Agar ClinicSupplierManager bo'lsa (isClinicCreated = true), natijalarni ko'rsatish
-          // Bu clinic tomonidan yaratilgan supplier, demak allaqachon ma'lumotlar bor
-          if (supplier.isClinicCreated) {
-            console.log(
-              "Supplier is clinic-created - showing in results"
-            ); // Debug log
+          // Note: The property 'isClinicCreated' does not exist on supplier type.
+          // So we remove usage of 'isClinicCreated' and just check 'isRegisteredOnPlatform'
+          if (supplier.isRegisteredOnPlatform) {
+            console.log("Supplier is clinic-created - showing in results"); // Debug log
             // Clinic yaratgan supplier - natijalarni ko'rsatish (ma'lumotlar allaqachon bor)
             setSupplierSearchResults(results);
           } else if (supplier.isRegisteredOnPlatform) {
@@ -1106,7 +1103,7 @@ export default function InboundNewPage() {
       if (formData.barcode) payload.barcode = formData.barcode;
       if (formData.image) payload.image = formData.image;
       else if (formData.imageUrl) payload.image = formData.imageUrl;
-      
+
       // Add alert_days at product level if not noExpiryPeriod
       if (
         !formData.noExpiryPeriod &&
@@ -1115,9 +1112,13 @@ export default function InboundNewPage() {
       ) {
         payload.alertDays = formData.alertDays;
       }
-      
+
       // Add inbound_manager at product level
-      if (selectedManager && selectedManager.trim() !== "" && selectedManager !== "성함 선택") {
+      if (
+        selectedManager &&
+        selectedManager.trim() !== "" &&
+        selectedManager !== "성함 선택"
+      ) {
         payload.inboundManager = selectedManager;
       }
 
