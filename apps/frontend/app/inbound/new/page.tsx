@@ -1427,7 +1427,7 @@ export default function InboundNewPage() {
                     {/* Right Column */}
                     <div className="flex flex-col gap-6">
                       <InputField
-                        label="브랜드"
+                        label="제조사"
                         placeholder="브랜트"
                         value={formData.brand}
                         onChange={(e) =>
