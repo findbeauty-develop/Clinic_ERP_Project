@@ -795,3 +795,17 @@ model SupplierReturnItem {
 
   @@index([return_request_id])
 }
+
+model ClinicSupportCenter {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  member_name  String   // 이름
+  clinic_name  String   // 병의원 (auto-filled from Clinic.name)
+  phone_number String   // 연락처
+  inquiry      String   // 문의 내용 (max 500 characters)
+  created_at   DateTime @default(now())
+
+  @@index([tenant_id])
+  @@index([created_at])
+  @@index([tenant_id, created_at])
+}

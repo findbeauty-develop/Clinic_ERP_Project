@@ -28,7 +28,7 @@ type Supplier = {
   productCategories?: string[] | null;
   status?: string | null;
   managers: SupplierManager[];
-  clinicManagers: SupplierManager[];
+  clinicManagers?: SupplierManager[]; // Optional - backend may not return this field
   notes?: string | null;
 };
 
@@ -79,7 +79,7 @@ export default function SupplierManagementPage() {
       const companyMatch = supplier.companyName?.toLowerCase().includes(query);
       const managerMatch = [
         ...supplier.managers,
-        ...supplier.clinicManagers,
+        ...(supplier.clinicManagers || []),
       ].some((m) => m.name?.toLowerCase().includes(query));
       return companyMatch || managerMatch;
     });
@@ -113,7 +113,7 @@ export default function SupplierManagementPage() {
       }
 
       // Contact'ni topish - avval clinicManagers'da, keyin managers'da
-      const clinicManager = supplier.clinicManagers.find(
+      const clinicManager = supplier.clinicManagers?.find(
         (m) => m.id === contactId
       );
       const supplierManager = supplier.managers.find(
@@ -139,7 +139,7 @@ export default function SupplierManagementPage() {
           supplier.id === supplierId
             ? {
                 ...supplier,
-                clinicManagers: supplier.clinicManagers.filter(
+                clinicManagers: (supplier.clinicManagers || []).filter(
                   (m) => m.id !== contactId
                 ),
               }
@@ -155,7 +155,7 @@ export default function SupplierManagementPage() {
   };
 
   const getAllContacts = (supplier: Supplier): SupplierManager[] => {
-    return [...supplier.managers, ...supplier.clinicManagers];
+    return [...supplier.managers, ...(supplier.clinicManagers || [])];
   };
 
   return (

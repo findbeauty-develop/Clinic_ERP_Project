@@ -15,7 +15,7 @@ export class KmaApiService {
   // API 2.0 사용
   private readonly baseUrl =
     "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
-  
+
   // Cache for API responses
   private cache = new Map<string, CacheEntry>();
   private readonly CACHE_TTL_CURRENT = 5 * 60 * 1000; // 5 minutes for current weather
@@ -32,7 +32,7 @@ export class KmaApiService {
   }
 
   private getCacheKey(type: string, ...params: any[]): string {
-    return `${type}_${params.join('_')}`;
+    return `${type}_${params.join("_")}`;
   }
 
   private getCachedData(key: string, ttl: number): any | null {
@@ -51,8 +51,10 @@ export class KmaApiService {
     });
     // Clean old cache entries (keep last 100 entries)
     if (this.cache.size > 100) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      const firstKey = this.cache.keys().next().value as string;
+      if (typeof firstKey === "string") {
+        this.cache.delete(firstKey);
+      }
     }
   }
 
@@ -62,7 +64,7 @@ export class KmaApiService {
     }
 
     // Check cache first
-    const cacheKey = this.getCacheKey('current', nx, ny);
+    const cacheKey = this.getCacheKey("current", nx, ny);
     const cached = this.getCachedData(cacheKey, this.CACHE_TTL_CURRENT);
     if (cached) {
       return cached;
@@ -109,23 +111,23 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       const weatherData = this.parseCurrentWeather(items);
-      
+
       // Cache successful response
       this.setCachedData(cacheKey, weatherData);
-      
+
       return weatherData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
-      
+
       // Try to return cached data if available
       const oldCached = this.cache.get(cacheKey);
       if (oldCached) {
         this.logger.warn("API error, returning stale cached data");
         return oldCached.data;
       }
-      
+
       if (statusCode === 429) {
         this.logger.warn(
           "KMA API rate limit reached. Using mock data for current weather."
@@ -143,7 +145,7 @@ export class KmaApiService {
     }
 
     // Check cache first
-    const cacheKey = this.getCacheKey('forecast', nx, ny, days);
+    const cacheKey = this.getCacheKey("forecast", nx, ny, days);
     const cached = this.getCachedData(cacheKey, this.CACHE_TTL_FORECAST);
     if (cached) {
       return cached;
@@ -190,23 +192,23 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       const forecastData = this.parseForecast(items, days);
-      
+
       // Cache successful response
       this.setCachedData(cacheKey, forecastData);
-      
+
       return forecastData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
-      
+
       // Try to return cached data if available
       const oldCached = this.cache.get(cacheKey);
       if (oldCached) {
         this.logger.warn("API error, returning stale cached data");
         return oldCached.data;
       }
-      
+
       if (statusCode === 429) {
         this.logger.warn(
           "KMA API rate limit reached. Using mock data for forecast."
@@ -260,7 +262,7 @@ export class KmaApiService {
     }
 
     // Check cache first
-    const cacheKey = this.getCacheKey('hourly', nx, ny);
+    const cacheKey = this.getCacheKey("hourly", nx, ny);
     const cached = this.getCachedData(cacheKey, this.CACHE_TTL_HOURLY);
     if (cached) {
       return cached;
@@ -306,23 +308,23 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       const hourlyData = this.parseHourlyForecast(items);
-      
+
       // Cache successful response
       this.setCachedData(cacheKey, hourlyData);
-      
+
       return hourlyData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
-      
+
       // Try to return cached data if available
       const oldCached = this.cache.get(cacheKey);
       if (oldCached) {
         this.logger.warn("API error, returning stale cached data");
         return oldCached.data;
       }
-      
+
       if (statusCode === 429) {
         this.logger.warn(
           "KMA API rate limit reached. Using mock data for hourly forecast."

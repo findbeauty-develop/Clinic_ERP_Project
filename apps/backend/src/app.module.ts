@@ -15,6 +15,7 @@ import { NewsModule } from "./modules/news/news.module";
 import { HiraModule } from "./modules/hira/hira.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
 import { WeatherModule } from "./modules/weather/weather.module";
+import { SupportModule } from "./modules/support/support.module";
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { WeatherModule } from "./modules/weather/weather.module";
     HiraModule,
     CalendarModule,
     WeatherModule,
+    SupportModule,
   ],
 })
 export class AppModule {}
