@@ -11,12 +11,19 @@ import {
   BadRequestException,
   UseGuards,
   Req,
+  Logger,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { join } from "path";
 import { promises as fs } from "fs";
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiBody,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { ManagerService } from "./manager.service";
 import { RegisterManagerDto } from "./dto/register-manager.dto";
 import { RegisterCompanyDto } from "./dto/register-company.dto";
@@ -31,11 +38,18 @@ import type { Request } from "express";
 
 const UPLOAD_ROOT = join(process.cwd(), "uploads");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const ALLOWED_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
 
 @ApiTags("supplier-manager")
 @Controller("supplier/manager")
 export class ManagerController {
+  private readonly logger = new Logger(ManagerController.name);
+
   constructor(
     private readonly managerService: ManagerService,
     private readonly googleVisionService: GoogleVisionService,
@@ -97,7 +111,9 @@ export class ManagerController {
         if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
           return callback(
             new BadRequestException(
-              `지원하지 않는 파일 형식입니다. 허용 형식: ${ALLOWED_MIME_TYPES.join(", ")}`
+              `지원하지 않는 파일 형식입니다. 허용 형식: ${ALLOWED_MIME_TYPES.join(
+                ", "
+              )}`
             ),
             false
           );
@@ -115,7 +131,12 @@ export class ManagerController {
     }
 
     const fileUrl = `/uploads/supplier/certificate/${file.filename}`;
-    const filePath = join(UPLOAD_ROOT, "supplier", "certificate", file.filename);
+    const filePath = join(
+      UPLOAD_ROOT,
+      "supplier",
+      "certificate",
+      file.filename
+    );
 
     // OCR processing
     let ocrResult = null;
@@ -125,29 +146,36 @@ export class ManagerController {
       const buffer = await fs.readFile(filePath);
 
       // Extract text using OCR
-      const rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
+      const rawText = await this.googleVisionService.extractTextFromBuffer(
+        buffer
+      );
 
       // Parse fields from OCR text
-      const parsedFields = this.certificateParser.parseBusinessCertificate(rawText);
+      const parsedFields =
+        this.certificateParser.parseBusinessCertificate(rawText);
 
       // Format for data.go.kr API
-      const dataGoKrFormat = this.certificateParser.formatForDataGoKr(parsedFields);
+      const dataGoKrFormat =
+        this.certificateParser.formatForDataGoKr(parsedFields);
 
       // Verify business number with data.go.kr API (immediately after OCR)
       let verificationResult = null;
       let verificationError = null;
 
-      // Only verify if required fields are present
-      if (parsedFields.businessNumber && parsedFields.representativeName && parsedFields.openingDate) {
+      // Strategy: Always try verification if businessNumber exists
+      // - If representativeName and openingDate exist → use /validate endpoint (full verification)
+      // - If only businessNumber exists → fallback to /status endpoint (simple check)
+      if (parsedFields.businessNumber) {
         try {
-          verificationResult = await this.businessVerificationService.verifyBusinessNumber({
-            businessNumber: parsedFields.businessNumber,
-            dataGoKrFormat: dataGoKrFormat,
-          });
+          verificationResult =
+            await this.businessVerificationService.verifyBusinessNumber({
+              businessNumber: parsedFields.businessNumber,
+              dataGoKrFormat: dataGoKrFormat,
+            });
         } catch (error: any) {
           verificationError = error?.message || "사업자 정보 확인 중 오류 발생";
-          console.error("Business verification failed:", error);
         }
+      } else {
       }
 
       ocrResult = {
@@ -156,12 +184,14 @@ export class ManagerController {
         dataGoKrFormat: {
           businesses: [dataGoKrFormat],
         },
-        verification: verificationResult ? {
-          isValid: verificationResult.isValid,
-          businessStatus: verificationResult.businessStatus,
-          businessStatusCode: verificationResult.businessStatusCode,
-          error: verificationResult.error,
-        } : null,
+        verification: verificationResult
+          ? {
+              isValid: verificationResult.isValid,
+              businessStatus: verificationResult.businessStatus,
+              businessStatusCode: verificationResult.businessStatusCode,
+              error: verificationResult.error,
+            }
+          : null,
         verificationError: verificationError || undefined,
       };
     } catch (error) {
@@ -206,7 +236,10 @@ export class ManagerController {
   async registerComplete(@Body() dto: RegisterCompleteDto) {
     try {
       console.log("🔵 [Controller] register-complete endpoint called");
-      console.log("📦 [Controller] Received DTO:", JSON.stringify(dto, null, 2));
+      console.log(
+        "📦 [Controller] Received DTO:",
+        JSON.stringify(dto, null, 2)
+      );
       const result = await this.managerService.registerComplete(dto);
       console.log("✅ [Controller] Registration completed successfully");
       return result;
@@ -244,7 +277,9 @@ export class ManagerController {
       throw new BadRequestException("Manager ID not found in token");
     }
     if (!body.currentPassword || !body.newPassword) {
-      throw new BadRequestException("Current password and new password are required");
+      throw new BadRequestException(
+        "Current password and new password are required"
+      );
     }
     return this.managerService.changePassword(
       supplierManagerId,
@@ -264,7 +299,9 @@ export class ManagerController {
     if (!body.phone_number) {
       throw new BadRequestException("Phone number is required");
     }
-    return this.phoneVerificationService.sendVerificationCode(body.phone_number);
+    return this.phoneVerificationService.sendVerificationCode(
+      body.phone_number
+    );
   }
 
   @Post("verify-phone-code")
@@ -278,7 +315,10 @@ export class ManagerController {
     if (!body.phone_number || !body.code) {
       throw new BadRequestException("Phone number and code are required");
     }
-    return this.phoneVerificationService.verifyCode(body.phone_number, body.code);
+    return this.phoneVerificationService.verifyCode(
+      body.phone_number,
+      body.code
+    );
   }
 
   @Put("profile")
@@ -286,7 +326,8 @@ export class ManagerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Update manager profile" })
   async updateProfile(
-    @Body() body: {
+    @Body()
+    body: {
       position?: string;
       phone_number?: string;
       public_contact_name?: boolean;
@@ -301,24 +342,31 @@ export class ManagerController {
     if (!supplierManagerId) {
       throw new BadRequestException("Manager ID not found in token");
     }
-    
+
     // If phone_number is being updated, verify it first
     if (body.phone_number) {
-      const isVerified = await this.phoneVerificationService.isPhoneVerified(body.phone_number);
+      const isVerified = await this.phoneVerificationService.isPhoneVerified(
+        body.phone_number
+      );
       if (!isVerified) {
-        throw new BadRequestException("전화번호 인증이 완료되지 않았습니다. 인증번호를 확인해주세요.");
+        throw new BadRequestException(
+          "전화번호 인증이 완료되지 않았습니다. 인증번호를 확인해주세요."
+        );
       }
     }
-    
+
     return this.managerService.updateProfile(supplierManagerId, body);
   }
 
   @Put("change-affiliation")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Change supplier affiliation (update company information)" })
+  @ApiOperation({
+    summary: "Change supplier affiliation (update company information)",
+  })
   async changeAffiliation(
-    @Body() body: {
+    @Body()
+    body: {
       company_name: string;
       business_number: string;
       company_phone: string;
@@ -404,7 +452,10 @@ export class ManagerController {
     if (!supplierManagerId) {
       throw new BadRequestException("Manager ID not found in token");
     }
-    return this.managerService.updateClinicMemo(tenantId, supplierManagerId, body.memo || null);
+    return this.managerService.updateClinicMemo(
+      tenantId,
+      supplierManagerId,
+      body.memo || null
+    );
   }
 }
-

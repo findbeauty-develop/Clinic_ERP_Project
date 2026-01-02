@@ -41,9 +41,6 @@ export class BusinessCertificateParserService {
     const normalized = rawText.replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
 
     // Debug: Log normalized text for troubleshooting
-    this.logger.debug(
-      `Normalized OCR text (first 200 chars): ${normalized.substring(0, 200)}`
-    );
 
     const fields: ParsedBusinessCertificateFields = {
       rawText: normalized,
@@ -65,9 +62,6 @@ export class BusinessCertificateParserService {
       );
       if (legalEntityWithTypeMatch) {
         fields.companyName = cleanText(legalEntityWithTypeMatch[1], 100);
-        this.logger.debug(
-          `Extracted companyName (법인명(단체명)): ${fields.companyName}`
-        );
       } else {
         // Try 호
         const companyNameMatch1 = normalized.match(
@@ -134,251 +128,211 @@ export class BusinessCertificateParserService {
       // 3. "대표자명 : ..."
       // Try multiple patterns in order of specificity
 
-      // Pattern 1: "대표자 : NAME" - most common format with colon
-      // OCR example: "대표자 : 주유빈" or "대표자: 주유빈"
-      const repNameMatch0 = normalized.match(
-        /대표자\s*[:：]\s*([가-힣A-Z\s]{2,30}?)(?:\s+개업연월일|$)/i
+      // Pattern 0: "자 : NAME" - Sometimes OCR splits "대표자" into "법대 표" and "자"
+      // OCR example: "법대 표 법인명(단체명): 백의의민족 주식회사 자 : 주유빈"
+      const repNameMatch_split = normalized.match(
+        /자\s*[:：]\s*([가-힣A-Z\s]{2,30}?)(?:\s+개업연월일|\s+법인등록번호|$)/i
       );
-      if (repNameMatch0 && repNameMatch0[1].trim().length >= 2) {
-        fields.representativeName = cleanText(repNameMatch0[1], 30);
-        this.logger.debug(
-          `Extracted representativeName (pattern 0 - with colon): ${fields.representativeName}`
-        );
+      if (repNameMatch_split && repNameMatch_split[1].trim().length >= 2) {
+        fields.representativeName = cleanText(repNameMatch_split[1], 30);
       } else {
-        // Pattern 1: "대표자(대표유형) NAME" - for foreign names (English/Chinese)
-        // OCR example: "대표자(대표유형) SUN WENLIN 개업연월일"
-        // Match: 대표자(대표유형) followed by name until 개업연월일
-        const repNameMatch1 = normalized.match(
-          /대표자\s*\([^)]*\)\s+([A-Z\s가-힣]{2,30}?)(?:\s+개업연월일|$)/i
+        // Pattern 1: "대표자 : NAME" - most common format with colon
+        // OCR example: "대표자 : 주유빈" or "대표자: 주유빈"
+        const repNameMatch0 = normalized.match(
+          /대표자\s*[:：]\s*([가-힣A-Z\s]{2,30}?)(?:\s+개업연월일|$)/i
         );
-        if (repNameMatch1 && repNameMatch1[1].trim().length >= 2) {
-          fields.representativeName = cleanText(repNameMatch1[1], 30);
-          this.logger.debug(
-            `Extracted representativeName (pattern 1 - foreign): ${fields.representativeName}`
-          );
+        if (repNameMatch0 && repNameMatch0[1].trim().length >= 2) {
+          fields.representativeName = cleanText(repNameMatch0[1], 30);
         } else {
-          // Try without parentheses: "대표자 NAME 개업연월일"
-          const repNameMatch1b = normalized.match(
-            /대표자\s+([A-Z\s가-힣]{2,30}?)(?:\s+개업연월일|$)/i
+          // Pattern 1: "대표자(대표유형) NAME" - for foreign names (English/Chinese)
+          // OCR example: "대표자(대표유형) SUN WENLIN 개업연월일"
+          // Match: 대표자(대표유형) followed by name until 개업연월일
+          const repNameMatch1 = normalized.match(
+            /대표자\s*\([^)]*\)\s+([A-Z\s가-힣]{2,30}?)(?:\s+개업연월일|$)/i
           );
-          if (repNameMatch1b && repNameMatch1b[1].trim().length >= 2) {
-            fields.representativeName = cleanText(repNameMatch1b[1], 30);
-            this.logger.debug(
-              `Extracted representativeName (pattern 1b - without parentheses): ${fields.representativeName}`
-            );
+          if (repNameMatch1 && repNameMatch1[1].trim().length >= 2) {
+            fields.representativeName = cleanText(repNameMatch1[1], 30);
           } else {
-            // Pattern 2: "명 : 소은숙" with flexible ending (Korean name)
-            const repNameMatch2 = normalized.match(
-              /명\s*[:：]\s*([가-힣]{2,10})(?:\s|$)/i
+            // Try without parentheses: "대표자 NAME 개업연월일"
+            const repNameMatch1b = normalized.match(
+              /대표자\s+([A-Z\s가-힣]{2,30}?)(?:\s+개업연월일|$)/i
             );
-            if (repNameMatch2) {
-              fields.representativeName = cleanText(repNameMatch2[1], 30);
-              this.logger.debug(
-                `Extracted representativeName (pattern 2 - Korean): ${fields.representativeName}`
-              );
+            if (repNameMatch1b && repNameMatch1b[1].trim().length >= 2) {
+              fields.representativeName = cleanText(repNameMatch1b[1], 30);
             } else {
-              // Pattern 3: "대표자 NAME" (without parentheses)
-              const repNameMatch3 = normalized.match(
-                /대표자\s+([A-Z\s가-힣]{2,30})(?:\s+개업연월일|$)/i
+              // Pattern 2: "명 : 소은숙" with flexible ending (Korean name)
+              const repNameMatch2 = normalized.match(
+                /명\s*[:：]\s*([가-힣]{2,10})(?:\s|$)/i
               );
-              if (repNameMatch3) {
-                fields.representativeName = cleanText(repNameMatch3[1], 30);
-                this.logger.debug(
-                  `Extracted representativeName (pattern 3): ${fields.representativeName}`
-                );
+              if (repNameMatch2) {
+                fields.representativeName = cleanText(repNameMatch2[1], 30);
               } else {
-                // Pattern 4: "명 : 소은숙" with specific endings
-                const repNameMatch4 = normalized.match(
-                  /명\s*[:：]\s*([가-힣a-zA-Z\s]+?)(?:\s+상성|생년월일|개업연월일|업태|$)/i
+                // Pattern 3: "대표자 NAME" (without parentheses)
+                const repNameMatch3 = normalized.match(
+                  /대표자\s+([A-Z\s가-힣]{2,30})(?:\s+개업연월일|$)/i
                 );
-                if (repNameMatch4) {
-                  fields.representativeName = cleanText(repNameMatch4[1], 30);
-                  this.logger.debug(
-                    `Extracted representativeName (pattern 4): ${fields.representativeName}`
-                  );
+                if (repNameMatch3) {
+                  fields.representativeName = cleanText(repNameMatch3[1], 30);
                 } else {
-                  // Pattern 5: "대표자명 : ..."
-                  const repNameMatch5 = normalized.match(
-                    /대표자\s*명\s*[:：]?\s*([가-힣a-zA-Z\s]+?)(?:\s+업태|$)/i
+                  // Pattern 4: "명 : 소은숙" with specific endings
+                  const repNameMatch4 = normalized.match(
+                    /명\s*[:：]\s*([가-힣a-zA-Z\s]+?)(?:\s+상성|생년월일|개업연월일|업태|$)/i
                   );
-                  if (repNameMatch5) {
-                    fields.representativeName = cleanText(repNameMatch5[1], 30);
-                    this.logger.debug(
-                      `Extracted representativeName (pattern 5): ${fields.representativeName}`
-                    );
+                  if (repNameMatch4) {
+                    fields.representativeName = cleanText(repNameMatch4[1], 30);
                   } else {
-                    // Pattern 6: "명소은숙" (no space or colon)
-                    const repNameMatch6 = normalized.match(
-                      /명\s*([가-힣]{2,10})(?:\s|$)/i
+                    // Pattern 5: "대표자명 : ..."
+                    const repNameMatch5 = normalized.match(
+                      /대표자\s*명\s*[:：]?\s*([가-힣a-zA-Z\s]+?)(?:\s+업태|$)/i
                     );
-                    if (repNameMatch6) {
+                    if (repNameMatch5) {
                       fields.representativeName = cleanText(
-                        repNameMatch6[1],
+                        repNameMatch5[1],
                         30
                       );
-                      this.logger.debug(
-                        `Extracted representativeName (pattern 6): ${fields.representativeName}`
+                    } else {
+                      // Pattern 6: "명소은숙" (no space or colon)
+                      const repNameMatch6 = normalized.match(
+                        /명\s*([가-힣]{2,10})(?:\s|$)/i
                       );
+                      if (repNameMatch6) {
+                        fields.representativeName = cleanText(
+                          repNameMatch6[1],
+                          30
+                        );
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
 
-        if (!fields.representativeName) {
-          const debugText =
-            normalized
-              .match(/대표자[^]*?개업연월일/i)?.[0]
-              ?.substring(0, 150) || "not found";
-          this.logger.warn(
-            `Could not extract representativeName from OCR text.`
-          );
-          this.logger.warn(`Text around '대표자': ${debugText}`);
-          this.logger.warn(
-            `Full normalized text (first 300 chars): ${normalized.substring(
-              0,
-              300
-            )}`
-          );
+          if (!fields.representativeName) {
+            const debugText =
+              normalized
+                .match(/대표자[^]*?개업연월일/i)?.[0]
+                ?.substring(0, 150) || "not found";
 
-          // Try to find what's between 대표자 and 개업연월일
-          const betweenMatch = normalized.match(/대표자[^]*?개업연월일/i);
-          if (betweenMatch) {
-            this.logger.warn(
-              `Text between '대표자' and '개업연월일': ${betweenMatch[0]}`
-            );
-          }
-        } else {
-          this.logger.log(
-            `✅ Successfully extracted representativeName: ${fields.representativeName}`
-          );
-        }
-
-        // Extract opening date (개업연월일) - Format: "1982 년 01 월 01 일" -> "19820101"
-        // OCR example: "개업연월일 : 1982 년 01 월 01 일"
-        const openingDateMatch = normalized.match(
-          /개업연월일\s*[:：]\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/i
-        );
-        if (openingDateMatch) {
-          const year = openingDateMatch[1];
-          const month = openingDateMatch[2].padStart(2, "0");
-          const day = openingDateMatch[3].padStart(2, "0");
-          fields.openingDate = `${year}${month}${day}`; // YYYYMMDD format
-        } else {
-          // Alternative format: "1982-01-01" or "19820101"
-          const altDateMatch = normalized.match(
-            /개업연월일\s*[:：]\s*(\d{4})[-]?(\d{2})[-]?(\d{2})/i
-          );
-          if (altDateMatch) {
-            fields.openingDate = `${altDateMatch[1]}${altDateMatch[2]}${altDateMatch[3]}`;
-          }
-        }
-
-        // Extract business type (업태)
-        const businessTypeMatch = normalized.match(
-          /업태\s*[:：]?\s*([가-힣]+?)(?:\s+종목|$)/i
-        );
-        if (businessTypeMatch) {
-          fields.businessType = cleanText(businessTypeMatch[1], 50);
-        }
-
-        // Extract business item (종목)
-        const businessItemMatch = normalized.match(
-          /종목\s*[:：]?\s*([가-힣a-zA-Z0-9\s,]+?)(?:\s+주소|$)/i
-        );
-        if (businessItemMatch) {
-          fields.businessItem = cleanText(businessItemMatch[1], 100);
-        }
-
-        // Extract corporate number (법인등록번호) - Format: "110114-0347250" or "1101140347250"
-        // OCR example: "법인등록번호 : 110114-0347250"
-        const corporateNumberMatch = normalized.match(
-          /법인등록번호\s*[:：]?\s*(\d{6}[-]?\d{7})/i
-        );
-        if (corporateNumberMatch) {
-          let corporateNumber = corporateNumberMatch[1].replace(/\D/g, "");
-          if (corporateNumber.length === 13) {
-            fields.corporateNumber = `${corporateNumber.slice(
-              0,
-              6
-            )}-${corporateNumber.slice(6)}`;
-          } else {
-            fields.corporateNumber = corporateNumberMatch[1];
-          }
-        }
-
-        // Extract address (주소) from 사업장소재지 or 본점소재지
-        // Format: "사업장소재지 : 서울특별시 동대문구 정릉천동로 133, 1층 3호(제기동)"
-        const businessLocationMatch = normalized.match(
-          /사업장소재지\s*[:：]\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
-        );
-        if (businessLocationMatch) {
-          fields.address = cleanText(businessLocationMatch[1], 200);
-        } else {
-          // Try with space: "사업장 소재지"
-          const businessLocationMatch2 = normalized.match(
-            /사업장\s*소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
-          );
-          if (businessLocationMatch2) {
-            fields.address = cleanText(businessLocationMatch2[1], 200);
-          } else {
-            // Try 본점소재지
-            const headOfficeMatch = normalized.match(
-              /본점소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
-            );
-            if (headOfficeMatch) {
-              fields.address = cleanText(headOfficeMatch[1], 200);
-            } else {
-              // Fallback to 주소
-              const addressMatch = normalized.match(
-                /주소\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+\d{3}[-]?\d{2}[-]?\d{5}|$)/i
+            // Try to find what's between 대표자 and 개업연월일
+            const betweenMatch = normalized.match(/대표자[^]*?개업연월일/i);
+            if (betweenMatch) {
+              this.logger.warn(
+                `Text between '대표자' and '개업연월일': ${betweenMatch[0]}`
               );
-              if (addressMatch) {
-                fields.address = cleanText(addressMatch[1], 200);
+            }
+          } else {
+          }
+
+          // Extract opening date (개업연월일) - Format: "1982 년 01 월 01 일" -> "19820101"
+          // OCR example: "개업연월일 : 1982 년 01 월 01 일"
+          const openingDateMatch = normalized.match(
+            /개업연월일\s*[:：]\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/i
+          );
+          if (openingDateMatch) {
+            const year = openingDateMatch[1];
+            const month = openingDateMatch[2].padStart(2, "0");
+            const day = openingDateMatch[3].padStart(2, "0");
+            fields.openingDate = `${year}${month}${day}`; // YYYYMMDD format
+          } else {
+            // Alternative format: "1982-01-01" or "19820101"
+            const altDateMatch = normalized.match(
+              /개업연월일\s*[:：]\s*(\d{4})[-]?(\d{2})[-]?(\d{2})/i
+            );
+            if (altDateMatch) {
+              fields.openingDate = `${altDateMatch[1]}${altDateMatch[2]}${altDateMatch[3]}`;
+            }
+          }
+
+          // Extract business type (업태)
+          const businessTypeMatch = normalized.match(
+            /업태\s*[:：]?\s*([가-힣]+?)(?:\s+종목|$)/i
+          );
+          if (businessTypeMatch) {
+            fields.businessType = cleanText(businessTypeMatch[1], 50);
+          }
+
+          // Extract business item (종목)
+          const businessItemMatch = normalized.match(
+            /종목\s*[:：]?\s*([가-힣a-zA-Z0-9\s,]+?)(?:\s+주소|$)/i
+          );
+          if (businessItemMatch) {
+            fields.businessItem = cleanText(businessItemMatch[1], 100);
+          }
+
+          // Extract corporate number (법인등록번호) - Format: "110114-0347250" or "1101140347250"
+          // OCR example: "법인등록번호 : 110114-0347250"
+          const corporateNumberMatch = normalized.match(
+            /법인등록번호\s*[:：]?\s*(\d{6}[-]?\d{7})/i
+          );
+          if (corporateNumberMatch) {
+            let corporateNumber = corporateNumberMatch[1].replace(/\D/g, "");
+            if (corporateNumber.length === 13) {
+              fields.corporateNumber = `${corporateNumber.slice(
+                0,
+                6
+              )}-${corporateNumber.slice(6)}`;
+            } else {
+              fields.corporateNumber = corporateNumberMatch[1];
+            }
+          }
+
+          // Extract address (주소) from 사업장소재지 or 본점소재지
+          // Format: "사업장소재지 : 서울특별시 동대문구 정릉천동로 133, 1층 3호(제기동)"
+          const businessLocationMatch = normalized.match(
+            /사업장소재지\s*[:：]\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+          );
+          if (businessLocationMatch) {
+            fields.address = cleanText(businessLocationMatch[1], 200);
+          } else {
+            // Try with space: "사업장 소재지"
+            const businessLocationMatch2 = normalized.match(
+              /사업장\s*소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+            );
+            if (businessLocationMatch2) {
+              fields.address = cleanText(businessLocationMatch2[1], 200);
+            } else {
+              // Try 본점소재지
+              const headOfficeMatch = normalized.match(
+                /본점소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+              );
+              if (headOfficeMatch) {
+                fields.address = cleanText(headOfficeMatch[1], 200);
+              } else {
+                // Fallback to 주소
+                const addressMatch = normalized.match(
+                  /주소\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+\d{3}[-]?\d{2}[-]?\d{5}|$)/i
+                );
+                if (addressMatch) {
+                  fields.address = cleanText(addressMatch[1], 200);
+                }
               }
             }
           }
-        }
 
-        // Log extracted fields
-        const extractedFields = Object.keys(fields).filter(
-          (k) => k !== "rawText"
-        );
-        this.logger.log(
-          `Parsed business certificate fields: ${extractedFields.join(", ")}`
-        );
-
-        // Log missing critical fields
-        if (!fields.representativeName) {
-          this.logger.warn("⚠️ representativeName not extracted from OCR");
-        }
-        if (!fields.openingDate) {
-          this.logger.warn("⚠️ openingDate not extracted from OCR");
-        }
-        if (!fields.businessNumber) {
-          this.logger.warn("⚠️ businessNumber not extracted from OCR");
-        }
-        if (!fields.corporateNumber) {
-          this.logger.warn(
-            "⚠️ corporateNumber not extracted from OCR (optional for 법인사업자)"
+          // Log extracted fields
+          const extractedFields = Object.keys(fields).filter(
+            (k) => k !== "rawText"
           );
-        }
+          this.logger.log(
+            `Parsed business certificate fields: ${extractedFields.join(", ")}`
+          );
+
+          // Log missing critical fields
+        } // Close the big try block that started at line 52
       }
+      return fields;
     } catch (error) {
       this.logger.error("Error parsing business certificate text", error);
       return fields;
     }
-    return fields;
-
-    // /**
-    //  * Format parsed OCR fields for data.go.kr API
-    //  * Converts parsed fields to data.go.kr API format
-    //  * @param parsedFields Parsed fields from OCR
-    //  * @returns Formatted data for data.go.kr API
-    //  */
   }
+  /**
+   * Format parsed OCR fields for data.go.kr API
+   * Converts parsed fields to data.go.kr API format
+   * @param parsedFields Parsed fields from OCR
+   * @returns Formatted data for data.go.kr API
+   */
   formatForDataGoKr(
     parsedFields: ParsedBusinessCertificateFields
   ): DataGoKrBusinessFormat {

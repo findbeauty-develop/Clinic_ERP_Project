@@ -107,35 +107,82 @@ export class BusinessVerificationService {
       };
     }
 
-    // Use DataGoKrBusinessFormat if provided, otherwise build from individual fields
-    let dataGoKrFormat: DataGoKrBusinessFormat;
+    // Strategy: Try /validate first (full verification with all fields)
+    // If it fails or returns invalid, fallback to /status (simple check with only b_no)
 
-    if (request.dataGoKrFormat) {
-      dataGoKrFormat = request.dataGoKrFormat;
-    } else {
-      // Build format from individual fields (all optional except b_no)
-      dataGoKrFormat = {
-        b_no: cleanBusinessNumber,
-        start_dt: request.openingDate || "",
-        p_nm: request.representativeName || "",
-        p_nm2: "",
-        b_nm: request.companyName || "",
-        corp_no: request.corporateNumber?.replace(/-/g, "").trim() || "",
-        b_sector: "",
-        b_type: "",
-        b_adr: "",
-      };
+    // First attempt: /validate endpoint with full data
+    const validateResult = await this.tryValidateEndpoint(
+      request,
+      cleanBusinessNumber
+    );
+
+    if (validateResult.isValid) {
+      this.logger.log(`✅ Verification successful via /validate endpoint`);
+      return validateResult;
     }
 
-    // Validate opening date format if provided (YYYYMMDD)
-    if (dataGoKrFormat.start_dt && !/^\d{8}$/.test(dataGoKrFormat.start_dt)) {
-      return {
-        isValid: false,
-        error: "개업일자는 YYYYMMDD 형식이어야 합니다",
-      };
+    // If /validate failed, try /status endpoint
+    this.logger.log(
+      `⚠️ /validate failed or invalid. Trying /status endpoint as fallback...`
+    );
+    const statusResult = await this.tryStatusEndpoint(cleanBusinessNumber);
+
+    if (statusResult.isValid) {
+      this.logger.log(`✅ Verification successful via /status endpoint`);
+      return statusResult;
     }
 
+    // Both methods failed
+    this.logger.error(`❌ Both /validate and /status verification failed`);
+    return {
+      isValid: false,
+      error:
+        validateResult.error ||
+        statusResult.error ||
+        "사업자등록번호 확인에 실패했습니다",
+      data: {
+        validateResult: validateResult.data,
+        statusResult: statusResult.data,
+      },
+    };
+  }
+
+  /**
+   * Try /validate endpoint with full business data
+   */
+  private async tryValidateEndpoint(
+    request: BusinessVerificationRequest,
+    cleanBusinessNumber: string
+  ): Promise<BusinessVerificationResponse> {
     try {
+      // Use DataGoKrBusinessFormat if provided, otherwise build from individual fields
+      let dataGoKrFormat: DataGoKrBusinessFormat;
+
+      if (request.dataGoKrFormat) {
+        dataGoKrFormat = request.dataGoKrFormat;
+      } else {
+        // Build format from individual fields (all optional except b_no)
+        dataGoKrFormat = {
+          b_no: cleanBusinessNumber,
+          start_dt: request.openingDate || "",
+          p_nm: request.representativeName || "",
+          p_nm2: "",
+          b_nm: request.companyName || "",
+          corp_no: request.corporateNumber?.replace(/-/g, "").trim() || "",
+          b_sector: "",
+          b_type: "",
+          b_adr: "",
+        };
+      }
+
+      // Validate opening date format if provided (YYYYMMDD)
+      if (dataGoKrFormat.start_dt && !/^\d{8}$/.test(dataGoKrFormat.start_dt)) {
+        return {
+          isValid: false,
+          error: "개업일자는 YYYYMMDD 형식이어야 합니다",
+        };
+      }
+
       // Decode serviceKey if it's URL-encoded (data.go.kr sometimes provides encoded keys)
       let decodedServiceKey = this.apiKey;
       try {
@@ -153,30 +200,12 @@ export class BusinessVerificationService {
       if (apiEndpoint.endsWith("/status")) {
         // Replace /status with /validate for verification
         apiEndpoint = apiEndpoint.replace("/status", "/validate");
-        this.logger.debug(
-          `Endpoint changed from /status to /validate for verification`
-        );
       }
 
       const postParams = new URLSearchParams({
         serviceKey: decodedServiceKey,
       });
       const postUrl = `${apiEndpoint}?${postParams.toString()}`;
-
-      this.logger.log(`Verifying business number: ${dataGoKrFormat.b_no}`);
-      this.logger.debug(`API URL: ${this.apiUrl}`);
-      this.logger.debug(
-        `Service key length: ${
-          decodedServiceKey.length
-        } (first 10 chars: ${decodedServiceKey.substring(0, 10)}...)`
-      );
-      this.logger.debug(
-        `Request params: b_no=${dataGoKrFormat.b_no}, p_nm=${
-          dataGoKrFormat.p_nm || "(empty)"
-        }, start_dt=${dataGoKrFormat.start_dt || "(empty)"}, b_nm=${
-          dataGoKrFormat.b_nm || "(empty)"
-        }`
-      );
 
       // Make API request using POST method (data.go.kr API requires POST)
       let response: Response;
@@ -200,8 +229,6 @@ export class BusinessVerificationService {
             },
           ],
         };
-
-        this.logger.debug(`Request body: ${JSON.stringify(requestBody)}`);
 
         // Add timeout to prevent hanging (60 seconds)
         const controller = new AbortController();
@@ -240,31 +267,7 @@ export class BusinessVerificationService {
             errorText = `Failed to read error response: ${e}`;
           }
 
-          this.logger.warn(
-            `POST request failed: ${response.status} ${response.statusText}`
-          );
-          this.logger.warn(`Error response: ${errorText.substring(0, 1000)}`);
-          this.logger.warn(`Request URL: ${postUrl}`);
-
           // Return error
-          if (response.status === 404) {
-            this.logger.error("⚠️ API endpoint returned 404 Not Found");
-            this.logger.error("This usually means:");
-            this.logger.error("1. The API endpoint URL is incorrect");
-            this.logger.error("2. The API path structure has changed");
-            this.logger.error("3. The service key is invalid or expired");
-            this.logger.error(`Current endpoint: ${this.apiUrl}`);
-            this.logger.error("Please check:");
-            this.logger.error(
-              "- Verify DATA_GO_KR_API_URL in .env matches the actual API endpoint from data.go.kr"
-            );
-            this.logger.error(
-              "- Check if the API requires a different path format"
-            );
-            this.logger.error(
-              "- Verify your service key is active and has proper permissions"
-            );
-          }
 
           return {
             isValid: false,
@@ -359,9 +362,6 @@ export class BusinessVerificationService {
         }
 
         // Log full response for debugging
-        this.logger.debug(
-          `Full API response: ${JSON.stringify(responseData, null, 2)}`
-        );
 
         // Parse response based on actual API structure
         // Check status_code === "OK" and valid === "01"
@@ -370,7 +370,7 @@ export class BusinessVerificationService {
         if (verificationResult.isValid) {
           const businessStatus = this.extractBusinessStatus(responseData);
           this.logger.log(
-            `✅ Business number ${dataGoKrFormat.b_no} is valid. Status: ${businessStatus}`
+            `✅ Business number  is valid. Status: ${businessStatus}`
           );
           return {
             isValid: true,
@@ -379,9 +379,6 @@ export class BusinessVerificationService {
             data: responseData,
           };
         } else {
-          this.logger.warn(
-            `❌ Business number ${dataGoKrFormat.b_no} verification failed: ${verificationResult.error}`
-          );
           return {
             isValid: false,
             error:
@@ -391,17 +388,184 @@ export class BusinessVerificationService {
           };
         }
       } catch (fetchError: any) {
-        this.logger.error("Error making API request", fetchError);
+        this.logger.error("Error making /validate API request", fetchError);
         return {
           isValid: false,
-          error: fetchError?.message || "API request failed",
+          error: fetchError?.message || "/validate API request failed",
         };
       }
     } catch (error: any) {
-      this.logger.error("Error verifying business number", error);
+      this.logger.error("Error in tryValidateEndpoint", error);
       return {
         isValid: false,
-        error: error?.message || "Unknown error occurred",
+        error: error?.message || "Unknown error in /validate",
+      };
+    }
+  }
+
+  /**
+   * Try /status endpoint with only business number
+   * Simpler check - only requires b_no
+   */
+  private async tryStatusEndpoint(
+    cleanBusinessNumber: string
+  ): Promise<BusinessVerificationResponse> {
+    try {
+      // Decode serviceKey if it's URL-encoded
+      let decodedServiceKey = this.apiKey;
+      try {
+        decodedServiceKey = decodeURIComponent(this.apiKey);
+      } catch (e) {
+        decodedServiceKey = this.apiKey;
+      }
+
+      // Build /status endpoint URL
+      let apiEndpoint = this.apiUrl;
+      if (apiEndpoint.endsWith("/validate")) {
+        // Replace /validate with /status
+        apiEndpoint = apiEndpoint.replace("/validate", "/status");
+      } else if (!apiEndpoint.endsWith("/status")) {
+        // If neither /validate nor /status, assume base URL and append /status
+        apiEndpoint = apiEndpoint.replace(/\/+$/, "") + "/status";
+      }
+
+      const postParams = new URLSearchParams({
+        serviceKey: decodedServiceKey,
+      });
+      const postUrl = `${apiEndpoint}?${postParams.toString()}`;
+
+      // Make API request using POST method
+      // /status endpoint requires: { "b_no": ["xxxxxxx"] } - b_no as array of strings
+      const requestBody = {
+        b_no: [cleanBusinessNumber], // Array format for /status endpoint
+      };
+
+      // Add timeout to prevent hanging (60 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      let response: Response;
+      try {
+        response = await fetch(postUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === "AbortError") {
+          this.logger.error("Status request timeout after 60 seconds");
+          return {
+            isValid: false,
+            error: "API 요청 시간 초과 (60초). 잠시 후 다시 시도해주세요.",
+          };
+        }
+        throw fetchError;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.warn(
+          `/status request failed: ${response.status} ${response.statusText}`
+        );
+        this.logger.warn(`Error response: ${errorText.substring(0, 500)}`);
+        return {
+          isValid: false,
+          error: `/status API 요청 실패: ${response.status}`,
+        };
+      }
+
+      // Parse JSON response
+      const responseData: any = await response.json();
+      // this.logger.debug(
+      //   `Status API response: ${JSON.stringify(responseData, null, 2)}`
+      // );
+
+      // Parse /status response
+      // Expected structure:
+      // {
+      //   "request_cnt": 1,
+      //   "match_cnt": 1,
+      //   "status_code": "OK",
+      //   "data": [{
+      //     "b_no": "4728703085",
+      //     "b_stt": "계속사업자",
+      //     "b_stt_cd": "01",
+      //     "tax_type": "부가가치세 일반과세자",
+      //     "tax_type_cd": "01",
+      //     ...
+      //   }]
+      // }
+
+      if (responseData.status_code !== "OK") {
+        this.logger.warn(
+          `/status API status_code is not OK: ${responseData.status_code}`
+        );
+        return {
+          isValid: false,
+          error: `사업자 상태 확인 중 오류 발생 (status_code: ${responseData.status_code})`,
+          data: responseData,
+        };
+      }
+
+      if (
+        !responseData.data ||
+        !Array.isArray(responseData.data) ||
+        responseData.data.length === 0
+      ) {
+        this.logger.warn("No data in /status API response");
+        return {
+          isValid: false,
+          error: "사업자 정보를 찾을 수 없습니다",
+          data: responseData,
+        };
+      }
+
+      const businessData = responseData.data[0];
+
+      // Check b_stt_cd (사업자 상태 코드)
+      // "01" = 계속사업자 (valid/active)
+      // Other codes = 휴업자/폐업자 (invalid/inactive)
+      const businessStatusCode = businessData.b_stt_cd;
+      const businessStatus = businessData.b_stt;
+
+      this.logger.debug(
+        `Business status: ${businessStatus} (code: ${businessStatusCode})`
+      );
+
+      // For /status endpoint, we only check if b_stt_cd === "01"
+      // We don't have "valid" field in /status response
+      if (businessStatusCode !== "01") {
+        this.logger.warn(
+          `Business is not active. Status: ${businessStatus} (${businessStatusCode})`
+        );
+        return {
+          isValid: false,
+          error: `현재 영업 중이 아닌 사업자입니다 (${businessStatus})`,
+          businessStatus,
+          businessStatusCode,
+          data: responseData,
+        };
+      }
+
+      // Success! Business is active
+
+      return {
+        isValid: true,
+        businessStatus,
+        businessStatusCode,
+        data: responseData,
+      };
+    } catch (error: any) {
+      this.logger.error("Error in tryStatusEndpoint", error);
+      return {
+        isValid: false,
+        error: error?.message || "/status API 요청 중 오류 발생",
       };
     }
   }
@@ -465,9 +629,6 @@ export class BusinessVerificationService {
       const businessData = data.data[0];
 
       // Log businessData for debugging
-      this.logger.debug(
-        `Business data structure: ${JSON.stringify(businessData, null, 2)}`
-      );
 
       // Step 3: Check valid === "01" (CRITICAL - 진위확인)
       // Note: valid field might be in different location or format
