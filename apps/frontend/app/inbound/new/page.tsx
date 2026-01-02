@@ -137,6 +137,17 @@ export default function InboundNewPage() {
     useState(false); // Modal for confirming supplier without transaction history
   const [showManualEntryForm, setShowManualEntryForm] = useState(false); // Manual entry form
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>(""); // Phone number for manual entry
+
+  // OCR and Business Verification states
+  const [certificateImage, setCertificateImage] = useState<File | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string>("");
+  const [certificateUrl, setCertificateUrl] = useState<string>("");
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<any>(null);
+  const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+
   const [pendingSupplier, setPendingSupplier] = useState<{
     companyName: string;
     companyAddress: string | null;
@@ -853,20 +864,22 @@ export default function InboundNewPage() {
         certificatePreview: reader.result as string,
         certificateImage: file,
       }));
+      setCertificatePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Upload to server
+    // Upload to server with OCR and verification
     setUploadingCertificate(true);
+    setUploading(true);
+    setOcrResult(null);
+    setVerificationResult(null);
+    setIsBusinessValid(null);
+
     try {
-      // Use correct localStorage keys (same as login page)
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
       const formData = new FormData();
       formData.append("file", file);
 
-      // Use supplier-backend API for certificate upload
+      // Use supplier-backend API for certificate upload with OCR and verification
       const supplierApiUrl =
         process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
       const response = await fetch(
@@ -886,6 +899,8 @@ export default function InboundNewPage() {
         ...prev,
         certificateUrl: data.fileUrl,
       }));
+      setCertificateUrl(data.fileUrl);
+      setOcrResult(data.ocrResult);
 
       // Auto-fill from OCR if available
       if (data.ocrResult?.parsedFields) {
@@ -894,15 +909,35 @@ export default function InboundNewPage() {
           ...prev,
           companyName: fields.companyName || prev.companyName,
           businessNumber: fields.businessNumber || prev.businessNumber,
-          companyAddress: fields.companyAddress || prev.companyAddress,
-          companyPhone: fields.companyPhone || prev.companyPhone,
+          companyAddress: fields.address || prev.companyAddress,
+          managerName: fields.representativeName || prev.managerName,
         }));
+
+        // Update OCR extracted data
+        setOcrExtractedData({
+          companyName: fields.companyName,
+          businessNumber: fields.businessNumber,
+          companyAddress: fields.address,
+        });
+      }
+
+      // Check verification result
+      if (data.ocrResult?.verification) {
+        setVerificationResult(data.ocrResult.verification);
+        setIsBusinessValid(data.ocrResult.verification.isValid);
+        setShowVerificationModal(true);
+      } else if (data.ocrResult?.verification === null) {
+        setIsBusinessValid(false);
+        setVerificationResult({ error: "사업자 정보를 확인할 수 없습니다" });
+        setShowVerificationModal(true);
       }
     } catch (error: any) {
       console.error("Error uploading certificate:", error);
       alert(error.message || "파일 업로드에 실패했습니다");
+      setIsBusinessValid(false);
     } finally {
       setUploadingCertificate(false);
+      setUploading(false);
     }
   };
 
@@ -911,6 +946,14 @@ export default function InboundNewPage() {
     // Validate required fields
     if (!manualEntryForm.managerName || !manualEntryForm.phoneNumber) {
       alert("담당자 이름과 핸드폰 번호는 필수입니다.");
+      return;
+    }
+
+    // Validate business verification if certificate was uploaded
+    if (certificateUrl && isBusinessValid !== true) {
+      alert(
+        "사업자 정보 확인이 필요합니다. 사업자등록증을 다시 업로드하거나 확인해주세요."
+      );
       return;
     }
 
@@ -2365,6 +2408,11 @@ export default function InboundNewPage() {
                                   certificateImage: null,
                                   certificateUrl: "",
                                 }));
+                                setCertificatePreview("");
+                                setCertificateUrl("");
+                                setOcrResult(null);
+                                setVerificationResult(null);
+                                setIsBusinessValid(null);
                                 setOcrExtractedData(null);
                               }}
                               className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
@@ -2427,73 +2475,6 @@ export default function InboundNewPage() {
                         )}
 
                         {/* OCR Extracted Data Notification */}
-                        {ocrExtractedData && !ocrProcessing && (
-                          <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
-                            <div className="flex items-start gap-2">
-                              <svg
-                                className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                              </svg>
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-green-800 dark:text-green-300 mb-1">
-                                  OCR로 정보가 자동 추출되었습니다
-                                </p>
-                                <div className="text-xs text-green-700 dark:text-green-400 space-y-1">
-                                  {ocrExtractedData.companyName && (
-                                    <p>
-                                      • 회사명: {ocrExtractedData.companyName}
-                                    </p>
-                                  )}
-                                  {ocrExtractedData.businessNumber && (
-                                    <p>
-                                      • 사업자등록번호:{" "}
-                                      {ocrExtractedData.businessNumber}
-                                    </p>
-                                  )}
-                                  {ocrExtractedData.companyAddress && (
-                                    <p>
-                                      • 주소: {ocrExtractedData.companyAddress}
-                                    </p>
-                                  )}
-                                  {ocrExtractedData.companyPhone && (
-                                    <p>
-                                      • 전화번호:{" "}
-                                      {ocrExtractedData.companyPhone}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setOcrExtractedData(null)}
-                                className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
-                              >
-                                <svg
-                                  className="h-4 w-4"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        )}
 
                         <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                           {uploadingCertificate || ocrProcessing
@@ -2509,6 +2490,88 @@ export default function InboundNewPage() {
                             className="hidden"
                           />
                         </label>
+
+                        {/* Business Verification Status */}
+                        {/* {isBusinessValid === true && (
+                          <div className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                              <span className="font-medium">
+                                ✅ 사업자 정보 확인 완료
+                              </span>
+                            </div>
+                            {verificationResult?.businessStatus && (
+                              <p className="mt-1 text-xs">
+                                상태: {verificationResult.businessStatus}
+                              </p>
+                            )}
+                          </div>
+                        )} */}
+                        {isBusinessValid === false && (
+                          <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                              <span className="font-medium">
+                                ⚠️ 사업자 정보 확인 실패
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs">
+                              수동으로 정보를 입력해주세요
+                            </p>
+                          </div>
+                        )}
+                        {uploading && (
+                          <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className="h-5 w-5 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                              <span className="font-medium">
+                                사업자 정보 확인 중...
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2687,11 +2750,20 @@ export default function InboundNewPage() {
                     disabled={
                       savingManualEntry ||
                       !manualEntryForm.managerName ||
-                      !manualEntryForm.phoneNumber
+                      !manualEntryForm.phoneNumber ||
+                      (!!certificateUrl && isBusinessValid !== true)
                     }
-                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      !!certificateUrl && isBusinessValid !== true
+                        ? "bg-slate-400 dark:bg-slate-600"
+                        : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    }`}
                   >
-                    {savingManualEntry ? "저장 중..." : "저장 및 등록"}
+                    {savingManualEntry
+                      ? "저장 중..."
+                      : !!certificateUrl && isBusinessValid !== true
+                        ? "🔒 사업자 확인 필요"
+                        : "저장 및 등록"}
                   </button>
                 </div>
               </div>
@@ -3065,6 +3137,83 @@ export default function InboundNewPage() {
           </div>
         </div>
       )}
+
+      {/* Business Verification Result Modal */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
+            <div className="text-center">
+              {isBusinessValid ? (
+                <>
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                    <svg
+                      className="h-8 w-8 text-green-600 dark:text-green-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-slate-100">
+                    사업자 정보 확인 완료
+                  </h3>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    유효한 사업자등록번호입니다
+                  </p>
+                  {verificationResult?.businessStatus && (
+                    <div className="mb-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-700">
+                      <p className="text-slate-700 dark:text-slate-300">
+                        상태: {verificationResult.businessStatus}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                    <svg
+                      className="h-8 w-8 text-red-600 dark:text-red-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-slate-100">
+                    사업자 정보 확인 실패
+                  </h3>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    {verificationResult?.error ||
+                      "사업자등록번호를 확인할 수 없습니다"}
+                  </p>
+                  <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+                    수동으로 정보를 입력하여 계속 진행할 수 있습니다
+                  </p>
+                </>
+              )}
+              <button
+                onClick={() => setShowVerificationModal(false)}
+                className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Unsaved Changes Dialog */}
       {showUnsavedChangesDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

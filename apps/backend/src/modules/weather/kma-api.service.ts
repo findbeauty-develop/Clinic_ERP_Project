@@ -60,10 +60,18 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       return this.parseCurrentWeather(items);
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error("Error fetching current weather:", errorMessage);
+      const statusCode = error?.response?.status || error?.status;
+      
+      if (statusCode === 429) {
+        this.logger.warn(
+          "KMA API rate limit reached. Using mock data for current weather."
+        );
+      } else {
+        this.logger.error("Error fetching current weather:", errorMessage);
+      }
       return this.getMockCurrentWeather();
     }
   }
@@ -108,10 +116,18 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       return this.parseForecast(items, days);
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error("Error fetching forecast:", errorMessage);
+      const statusCode = error?.response?.status || error?.status;
+      
+      if (statusCode === 429) {
+        this.logger.warn(
+          "KMA API rate limit reached. Using mock data for forecast."
+        );
+      } else {
+        this.logger.error("Error fetching forecast:", errorMessage);
+      }
       return this.getMockForecast(days);
     }
   }
@@ -191,10 +207,18 @@ export class KmaApiService {
 
       const items = response.data.response.body.items.item;
       return this.parseHourlyForecast(items);
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error("Error fetching hourly forecast:", errorMessage);
+      const statusCode = error?.response?.status || error?.status;
+      
+      if (statusCode === 429) {
+        this.logger.warn(
+          "KMA API rate limit reached. Using mock data for hourly forecast."
+        );
+      } else {
+        this.logger.error("Error fetching hourly forecast:", errorMessage);
+      }
       return this.getMockHourlyForecast();
     }
   }
