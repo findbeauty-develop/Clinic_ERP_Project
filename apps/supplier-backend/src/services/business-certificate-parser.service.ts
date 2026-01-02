@@ -279,33 +279,26 @@ export class BusinessCertificateParserService {
 
           // Extract address (주소) from 사업장소재지 or 본점소재지
           // Format: "사업장소재지 : 서울특별시 동대문구 정릉천동로 133, 1층 3호(제기동)"
+          // Also handle: "사업장 소재지 : ..." (with space)
           const businessLocationMatch = normalized.match(
-            /사업장소재지\s*[:：]\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+            /사업장\s*소재지\s*[:：]\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+본점소재지|\s+사업의\s*종류|\s+업태|\s+종목|$)/i
           );
           if (businessLocationMatch) {
             fields.address = cleanText(businessLocationMatch[1], 200);
           } else {
-            // Try with space: "사업장 소재지"
-            const businessLocationMatch2 = normalized.match(
-              /사업장\s*소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+            // Try 본점소재지
+            const headOfficeMatch = normalized.match(
+              /본점소재지\s*[:：]\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|\s+업태|\s+종목|$)/i
             );
-            if (businessLocationMatch2) {
-              fields.address = cleanText(businessLocationMatch2[1], 200);
+            if (headOfficeMatch) {
+              fields.address = cleanText(headOfficeMatch[1], 200);
             } else {
-              // Try 본점소재지
-              const headOfficeMatch = normalized.match(
-                /본점소재지\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+사업의\s*종류|업태|종목|$)/i
+              // Fallback to 주소
+              const addressMatch = normalized.match(
+                /주소\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+\d{3}[-]?\d{2}[-]?\d{5}|$)/i
               );
-              if (headOfficeMatch) {
-                fields.address = cleanText(headOfficeMatch[1], 200);
-              } else {
-                // Fallback to 주소
-                const addressMatch = normalized.match(
-                  /주소\s*[:：]?\s*([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+\d{3}[-]?\d{2}[-]?\d{5}|$)/i
-                );
-                if (addressMatch) {
-                  fields.address = cleanText(addressMatch[1], 200);
-                }
+              if (addressMatch) {
+                fields.address = cleanText(addressMatch[1], 200);
               }
             }
           }

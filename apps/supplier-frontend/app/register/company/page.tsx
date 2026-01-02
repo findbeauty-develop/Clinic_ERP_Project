@@ -37,18 +37,18 @@ export default function CompanyInfoPage() {
 
   useEffect(() => {
     // OCR natijalarini localStorage'dan olish
-    const ocrStr = localStorage.getItem('supplier_registration_ocr');
+    const ocrStr = localStorage.getItem("supplier_registration_ocr");
     if (ocrStr) {
       try {
         const ocr = JSON.parse(ocrStr);
         setOcrData(ocr);
-        
+
         // OCR natijalarini form'ga to'ldirish
         if (ocr.parsedFields) {
           const fields = ocr.parsedFields;
-          
+
           // Auto-fill form fields from OCR
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             // 법인명 -> 회사명
             companyName: fields.companyName || prev.companyName,
@@ -66,16 +66,16 @@ export default function CompanyInfoPage() {
   }, []);
 
   const handleCategoryToggle = (categoryId: string) => {
-    setFormData(prev => {
+    setFormData((prev) => {
       const categories = prev.productCategories.includes(categoryId)
-        ? prev.productCategories.filter(id => id !== categoryId)
+        ? prev.productCategories.filter((id) => id !== categoryId)
         : [...prev.productCategories, categoryId];
       return { ...prev, productCategories: categories };
     });
-    
+
     // Error'ni tozalash
     if (errors.productCategories) {
-      setErrors(prev => {
+      setErrors((prev) => {
         const newErrors = { ...prev };
         delete newErrors.productCategories;
         return newErrors;
@@ -109,11 +109,13 @@ export default function CompanyInfoPage() {
     }
 
     if (formData.productCategories.length === 0) {
-      newErrors.productCategories = "최소 1개 이상의 제품 카테고리를 선택하세요";
+      newErrors.productCategories =
+        "최소 1개 이상의 제품 카테고리를 선택하세요";
     }
 
     if (!formData.shareConsent) {
-      newErrors.shareConsent = "회사 정보 공유 동의가 필요합니다";
+      newErrors.shareConsent =
+        "⚠️ 다음 단계로 진행하려면 회사 정보 공유에 동의해야 합니다";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -124,20 +126,23 @@ export default function CompanyInfoPage() {
     setLoading(true);
     try {
       // Step 2 data'ni olish
-      const step2DataStr = localStorage.getItem('supplier_registration_step2');
+      const step2DataStr = localStorage.getItem("supplier_registration_step2");
       const step2Data = step2DataStr ? JSON.parse(step2DataStr) : {};
 
       // Backend API'ga yuborish
-      const response = await fetch(`${apiUrl}/supplier/manager/register-company`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...formData,
-          step2Data: step2Data,
-        }),
-      });
+      const response = await fetch(
+        `${apiUrl}/supplier/manager/register-company`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...formData,
+            step2Data: step2Data,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -145,13 +150,16 @@ export default function CompanyInfoPage() {
       }
 
       // Company info'ni localStorage'ga saqlash
-      localStorage.setItem('supplier_registration_step3', JSON.stringify({
-        ...formData,
-        step2Data: step2Data,
-      }));
+      localStorage.setItem(
+        "supplier_registration_step3",
+        JSON.stringify({
+          ...formData,
+          step2Data: step2Data,
+        })
+      );
 
       // Keyingi step'ga o'tish (S 0-4)
-      router.push('/register/contact');
+      router.push("/register/contact");
     } catch (error: any) {
       setErrors({ submit: error.message || "저장에 실패했습니다" });
     } finally {
@@ -191,28 +199,36 @@ export default function CompanyInfoPage() {
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               1
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">계정 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              계정 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
               2
             </div>
-            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">회사 정보</span>
+            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">
+              회사 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               3
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              담당자 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               4
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 ID</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              담당자 ID
+            </span>
           </div>
         </div>
 
@@ -252,7 +268,9 @@ export default function CompanyInfoPage() {
                 }`}
               />
               {errors.companyName && (
-                <p className="mt-1 text-xs text-red-600">{errors.companyName}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.companyName}
+                </p>
               )}
             </div>
 
@@ -284,7 +302,9 @@ export default function CompanyInfoPage() {
                 }`}
               />
               {errors.businessNumber && (
-                <p className="mt-1 text-xs text-red-600">{errors.businessNumber}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.businessNumber}
+                </p>
               )}
             </div>
 
@@ -315,7 +335,9 @@ export default function CompanyInfoPage() {
                 }`}
               />
               {errors.companyPhone && (
-                <p className="mt-1 text-xs text-red-600">{errors.companyPhone}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.companyPhone}
+                </p>
               )}
             </div>
 
@@ -345,7 +367,9 @@ export default function CompanyInfoPage() {
                 }`}
               />
               {errors.companyEmail && (
-                <p className="mt-1 text-xs text-red-600">{errors.companyEmail}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.companyEmail}
+                </p>
               )}
             </div>
 
@@ -385,20 +409,39 @@ export default function CompanyInfoPage() {
                       onChange={() => handleCategoryToggle(category.id)}
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-slate-700">{category.label}</span>
+                    <span className="text-sm text-slate-700">
+                      {category.label}
+                    </span>
                   </label>
                 ))}
               </div>
               {errors.productCategories && (
-                <p className="mt-1 text-xs text-red-600">{errors.productCategories}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.productCategories}
+                </p>
               )}
             </div>
 
             {/* Company Info Sharing Consent */}
-            <div className="rounded-lg border-2 border-blue-100 bg-blue-50 p-4">
+            {/* Company Info Sharing Consent */}
+            <div
+              className={`rounded-lg border-2 p-4 ${
+                errors.shareConsent
+                  ? "border-red-300 bg-red-50"
+                  : formData.shareConsent
+                  ? "border-green-300 bg-green-50"
+                  : "border-blue-100 bg-blue-50"
+              }`}
+            >
               <div className="mb-3 flex items-start gap-3">
                 <svg
-                  className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600"
+                  className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
+                    errors.shareConsent
+                      ? "text-red-600"
+                      : formData.shareConsent
+                      ? "text-green-600"
+                      : "text-blue-600"
+                  }`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -412,11 +455,12 @@ export default function CompanyInfoPage() {
                 </svg>
                 <div className="flex-1">
                   <p className="mb-2 text-sm font-medium text-slate-900">
-                    회사 정보 공유 동의
+                    회사 정보 공유 동의 <span className="text-red-500">*</span>
                   </p>
                   <p className="mb-3 text-xs text-slate-600">
-                    병원 모드의 재고 관리 및 주문 시스템과 회사 정보를 공유하여 병원에서
-                    쉽게 우리 회사를 공급업체로 선택할 수 있도록 합니다.
+                    병원 모드의 재고 관리 및 주문 시스템과 회사 정보를 공유하여
+                    병원에서 쉽게 우리 회사를 공급업체로 선택할 수 있도록
+                    합니다.
                   </p>
                   <ul className="mb-3 space-y-1 text-xs text-slate-600">
                     <li>• 회사명</li>
@@ -429,7 +473,10 @@ export default function CompanyInfoPage() {
                       type="checkbox"
                       checked={formData.shareConsent}
                       onChange={(e) => {
-                        setFormData({ ...formData, shareConsent: e.target.checked });
+                        setFormData({
+                          ...formData,
+                          shareConsent: e.target.checked,
+                        });
                         if (errors.shareConsent) {
                           setErrors((prev) => {
                             const newErrors = { ...prev };
@@ -438,14 +485,38 @@ export default function CompanyInfoPage() {
                           });
                         }
                       }}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      className={`mt-0.5 h-4 w-4 rounded border-slate-300 focus:ring-2 focus:ring-blue-500 ${
+                        errors.shareConsent
+                          ? "border-red-500 text-red-600"
+                          : "text-blue-600"
+                      }`}
                     />
-                    <span className="text-xs text-slate-700">
+                    <span
+                      className={`text-xs ${
+                        errors.shareConsent
+                          ? "text-red-700 font-medium"
+                          : "text-slate-700"
+                      }`}
+                    >
                       위 회사 정보를 클리닉 사용자에게 공유하는 것에 동의합니다
+                      (필수)
                     </span>
                   </label>
                   {errors.shareConsent && (
-                    <p className="mt-1 text-xs text-red-600">{errors.shareConsent}</p>
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-red-600 font-medium">
+                      <svg
+                        className="h-4 w-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      {errors.shareConsent}
+                    </div>
                   )}
                 </div>
               </div>
@@ -454,8 +525,14 @@ export default function CompanyInfoPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:from-purple-700 hover:to-pink-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+              disabled={loading || !formData.shareConsent}
+              className={`w-full rounded-lg px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
+                !formData.shareConsent
+                  ? "cursor-not-allowed bg-slate-400 opacity-60"
+                  : loading
+                  ? "cursor-not-allowed bg-gradient-to-r from-purple-600 to-pink-600 opacity-50"
+                  : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 hover:shadow-xl"
+              }`}
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -481,6 +558,23 @@ export default function CompanyInfoPage() {
                   </svg>
                   처리 중...
                 </span>
+              ) : !formData.shareConsent ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                  회사 정보 공유 동의 필요
+                </span>
               ) : (
                 "다음"
               )}
@@ -504,4 +598,3 @@ export default function CompanyInfoPage() {
     </div>
   );
 }
-

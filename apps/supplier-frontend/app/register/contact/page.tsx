@@ -87,7 +87,9 @@ export default function ContactInfoPage() {
   const removeProduct = (product: string) => {
     setFormData({
       ...formData,
-      responsibleProducts: formData.responsibleProducts.filter((p) => p !== product),
+      responsibleProducts: formData.responsibleProducts.filter(
+        (p) => p !== product
+      ),
     });
   };
 
@@ -118,7 +120,10 @@ export default function ContactInfoPage() {
     }
 
     // Manager address validation
-    if (!formData.managerAddress || formData.managerAddress.trim().length === 0) {
+    if (
+      !formData.managerAddress ||
+      formData.managerAddress.trim().length === 0
+    ) {
       newErrors.managerAddress = "담당자 주소를 입력하세요";
     }
 
@@ -139,21 +144,24 @@ export default function ContactInfoPage() {
       const step3DataStr = localStorage.getItem("supplier_registration_step3");
       const step2DataStr = localStorage.getItem("supplier_registration_step2");
 
-      const response = await fetch(`${apiUrl}/supplier/manager/register-contact`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          password: formData.password,
-          passwordConfirm: formData.passwordConfirm,
-          email1: formData.email1,
-          managerAddress: formData.managerAddress,
-          responsibleProducts: formData.responsibleProducts,
-          step3Data: step3DataStr ? JSON.parse(step3DataStr) : undefined,
-          step2Data: step2DataStr ? JSON.parse(step2DataStr) : undefined,
-        }),
-      });
+      const response = await fetch(
+        `${apiUrl}/supplier/manager/register-contact`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password: formData.password,
+            passwordConfirm: formData.passwordConfirm,
+            email1: formData.email1,
+            managerAddress: formData.managerAddress,
+            responsibleProducts: formData.responsibleProducts,
+            step3Data: step3DataStr ? JSON.parse(step3DataStr) : undefined,
+            step2Data: step2DataStr ? JSON.parse(step2DataStr) : undefined,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -212,28 +220,36 @@ export default function ContactInfoPage() {
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               1
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">계정 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              계정 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               2
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">회사 정보</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              회사 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
               3
             </div>
-            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">담당자 정보</span>
+            <span className="hidden text-xs font-medium text-slate-900 sm:inline sm:text-sm">
+              담당자 정보
+            </span>
           </div>
           <div className="h-0.5 flex-1 bg-slate-200"></div>
           <div className="flex items-center gap-1 sm:gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium text-slate-600 sm:h-8 sm:w-8 sm:text-xs">
               4
             </div>
-            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">담당자 ID</span>
+            <span className="hidden text-xs text-slate-600 sm:inline sm:text-sm">
+              담당자 ID
+            </span>
           </div>
         </div>
 
@@ -241,7 +257,9 @@ export default function ContactInfoPage() {
         <div className="rounded-2xl bg-white p-6 shadow-lg sm:p-8">
           {/* Title and Subtitle */}
           <div className="mb-6">
-            <h2 className="mb-2 text-2xl font-bold text-slate-900">담당자 정보</h2>
+            <h2 className="mb-2 text-2xl font-bold text-slate-900">
+              담당자 정보
+            </h2>
             <p className="text-sm text-slate-600">
               병원에서 주문 시 담당자로 표시될 정보입니다
             </p>
@@ -338,7 +356,10 @@ export default function ContactInfoPage() {
                   type={showPasswordConfirm ? "text" : "password"}
                   value={formData.passwordConfirm}
                   onChange={(e) => {
-                    setFormData({ ...formData, passwordConfirm: e.target.value });
+                    setFormData({
+                      ...formData,
+                      passwordConfirm: e.target.value,
+                    });
                     if (errors.passwordConfirm) {
                       setErrors((prev) => {
                         const newErrors = { ...prev };
@@ -478,7 +499,9 @@ export default function ContactInfoPage() {
                 }`}
               />
               {errors.managerAddress && (
-                <p className="mt-1 text-xs text-red-600">{errors.managerAddress}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.managerAddress}
+                </p>
               )}
             </div>
 
@@ -527,25 +550,6 @@ export default function ContactInfoPage() {
                       : "border-slate-300 focus:border-blue-500 focus:ring-blue-200"
                   }`}
                 />
-                <button
-                  type="button"
-                  onClick={addProduct}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </button>
               </div>
               {/* Hint text */}
               <div className="mb-2 flex items-start gap-2 text-xs text-slate-500">
