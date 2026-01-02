@@ -3,6 +3,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
 @Injectable()
 export class KmaApiService {
   private readonly logger = new Logger(KmaApiService.name);
@@ -10,6 +15,12 @@ export class KmaApiService {
   // API 2.0 사용
   private readonly baseUrl =
     "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
+  
+  // Cache for API responses
+  private cache = new Map<string, CacheEntry>();
+  private readonly CACHE_TTL_CURRENT = 5 * 60 * 1000; // 5 minutes for current weather
+  private readonly CACHE_TTL_FORECAST = 10 * 60 * 1000; // 10 minutes for forecast
+  private readonly CACHE_TTL_HOURLY = 5 * 60 * 1000; // 5 minutes for hourly forecast
 
   constructor(private readonly httpService: HttpService) {
     this.apiKey = process.env.KMA_API_KEY || "";
@@ -20,9 +31,41 @@ export class KmaApiService {
     }
   }
 
+  private getCacheKey(type: string, ...params: any[]): string {
+    return `${type}_${params.join('_')}`;
+  }
+
+  private getCachedData(key: string, ttl: number): any | null {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < ttl) {
+      this.logger.log(`Returning cached data for key: ${key}`);
+      return cached.data;
+    }
+    return null;
+  }
+
+  private setCachedData(key: string, data: any): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
+    // Clean old cache entries (keep last 100 entries)
+    if (this.cache.size > 100) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+  }
+
   async getCurrentWeather(nx: number, ny: number) {
     if (!this.apiKey) {
       return this.getMockCurrentWeather();
+    }
+
+    // Check cache first
+    const cacheKey = this.getCacheKey('current', nx, ny);
+    const cached = this.getCachedData(cacheKey, this.CACHE_TTL_CURRENT);
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -55,15 +98,33 @@ export class KmaApiService {
         this.logger.error(
           `KMA API Error: ${response.data.response.header.resultMsg}`
         );
+        // Try to return cached data if available, otherwise mock
+        const oldCached = this.cache.get(cacheKey);
+        if (oldCached) {
+          this.logger.warn("API error, returning stale cached data");
+          return oldCached.data;
+        }
         return this.getMockCurrentWeather();
       }
 
       const items = response.data.response.body.items.item;
-      return this.parseCurrentWeather(items);
+      const weatherData = this.parseCurrentWeather(items);
+      
+      // Cache successful response
+      this.setCachedData(cacheKey, weatherData);
+      
+      return weatherData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
+      
+      // Try to return cached data if available
+      const oldCached = this.cache.get(cacheKey);
+      if (oldCached) {
+        this.logger.warn("API error, returning stale cached data");
+        return oldCached.data;
+      }
       
       if (statusCode === 429) {
         this.logger.warn(
@@ -79,6 +140,13 @@ export class KmaApiService {
   async getForecast(nx: number, ny: number, days: number) {
     if (!this.apiKey) {
       return this.getMockForecast(days);
+    }
+
+    // Check cache first
+    const cacheKey = this.getCacheKey('forecast', nx, ny, days);
+    const cached = this.getCachedData(cacheKey, this.CACHE_TTL_FORECAST);
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -111,15 +179,33 @@ export class KmaApiService {
         this.logger.error(
           `KMA API Error: ${response.data.response.header.resultMsg}`
         );
+        // Try to return cached data if available, otherwise mock
+        const oldCached = this.cache.get(cacheKey);
+        if (oldCached) {
+          this.logger.warn("API error, returning stale cached data");
+          return oldCached.data;
+        }
         return this.getMockForecast(days);
       }
 
       const items = response.data.response.body.items.item;
-      return this.parseForecast(items, days);
+      const forecastData = this.parseForecast(items, days);
+      
+      // Cache successful response
+      this.setCachedData(cacheKey, forecastData);
+      
+      return forecastData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
+      
+      // Try to return cached data if available
+      const oldCached = this.cache.get(cacheKey);
+      if (oldCached) {
+        this.logger.warn("API error, returning stale cached data");
+        return oldCached.data;
+      }
       
       if (statusCode === 429) {
         this.logger.warn(
@@ -173,6 +259,13 @@ export class KmaApiService {
       return this.getMockHourlyForecast();
     }
 
+    // Check cache first
+    const cacheKey = this.getCacheKey('hourly', nx, ny);
+    const cached = this.getCachedData(cacheKey, this.CACHE_TTL_HOURLY);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const now = new Date();
       const baseDate = this.getBaseDate(now);
@@ -202,15 +295,33 @@ export class KmaApiService {
         this.logger.error(
           `KMA API Error: ${response.data.response.header.resultMsg}`
         );
+        // Try to return cached data if available, otherwise mock
+        const oldCached = this.cache.get(cacheKey);
+        if (oldCached) {
+          this.logger.warn("API error, returning stale cached data");
+          return oldCached.data;
+        }
         return this.getMockHourlyForecast();
       }
 
       const items = response.data.response.body.items.item;
-      return this.parseHourlyForecast(items);
+      const hourlyData = this.parseHourlyForecast(items);
+      
+      // Cache successful response
+      this.setCachedData(cacheKey, hourlyData);
+      
+      return hourlyData;
     } catch (error: any) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const statusCode = error?.response?.status || error?.status;
+      
+      // Try to return cached data if available
+      const oldCached = this.cache.get(cacheKey);
+      if (oldCached) {
+        this.logger.warn("API error, returning stale cached data");
+        return oldCached.data;
+      }
       
       if (statusCode === 429) {
         this.logger.warn(

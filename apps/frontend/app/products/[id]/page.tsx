@@ -689,6 +689,27 @@ function ProductEditForm({
     useState(false);
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>("");
   const [phoneSearchNoResults, setPhoneSearchNoResults] = useState(false);
+
+  // New supplier form state
+  const [newSupplierForm, setNewSupplierForm] = useState({
+    companyName: "",
+    companyAddress: "",
+    businessNumber: "",
+    companyPhone: "",
+    companyEmail: "",
+    responsibleProducts: "",
+    memo: "",
+  });
+
+  // Certificate upload and verification states
+  const [certificateImage, setCertificateImage] = useState<File | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string>("");
+  const [certificateUrl, setCertificateUrl] = useState<string>("");
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<any>(null);
+  const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     id?: string;
     supplierId?: string;
@@ -1010,6 +1031,86 @@ function ProductEditForm({
       };
       reader.readAsDataURL(file);
       handleInputChange("imageFile", file);
+    }
+  };
+
+  // Handle certificate upload with OCR and business verification
+  const handleCertificateUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCertificatePreview(reader.result as string);
+      setCertificateImage(file);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server with OCR and verification
+    setUploading(true);
+    setOcrResult(null);
+    setVerificationResult(null);
+    setIsBusinessValid(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const supplierApiUrl =
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
+      const response = await fetch(
+        `${supplierApiUrl}/supplier/manager/upload-certificate`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("파일 업로드에 실패했습니다");
+      }
+
+      const data = await response.json();
+      setCertificateUrl(data.fileUrl);
+      setOcrResult(data.ocrResult);
+
+      // Auto-fill form fields from OCR if available
+      if (data.ocrResult?.parsedFields) {
+        const fields = data.ocrResult.parsedFields;
+        setNewSupplierForm((prev) => ({
+          ...prev,
+          companyName: fields.companyName || prev.companyName,
+          companyAddress: fields.address || prev.companyAddress,
+          businessNumber: fields.businessNumber || prev.businessNumber,
+        }));
+      }
+
+      // Check verification result
+      if (
+        data.ocrResult?.verification &&
+        typeof data.ocrResult.verification === "object"
+      ) {
+        const verification = data.ocrResult.verification;
+        setVerificationResult(verification);
+        setIsBusinessValid(verification.isValid === true);
+        setShowVerificationModal(true);
+      } else if (
+        data.ocrResult?.verification === null ||
+        data.ocrResult?.verification === undefined
+      ) {
+        setIsBusinessValid(false);
+        setVerificationResult({ error: "사업자 정보를 확인할 수 없습니다" });
+        setShowVerificationModal(true);
+      }
+    } catch (error: any) {
+      console.error("Error uploading certificate:", error);
+      alert(error.message || "파일 업로드에 실패했습니다");
+      setIsBusinessValid(false);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -2005,6 +2106,22 @@ function ProductEditForm({
                   setShowNewSupplierModal(false);
                   setPendingSupplierPhone("");
                   setPhoneSearchNoResults(false);
+                  // Clear form and certificate data
+                  setNewSupplierForm({
+                    companyName: "",
+                    companyAddress: "",
+                    businessNumber: "",
+                    companyPhone: "",
+                    companyEmail: "",
+                    responsibleProducts: "",
+                    memo: "",
+                  });
+                  setCertificateImage(null);
+                  setCertificatePreview("");
+                  setCertificateUrl("");
+                  setOcrResult(null);
+                  setVerificationResult(null);
+                  setIsBusinessValid(null);
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
@@ -2029,15 +2146,186 @@ function ProductEditForm({
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     사업자등록증
                   </label>
-                  <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
-                    <div className="text-center">
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        이미지를 업로드하세요
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                        업로드 시 자동으로 정보를 추출합니다
-                      </p>
-                    </div>
+                  <div className="space-y-3">
+                    {!certificatePreview ? (
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-blue-400 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/50 dark:hover:border-blue-600 dark:hover:bg-slate-800">
+                        <svg
+                          className="mb-3 h-12 w-12 text-slate-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                          />
+                        </svg>
+                        <span className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          사업자등록증 이미지 업로드
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          PNG, JPG, WEBP (최대 10MB)
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleCertificateUpload}
+                          disabled={uploading}
+                          className="hidden"
+                        />
+                      </label>
+                    ) : (
+                      <div className="relative">
+                        <img
+                          src={certificatePreview}
+                          alt="Certificate preview"
+                          className="h-128 w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCertificateImage(null);
+                            setCertificatePreview("");
+                            setCertificateUrl("");
+                            setOcrResult(null);
+                            setVerificationResult(null);
+                            setIsBusinessValid(null);
+                            // Clear auto-filled form fields
+                            setNewSupplierForm((prev) => ({
+                              ...prev,
+                              companyName: "",
+                              companyAddress: "",
+                              businessNumber: "",
+                            }));
+                          }}
+                          className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                        {uploading && (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                            <div className="text-center text-white">
+                              <svg
+                                className="mx-auto h-8 w-8 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                              <p className="mt-2 text-sm">OCR 처리 중...</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Business Verification Status */}
+                    {/* {isBusinessValid === true && (
+                      <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                          <span className="font-medium">
+                            ✅ 사업자 정보 확인 완료
+                          </span>
+                        </div>
+                        {verificationResult?.businessStatus && (
+                          <p className="mt-1 text-xs">
+                            상태: {verificationResult.businessStatus}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {isBusinessValid === false && (
+                      <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                          <span className="font-medium">
+                            ⚠️ 사업자 정보 확인 실패
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs">
+                          수동으로 정보를 입력해주세요
+                        </p>
+                      </div>
+                    )} */}
+                    {uploading && (
+                      <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="h-5 w-5 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                          <span className="font-medium">
+                            사업자 정보 확인 중...
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2060,6 +2348,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="text"
+                    value={newSupplierForm.companyName}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        companyName: e.target.value,
+                      }))
+                    }
                     placeholder="회사명"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2070,6 +2365,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="text"
+                    value={newSupplierForm.companyAddress}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        companyAddress: e.target.value,
+                      }))
+                    }
                     placeholder="주소를 입력해주세요"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2080,6 +2382,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="text"
+                    value={newSupplierForm.businessNumber}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        businessNumber: e.target.value,
+                      }))
+                    }
                     placeholder="00-000-0000"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2135,6 +2444,22 @@ function ProductEditForm({
                   setShowNewSupplierModal(false);
                   setPendingSupplierPhone("");
                   setPhoneSearchNoResults(false);
+                  // Clear form and certificate data
+                  setNewSupplierForm({
+                    companyName: "",
+                    companyAddress: "",
+                    businessNumber: "",
+                    companyPhone: "",
+                    companyEmail: "",
+                    responsibleProducts: "",
+                    memo: "",
+                  });
+                  setCertificateImage(null);
+                  setCertificatePreview("");
+                  setCertificateUrl("");
+                  setOcrResult(null);
+                  setVerificationResult(null);
+                  setIsBusinessValid(null);
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
@@ -2643,6 +2968,82 @@ function ProductEditForm({
           {loading ? "저장 중..." : "저장"}
         </button>
       </div>
+
+      {/* Business Verification Result Modal */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
+            <div className="text-center">
+              {isBusinessValid ? (
+                <>
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                    <svg
+                      className="h-8 w-8 text-green-600 dark:text-green-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-slate-100">
+                    사업자 정보 확인 완료
+                  </h3>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    유효한 사업자등록번호입니다
+                  </p>
+                  {verificationResult?.businessStatus && (
+                    <div className="mb-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-700">
+                      <p className="text-slate-700 dark:text-slate-300">
+                        상태: {verificationResult.businessStatus}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                    <svg
+                      className="h-8 w-8 text-red-600 dark:text-red-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-slate-100">
+                    사업자 정보 확인 실패
+                  </h3>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    {verificationResult?.error ||
+                      "사업자등록번호를 확인할 수 없습니다"}
+                  </p>
+                  <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+                    수동으로 정보를 입력하여 계속 진행할 수 있습니다
+                  </p>
+                </>
+              )}
+              <button
+                onClick={() => setShowVerificationModal(false)}
+                className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
