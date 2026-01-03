@@ -317,7 +317,48 @@ Agar instance yaratishda portlarni qo'shmagan bo'lsangiz, qo'shing:
 
 ## 4️⃣ Project'ni EC2'ga Yuklash
 
-### Variant A: Git Repository orqali (Tavsiya etiladi)
+**⚠️ MUHIM:** Docker Hub'dan image'lar ishlatilayotgan bo'lsa, **Git'dan butun project'ni clone qilish shart emas!** Faqat `docker-compose.prod.yml` va `.env` fayllar kerak.
+
+### Variant A: Minimal Setup (Docker Hub'dan Pull - Tavsiya etiladi) ✅
+
+Bu variant Docker Hub'da image'lar mavjud bo'lganda ishlatiladi. Git code'ga ehtiyoj yo'q.
+
+```bash
+# EC2'da minimal directory structure yaratish
+cd ~
+mkdir -p clinic-erp
+cd clinic-erp
+
+# Faqat docker-compose.prod.yml va .env fayllar uchun directory'lar yaratish
+mkdir -p apps/backend apps/frontend apps/supplier-backend apps/supplier-frontend
+
+# docker-compose.prod.yml'ni yaratish (yoki SCP orqali yuklash)
+# Keyingi qadamda to'ldiramiz
+```
+
+**Keyin `docker-compose.prod.yml`'ni yarating yoki local mashinadan yuklang:**
+
+**Local terminal'da (Mac/Linux):**
+
+```bash
+# docker-compose.prod.yml'ni EC2'ga yuklash
+scp -i ~/Downloads/clinic-erp-key.pem \
+  /Users/Development/Desktop/Clinic_ERP_Project/docker-compose.prod.yml \
+  ubuntu@YOUR_PUBLIC_IP:~/clinic-erp/docker-compose.prod.yml
+```
+
+**Yoki EC2'da `docker-compose.prod.yml`'ni yarating:**
+
+```bash
+# EC2'da
+cd ~/clinic-erp
+nano docker-compose.prod.yml
+# Guide'dagi docker-compose.prod.yml content'ini copy-paste qiling
+```
+
+### Variant B: Git Repository orqali (Agar code'ga ehtiyoj bo'lsa)
+
+Agar Google Cloud Vision key yoki boshqa fayllar kerak bo'lsa, Git'dan clone qilish mumkin:
 
 ```bash
 # EC2'da project directory yaratish
@@ -336,21 +377,7 @@ ls -la
 # Expected: apps/, packages/, docker-compose.prod.yml, etc.
 ```
 
-### Variant B: SCP orqali (Local mashinadan)
-
-**Local terminal'da (Mac/Linux):**
-
-```bash
-# Project'ni EC2'ga yuklash
-scp -i ~/Downloads/clinic-erp-key.pem -r /Users/Development/Desktop/Clinic_ERP_Project ubuntu@YOUR_PUBLIC_IP:~/clinic-erp
-
-# EC2'ga kirish va tekshirish
-ssh -i ~/Downloads/clinic-erp-key.pem ubuntu@YOUR_PUBLIC_IP
-cd ~/clinic-erp
-ls -la
-```
-
-**⚠️ Eslatma:** `.env` fayllar `.gitignore`'da bo'lishi mumkin, ularni alohida yuklash kerak (keyingi qadam).
+**⚠️ Eslatma:** Git'dan clone qilsangiz ham, Docker Hub'dan image pull qilish tavsiya etiladi (build qilish sekin).
 
 ---
 
@@ -521,16 +548,20 @@ services:
 
 ## 6️⃣ Docker Image'larni Build/Pull Qilish
 
-### Variant A: Docker Hub'dan Pull (Tavsiya etiladi - Tez)
+### Variant A: Docker Hub'dan Pull (Tavsiya etiladi - Tez) ✅
 
-**Agar image'lar allaqachon Docker Hub'da bo'lsa:**
+**✅ Agar image'lar allaqachon Docker Hub'da bo'lsa (QUICK_DEPLOY_GUIDE.md bo'yicha build qilingan):**
+
+Docker Hub'da `findbeauty/clinic-backend:latest`, `findbeauty/clinic-frontend:latest`, `findbeauty/supplier-backend:latest`, `findbeauty/supplier-frontend:latest` image'lar mavjud bo'lsa, faqat pull qilish kifoya:
 
 ```bash
 # EC2'da
 cd ~/clinic-erp
 
-# Docker Hub'ga login (agar kerak bo'lsa)
-docker login
+# Docker Hub'ga login (agar private repo bo'lsa)
+# docker login
+# Username: findbeauty
+# Password: [Docker Hub parolingiz]
 
 # Image'larni pull qilish
 docker pull findbeauty/clinic-backend:latest
@@ -539,10 +570,22 @@ docker pull findbeauty/supplier-backend:latest
 docker pull findbeauty/supplier-frontend:latest
 
 # Pull qilingan image'larni tekshirish
-docker images
+docker images | grep findbeauty
+
+# Expected output:
+# findbeauty/clinic-backend        latest    abc123def456   2 hours ago    850MB
+# findbeauty/clinic-frontend       latest    def456abc123   2 hours ago    450MB
+# findbeauty/supplier-backend      latest    ghi789def456   2 hours ago    850MB
+# findbeauty/supplier-frontend     latest    jkl012abc123   2 hours ago    450MB
 ```
 
 **⏱️ Vaqt:** Har bir image uchun 2-5 daqiqa (internet tezligiga qarab)
+
+**✅ Bu variant eng tez va tavsiya etiladi, chunki:**
+
+- Image'lar allaqachon Docker Hub'da mavjud
+- Build qilish shart emas (30-60 daqiqa vaqt ketmaydi)
+- EC2'da minimal resurs ishlatiladi
 
 ### Variant B: EC2'da Build Qilish (Sekin, lekin to'liq control)
 
@@ -629,7 +672,7 @@ docker rm $(docker ps -aq) 2>/dev/null || true
 
 ```bash
 # Container'larni ishga tushirish
-docker compose -f docker-compose.prod.yml up -d
+docker-compose -f docker-compose.prod.yml up -d
 
 # Container'lar holatini tekshirish
 docker ps
@@ -642,11 +685,23 @@ docker ps
 # jkl012...      findbeauty/supplier-frontend:latest    Up 5 seconds  0.0.0.0:3003->3003/tcp
 ```
 
+# EC2'da
+
+cd ~/clinic-erp
+
+# Backend container'ni restart qilish
+
+docker-compose -f docker-compose.prod.yml restart backend
+
+# Yoki agar docker compose (space bilan) ishlatilsa:
+
+docker compose -f docker-compose.prod.yml restart backend
+
 ### 7.4 Log'larni Tekshirish
 
 ```bash
 # Barcha log'larni ko'rish
-docker compose -f docker-compose.prod.yml logs -f
+docker-compose -f docker-compose.prod.yml logs -f
 
 # Yoki alohida log'lar
 docker logs -f clinic-erp-backend-prod
@@ -736,97 +791,126 @@ docker logs clinic-erp-backend-prod | tail -50
 
 ---
 
-## 9️⃣ Nginx Reverse Proxy + SSL (Domain bilan)
+## 9️⃣ Nginx Reverse Proxy + HTTP/2 + SSL
 
-**Agar domain bo'lsa va HTTPS kerak bo'lsa:**
+HTTP/2 ni yoqish orqali browser so‘rovlarining “Queueing” vaqti yo‘qoladi va sahifa tezroq yuklanadi. Domen bo‘lmasa, bu bosqichni keyinroq bajarishingiz mumkin.
 
-### 9.1 Nginx O'rnatish
+### 9.1 Nginx o‘rnatish
 
 ```bash
+sudo apt update
 sudo apt install -y nginx
-sudo systemctl start nginx
-sudo systemctl enable nginx
+sudo rm -f /etc/nginx/sites-enabled/default
 ```
 
-### 9.2 Nginx Configuration
+### 9.2 Upstream va server block
+
+```bash
+sudo tee /etc/nginx/sites-available/clinic-erp >/dev/null <<'EOF'
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+upstream clinic_backend      { server 127.0.0.1:3000; }
+upstream clinic_frontend     { server 127.0.0.1:3001; }
+upstream supplier_backend    { server 127.0.0.1:3002; }
+upstream supplier_frontend   { server 127.0.0.1:3003; }
+
+server {
+  listen 80 default_server;
+  server_name _;
+
+  location / {
+    proxy_pass http://clinic_frontend;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+  }
+
+  location /api/ {
+    proxy_pass http://clinic_backend/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /docs {
+    proxy_pass http://clinic_backend;
+  }
+
+  location /supplier/ {
+    proxy_pass http://supplier_frontend/;
+  }
+
+  location /supplier-api/ {
+    proxy_pass http://supplier_backend/;
+  }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/clinic-erp /etc/nginx/sites-enabled/clinic-erp
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 9.3 Domen va HTTPS (Certbot)
+
+1. Domeningizni EC2 IP’ga yo‘naltiring (A record)
+2. Certbot bilan HTTPS sozlang:
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d cafeu.uz -d www.cafeu.uz
+```
+
+3. Certbot yaratgan faylni tahrir qiling:
 
 ```bash
 sudo nano /etc/nginx/sites-available/clinic-erp
 ```
 
-**Quyidagilarni qo'shing:**
+HTTPS blokida quyidagilar bo‘lishi shart:
+
+```
+listen 443 ssl http2;
+listen [::]:443 ssl http2;
+```
+
+Fayl oxiridagi Certbot block’ini global redirect bilan almashtiring:
 
 ```nginx
-# Clinic Frontend (HTTP)
 server {
-    listen 80;
-    server_name your-domain.com www.your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-
-# Supplier Frontend (HTTP)
-server {
-    listen 80;
-    server_name supplier.your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:3003;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-
-# Backend APIs (HTTP)
-server {
-    listen 80;
-    server_name api.your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+  listen 80;
+  listen [::]:80;
+  server_name cafeu.uz www.cafeu.uz;
+  return 301 https://$host$request_uri;
 }
 ```
 
-**Enable qilish:**
+4. Saqlang va reload qiling:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/clinic-erp /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 9.3 SSL Certificate (Let's Encrypt)
+5. HTTP/2 ishlayotganini tekshiring:
 
 ```bash
-# Certbot o'rnatish
-sudo apt install -y certbot python3-certbot-nginx
-
-# SSL certificate olish
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com -d supplier.your-domain.com -d api.your-domain.com
-
-# Auto-renewal test
-sudo certbot renew --dry-run
+curl -I --http2 https://cafeu.uz
 ```
 
-**✅ Endi HTTPS orqali kirish mumkin:**
+### 9.4 CloudFront (ixtiyoriy, global foydalanuvchilar uchun)
 
-- `https://your-domain.com`
-- `https://supplier.your-domain.com`
-- `https://api.your-domain.com`
+1. AWS Console → CloudFront → Create Distribution
+2. Origin = `cafeu.uz`
+3. HTTPS Only, HTTP/3/2 enable, gzip/brotli yoqing
+4. DNS’da CloudFront CNAME qo‘shing
+
+Natija: Browser ↔ Nginx (HTTP/2) + Nginx ↔ container (localhost) → minimal latency.
 
 ---
 
