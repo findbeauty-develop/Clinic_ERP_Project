@@ -1,5 +1,4 @@
 import { Module, forwardRef } from "@nestjs/common";
-import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { OutboundController } from "./controllers/outbound.controller";
@@ -12,13 +11,7 @@ import { ReturnModule } from "../return/return.module";
 @Module({
   imports: [ProductModule, forwardRef(() => OrderReturnModule), ReturnModule],
   controllers: [OutboundController],
-  providers: [
-    OutboundService,
-    PrismaService,
-    SupabaseService,
-    JwtTenantGuard,
-  ],
+  providers: [OutboundService, SupabaseService, JwtTenantGuard],
   exports: [OutboundService],
 })
 export class OutboundModule {}
-

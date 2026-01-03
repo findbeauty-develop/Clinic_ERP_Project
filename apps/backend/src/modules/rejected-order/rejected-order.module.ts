@@ -1,12 +1,10 @@
-import { Module } from '@nestjs/common';
-import { RejectedOrderService } from './rejected-order.service';
-import { RejectedOrderController } from './rejected-order.controller';
-import { PrismaService } from '../../core/prisma.service';
+import { Module } from "@nestjs/common";
+import { RejectedOrderService } from "./rejected-order.service";
+import { RejectedOrderController } from "./rejected-order.controller";
 
 @Module({
   controllers: [RejectedOrderController],
-  providers: [RejectedOrderService, PrismaService],
+  providers: [RejectedOrderService],
   exports: [RejectedOrderService],
 })
 export class RejectedOrderModule {}
-

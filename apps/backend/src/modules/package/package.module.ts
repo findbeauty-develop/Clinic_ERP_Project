@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { PackageController } from "./controllers/package.controller";
@@ -13,11 +12,9 @@ import { ProductModule } from "../product/product.module";
   providers: [
     PackageService,
     PackageRepository,
-    PrismaService,
     SupabaseService,
     JwtTenantGuard,
   ],
   exports: [PackageService],
 })
 export class PackageModule {}
-

@@ -5,7 +5,6 @@ import { ClinicsService } from "./services/clinics.service";
 import { MembersService } from "./services/members.service";
 import { ClinicsRepository } from "./repositories/clinics.repository";
 import { MembersRepository } from "./repositories/members.repository";
-import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { MemberLoginDto } from "./dto/member-login.dto";
 import { GoogleVisionService } from "./services/google-vision.service";
@@ -29,7 +28,6 @@ import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
     MembersService,
     ClinicsRepository,
     MembersRepository,
-    PrismaService,
     SupabaseService,
     MemberLoginDto,
     GoogleVisionService,

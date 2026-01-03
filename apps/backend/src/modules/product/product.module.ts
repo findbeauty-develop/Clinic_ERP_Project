@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { ProductsController } from "./controllers/products.controller";
@@ -13,11 +12,9 @@ import { SupplierModule } from "../supplier/supplier.module";
   providers: [
     ProductsService,
     ProductsRepository,
-    PrismaService,
     SupabaseService,
     JwtTenantGuard,
   ],
   exports: [ProductsService], // ← Qo'shildi (OutboundModule uchun)
 })
 export class ProductModule {}
-

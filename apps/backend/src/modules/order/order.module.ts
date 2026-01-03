@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { PrismaService } from "../../core/prisma.service";
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { OrderController } from "./controllers/order.controller";
@@ -12,14 +11,7 @@ import { MemberModule } from "../member/member.module";
 @Module({
   imports: [ProductModule, MemberModule], // Import MemberModule to use MessageService
   controllers: [OrderController, OrderWebhookController],
-  providers: [
-    OrderService,
-    OrderRepository,
-    PrismaService,
-    SupabaseService,
-    JwtTenantGuard,
-  ],
+  providers: [OrderService, OrderRepository, SupabaseService, JwtTenantGuard],
   exports: [OrderService],
 })
 export class OrderModule {}
-
