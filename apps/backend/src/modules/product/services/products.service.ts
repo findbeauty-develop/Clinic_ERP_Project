@@ -12,10 +12,46 @@ import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supp
 
 @Injectable()
 export class ProductsService {
+  // In-memory cache for getAllProducts
+  private productsCache = new Map<string, { data: any; timestamp: number }>();
+  private readonly CACHE_TTL = 30000; // 30 seconds
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly clinicSupplierHelper: ClinicSupplierHelperService
   ) {}
+
+  // Cache helper methods
+  private getCacheKey(tenantId: string): string {
+    return `products:${tenantId}`;
+  }
+
+  private getCachedData(tenantId: string): any | null {
+    const key = this.getCacheKey(tenantId);
+    const cached = this.productsCache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.timestamp > this.CACHE_TTL) {
+      this.productsCache.delete(key);
+      return null;
+    }
+
+    return cached.data;
+  }
+
+  private setCachedData(tenantId: string, data: any): void {
+    const key = this.getCacheKey(tenantId);
+    this.productsCache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
+  private clearProductsCache(tenantId: string): void {
+    const key = this.getCacheKey(tenantId);
+    this.productsCache.delete(key);
+  }
 
   async createProduct(dto: CreateProductDto, tenantId: string) {
     if (!tenantId) {
@@ -211,11 +247,12 @@ export class ProductsService {
               expiry_date: batch.expiry_date
                 ? new Date(batch.expiry_date)
                 : null,
-              alert_days: batch.alert_days && batch.alert_days.trim() !== ""
-                ? batch.alert_days
-                : product.alert_days && product.alert_days.trim() !== ""
-                ? product.alert_days
-                : null,
+              alert_days:
+                batch.alert_days && batch.alert_days.trim() !== ""
+                  ? batch.alert_days
+                  : product.alert_days && product.alert_days.trim() !== ""
+                  ? product.alert_days
+                  : null,
             } as any,
           });
         }
@@ -245,6 +282,9 @@ export class ProductsService {
         },
       });
     });
+
+    // Clear cache after product creation
+    this.clearProductsCache(tenantId);
   }
 
   async getProduct(productId: string, tenantId: string) {
@@ -340,17 +380,57 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    // Use executeWithRetry to handle connection errors automatically
+    // Check cache first
+    const cached = this.getCachedData(tenantId);
+    if (cached) {
+      return cached;
+    }
+
+    // Optimized query - select faqat kerakli field'lar (include o'rniga)
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma.product.findMany as any)({
         where: { tenant_id: tenantId },
-        include: {
-          returnPolicy: true,
+        select: {
+          id: true,
+          name: true,
+          brand: true,
+          barcode: true,
+          image_url: true,
+          category: true,
+          status: true,
+          current_stock: true,
+          min_stock: true,
+          purchase_price: true,
+          sale_price: true,
+          unit: true,
+          usage_capacity: true,
+          capacity_unit: true,
+          capacity_per_product: true,
+          storage: true,
+          expiry_months: true,
+          expiry_unit: true,
+          alert_days: true,
+          created_at: true,
+          returnPolicy: {
+            select: {
+              note: true,
+            },
+          },
           batches: {
+            select: {
+              id: true,
+              batch_no: true,
+              qty: true,
+              expiry_date: true,
+              storage: true,
+              alert_days: true,
+              created_at: true,
+            },
             orderBy: { created_at: "desc" },
+            take: 1, // Faqat eng so'nggi batch
           },
           productSupplier: {
-            include: {
+            select: {
               clinicSupplierManager: {
                 select: {
                   id: true,
@@ -367,35 +447,10 @@ export class ProductsService {
       });
     });
 
-    return products.map((product: any) => {
+    // Format products
+    const formattedProducts = products.map((product: any) => {
       const latestBatch = product.batches?.[0];
-
-      // Get supplier info from ProductSupplier -> ClinicSupplierManager
       const supplierManager = product.productSupplier?.clinicSupplierManager;
-      const companyName = supplierManager?.company_name ?? null;
-      const managerName = supplierManager?.name ?? null;
-
-      // 재고 부족 tag
-      const isLowStock = product.current_stock < product.min_stock;
-
-      // Batch'larni FEFO bo'yicha sortlash (유효기간 → 배치번호)
-      const sortedBatches = this.sortBatchesByFEFO(product.batches || []);
-
-      // Batch'larga expiry status qo'shish
-      const batchesWithStatus = sortedBatches.map((batch: any) => {
-        const isExpiringSoon = batch.expiry_date
-          ? this.calculateExpiringSoon(batch.expiry_date, batch.alert_days)
-          : false;
-        const daysUntilExpiry = batch.expiry_date
-          ? this.calculateDaysUntilExpiry(batch.expiry_date)
-          : null;
-
-        return {
-          ...batch,
-          isExpiringSoon,
-          daysUntilExpiry,
-        };
-      });
 
       return {
         id: product.id,
@@ -411,22 +466,27 @@ export class ProductsService {
         salePrice: product.sale_price,
         unit: product.unit,
         usageCapacity: product.usage_capacity,
-        usageCapacityUnit: product.capacity_unit, // usage_capacity uses capacity_unit as its unit
+        usageCapacityUnit: product.capacity_unit,
         capacityPerProduct: product.capacity_per_product,
         capacityUnit: product.capacity_unit,
-        supplierName: companyName, // Company name from ClinicSupplierManager
-        managerName: managerName, // Manager name from ClinicSupplierManager
-        supplierId: supplierManager?.id ?? null, // ClinicSupplierManager ID
+        supplierName: supplierManager?.company_name ?? null,
+        managerName: supplierManager?.name ?? null,
+        supplierId: supplierManager?.id ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
-        storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch yoki Product level
-        productStorage: product.storage ?? null, // Product level storage
+        storageLocation: latestBatch?.storage ?? product.storage ?? null,
+        productStorage: product.storage ?? null,
         memo: product.returnPolicy?.note ?? null,
         expiryMonths: product.expiry_months ?? null,
         expiryUnit: product.expiry_unit ?? null,
-        isLowStock, // ← Qo'shildi (재고 부족 tag)
-        batches: batchesWithStatus, // ← FEFO sorted va status bilan
+        isLowStock: product.current_stock < product.min_stock,
+        batches: product.batches || [],
       };
     });
+
+    // Cache'ga saqlash
+    this.setCachedData(tenantId, formattedProducts);
+
+    return formattedProducts;
   }
 
   async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {
@@ -493,7 +553,8 @@ export class ProductsService {
           capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
           usage_capacity: dto.usageCapacity ?? (existing as any).usage_capacity,
           storage: dto.storage !== undefined ? dto.storage : undefined, // Update storage
-          inbound_manager: dto.inboundManager !== undefined ? dto.inboundManager : undefined, // Update inbound manager
+          inbound_manager:
+            dto.inboundManager !== undefined ? dto.inboundManager : undefined, // Update inbound manager
         } as any,
       });
 
@@ -523,7 +584,7 @@ export class ProductsService {
       // ✅ ClinicSupplierManager table'ni yangilash va ProductSupplier'ni yangilash
       if (dto.suppliers && dto.suppliers.length > 0) {
         const supplier = dto.suppliers[0];
-        
+
         // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
         if (supplier.contact_name || supplier.contact_phone) {
           let clinicSupplierManagerId: string;
@@ -532,21 +593,23 @@ export class ProductsService {
           let existingClinicSupplierManager = null;
 
           if (supplier.contact_phone) {
-            existingClinicSupplierManager = await tx.clinicSupplierManager.findFirst({
-              where: {
-                tenant_id: tenantId,
-                phone_number: supplier.contact_phone,
-              },
-            });
+            existingClinicSupplierManager =
+              await tx.clinicSupplierManager.findFirst({
+                where: {
+                  tenant_id: tenantId,
+                  phone_number: supplier.contact_phone,
+                },
+              });
           }
 
           if (!existingClinicSupplierManager && supplier.business_number) {
-            existingClinicSupplierManager = await tx.clinicSupplierManager.findFirst({
-              where: {
-                tenant_id: tenantId,
-                business_number: supplier.business_number,
-              },
-            });
+            existingClinicSupplierManager =
+              await tx.clinicSupplierManager.findFirst({
+                where: {
+                  tenant_id: tenantId,
+                  business_number: supplier.business_number,
+                },
+              });
           }
 
           // 2. Agar topilsa, yangilash (UPDATE)
@@ -554,37 +617,56 @@ export class ProductsService {
             await tx.clinicSupplierManager.update({
               where: { id: existingClinicSupplierManager.id },
               data: {
-                company_name: supplier.company_name || existingClinicSupplierManager.company_name,
-                business_number: supplier.business_number || existingClinicSupplierManager.business_number,
-                company_phone: supplier.company_phone || existingClinicSupplierManager.company_phone,
-                company_email: supplier.company_email || existingClinicSupplierManager.company_email,
-                company_address: supplier.company_address || existingClinicSupplierManager.company_address,
-                name: supplier.contact_name || existingClinicSupplierManager.name,
-                phone_number: supplier.contact_phone || existingClinicSupplierManager.phone_number,
-                email1: supplier.contact_email || existingClinicSupplierManager.email1,
+                company_name:
+                  supplier.company_name ||
+                  existingClinicSupplierManager.company_name,
+                business_number:
+                  supplier.business_number ||
+                  existingClinicSupplierManager.business_number,
+                company_phone:
+                  supplier.company_phone ||
+                  existingClinicSupplierManager.company_phone,
+                company_email:
+                  supplier.company_email ||
+                  existingClinicSupplierManager.company_email,
+                company_address:
+                  supplier.company_address ||
+                  existingClinicSupplierManager.company_address,
+                name:
+                  supplier.contact_name || existingClinicSupplierManager.name,
+                phone_number:
+                  supplier.contact_phone ||
+                  existingClinicSupplierManager.phone_number,
+                email1:
+                  supplier.contact_email ||
+                  existingClinicSupplierManager.email1,
               },
             });
             clinicSupplierManagerId = existingClinicSupplierManager.id;
           } else {
             // 3. Agar topilmasa, yangi yaratish (CREATE)
-            const newClinicSupplierManager = await tx.clinicSupplierManager.create({
-              data: {
-                tenant_id: tenantId,
-                company_name: supplier.company_name || "공급업체 없음",
-                business_number: supplier.business_number || null,
-                company_phone: supplier.company_phone || null,
-                company_email: supplier.company_email || null,
-                company_address: supplier.company_address || null,
-                name: supplier.contact_name || "담당자 없음",
-                phone_number: supplier.contact_phone || "000-0000-0000",
-                email1: supplier.contact_email || null,
-                // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
-                linked_supplier_manager_id: supplier.supplier_id && 
-                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplier.supplier_id)
-                  ? supplier.supplier_id
-                  : null,
-              },
-            });
+            const newClinicSupplierManager =
+              await tx.clinicSupplierManager.create({
+                data: {
+                  tenant_id: tenantId,
+                  company_name: supplier.company_name || "공급업체 없음",
+                  business_number: supplier.business_number || null,
+                  company_phone: supplier.company_phone || null,
+                  company_email: supplier.company_email || null,
+                  company_address: supplier.company_address || null,
+                  name: supplier.contact_name || "담당자 없음",
+                  phone_number: supplier.contact_phone || "000-0000-0000",
+                  email1: supplier.contact_email || null,
+                  // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
+                  linked_supplier_manager_id:
+                    supplier.supplier_id &&
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                      supplier.supplier_id
+                    )
+                      ? supplier.supplier_id
+                      : null,
+                },
+              });
             clinicSupplierManagerId = newClinicSupplierManager.id;
           }
 
@@ -600,14 +682,16 @@ export class ProductsService {
               tenant_id: tenantId,
               product_id: id,
               clinic_supplier_manager_id: clinicSupplierManagerId,
-              purchase_price: supplier.purchase_price ?? dto.purchasePrice ?? null,
+              purchase_price:
+                supplier.purchase_price ?? dto.purchasePrice ?? null,
               moq: supplier.moq ?? null,
               lead_time_days: supplier.lead_time_days ?? null,
               note: supplier.note ?? null,
             },
             update: {
               clinic_supplier_manager_id: clinicSupplierManagerId,
-              purchase_price: supplier.purchase_price ?? dto.purchasePrice ?? null,
+              purchase_price:
+                supplier.purchase_price ?? dto.purchasePrice ?? null,
               moq: supplier.moq ?? null,
               lead_time_days: supplier.lead_time_days ?? null,
               note: supplier.note ?? null,
@@ -644,14 +728,18 @@ export class ProductsService {
               expiry_date: batch.expiry_date
                 ? new Date(batch.expiry_date)
                 : null,
-              alert_days: batch.alert_days && batch.alert_days.trim() !== "" 
-                ? batch.alert_days 
-                : null,
+              alert_days:
+                batch.alert_days && batch.alert_days.trim() !== ""
+                  ? batch.alert_days
+                  : null,
             } as any,
           });
         }
       }
     });
+
+    // Clear cache after product update
+    this.clearProductsCache(tenantId);
 
     return this.getProduct(id, tenantId);
   }
@@ -681,6 +769,9 @@ export class ProductsService {
       });
       await tx.product.delete({ where: { id } });
     });
+
+    // Clear cache after product deletion
+    this.clearProductsCache(tenantId);
 
     return { success: true };
   }
@@ -832,6 +923,9 @@ export class ProductsService {
       // Return the created batch directly (with batch_no)
       return batch;
     });
+
+    // Clear cache after batch creation
+    this.clearProductsCache(tenantId);
   }
 
   /**

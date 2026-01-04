@@ -4,12 +4,16 @@ import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import * as bodyParser from "body-parser";
 import * as express from "express";
+import * as compression from "compression";
 import { join } from "path";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: true });
+
+  // Compression middleware (gzip) - response'ni siqish
+  app.use(compression.default());
 
   app.use(
     bodyParser.json({

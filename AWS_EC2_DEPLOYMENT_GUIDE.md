@@ -14,8 +14,7 @@ Bu qo'llanma **AWS EC2 instance yaratishdan tortib, barcha servislarni deploy qi
 6. [Docker Image'larni Build/Pull Qilish](#6-docker-imagelarni-buildpull-qilish)
 7. [Container'larni Ishga Tushirish](#7-containerlarni-ishga-tushirish)
 8. [Verification va Testing](#8-verification-va-testing)
-9. [Nginx Reverse Proxy + SSL (Domain bilan)](#9-nginx-reverse-proxy--ssl-domain-bilan)
-10. [Troubleshooting](#10-troubleshooting)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -103,15 +102,15 @@ Agar oldin yaratgan bo'lsangiz, tanlang.
 
 Quyidagi **portlarni qo'shing:**
 
-| Type       | Protocol | Port Range | Source                 | Description          |
-| ---------- | -------- | ---------- | ---------------------- | -------------------- |
-| SSH        | TCP      | 22         | My IP (yoki 0.0.0.0/0) | SSH access           |
-| Custom TCP | TCP      | 3000       | 0.0.0.0/0              | Clinic Backend API   |
-| Custom TCP | TCP      | 3001       | 0.0.0.0/0              | Clinic Frontend      |
-| Custom TCP | TCP      | 3002       | 0.0.0.0/0              | Supplier Backend API |
-| Custom TCP | TCP      | 3003       | 0.0.0.0/0              | Supplier Frontend    |
-| Custom TCP | TCP      | 80         | 0.0.0.0/0              | HTTP (Nginx uchun)   |
-| Custom TCP | TCP      | 443        | 0.0.0.0/0              | HTTPS (Nginx uchun)  |
+| Type       | Protocol | Port Range | Source                 | Description                     |
+| ---------- | -------- | ---------- | ---------------------- | ------------------------------- |
+| SSH        | TCP      | 22         | My IP (yoki 0.0.0.0/0) | SSH access                      |
+| Custom TCP | TCP      | 3000       | 0.0.0.0/0              | Clinic Backend API              |
+| Custom TCP | TCP      | 3001       | 0.0.0.0/0              | Clinic Frontend                 |
+| Custom TCP | TCP      | 3002       | 0.0.0.0/0              | Supplier Backend API            |
+| Custom TCP | TCP      | 3003       | 0.0.0.0/0              | Supplier Frontend               |
+| Custom TCP | TCP      | 80         | 0.0.0.0/0              | HTTP (ixtiyoriy - Nginx uchun)  |
+| Custom TCP | TCP      | 443        | 0.0.0.0/0              | HTTPS (ixtiyoriy - Nginx uchun) |
 
 **Qo'shish:**
 
@@ -548,6 +547,88 @@ services:
 
 ## 6️⃣ Docker Image'larni Build/Pull Qilish
 
+### 📦 Local'da Docker Image Build va Push Qilish
+
+**Agar kod o'zgarishlari bo'lsa va Docker Hub'ga yangi image push qilish kerak bo'lsa:**
+
+#### 6.0.1 update-docker-images.sh Script Ishlatish (Tavsiya etiladi)
+
+```bash
+# Local mashinada (project root directory'da)
+chmod +x update-docker-images.sh
+./update-docker-images.sh
+```
+
+**Script sizdan qaysi servislarni rebuild qilishni so'raydi:**
+
+- Barcha servislar
+- Faqat Backend'lar
+- Faqat Frontend'lar
+- Yoki alohida servislar
+
+**Script avtomatik ravishda:**
+
+1. Docker Hub'ga login qiladi
+2. `linux/amd64` platformasi uchun build qiladi
+3. Docker Hub'ga push qiladi
+
+#### 6.0.2 Manual Build va Push
+
+**Agar script ishlamasa yoki manual qilmoqchi bo'lsangiz:**
+
+```bash
+# Local mashinada (project root directory'da)
+cd /Users/Development/Desktop/Clinic_ERP_Project
+
+# Docker Hub'ga login
+docker login
+
+# Buildx'ni tayyorlash
+docker buildx create --use --name multiarch-builder 2>/dev/null || docker buildx use multiarch-builder
+docker buildx inspect --bootstrap
+
+# EC2 IP'ni o'zgartiring
+export VPS_IP="54.237.247.19"  # ✅ O'z EC2 IP'ingizga o'zgartiring
+export BACKEND_URL="http://${VPS_IP}:3000"
+export SUPPLIER_BACKEND_URL="http://${VPS_IP}:3002"
+
+# Clinic Backend build va push
+docker buildx build \
+  --platform linux/amd64 \
+  -f apps/backend/Dockerfile \
+  -t findbeauty/clinic-backend:latest \
+  --push .
+
+# Clinic Frontend build va push
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL=${BACKEND_URL} \
+  -f apps/frontend/Dockerfile \
+  -t findbeauty/clinic-frontend:latest \
+  --push .
+
+# Supplier Backend build va push
+docker buildx build \
+  --platform linux/amd64 \
+  -f apps/supplier-backend/Dockerfile \
+  -t findbeauty/supplier-backend:latest \
+  --push .
+
+# Supplier Frontend build va push
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg NEXT_PUBLIC_API_URL=${SUPPLIER_BACKEND_URL} \
+  -f apps/supplier-frontend/Dockerfile \
+  -t findbeauty/supplier-frontend:latest \
+  --push .
+```
+
+**⏱️ Vaqt:** Har bir image uchun 3-10 daqiqa (internet tezligi va CPU'ga qarab)
+
+**✅ Build muvaffaqiyatli bo'lsa, Docker Hub'da yangi image'lar paydo bo'ladi.**
+
+---
+
 ### Variant A: Docker Hub'dan Pull (Tavsiya etiladi - Tez) ✅
 
 **✅ Agar image'lar allaqachon Docker Hub'da bo'lsa (QUICK_DEPLOY_GUIDE.md bo'yicha build qilingan):**
@@ -640,6 +721,8 @@ cat docker-compose.prod.yml
 nano docker-compose.prod.yml
 ```
 
+docker-compose -f docker-compose.prod.yml up -d frontend supplier-frontend --force-recreate
+
 **Image name'larini o'zgartiring:**
 
 ```yaml
@@ -661,7 +744,7 @@ services:
 
 ```bash
 # Eski container'lar bo'lsa, to'xtatib o'chirish
-docker compose -f docker-compose.prod.yml down
+docker-compose -f docker-compose.prod.yml down
 
 # yoki
 docker stop $(docker ps -aq) 2>/dev/null || true
@@ -697,7 +780,30 @@ docker-compose -f docker-compose.prod.yml restart backend
 
 docker compose -f docker-compose.prod.yml restart backend
 
-### 7.4 Log'larni Tekshirish
+### 7.4 Yangi Image'larni Pull va Container'larni Yangilash
+
+**Agar Docker Hub'da yangi image'lar push qilingan bo'lsa:**
+
+```bash
+cd ~/clinic-erp
+
+# Yangi image'larni pull qilish
+docker compose -f docker-compose.prod.yml pull
+
+# Container'larni yangilash (yangi image'larni ishlatish)
+docker compose -f docker-compose.prod.yml up -d --force-recreate
+
+# Yoki faqat bitta servisni yangilash (masalan, backend)
+docker-compose -f docker-compose.prod.yml pull backend
+docker-compose -f docker-compose.prod.yml up -d --force-recreate backend
+```
+
+**✅ Yangilash muvaffaqiyatli bo'lsa:**
+
+- Container'lar yangi image'lardan ishga tushadi
+- Eski container'lar avtomatik o'chiriladi
+
+### 7.5 Log'larni Tekshirish
 
 ```bash
 # Barcha log'larni ko'rish
@@ -715,6 +821,7 @@ docker logs -f supplier-erp-frontend-prod
 **✅ Success ko'rsatkichlari:**
 
 - Backend: `Nest application successfully started on port 3000`
+- Backend: `PrismaService initialized` (faqat 1 marta ko'rinishi kerak - performance optimizatsiyasi)
 - Frontend: `Ready on http://0.0.0.0:3001`
 
 ---
@@ -791,130 +898,7 @@ docker logs clinic-erp-backend-prod | tail -50
 
 ---
 
-## 9️⃣ Nginx Reverse Proxy + HTTP/2 + SSL
-
-HTTP/2 ni yoqish orqali browser so‘rovlarining “Queueing” vaqti yo‘qoladi va sahifa tezroq yuklanadi. Domen bo‘lmasa, bu bosqichni keyinroq bajarishingiz mumkin.
-
-### 9.1 Nginx o‘rnatish
-
-```bash
-sudo apt update
-sudo apt install -y nginx
-sudo rm -f /etc/nginx/sites-enabled/default
-```
-
-### 9.2 Upstream va server block
-
-```bash
-sudo tee /etc/nginx/sites-available/clinic-erp >/dev/null <<'EOF'
-map $http_upgrade $connection_upgrade {
-  default upgrade;
-  ''      close;
-}
-
-upstream clinic_backend      { server 127.0.0.1:3000; }
-upstream clinic_frontend     { server 127.0.0.1:3001; }
-upstream supplier_backend    { server 127.0.0.1:3002; }
-upstream supplier_frontend   { server 127.0.0.1:3003; }
-
-server {
-  listen 80 default_server;
-  server_name _;
-
-  location / {
-    proxy_pass http://clinic_frontend;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-  }
-
-  location /api/ {
-    proxy_pass http://clinic_backend/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  }
-
-  location /docs {
-    proxy_pass http://clinic_backend;
-  }
-
-  location /supplier/ {
-    proxy_pass http://supplier_frontend/;
-  }
-
-  location /supplier-api/ {
-    proxy_pass http://supplier_backend/;
-  }
-}
-EOF
-
-sudo ln -sf /etc/nginx/sites-available/clinic-erp /etc/nginx/sites-enabled/clinic-erp
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### 9.3 Domen va HTTPS (Certbot)
-
-1. Domeningizni EC2 IP’ga yo‘naltiring (A record)
-2. Certbot bilan HTTPS sozlang:
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d cafeu.uz -d www.cafeu.uz
-```
-
-3. Certbot yaratgan faylni tahrir qiling:
-
-```bash
-sudo nano /etc/nginx/sites-available/clinic-erp
-```
-
-HTTPS blokida quyidagilar bo‘lishi shart:
-
-```
-listen 443 ssl http2;
-listen [::]:443 ssl http2;
-```
-
-Fayl oxiridagi Certbot block’ini global redirect bilan almashtiring:
-
-```nginx
-server {
-  listen 80;
-  listen [::]:80;
-  server_name cafeu.uz www.cafeu.uz;
-  return 301 https://$host$request_uri;
-}
-```
-
-4. Saqlang va reload qiling:
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-5. HTTP/2 ishlayotganini tekshiring:
-
-```bash
-curl -I --http2 https://cafeu.uz
-```
-
-### 9.4 CloudFront (ixtiyoriy, global foydalanuvchilar uchun)
-
-1. AWS Console → CloudFront → Create Distribution
-2. Origin = `cafeu.uz`
-3. HTTPS Only, HTTP/3/2 enable, gzip/brotli yoqing
-4. DNS’da CloudFront CNAME qo‘shing
-
-Natija: Browser ↔ Nginx (HTTP/2) + Nginx ↔ container (localhost) → minimal latency.
-
----
-
-## 🔟 Troubleshooting
+## 9️⃣ Troubleshooting
 
 ### ❌ Error: "Cannot connect to EC2"
 
@@ -1016,10 +1000,13 @@ df -h
 
 ### Deployment
 
-- [ ] Docker image'lar pull qilindi (yoki build qilindi)
-- [ ] Container'lar ishga tushirildi (`docker compose up -d`)
+- [ ] **Local'da:** Kod o'zgarishlari commit va push qilindi
+- [ ] **Local'da:** Docker image'lar build va push qilindi (`./update-docker-images.sh` yoki manual)
+- [ ] **EC2'da:** Yangi image'lar pull qilindi (`docker compose pull`)
+- [ ] **EC2'da:** Container'lar yangilandi (`docker compose up -d --force-recreate`)
 - [ ] Container'lar running (`docker ps`)
 - [ ] Log'larda xatolar yo'q
+- [ ] Backend log'larida `PrismaService initialized` faqat 1 marta ko'rinadi (performance optimizatsiyasi)
 
 ### Verification
 
@@ -1040,11 +1027,7 @@ df -h
 - 🏭 **Supplier Frontend:** `http://YOUR_EC2_IP:3003`
 - 🔧 **Supplier Backend API:** `http://YOUR_EC2_IP:3002/docs`
 
-**Yoki domain bilan:**
-
-- 🏥 **Clinic Frontend:** `https://your-domain.com`
-- 🏭 **Supplier Frontend:** `https://supplier.your-domain.com`
-- 🔧 **Backend API:** `https://api.your-domain.com`
+**⚠️ Eslatma:** Agar Nginx va domain ishlatmoqchi bo'lsangiz, qo'shimcha sozlash kerak. Hozircha faqat IP orqali ishlatiladi.
 
 ---
 
@@ -1053,7 +1036,7 @@ df -h
 1. **Monitoring:** CloudWatch yoki boshqa monitoring tool qo'shing
 2. **Backup:** Database backup'larini muntazam qiling
 3. **Auto-scaling:** Load balancer va Auto Scaling Group sozlang (kerak bo'lsa)
-4. **Domain + SSL:** Nginx + Let's Encrypt sozlang (Section 9)
+4. **Domain + SSL (ixtiyoriy):** Agar kerak bo'lsa, Nginx va Let's Encrypt sozlash mumkin
 
 ---
 
@@ -1078,6 +1061,134 @@ df -h
 
 ---
 
-**Last Updated:** 2025-01-02  
+---
+
+## 🔄 Yangi O'zgarishlarni Deploy Qilish (Update Workflow)
+
+### Workflow Overview
+
+1. **Local'da kod o'zgarishlari qiling**
+2. **Git'ga commit va push qiling**
+3. **Docker image'larni build va push qiling**
+4. **EC2'da yangi image'larni pull qiling**
+5. **Container'larni restart qiling**
+
+### Step-by-Step Update Process
+
+#### Step 1: Local'da Kod O'zgarishlari
+
+```bash
+# Local mashinada
+cd /Users/Development/Desktop/Clinic_ERP_Project
+
+# O'zgarishlarni commit qilish
+git add .
+git commit -m "feat: your changes description"
+
+# Git'ga push qilish
+git push origin main  # yoki develop branch
+```
+
+#### Step 2: Docker Image'larni Build va Push
+
+```bash
+# update-docker-images.sh script ishlatish (tavsiya etiladi)
+./update-docker-images.sh
+
+# Yoki manual build (yuqorida ko'rsatilgan)
+```
+
+**Qaysi servislarni rebuild qilish kerak?**
+
+- **Backend o'zgarishlari:** Faqat backend'lar (Clinic + Supplier)
+- **Frontend o'zgarishlari:** Faqat frontend'lar (Clinic + Supplier)
+- **Database schema o'zgarishlari:** Faqat backend'lar + migration qilish kerak
+- **Environment variable o'zgarishlari:** Barcha servislar
+
+#### Step 3: EC2'da Yangilash
+
+```bash
+# SSH orqali EC2'ga kirish
+ssh -i ~/path/to/key.pem ubuntu@YOUR_EC2_IP
+
+# Project directory'ga o'tish
+cd ~/clinic-erp
+
+# Yangi image'larni pull qilish
+docker compose -f docker-compose.prod.yml pull
+
+# Container'larni yangilash
+docker-compose -f docker-compose.prod.yml up -d --force-recreate
+
+# Log'larni tekshirish
+docker-compose -f docker-compose.prod.yml logs -f backend
+```
+
+#### Step 4: Verification
+
+```bash
+# Container'lar holatini tekshirish
+docker ps
+
+# Backend log'larida PrismaService faqat 1 marta initialize bo'lishi kerak
+docker logs clinic-erp-backend-prod | grep "PrismaService initialized"
+
+# Health check
+curl http://localhost:3000/docs  # Backend Swagger
+curl http://localhost:3001      # Frontend
+```
+
+### ⚠️ Muhim Eslatmalar
+
+1. **PrismaModule O'zgarishlari:**
+
+   - `PrismaService` endi `PrismaModule` orqali global qilingan
+   - Backend log'larida `PrismaService initialized` faqat 1 marta ko'rinishi kerak
+   - Bu performance optimizatsiyasi - ko'p marta initialize bo'lmasligi kerak
+
+2. **Database Migration:**
+
+   - Agar database schema o'zgargan bo'lsa, migration qilish kerak
+   - EC2'da: `docker exec -it clinic-erp-backend-prod npx prisma migrate deploy`
+   - Yoki Supabase Dashboard'dan manual migration qilish
+
+3. **Environment Variables:**
+
+   - `.env` fayllar o'zgargan bo'lsa, container'larni restart qilish kerak
+   - Yoki `docker compose down` va `docker compose up -d` qilish
+
+4. **Frontend Build:**
+   - Frontend o'zgarishlari uchun `NEXT_PUBLIC_API_URL` to'g'ri bo'lishi kerak
+   - Build vaqtida environment variable'lar bake qilinadi
+   - Agar `NEXT_PUBLIC_API_URL` o'zgarsa, yangi build kerak
+
+### 🚀 Quick Update Script (EC2'da)
+
+EC2'da tez yangilash uchun script yarating:
+
+```bash
+# EC2'da
+nano ~/update-containers.sh
+
+# Script content:
+#!/bin/bash
+cd ~/clinic-erp
+echo "🔄 Pulling latest images..."
+docker compose -f docker-compose.prod.yml pull
+echo "🔄 Restarting containers..."
+docker compose -f docker-compose.prod.yml up -d --force-recreate
+echo "✅ Containers updated!"
+docker ps
+
+# Script'ni executable qilish
+chmod +x ~/update-containers.sh
+
+# Ishlatish
+~/update-containers.sh
+```
+
+---
+
+**Last Updated:** 2025-01-03  
 **Version:** 1.0.0  
 **Author:** Clinic ERP Development Team

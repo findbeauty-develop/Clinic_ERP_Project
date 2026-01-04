@@ -93,63 +93,56 @@ export default function InboundPage() {
   const [selectedStatus, setSelectedStatus] = useState("전체 상태");
   const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
 
-  // Fetch products for "빠른 입고" tab
-  useEffect(() => {
+  // Fetch products for "빠른 입고" tab - memoized to prevent duplicate requests
+  const fetchProducts = useCallback(async () => {
     if (activeTab !== "quick") return;
 
-    const fetchProducts = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { apiGet } = await import("../../lib/api");
-        const data = await apiGet<any[]>(`${apiUrl}/products`);
+    setLoading(true);
+    setError(null);
+    try {
+      const { apiGet } = await import("../../lib/api");
+      const data = await apiGet<any[]>(`${apiUrl}/products`);
 
-        // Helper function to format image URL (relative path -> full URL)
-        const formatImageUrl = (
-          imageUrl: string | null | undefined
-        ): string | null => {
-          if (!imageUrl) return null;
-          // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
-          if (
-            imageUrl.startsWith("http://") ||
-            imageUrl.startsWith("https://")
-          ) {
-            return imageUrl;
-          }
-          // Agar base64 bo'lsa, o'zgartirmaslik
-          if (imageUrl.startsWith("data:image")) {
-            return imageUrl;
-          }
-          // Relative path bo'lsa, apiUrl qo'shish
-          if (imageUrl.startsWith("/")) {
-            return `${apiUrl}${imageUrl}`;
-          }
+      // Helper function to format image URL (relative path -> full URL)
+      const formatImageUrl = (
+        imageUrl: string | null | undefined
+      ): string | null => {
+        if (!imageUrl) return null;
+        // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
+        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
           return imageUrl;
-        };
+        }
+        // Agar base64 bo'lsa, o'zgartirmaslik
+        if (imageUrl.startsWith("data:image")) {
+          return imageUrl;
+        }
+        // Relative path bo'lsa, apiUrl qo'shish
+        if (imageUrl.startsWith("/")) {
+          return `${apiUrl}${imageUrl}`;
+        }
+        return imageUrl;
+      };
 
-        // Format image URLs for all products
-        const formattedProducts: ProductListItem[] = data.map(
-          (product: any) => ({
-            ...product,
-            productImage: formatImageUrl(
-              product.productImage || product.image_url
-            ),
-          })
-        );
+      // Format image URLs for all products
+      const formattedProducts: ProductListItem[] = data.map((product: any) => ({
+        ...product,
+        productImage: formatImageUrl(product.productImage || product.image_url),
+      }));
 
-        setProducts(formattedProducts);
-      } catch (err) {
-        console.error("Failed to load products", err);
-        setError("제품 정보를 불러오지 못했습니다.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProducts();
+      setProducts(formattedProducts);
+    } catch (err) {
+      console.error("Failed to load products", err);
+      setError("제품 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
   }, [apiUrl, activeTab]);
 
-  // Fetch pending orders function
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Fetch pending orders function - memoized to prevent duplicate requests
   const fetchPendingOrders = useCallback(async () => {
     if (activeTab !== "pending") return;
 
@@ -183,10 +176,12 @@ export default function InboundPage() {
     }
   }, [apiUrl, activeTab]);
 
-  // Fetch pending orders for "입고 대기" tab
+  // Fetch pending orders for "입고 대기" tab - only when tab is active
   useEffect(() => {
-    fetchPendingOrders();
-  }, [fetchPendingOrders]);
+    if (activeTab === "pending") {
+      fetchPendingOrders();
+    }
+  }, [activeTab, fetchPendingOrders]);
 
   // Filter and sort products
   const filteredAndSortedProducts = useMemo(() => {
@@ -251,9 +246,7 @@ export default function InboundPage() {
   ]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(
-    filteredAndSortedProducts.length / itemsPerPage
-  );
+  const totalPages = Math.ceil(filteredAndSortedProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentProducts = filteredAndSortedProducts.slice(startIndex, endIndex);
@@ -383,7 +376,8 @@ export default function InboundPage() {
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  총 {filteredAndSortedProducts.length.toLocaleString()}개의 제품
+                  총 {filteredAndSortedProducts.length.toLocaleString()}개의
+                  제품
                 </h2>
               </div>
 
@@ -493,9 +487,26 @@ function ProductCard({
   );
   const isLowStock = product.currentStock <= product.minStock;
 
+  // Cache for batches to prevent duplicate requests
+  const batchesCacheRef = useRef<
+    Map<string, { data: ProductBatch[]; timestamp: number }>
+  >(new Map());
+  const CACHE_TTL = 30000; // 30 seconds
+
   useEffect(() => {
     const fetchBatches = async () => {
-      if (!isExpanded) return; // Faqat expanded bo'lganda fetch qil
+      if (!isExpanded) {
+        // Don't clear batches when collapsed, just don't fetch
+        return;
+      }
+
+      // Check cache first
+      const cacheKey = `${product.id}`;
+      const cached = batchesCacheRef.current.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        setBatches(cached.data);
+        return;
+      }
 
       setLoadingBatches(true);
       try {
@@ -504,6 +515,8 @@ function ProductCard({
           `${apiUrl}/products/${product.id}/batches`
         );
         setBatches(data);
+        // Update cache
+        batchesCacheRef.current.set(cacheKey, { data, timestamp: Date.now() });
       } catch (err) {
         console.error("Failed to load batches", err);
         setBatches([]);
@@ -645,12 +658,18 @@ function ProductCard({
       });
       setBatchQuantity(1);
 
-      // Refresh batches list
+      // Refresh batches list and update cache
       const { apiGet } = await import("../../lib/api");
       const updatedBatches = await apiGet<ProductBatch[]>(
         `${apiUrl}/products/${product.id}/batches`
       );
       setBatches(updatedBatches);
+      // Update cache
+      const cacheKey = `${product.id}`;
+      batchesCacheRef.current.set(cacheKey, {
+        data: updatedBatches,
+        timestamp: Date.now(),
+      });
 
       alert("배치가 성공적으로 추가되었습니다.");
     } catch (error: any) {

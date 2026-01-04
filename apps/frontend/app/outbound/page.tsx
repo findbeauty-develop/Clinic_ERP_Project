@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  Suspense,
+  useCallback,
+  useRef,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost, apiDelete } from "../../lib/api";
@@ -134,6 +141,136 @@ function OutboundPageContent() {
 
   // Manager name should be empty on page load - user must enter it manually
 
+  // Cache for products and packages to prevent duplicate requests
+  const productsCacheRef = useRef<{
+    data: ProductForOutbound[];
+    timestamp: number;
+    searchQuery: string;
+  } | null>(null);
+  const packagesCacheRef = useRef<{
+    data: PackageForOutbound[];
+    timestamp: number;
+  } | null>(null);
+  const CACHE_TTL = 30000; // 30 seconds
+
+  const fetchProducts = useCallback(async () => {
+    // Check cache first
+    const cacheKey = searchQuery || "";
+    if (
+      productsCacheRef.current &&
+      productsCacheRef.current.searchQuery === cacheKey &&
+      Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setProducts(productsCacheRef.current.data);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const searchParam = searchQuery
+        ? `?search=${encodeURIComponent(searchQuery)}`
+        : "";
+      const data = await apiGet<ProductForOutbound[]>(
+        `${apiUrl}/outbound/products${searchParam}`
+      );
+
+      // Format image URLs and filter out products with 0 stock
+      const formattedProducts = data
+        .map((product) => ({
+          ...product,
+          productImage: formatImageUrl(product.productImage),
+          // Filter out batches with 0 quantity
+          batches: product.batches.filter((batch) => batch.qty > 0),
+        }))
+        // Filter out products that have no batches with stock
+        .filter((product) => product.batches.length > 0);
+
+      setProducts(formattedProducts);
+      // Update cache
+      productsCacheRef.current = {
+        data: formattedProducts,
+        timestamp: Date.now(),
+        searchQuery: cacheKey,
+      };
+    } catch (err) {
+      console.error("Failed to load products", err);
+      setError("제품 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl, searchQuery]);
+
+  const fetchPackages = useCallback(async () => {
+    // Check cache first
+    if (
+      packagesCacheRef.current &&
+      Date.now() - packagesCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setPackages(packagesCacheRef.current.data);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
+
+      setPackages(data);
+
+      // Fetch expiry info for each package in parallel (for sorting)
+      const expiryPromises = data.map(async (pkg) => {
+        try {
+          const items = await apiGet<PackageItemForOutbound[]>(
+            `${apiUrl}/packages/${pkg.id}/items`
+          );
+
+          // Find earliest expiry date from all batches
+          let earliestExpiry: number | null = null;
+
+          items.forEach((item) => {
+            item.batches?.forEach((batch) => {
+              if (batch.expiryDate) {
+                const expiryDate = new Date(batch.expiryDate).getTime();
+                if (earliestExpiry === null || expiryDate < earliestExpiry) {
+                  earliestExpiry = expiryDate;
+                }
+              }
+            });
+          });
+
+          return { packageId: pkg.id, expiry: earliestExpiry };
+        } catch (err) {
+          console.error(
+            `Failed to load expiry info for package ${pkg.id}`,
+            err
+          );
+          return { packageId: pkg.id, expiry: null };
+        }
+      });
+
+      // Wait for all expiry info to load
+      const expiryResults = await Promise.all(expiryPromises);
+
+      // Update cache
+      const newCache: Record<string, number | null> = {};
+      expiryResults.forEach(({ packageId, expiry }) => {
+        newCache[packageId] = expiry;
+      });
+      setPackageExpiryCache(newCache);
+
+      // Update packages cache
+      packagesCacheRef.current = { data, timestamp: Date.now() };
+    } catch (err) {
+      console.error("Failed to load packages", err);
+      setError("패키지 정보를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl]);
+
   useEffect(() => {
     if (isPackageMode) {
       fetchPackages();
@@ -141,7 +278,7 @@ function OutboundPageContent() {
       fetchProducts();
     }
     setCurrentPage(1); // Reset to first page when search changes
-  }, [apiUrl, searchQuery, isPackageMode]);
+  }, [isPackageMode, fetchProducts, fetchPackages]);
 
   // Handle highlight from URL parameter (when navigating from package mode)
   useEffect(() => {
@@ -226,37 +363,6 @@ function OutboundPageContent() {
     itemsPerPage,
   ]);
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const searchParam = searchQuery
-        ? `?search=${encodeURIComponent(searchQuery)}`
-        : "";
-      const data = await apiGet<ProductForOutbound[]>(
-        `${apiUrl}/outbound/products${searchParam}`
-      );
-
-      // Format image URLs and filter out products with 0 stock
-      const formattedProducts = data
-        .map((product) => ({
-          ...product,
-          productImage: formatImageUrl(product.productImage),
-          // Filter out batches with 0 quantity
-          batches: product.batches.filter((batch) => batch.qty > 0),
-        }))
-        // Filter out products that have no batches with stock
-        .filter((product) => product.batches.length > 0);
-
-      setProducts(formattedProducts);
-    } catch (err) {
-      console.error("Failed to load products", err);
-      setError("제품 정보를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDeletePackage = async (
     packageId: string,
     packageName: string
@@ -277,89 +383,139 @@ function OutboundPageContent() {
         delete updated[packageId];
         return updated;
       });
-      // Refresh packages list
+      // Refresh packages list and clear cache
+      packagesCacheRef.current = null;
       fetchPackages();
     } catch (error: any) {
       alert(`패키지 삭제 실패: ${error.message || "알 수 없는 오류"}`);
     }
   };
 
-  const fetchPackages = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
+  // Cache for package items to prevent duplicate requests
+  const packageItemsCacheRef = useRef<
+    Map<string, { data: PackageItemForOutbound[]; timestamp: number }>
+  >(new Map());
+  const PACKAGE_ITEMS_CACHE_TTL = 30000; // 30 seconds
 
-      setPackages(data);
+  const fetchPackageItems = useCallback(
+    async (packageId: string) => {
+      // Check cache first
+      const cached = packageItemsCacheRef.current.get(packageId);
+      if (cached && Date.now() - cached.timestamp < PACKAGE_ITEMS_CACHE_TTL) {
+        setSelectedPackageItems(cached.data);
+        return;
+      }
 
-      // Fetch expiry info for each package in parallel (for sorting)
-      const expiryPromises = data.map(async (pkg) => {
-        try {
-          const items = await apiGet<PackageItemForOutbound[]>(
-            `${apiUrl}/packages/${pkg.id}/items`
-          );
-
-          // Find earliest expiry date from all batches
-          let earliestExpiry: number | null = null;
-
-          items.forEach((item) => {
-            item.batches?.forEach((batch) => {
-              if (batch.expiryDate) {
-                const expiryDate = new Date(batch.expiryDate).getTime();
-                if (earliestExpiry === null || expiryDate < earliestExpiry) {
-                  earliestExpiry = expiryDate;
-                }
-              }
-            });
-          });
-
-          return { packageId: pkg.id, expiry: earliestExpiry };
-        } catch (err) {
-          console.error(
-            `Failed to load expiry info for package ${pkg.id}`,
-            err
-          );
-          return { packageId: pkg.id, expiry: null };
-        }
-      });
-
-      // Wait for all expiry info to load
-      const expiryResults = await Promise.all(expiryPromises);
-
-      // Update cache
-      const newCache: Record<string, number | null> = {};
-      expiryResults.forEach(({ packageId, expiry }) => {
-        newCache[packageId] = expiry;
-      });
-      setPackageExpiryCache(newCache);
-    } catch (err) {
-      console.error("Failed to load packages", err);
-      setError("패키지 정보를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPackageItems = async (packageId: string) => {
-    try {
-      const data = await apiGet<PackageItemForOutbound[]>(
-        `${apiUrl}/packages/${packageId}/items`
-      );
-      setSelectedPackageItems(data);
-    } catch (err) {
-      console.error("Failed to load package items", err);
-      alert("패키지 구성품 정보를 불러오지 못했습니다.");
-    }
-  };
+      try {
+        const data = await apiGet<PackageItemForOutbound[]>(
+          `${apiUrl}/packages/${packageId}/items`
+        );
+        setSelectedPackageItems(data);
+        // Update cache
+        packageItemsCacheRef.current.set(packageId, {
+          data,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error("Failed to load package items", err);
+        alert("패키지 구성품 정보를 불러오지 못했습니다.");
+      }
+    },
+    [apiUrl]
+  );
 
   const handlePackageSelect = async (pkg: PackageForOutbound) => {
     await fetchPackageItems(pkg.id);
   };
 
+  // Helper function to update scheduled items with batch information
+  const updateScheduledItemsWithBatches = useCallback(
+    (itemsWithBatches: PackageItemForOutbound[], pkg: PackageForOutbound) => {
+      // Track items that couldn't be mapped to batches
+      const unmappedItems: string[] = [];
+
+      // Update scheduled items with real batch information
+      setScheduledItems((prev) => {
+        const updated = prev
+          .map((scheduledItem) => {
+            // Find matching optimistic item by packageId and productId
+            if (
+              scheduledItem.packageId === pkg.id &&
+              scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)
+            ) {
+              const itemWithBatch = itemsWithBatches.find(
+                (item) => item.productId === scheduledItem.productId
+              );
+
+              if (
+                itemWithBatch &&
+                itemWithBatch.batches &&
+                itemWithBatch.batches.length > 0
+              ) {
+                // Backend already sorted by FEFO + qty (kam qolgan birinchi)
+                // Find first batch with available stock
+                const availableBatch = itemWithBatch.batches.find(
+                  (b: any) => b.qty > 0
+                );
+
+                if (availableBatch) {
+                  return {
+                    ...scheduledItem,
+                    batchId: availableBatch.id,
+                    batchNo: availableBatch.batchNo,
+                    quantity: itemWithBatch.packageQuantity, // Use package quantity from API
+                  };
+                } else {
+                  // No available batch - mark for removal
+                  unmappedItems.push(itemWithBatch.productName);
+                  return null; // Will be filtered out
+                }
+              } else {
+                // No batch data - mark for removal
+                unmappedItems.push(scheduledItem.productName);
+                return null; // Will be filtered out
+              }
+            }
+            return scheduledItem;
+          })
+          .filter((item): item is ScheduledItem => item !== null); // Remove null items
+
+        // Check if package has any valid items left
+        const packageItemsLeft = updated.filter(
+          (item) => item.packageId === pkg.id
+        );
+
+        if (packageItemsLeft.length === 0) {
+          // No valid items for this package - remove from cart
+          setPackageCounts((prev) => {
+            const newCounts = { ...prev };
+            delete newCounts[pkg.id];
+            return newCounts;
+          });
+        }
+
+        return updated;
+      });
+
+      if (unmappedItems.length > 0) {
+        alert(
+          `다음 제품의 재고가 부족하여 패키지에서 제외되었습니다:\n${unmappedItems.join(", ")}`
+        );
+      }
+    },
+    [setScheduledItems, setPackageCounts]
+  );
+
   const handleAddPackageToOutbound = async (pkg: PackageForOutbound) => {
     // Get current package count
     const currentCount = packageCounts[pkg.id] || 0;
     const newCount = currentCount + 1;
+
+    // Update package count
+    setPackageCounts((prev) => ({
+      ...prev,
+      [pkg.id]: newCount,
+    }));
 
     // If package is not in cart yet, add items immediately (optimistic update)
     if (currentCount === 0 && pkg.items && pkg.items.length > 0) {
@@ -380,99 +536,34 @@ function OutboundPageContent() {
       setScheduledItems((prev) => [...optimisticItems, ...prev]);
 
       // Fetch batch information in background and update (non-blocking)
-      apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
-        .then((itemsWithBatches) => {
-          // Track items that couldn't be mapped to batches
-          const unmappedItems: string[] = [];
-
-          // Update scheduled items with real batch information
-          setScheduledItems((prev) => {
-            const updated = prev
-              .map((scheduledItem) => {
-                // Find matching optimistic item by packageId and productId
-                if (
-                  scheduledItem.packageId === pkg.id &&
-                  scheduledItem.batchId.startsWith(`temp-${pkg.id}-`)
-                ) {
-                  const itemWithBatch = itemsWithBatches.find(
-                    (item) => item.productId === scheduledItem.productId
-                  );
-
-                  if (
-                    itemWithBatch &&
-                    itemWithBatch.batches &&
-                    itemWithBatch.batches.length > 0
-                  ) {
-                    // Backend already sorted by FEFO + qty (kam qolgan birinchi)
-                    // Find first batch with available stock
-                    const availableBatch = itemWithBatch.batches.find(
-                      (b: any) => b.qty > 0
-                    );
-
-                    if (availableBatch) {
-                      return {
-                        ...scheduledItem,
-                        batchId: availableBatch.id,
-                        batchNo: availableBatch.batchNo,
-                        quantity: itemWithBatch.packageQuantity, // Use package quantity from API
-                      };
-                    } else {
-                      // No available batch - mark for removal
-                      unmappedItems.push(itemWithBatch.productName);
-                      return null; // Will be filtered out
-                    }
-                  } else {
-                    // No batch data - mark for removal
-                    unmappedItems.push(scheduledItem.productName);
-                    return null; // Will be filtered out
-                  }
-                }
-                return scheduledItem;
-              })
-              .filter((item): item is ScheduledItem => item !== null); // Remove null items
-
-            // Check if package has any valid items left
-            const packageItemsLeft = updated.filter(
-              (item) => item.packageId === pkg.id
-            );
-
-            if (packageItemsLeft.length === 0) {
-              // No valid items for this package - remove from cart
-              setPackageCounts((prev) => {
-                const newCounts = { ...prev };
-                delete newCounts[pkg.id];
-                return newCounts;
-              });
-            }
-
-            return updated;
+      // Check cache first, then fetch if needed
+      const cached = packageItemsCacheRef.current.get(pkg.id);
+      if (cached && Date.now() - cached.timestamp < PACKAGE_ITEMS_CACHE_TTL) {
+        // Use cached data
+        const itemsWithBatches = cached.data;
+        updateScheduledItemsWithBatches(itemsWithBatches, pkg);
+      } else {
+        // Fetch and cache
+        apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
+          .then((itemsWithBatches) => {
+            // Update cache
+            packageItemsCacheRef.current.set(pkg.id, {
+              data: itemsWithBatches,
+              timestamp: Date.now(),
+            });
+            updateScheduledItemsWithBatches(itemsWithBatches, pkg);
+          })
+          .catch((err) => {
+            console.error("Failed to load package items for outbound", err);
           });
-
-          if (unmappedItems.length > 0) {
-            alert(
-              `다음 제품의 재고가 부족하여 패키지에서 제외되었습니다:\n${unmappedItems.join(", ")}`
-            );
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to load package batch info", err);
-        });
-    }
-
-    // Update package count
-    setPackageCounts((prev) => ({
-      ...prev,
-      [pkg.id]: newCount,
-    }));
-
-    // If package is already in cart, duplicate the items
-    if (currentCount > 0 && pkg.items && pkg.items.length > 0) {
-      // Fetch batch information and add duplicate items
-      try {
-        const itemsWithBatches = await apiGet<PackageItemForOutbound[]>(
-          `${apiUrl}/packages/${pkg.id}/items`
-        );
-
+      }
+    } else if (currentCount > 0 && pkg.items && pkg.items.length > 0) {
+      // If package is already in cart, duplicate the items
+      // Check cache first
+      const cached = packageItemsCacheRef.current.get(pkg.id);
+      if (cached && Date.now() - cached.timestamp < PACKAGE_ITEMS_CACHE_TTL) {
+        // Use cached data
+        const itemsWithBatches = cached.data;
         const newItems: ScheduledItem[] = [];
         itemsWithBatches.forEach((itemWithBatch) => {
           if (itemWithBatch.batches && itemWithBatch.batches.length > 0) {
@@ -500,8 +591,49 @@ function OutboundPageContent() {
         if (newItems.length > 0) {
           setScheduledItems((prev) => [...newItems, ...prev]);
         }
-      } catch (err) {
-        console.error("Failed to load package items", err);
+      } else {
+        // Fetch batch information and add duplicate items
+        try {
+          const itemsWithBatches = await apiGet<PackageItemForOutbound[]>(
+            `${apiUrl}/packages/${pkg.id}/items`
+          );
+
+          // Update cache
+          packageItemsCacheRef.current.set(pkg.id, {
+            data: itemsWithBatches,
+            timestamp: Date.now(),
+          });
+
+          const newItems: ScheduledItem[] = [];
+          itemsWithBatches.forEach((itemWithBatch) => {
+            if (itemWithBatch.batches && itemWithBatch.batches.length > 0) {
+              const availableBatch = itemWithBatch.batches.find(
+                (b: any) => b.qty > 0
+              );
+
+              if (availableBatch) {
+                newItems.push({
+                  productId: itemWithBatch.productId,
+                  productName: itemWithBatch.productName || "",
+                  batchId: availableBatch.id,
+                  batchNo: availableBatch.batchNo,
+                  quantity: itemWithBatch.packageQuantity,
+                  unit: itemWithBatch.unit,
+                  packageId: pkg.id,
+                  packageName: pkg.name,
+                  isPackageItem: true,
+                });
+              }
+            }
+          });
+
+          // Add duplicate items to scheduled items
+          if (newItems.length > 0) {
+            setScheduledItems((prev) => [...newItems, ...prev]);
+          }
+        } catch (err) {
+          console.error("Failed to load package items", err);
+        }
       }
     }
   };

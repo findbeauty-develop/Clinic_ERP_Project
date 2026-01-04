@@ -136,6 +136,52 @@ export default function OrderPage() {
   // Current logged-in member name (read-only)
   const [orderManagerName, setOrderManagerName] = useState("");
 
+  // Cache invalidation helper
+  const invalidateCache = useCallback((cacheType?: "products" | "orders" | "rejectedOrders" | "draft" | "all") => {
+    if (!cacheType || cacheType === "all") {
+      productsCacheRef.current = null;
+      ordersCacheRef.current = null;
+      rejectedOrdersCacheRef.current = null;
+      draftCacheRef.current = null;
+    } else {
+      switch (cacheType) {
+        case "products":
+          productsCacheRef.current = null;
+          break;
+        case "orders":
+          ordersCacheRef.current = null;
+          break;
+        case "rejectedOrders":
+          rejectedOrdersCacheRef.current = null;
+          break;
+        case "draft":
+          draftCacheRef.current = null;
+          break;
+      }
+    }
+  }, []);
+
+  // Cache for products, orders, rejected orders, and draft to prevent duplicate requests
+  const productsCacheRef = useRef<{
+    data: ProductWithRisk[];
+    timestamp: number;
+  } | null>(null);
+  const ordersCacheRef = useRef<{
+    data: any[];
+    timestamp: number;
+    searchQuery: string;
+  } | null>(null);
+  const rejectedOrdersCacheRef = useRef<{
+    data: any[];
+    timestamp: number;
+  } | null>(null);
+  const draftCacheRef = useRef<{
+    data: DraftResponse | null;
+    timestamp: number;
+    sessionId: string;
+  } | null>(null);
+  const CACHE_TTL = 30000; // 30 seconds
+
   // Session ID'ni client-side'da initialize qilish (hydration error'dan qochish uchun)
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -202,6 +248,17 @@ export default function OrderPage() {
 
   // Products olish - Backend에서 모든 제품 가져오기
   const fetchProducts = useCallback(async () => {
+    // Check cache first
+    if (
+      productsCacheRef.current &&
+      Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setProducts(productsCacheRef.current.data);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -209,6 +266,8 @@ export default function OrderPage() {
       const data = await apiGet<any[]>(`${apiUrl}/order/products`);
       console.log("Fetched products:", data.length);
       setProducts(data);
+      // Update cache
+      productsCacheRef.current = { data, timestamp: Date.now() };
     } catch (err) {
       console.error("Failed to load products", err);
       setError("제품 목록을 불러오지 못했습니다.");
@@ -249,6 +308,29 @@ export default function OrderPage() {
   const fetchDraft = useCallback(async () => {
     if (!sessionId) return; // SessionId tayyor bo'lmaguncha kutish
 
+    // Check cache first
+    if (
+      draftCacheRef.current &&
+      draftCacheRef.current.sessionId === sessionId &&
+      Date.now() - draftCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      const cachedData = draftCacheRef.current.data;
+      if (cachedData) {
+        setDraft(cachedData);
+        // Quantities'ni yangilash (itemId va productId ikkalasini ham)
+        const newQuantities: Record<string, number> = {};
+        cachedData.items?.forEach((item: DraftItem) => {
+          const itemId = item.batchId
+            ? `${item.productId}-${item.batchId}`
+            : item.productId;
+          newQuantities[itemId] = item.quantity; // itemId bo'yicha
+          newQuantities[item.productId] = item.quantity; // productId bo'yicha (backward compatibility)
+        });
+        setQuantities(newQuantities);
+      }
+      return;
+    }
+
     setDraftLoading(true);
     try {
       const token =
@@ -267,6 +349,13 @@ export default function OrderPage() {
 
       const data = await response.json();
       setDraft(data);
+
+      // Update cache
+      draftCacheRef.current = {
+        data,
+        timestamp: Date.now(),
+        sessionId,
+      };
 
       // Quantities'ni yangilash (itemId va productId ikkalasini ham)
       const newQuantities: Record<string, number> = {};
@@ -323,6 +412,18 @@ export default function OrderPage() {
 
   // Orders olish (History uchun)
   const fetchOrders = useCallback(async () => {
+    const cacheKey = debouncedOrderSearchQuery.trim() || "";
+    // Check cache first
+    if (
+      ordersCacheRef.current &&
+      ordersCacheRef.current.searchQuery === cacheKey &&
+      Date.now() - ordersCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setOrders(ordersCacheRef.current.data);
+      setOrdersLoading(false);
+      return;
+    }
+
     setOrdersLoading(true);
     try {
       const token =
@@ -353,7 +454,14 @@ export default function OrderPage() {
         "Order statuses:",
         data.map((o: any) => ({ orderNo: o.orderNo, status: o.status }))
       );
-      setOrders(data || []);
+      const ordersData = data || [];
+      setOrders(ordersData);
+      // Update cache
+      ordersCacheRef.current = {
+        data: ordersData,
+        timestamp: Date.now(),
+        searchQuery: cacheKey,
+      };
     } catch (err) {
       console.error("Failed to load orders", err);
       setOrders([]);
@@ -364,12 +472,27 @@ export default function OrderPage() {
 
   // Fetch rejected orders
   const fetchRejectedOrders = useCallback(async () => {
+    // Check cache first
+    if (
+      rejectedOrdersCacheRef.current &&
+      Date.now() - rejectedOrdersCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setRejectedOrders(rejectedOrdersCacheRef.current.data);
+      return;
+    }
+
     try {
       const rejectedData = await apiGet<any[]>(
         `${apiUrl}/order/rejected-orders`
       );
       console.log("Fetched rejected orders:", rejectedData);
-      setRejectedOrders(rejectedData || []);
+      const rejectedOrdersData = rejectedData || [];
+      setRejectedOrders(rejectedOrdersData);
+      // Update cache
+      rejectedOrdersCacheRef.current = {
+        data: rejectedOrdersData,
+        timestamp: Date.now(),
+      };
     } catch (err) {
       console.error("Failed to load rejected orders", err);
       setRejectedOrders([]);
@@ -411,6 +534,8 @@ export default function OrderPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && activeTab === "history") {
+        invalidateCache("orders");
+        invalidateCache("rejectedOrders");
         fetchOrders();
         fetchRejectedOrders();
       }
@@ -418,6 +543,8 @@ export default function OrderPage() {
 
     const handleFocus = () => {
       if (activeTab === "history") {
+        invalidateCache("orders");
+        invalidateCache("rejectedOrders");
         fetchOrders();
         fetchRejectedOrders();
       }
@@ -430,7 +557,7 @@ export default function OrderPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [activeTab, fetchOrders, fetchRejectedOrders]);
+  }, [activeTab, fetchOrders, fetchRejectedOrders, invalidateCache]);
 
   // Search products
   useEffect(() => {
@@ -724,7 +851,10 @@ export default function OrderPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => fetchProducts()}
+                onClick={() => {
+                  invalidateCache("products");
+                  fetchProducts();
+                }}
                 disabled={loading}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 title="제품 목록 새로고침"
@@ -2298,6 +2428,8 @@ export default function OrderPage() {
                             // Local draft'ni tozalash
                             setDraft(null);
                             setQuantities({});
+                            // Invalidate caches
+                            invalidateCache("all");
                             // Order history'ni yangilash va tab'ga o'tish
                             setActiveTab("history");
                             await fetchOrders();

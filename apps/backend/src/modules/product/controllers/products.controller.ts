@@ -8,6 +8,7 @@ import {
   Param,
   Put,
   Delete,
+  Header,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { CreateProductDto, CreateBatchDto } from "../dto/create-product.dto";
@@ -73,6 +74,7 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "List all products for current tenant" })
+  @Header("Cache-Control", "public, max-age=30") // Browser cache 30 seconds
   getAllProducts(@Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -94,7 +96,9 @@ export class ProductsController {
   @Get("warehouses/list")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Get all warehouse locations with categories and items" })
+  @ApiOperation({
+    summary: "Get all warehouse locations with categories and items",
+  })
   getWarehouses(@Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -115,7 +119,12 @@ export class ProductsController {
     if (!name || !name.trim()) {
       throw new BadRequestException("창고 이름은 필수입니다");
     }
-    return this.productsService.addWarehouseLocation(tenantId, name.trim(), category, items || []);
+    return this.productsService.addWarehouseLocation(
+      tenantId,
+      name.trim(),
+      category,
+      items || []
+    );
   }
 
   @Get(":id/batches")
