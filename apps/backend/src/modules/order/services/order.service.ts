@@ -67,13 +67,6 @@ export class OrderService {
       const supplierName = supplierManager?.company_name ?? null;
       const managerName = supplierManager?.name ?? null;
 
-      // 🔍 DEBUG: Log qo'shish
-      this.logger.log(
-        `🔍 Product: ${product.name}, Supplier: ${
-          supplierName || "none"
-        }, Manager: ${managerName || "none"}`
-      );
-
       return {
         id: product.id,
         productName: product.name,
@@ -389,9 +382,6 @@ export class OrderService {
       // Agar `PUT` 404 qaytarsa va `POST` fallback ishlatilsa, quantity qo'shilmasligi kerak
       const oldQty = items[existingItemIndex].quantity;
       const newQty = dto.quantity; // To'g'ridan-to'g'ri o'rnatish (qo'shmaslik)
-      this.logger.log(
-        `🔄 Updating existing item: ${dto.productId} - Old: ${oldQty}, Setting to: ${dto.quantity}, New: ${newQty}`
-      );
 
       items[existingItemIndex] = {
         ...items[existingItemIndex],
@@ -403,21 +393,7 @@ export class OrderService {
     } else {
       // Yangi item qo'shish
       items.push(newItem);
-      this.logger.log(
-        `➕ Added NEW item: ${dto.productId} - Qty: ${dto.quantity}`
-      );
     }
-
-    this.logger.log(`📝 Draft now has ${items.length} unique items`);
-    this.logger.log(`📊 Total quantities by product:`);
-    const qtyByProduct: Record<string, number> = {};
-    items.forEach((item: any) => {
-      qtyByProduct[item.productId] =
-        (qtyByProduct[item.productId] || 0) + item.quantity;
-    });
-    Object.entries(qtyByProduct).forEach(([prodId, qty]) => {
-      this.logger.log(`  - ${prodId}: ${qty}개`);
-    });
 
     // Total amount hisoblash
     const totalAmount = items.reduce(
@@ -429,31 +405,11 @@ export class OrderService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + this.DRAFT_EXPIRY_HOURS);
 
-    this.logger.log(
-      `🔍 DEBUG: Saving draft - sessionId: ${sessionId}, tenantId: ${tenantId}, items count: ${items.length}`
-    );
-    this.logger.log(
-      `🔍 DEBUG: Items to save: ${JSON.stringify(
-        items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          quantity: i.quantity,
-          supplierId: i.supplierId,
-        }))
-      )}`
-    );
-
     const updatedDraft = await this.orderRepository.createOrUpdateDraft(
       sessionId,
       tenantId,
       { items, total_amount: totalAmount },
       expiresAt
-    );
-
-    this.logger.log(
-      `🔍 DEBUG: Draft saved successfully - items count in saved draft: ${
-        Array.isArray(updatedDraft.items) ? updatedDraft.items.length : 0
-      }`
     );
 
     // Yangi qo'shilgan item'ni highlight qilish
@@ -475,34 +431,16 @@ export class OrderService {
       throw new BadRequestException("Tenant ID and Session ID are required");
     }
 
-    this.logger.log(
-      `🔍 DEBUG: updateDraftItem - sessionId: ${sessionId}, tenantId: ${tenantId}, itemId: ${itemId}`
-    );
-
     const draft = await this.orderRepository.findDraftBySession(
       sessionId,
       tenantId
     );
 
     if (!draft) {
-      this.logger.warn(
-        `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
-      );
       throw new NotFoundException("Draft not found");
     }
 
     const items = Array.isArray(draft.items) ? draft.items : [];
-
-    this.logger.log(`🔍 DEBUG: Retrieved draft - items count: ${items.length}`);
-    this.logger.log(
-      `🔍 DEBUG: Draft items: ${JSON.stringify(
-        items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          quantity: i.quantity,
-        }))
-      )}`
-    );
 
     // Item'ni topish
     const itemIndex = items.findIndex((item: any) => item.id === itemId);
@@ -510,11 +448,7 @@ export class OrderService {
     if (itemIndex < 0) {
       // Debug: draft'dagi barcha item ID'larni ko'rsatish
       const availableItemIds = items.map((item: any) => item.id);
-      this.logger.warn(
-        `Item not found. Looking for: ${itemId}, Available items: ${JSON.stringify(
-          availableItemIds
-        )}`
-      );
+
       throw new NotFoundException(
         `Item not found in draft. Looking for: ${itemId}, Available item IDs: ${availableItemIds.join(
           ", "
@@ -683,9 +617,6 @@ export class OrderService {
     // Items'ni DTO'dan yoki draft'dan olish
     if (dto.items && dto.items.length > 0) {
       // Frontend'dan items berilgan - local state'dan
-      this.logger.log(
-        `🔍 DEBUG: createOrder - Using items from request body (${dto.items.length} items)`
-      );
       items = dto.items.map((item) => ({
         id: item.batchId ? `${item.productId}-${item.batchId}` : item.productId,
         productId: item.productId,
@@ -697,35 +628,16 @@ export class OrderService {
       }));
     } else if (sessionId) {
       // Draft'dan olish (eski logic)
-      this.logger.log(
-        `🔍 DEBUG: createOrder - sessionId: ${sessionId}, tenantId: ${tenantId}`
-      );
-
       const draft = await this.orderRepository.findDraftBySession(
         sessionId,
         tenantId
       );
 
       if (!draft) {
-        this.logger.warn(
-          `🔍 DEBUG: Draft not found - sessionId: ${sessionId}, tenantId: ${tenantId}`
-        );
         throw new NotFoundException("Draft not found");
       }
 
       items = Array.isArray(draft.items) ? draft.items : [];
-
-      this.logger.log(`🔍 DEBUG: Total items from draft: ${items.length}`);
-      this.logger.log(
-        `🔍 DEBUG: Draft items: ${JSON.stringify(
-          items.map((i: any) => ({
-            id: i.id,
-            productId: i.productId,
-            supplierId: i.supplierId,
-            quantity: i.quantity,
-          }))
-        )}`
-      );
     } else {
       throw new BadRequestException("Either items or sessionId is required");
     }
@@ -786,17 +698,6 @@ export class OrderService {
     }
 
     // Supplier bo'yicha guruhlash
-    this.logger.log(
-      `🔍 DEBUG: Starting grouping, total items: ${items.length}`
-    );
-    items.forEach((item: any, idx: number) => {
-      this.logger.log(
-        `🔍 DEBUG: Item ${idx + 1}: productId=${item.productId}, supplierId=${
-          item.supplierId || "unknown"
-        }, quantity=${item.quantity}`
-      );
-    });
-
     const groupedBySupplier: Record<string, any> = {};
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
@@ -809,17 +710,6 @@ export class OrderService {
       }
       groupedBySupplier[supplierId].items.push(item);
       groupedBySupplier[supplierId].totalAmount += item.totalPrice;
-    }
-
-    this.logger.log(
-      `🔍 DEBUG: Grouped into ${
-        Object.keys(groupedBySupplier).length
-      } suppliers`
-    );
-    for (const [supplierId, group] of Object.entries(groupedBySupplier)) {
-      this.logger.log(
-        `🔍 DEBUG: Supplier ${supplierId}: ${group.items.length} items`
-      );
     }
 
     // Har bir supplier uchun alohida order yaratish
@@ -872,10 +762,6 @@ export class OrderService {
 
       createdOrders.push(
         await this.orderRepository.findById(order.id, tenantId)
-      );
-
-      this.logger.log(
-        `🔍 DEBUG: Sending order ${order.order_no} to supplier ${supplierId} with ${group.items.length} items`
       );
 
       // Send order to supplier-backend (SupplierOrder table)
@@ -1448,13 +1334,6 @@ export class OrderService {
     clinicManagerName?: string
   ): Promise<void> {
     try {
-      if (!order.supplier_id) {
-        this.logger.warn(
-          `Order ${order.order_no} has no supplier_id, skipping supplier notification`
-        );
-        return;
-      }
-
       // Get ClinicSupplierManager and linked Supplier info
       // Note: order.supplier_id now contains clinic_supplier_manager_id
       const clinicSupplierManager = await (
@@ -1480,22 +1359,8 @@ export class OrderService {
         },
       });
 
-      if (!clinicSupplierManager) {
-        this.logger.warn(
-          `ClinicSupplierManager ${order.supplier_id} not found`
-        );
-        return;
-      }
-
       // Get platform supplier (if linked)
       const supplier = clinicSupplierManager.linkedManager?.supplier;
-
-      if (!supplier || !supplier.tenant_id) {
-        this.logger.log(
-          `ClinicSupplierManager ${order.supplier_id} is not linked to platform supplier, notification will use manual contact info`
-        );
-        // Continue with manual contact flow (SMS to clinicSupplierManager.phone_number)
-      }
 
       // Get ProductSupplier to find clinic_supplier_manager_id
       // IMPORTANT: Check ALL items to find the correct clinic_supplier_manager_id
@@ -1505,22 +1370,6 @@ export class OrderService {
       let supplierProductRecord: any = null;
 
       if (group.items && group.items.length > 0) {
-        this.logger.log(
-          `🔍 DEBUG: sendOrderToSupplier - group.items.length: ${group.items.length}`
-        );
-        this.logger.log(
-          `🔍 DEBUG: sendOrderToSupplier - First item: ${JSON.stringify(
-            group.items[0]
-          )}`
-        );
-        if (group.items.length > 1) {
-          this.logger.log(
-            `🔍 DEBUG: sendOrderToSupplier - Last item: ${JSON.stringify(
-              group.items[group.items.length - 1]
-            )}`
-          );
-        }
-
         // Collect all SupplierProducts for all items in this order
         // IMPORTANT: Use item.supplierId (from draft) instead of order.supplier_id
         const supplierManagerIdCounts = new Map<string, number>();
@@ -1528,10 +1377,6 @@ export class OrderService {
 
         for (const item of group.items) {
           if (item.productId) {
-            this.logger.log(
-              `🔍 Checking item: productId=${item.productId}, order.supplier_id=${order.supplier_id}`
-            );
-
             const productSupplier = await (
               this.prisma as any
             ).productSupplier.findFirst({
@@ -1566,10 +1411,6 @@ export class OrderService {
                 productSupplier.clinicSupplierManager;
               const linkedManager = clinicSupplierManager?.linkedManager;
 
-              this.logger.log(
-                `✅ Found ProductSupplier: id=${productSupplier.id}, clinic_supplier_manager_id=${productSupplier.clinic_supplier_manager_id}, company_name=${clinicSupplierManager?.company_name}, linkedManager=${linkedManager?.id}`
-              );
-
               // Use first product as default
               if (!supplierProductRecord) {
                 supplierProductRecord = productSupplier;
@@ -1589,22 +1430,9 @@ export class OrderService {
                   productSupplier.clinic_supplier_manager_id,
                   productSupplier
                 );
-                this.logger.log(
-                  `📊 Item ${
-                    item.productId
-                  }: Found clinic_supplier_manager_id ${
-                    productSupplier.clinic_supplier_manager_id
-                  } (count: ${count + 1})`
-                );
               } else {
-                this.logger.log(
-                  `⚠️ Item ${item.productId}: No clinic_supplier_manager_id found`
-                );
               }
             } else {
-              this.logger.warn(
-                `❌ Item ${item.productId}: No ProductSupplier found`
-              );
             }
           }
         }
@@ -1619,15 +1447,6 @@ export class OrderService {
           }
         }
 
-        this.logger.log(
-          `ClinicSupplierManager ID counts: ${JSON.stringify(
-            Array.from(supplierManagerIdCounts.entries())
-          )}`
-        );
-        this.logger.log(
-          `Most common clinic_supplier_manager_id: ${mostCommonManagerId} (count: ${maxCount})`
-        );
-
         // Variant 1: If clinic_supplier_manager_id exists and has linkedManager
         if (mostCommonManagerId) {
           const productSupplier =
@@ -1637,19 +1456,11 @@ export class OrderService {
 
           if (linkedManager) {
             supplierManager = linkedManager;
-            this.logger.log(
-              `✅ Found SupplierManager via linkedManager: ${supplierManager.id}, name: ${supplierManager.name}, phone: ${supplierManager.phone_number} (used in ${maxCount} products)`
-            );
+
             supplierProductRecord = productSupplier;
           } else {
-            this.logger.log(
-              `ℹ️  ClinicSupplierManager ${mostCommonManagerId} is a manual supplier (not linked to platform)`
-            );
           }
         } else {
-          this.logger.log(
-            `⚠️ No clinic_supplier_manager_id found in any ProductSupplier`
-          );
         }
 
         // Variant 2: If no linkedManager, try to find by contact_phone from ClinicSupplierManager
@@ -1665,13 +1476,6 @@ export class OrderService {
               status: "ACTIVE",
             },
           });
-
-          if (supplierManager) {
-            this.logger.log(
-              `Found SupplierManager by contact_phone: ${supplierManager.id}, could potentially link ClinicSupplierManager`
-            );
-            // Note: We don't automatically link here, that should be done via claim flow
-          }
         }
 
         // Variant 3: Use contact_phone from ClinicSupplierManager for SMS fallback
@@ -1680,9 +1484,6 @@ export class OrderService {
           supplierPhoneNumber =
             supplierProductRecord?.clinicSupplierManager?.phone_number;
           if (supplierPhoneNumber) {
-            this.logger.log(
-              `No SupplierManager found, will use contact_phone from ClinicSupplierManager for SMS: ${supplierPhoneNumber}`
-            );
           }
         }
       }
@@ -1690,9 +1491,6 @@ export class OrderService {
       // Variant 4: Use linkedManager directly from clinicSupplierManager if available
       if (!supplierManager && clinicSupplierManager.linkedManager) {
         supplierManager = clinicSupplierManager.linkedManager;
-        this.logger.log(
-          `✅ Using linkedManager directly from ClinicSupplierManager: ${supplierManager.id}, name: ${supplierManager.name}`
-        );
       }
 
       // Variant 5: Fallback - first created SupplierManager (legacy behavior)
@@ -1707,12 +1505,6 @@ export class OrderService {
             created_at: "asc",
           },
         });
-        if (fallbackManager) {
-          supplierManager = fallbackManager;
-          this.logger.log(
-            `Using fallback SupplierManager (first created): ${fallbackManager.id}`
-          );
-        }
       }
 
       // Get supplier with company_email for email fallback
@@ -1728,18 +1520,12 @@ export class OrderService {
       if (!supplierManager && !supplierPhoneNumber) {
         supplierPhoneNumber = clinicSupplierManager.phone_number;
         if (supplierPhoneNumber) {
-          this.logger.log(
-            `Using manual contact phone from ClinicSupplierManager: ${supplierPhoneNumber}`
-          );
         } else {
-          this.logger.warn(
-            `No SupplierManager or phone number found for ClinicSupplierManager ${order.supplier_id}, SMS will not be sent`
-          );
         }
       }
 
       // Get clinic info
-      this.logger.log(`Looking for clinic with tenantId: ${tenantId}`);
+
       const clinic = await this.prisma.clinic.findFirst({
         where: { tenant_id: tenantId },
       });
@@ -1772,12 +1558,6 @@ export class OrderService {
       // Use clinic.name or fallback to member.clinic_name
       const finalClinicName =
         clinic?.name || clinicNameFallback || "알 수 없음";
-
-      this.logger.log(
-        `Found clinic: ${finalClinicName} (from ${
-          clinic ? "Clinic table" : "Member fallback"
-        })`
-      );
 
       // Get product details for items with ProductSupplier information
       const itemsWithDetails = await Promise.all(
@@ -1839,10 +1619,6 @@ export class OrderService {
       // supplierManagerId null bo'lishi mumkin (agar supplier platformadan ro'yxatdan o'tmagan bo'lsa)
       // Only send to supplier-backend if linked to platform
       if (!supplier || !supplier.tenant_id) {
-        this.logger.log(
-          `Skipping supplier-backend notification for manual supplier ${order.supplier_id}, will send SMS only`
-        );
-
         // Send SMS to manual supplier (yangi format bilan)
         const manualPhoneNumber = clinicSupplierManager.phone_number;
         if (manualPhoneNumber) {
@@ -1861,10 +1637,6 @@ export class OrderService {
               0
             );
 
-            this.logger.log(
-              `Sending SMS to manual supplier: ${manualPhoneNumber}`
-            );
-
             // Send SMS via MessageService (yangi format bilan)
             const smsSent = await this.messageService.sendOrderNotification(
               manualPhoneNumber,
@@ -1875,16 +1647,6 @@ export class OrderService {
               finalClinicManagerName,
               products
             );
-
-            if (smsSent) {
-              this.logger.log(
-                `✅ SMS sent successfully to manual supplier: ${manualPhoneNumber}`
-              );
-            } else {
-              this.logger.warn(
-                `⚠️ SMS failed to send to manual supplier: ${manualPhoneNumber}`
-              );
-            }
           } catch (smsError: any) {
             this.logger.error(
               `Failed to send SMS to manual supplier: ${smsError.message}`
@@ -1905,16 +1667,6 @@ export class OrderService {
         memo: order.memo,
         items: itemsWithDetails,
       };
-
-      this.logger.log(
-        `Sending order to supplier-backend: clinicName=${finalClinicName}, manager=${finalClinicManagerName}`
-      );
-      this.logger.log(`📦 Order items count: ${itemsWithDetails.length}`);
-      itemsWithDetails.forEach((item, idx) => {
-        this.logger.log(
-          `  Item ${idx + 1}: ${item.productName} - Qty: ${item.quantity}`
-        );
-      });
 
       // Prepare supplier phone number for SMS (even if API fails, we can still send SMS)
       // Priority: supplierManager.phone_number > supplierPhoneNumber > clinicSupplierManager.phone_number > supplier.company_phone
@@ -1961,14 +1713,9 @@ export class OrderService {
             const errorText = await response
               .text()
               .catch(() => "Unknown error");
-            this.logger.error(
-              `Failed to send order to supplier-backend: ${response.status} ${errorText}`
-            );
           } else {
             const result: any = await response.json();
-            this.logger.log(
-              `Order ${order.order_no} sent to supplier-backend successfully: ${result.id}`
-            );
+
             supplierBackendSuccess = true;
           }
         } catch (fetchError: any) {
@@ -1986,24 +1733,12 @@ export class OrderService {
             errorMessage.includes("aborted") ||
             errorMessage.includes("timeout")
           ) {
-            this.logger.error(
-              `Supplier-backend API request timed out after 10 seconds. URL: ${supplierApiUrl}`
-            );
           } else if (
             errorMessage.includes("fetch failed") ||
             errorMessage.includes("ECONNREFUSED") ||
             errorMessage.includes("ENOTFOUND")
           ) {
-            this.logger.error(
-              `Cannot connect to supplier-backend at ${supplierApiUrl}. Is supplier-backend running? Error: ${errorMessage}`
-            );
-            this.logger.error(
-              `Please check: 1) Supplier-backend is running, 2) SUPPLIER_BACKEND_URL is correct in .env`
-            );
           } else {
-            this.logger.error(
-              `Error calling supplier-backend API: ${errorMessage}`
-            );
           }
           // Continue - we'll still try to send SMS even if API call failed
         }
@@ -2035,17 +1770,11 @@ export class OrderService {
           const productSupplier = item.productSupplier;
 
           if (!productSupplier) {
-            this.logger.warn(
-              `No ProductSupplier found for product ${item.productId}, skipping SMS`
-            );
             continue;
           }
 
           const clinicSupplierManager = productSupplier.clinicSupplierManager;
           if (!clinicSupplierManager) {
-            this.logger.warn(
-              `No ClinicSupplierManager found for product ${item.productId}, skipping SMS`
-            );
             continue;
           }
 
@@ -2202,9 +1931,6 @@ export class OrderService {
                       totalQuantity,
                       clinicManagerName,
                       products
-                    );
-                    this.logger.log(
-                      `✅ SMS sent to ${group.phoneSource} (${group.phoneNumber}) for ${group.items.length} product(s)`
                     );
                   }
                 }
@@ -2454,14 +2180,6 @@ export class OrderService {
       const adjustmentInfo =
         adjustmentCount > 0 ? ` (${adjustmentCount} adjustments)` : "";
 
-      this.logger.log(
-        `🔔 [Clinic Notification] Order ${orderNo} - ${statusText}${adjustmentInfo} | ` +
-          `Total: ${(
-            totalAmount || order.total_amount
-          )?.toLocaleString()}원 | ` +
-          `Tenant: ${clinicTenantId}`
-      );
-
       // If there are adjustments, log them for visibility
       if (adjustmentCount > 0) {
         adjustments.forEach((adj: any, idx: number) => {
@@ -2469,12 +2187,6 @@ export class OrderService {
             (item: any) => item.id === adj.itemId
           )?.product;
           const productName = product?.name || adj.productName || "Unknown";
-
-          this.logger.log(
-            `  📝 Adjustment ${idx + 1}: ${productName} | ` +
-              `Original: ${adj.originalQuantity} → Confirmed: ${adj.confirmedQuantity} | ` +
-              `Reason: ${adj.reason || "N/A"}`
-          );
         });
       }
 
@@ -2603,9 +2315,6 @@ export class OrderService {
                 clinicSupplierManager.linkedManager.position ||
                 clinicSupplierManager.position ||
                 "";
-              this.logger.log(
-                `✅ Platform supplier found: ${supplierInfo.companyName}, Manager: ${supplierInfo.managerName}, Position: ${supplierInfo.managerPosition}`
-              );
             } else {
               // Manual supplier - use denormalized fields from ClinicSupplierManager
               supplierInfo.companyName =
@@ -2613,9 +2322,6 @@ export class OrderService {
               supplierInfo.managerName = clinicSupplierManager.name || "";
               supplierInfo.managerPosition =
                 clinicSupplierManager.position || "";
-              this.logger.log(
-                `✅ Manual supplier found: ${supplierInfo.companyName}, Manager: ${supplierInfo.managerName}, Position: ${supplierInfo.managerPosition}`
-              );
             }
           } else {
             this.logger.warn(
@@ -2904,8 +2610,6 @@ export class OrderService {
       });
     });
 
-    this.logger.log(`Order ${order.order_no} marked as completed`);
-
     // Notify supplier-backend that order is completed
     if (order.supplier_id) {
       try {
@@ -3002,9 +2706,6 @@ export class OrderService {
           `Failed to notify supplier-backend of completion: ${response.status} ${errorText}`
         );
       } else {
-        this.logger.log(
-          `Order ${orderNo} completion notified to supplier-backend successfully`
-        );
       }
     } catch (error: any) {
       this.logger.error(

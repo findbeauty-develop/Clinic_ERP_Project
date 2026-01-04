@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 export default function OrderReturnsPage() {
   const [activeTab, setActiveTab] = useState<
@@ -10,42 +10,109 @@ export default function OrderReturnsPage() {
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
+    []
+  );
 
-  useEffect(() => {
-    fetchReturns();
-    fetchMembers();
-  }, [activeTab]);
+  // Cache for returns and members to prevent duplicate requests
+  const returnsCacheRef = useRef<{
+    data: any[];
+    timestamp: number;
+    status: string;
+  } | null>(null);
+  const membersCacheRef = useRef<{
+    data: any[];
+    timestamp: number;
+  } | null>(null);
+  const CACHE_TTL = 30000; // 30 seconds
 
-  const fetchMembers = async () => {
+  // Cache invalidation helper
+  const invalidateCache = useCallback((cacheType?: "returns" | "members" | "all") => {
+    if (!cacheType || cacheType === "all") {
+      returnsCacheRef.current = null;
+      membersCacheRef.current = null;
+    } else {
+      switch (cacheType) {
+        case "returns":
+          returnsCacheRef.current = null;
+          break;
+        case "members":
+          membersCacheRef.current = null;
+          break;
+      }
+    }
+  }, []);
+
+  const fetchMembers = useCallback(async () => {
+    // Check cache first
+    if (
+      membersCacheRef.current &&
+      Date.now() - membersCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setMembers(membersCacheRef.current.data);
+      return;
+    }
+
     try {
       const { apiGet } = await import("../../lib/api");
       const data = await apiGet<any[]>(`${apiUrl}/iam/members`);
-      setMembers(data || []);
+      const membersData = data || [];
+      setMembers(membersData);
+      // Update cache
+      membersCacheRef.current = {
+        data: membersData,
+        timestamp: Date.now(),
+      };
     } catch (err) {
       console.error("Failed to load members", err);
     }
-  };
+  }, [apiUrl]);
 
-  const fetchReturns = async () => {
+  const fetchReturns = useCallback(async () => {
+    const statusMap = {
+      processing: "pending",
+      "in-progress": "processing",
+      history: "completed",
+    };
+    const status = statusMap[activeTab];
+
+    // Check cache first
+    if (
+      returnsCacheRef.current &&
+      returnsCacheRef.current.status === status &&
+      Date.now() - returnsCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setReturns(returnsCacheRef.current.data);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const { apiGet } = await import("../../lib/api");
-      const statusMap = {
-        processing: "pending",
-        "in-progress": "processing",
-        history: "completed",
-      };
       const data = await apiGet<any[]>(
-        `${apiUrl}/order-returns?status=${statusMap[activeTab]}`
+        `${apiUrl}/order-returns?status=${status}`
       );
-      setReturns(data || []);
+      const returnsData = data || [];
+      setReturns(returnsData);
+      // Update cache
+      returnsCacheRef.current = {
+        data: returnsData,
+        timestamp: Date.now(),
+        status,
+      };
     } catch (err) {
       console.error("Failed to load returns", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl, activeTab]);
+
+  useEffect(() => {
+    fetchReturns();
+    fetchMembers();
+  }, [fetchReturns, fetchMembers]);
 
   const formatReturnType = (returnType: string) => {
     if (returnType.includes("불량") && returnType.includes("교환"))
@@ -147,7 +214,10 @@ export default function OrderReturnsPage() {
                 key={returnItem.id}
                 returnItem={returnItem}
                 members={members}
-                onRefresh={fetchReturns}
+                onRefresh={() => {
+                  invalidateCache("returns");
+                  fetchReturns();
+                }}
                 onRemove={(id: string) => {
                   setReturns((prev) => prev.filter((item) => item.id !== id));
                 }}

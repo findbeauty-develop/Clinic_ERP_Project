@@ -577,11 +577,14 @@ export class OrderReturnService {
         });
 
         if (productSupplier?.clinicSupplierManager?.linkedManager) {
-          const linkedManager = productSupplier.clinicSupplierManager.linkedManager;
+          const linkedManager =
+            productSupplier.clinicSupplierManager.linkedManager;
           supplierManagerId = linkedManager.id;
           // Use supplier_tenant_id first (most reliable), fallback to supplier.tenant_id
-          supplierTenantId = linkedManager.supplier_tenant_id || 
-            linkedManager.supplier?.tenant_id || null;
+          supplierTenantId =
+            linkedManager.supplier_tenant_id ||
+            linkedManager.supplier?.tenant_id ||
+            null;
           this.logger.log(
             `✅ Found supplierManagerId via ProductSupplier: ${supplierManagerId}, supplierTenantId=${supplierTenantId}`
           );
@@ -630,9 +633,6 @@ export class OrderReturnService {
     // Fallback 2: For defective products (불량), try via outbound_id -> product -> ProductSupplier
     if (!supplierManagerId && returnItem.outbound_id) {
       try {
-        this.logger.log(
-          `Trying to find supplier via outbound_id: ${returnItem.outbound_id}`
-        );
         const outbound = await this.prisma.executeWithRetry(async () => {
           return (this.prisma as any).outbound.findFirst({
             where: { id: returnItem.outbound_id, tenant_id: tenantId },
@@ -666,11 +666,15 @@ export class OrderReturnService {
           outbound?.product?.productSupplier?.clinicSupplierManager
             ?.linkedManager
         ) {
-          const linkedManager = outbound.product.productSupplier.clinicSupplierManager.linkedManager;
+          const linkedManager =
+            outbound.product.productSupplier.clinicSupplierManager
+              .linkedManager;
           supplierManagerId = linkedManager.id;
           // Use supplier_tenant_id first (most reliable), fallback to supplier.tenant_id
-          supplierTenantId = linkedManager.supplier_tenant_id || 
-            linkedManager.supplier?.tenant_id || null;
+          supplierTenantId =
+            linkedManager.supplier_tenant_id ||
+            linkedManager.supplier?.tenant_id ||
+            null;
           this.logger.log(
             `✅ Found supplierManagerId via Outbound -> ProductSupplier: ${supplierManagerId}, supplierTenantId=${supplierTenantId}`
           );

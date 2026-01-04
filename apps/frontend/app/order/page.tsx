@@ -137,29 +137,34 @@ export default function OrderPage() {
   const [orderManagerName, setOrderManagerName] = useState("");
 
   // Cache invalidation helper
-  const invalidateCache = useCallback((cacheType?: "products" | "orders" | "rejectedOrders" | "draft" | "all") => {
-    if (!cacheType || cacheType === "all") {
-      productsCacheRef.current = null;
-      ordersCacheRef.current = null;
-      rejectedOrdersCacheRef.current = null;
-      draftCacheRef.current = null;
-    } else {
-      switch (cacheType) {
-        case "products":
-          productsCacheRef.current = null;
-          break;
-        case "orders":
-          ordersCacheRef.current = null;
-          break;
-        case "rejectedOrders":
-          rejectedOrdersCacheRef.current = null;
-          break;
-        case "draft":
-          draftCacheRef.current = null;
-          break;
+  const invalidateCache = useCallback(
+    (
+      cacheType?: "products" | "orders" | "rejectedOrders" | "draft" | "all"
+    ) => {
+      if (!cacheType || cacheType === "all") {
+        productsCacheRef.current = null;
+        ordersCacheRef.current = null;
+        rejectedOrdersCacheRef.current = null;
+        draftCacheRef.current = null;
+      } else {
+        switch (cacheType) {
+          case "products":
+            productsCacheRef.current = null;
+            break;
+          case "orders":
+            ordersCacheRef.current = null;
+            break;
+          case "rejectedOrders":
+            rejectedOrdersCacheRef.current = null;
+            break;
+          case "draft":
+            draftCacheRef.current = null;
+            break;
+        }
       }
-    }
-  }, []);
+    },
+    []
+  );
 
   // Cache for products, orders, rejected orders, and draft to prevent duplicate requests
   const productsCacheRef = useRef<{
@@ -214,20 +219,11 @@ export default function OrderPage() {
           ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
           : `${apiUrl}/iam/members/clinics`;
 
-        console.log("Fetching clinic data from:", url);
         const clinics = await apiGet<any[]>(url);
-        console.log("Fetched clinics:", clinics);
-        console.log("Number of clinics:", clinics?.length || 0);
 
         if (clinics && clinics.length > 0) {
           // Get the first clinic (or match by tenant_id if available)
           const clinic = clinics[0];
-          console.log("Selected clinic data:", clinic);
-          console.log("Clinic name:", clinic.name);
-          console.log("Clinic location:", clinic.location);
-          console.log("Clinic phone_number:", clinic.phone_number);
-          console.log("All clinic fields:", Object.keys(clinic));
-          setClinicData(clinic);
         } else {
           console.warn("No clinics found. Response:", clinics);
         }
@@ -264,7 +260,7 @@ export default function OrderPage() {
     try {
       // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
       const data = await apiGet<any[]>(`${apiUrl}/order/products`);
-      console.log("Fetched products:", data.length);
+
       setProducts(data);
       // Update cache
       productsCacheRef.current = { data, timestamp: Date.now() };
@@ -448,12 +444,7 @@ export default function OrderPage() {
       if (!response.ok) throw new Error("Failed to fetch orders");
 
       const data = await response.json();
-      console.log("Fetched orders:", data);
-      console.log("First order supplierDetails:", data[0]?.supplierDetails);
-      console.log(
-        "Order statuses:",
-        data.map((o: any) => ({ orderNo: o.orderNo, status: o.status }))
-      );
+
       const ordersData = data || [];
       setOrders(ordersData);
       // Update cache
@@ -509,9 +500,6 @@ export default function OrderPage() {
   // Refresh rejected orders when a rejection is confirmed in inbound page
   useEffect(() => {
     const handleRejectedOrderConfirmed = () => {
-      console.log(
-        "Rejected order confirmed event received, refreshing rejected orders..."
-      );
       // When a rejected order is confirmed in inbound page, refresh rejected orders
       // Always refresh, even if not on history tab, so data is ready when user switches
       fetchRejectedOrders();
@@ -604,14 +592,6 @@ export default function OrderPage() {
       const supplierId = product.supplierId || "unknown";
 
       // 🔍 DEBUG: Product va supplier ma'lumotlarini ko'rish
-      console.log("🔍 handleQuantityChange:", {
-        productId,
-        productName: product.productName,
-        supplierId,
-        supplierName: product.supplierName,
-        quantity: sanitizedQuantity,
-        fullProduct: product,
-      });
 
       // Local state update - darhol quantities'ni yangilash
       setQuantities((prev) => ({
@@ -717,17 +697,6 @@ export default function OrderPage() {
         });
 
         // 🔍 DEBUG: Grouped suppliers
-        console.log("🔍 Grouped by supplier:", {
-          totalSuppliers: Object.keys(groupedBySupplier).length,
-          suppliers: Object.entries(groupedBySupplier).map(([id, group]) => ({
-            supplierId: id,
-            itemCount: group.items.length,
-            items: group.items.map((i: any) => ({
-              productId: i.productId,
-              supplierId: i.supplierId,
-            })),
-          })),
-        });
 
         return {
           ...prevDraft,

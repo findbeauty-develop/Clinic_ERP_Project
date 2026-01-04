@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { apiGet } from "../../../lib/api";
 import { useDebounce } from "../../../hooks/useDebounce";
@@ -54,11 +54,37 @@ export default function ReturnHistoryPage() {
   // Debounce search query to avoid excessive API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [apiUrl, page, debouncedSearchQuery]);
+  // Cache for return history to prevent duplicate requests
+  const historyCacheRef = useRef<{
+    data: ReturnHistoryItem[];
+    totalPages: number;
+    timestamp: number;
+    page: number;
+    searchQuery: string;
+  } | null>(null);
+  const CACHE_TTL = 30000; // 30 seconds
 
-  const fetchHistory = async () => {
+  // Cache invalidation helper
+  const invalidateCache = useCallback(() => {
+    historyCacheRef.current = null;
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    const cacheKey = debouncedSearchQuery.trim() || "";
+    // Check cache first
+    if (
+      historyCacheRef.current &&
+      historyCacheRef.current.page === page &&
+      historyCacheRef.current.searchQuery === cacheKey &&
+      Date.now() - historyCacheRef.current.timestamp < CACHE_TTL
+    ) {
+      setHistoryData(historyCacheRef.current.data);
+      setTotalPages(historyCacheRef.current.totalPages);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -105,13 +131,25 @@ export default function ReturnHistoryPage() {
 
       setHistoryData(formattedItems);
       setTotalPages(response.totalPages || 1);
+      // Update cache
+      historyCacheRef.current = {
+        data: formattedItems,
+        totalPages: response.totalPages || 1,
+        timestamp: Date.now(),
+        page,
+        searchQuery: cacheKey,
+      };
     } catch (err) {
       console.error("Failed to load return history", err);
       setError("반납 내역을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl, page, debouncedSearchQuery, limit]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   const groupedHistory = useMemo(() => {
     const groups: Record<string, GroupedReturnHistory> = {};
