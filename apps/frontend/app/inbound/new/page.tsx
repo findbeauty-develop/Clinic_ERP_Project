@@ -550,8 +550,6 @@ export default function InboundNewPage() {
         localStorage.getItem("erp_tenant_id") ||
         localStorage.getItem("tenantId");
 
-      console.log("Searching suppliers by phone:", cleanPhoneNumber); // Debug log
-
       const response = await fetch(
         `${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(cleanPhoneNumber)}`,
         {
@@ -566,7 +564,6 @@ export default function InboundNewPage() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Phone search response:", data); // Debug log
 
         // Handle both array and single object responses
         const dataArray = Array.isArray(data) ? data : data ? [data] : [];
@@ -607,45 +604,26 @@ export default function InboundNewPage() {
           };
         });
 
-        console.log("Processed results:", results); // Debug log
-        console.log("First result:", results[0]); // Debug log
-        console.log(
-          "First result isRegisteredOnPlatform:",
-          results[0]?.isRegisteredOnPlatform
-        ); // Debug log
-        console.log(
-          "First result supplierManagerId:",
-          results[0]?.supplierManagerId
-        ); // Debug log
-        console.log("First result supplierId:", results[0]?.supplierId); // Debug log
-
         // If results found from fallback search, show confirmation modal
         // Check if supplier is registered on platform (has isRegisteredOnPlatform flag)
         if (results.length > 0) {
           const supplier = results[0];
-          console.log("Supplier found:", supplier); // Debug log
 
           // Note: The property 'isClinicCreated' does not exist on supplier type.
           // So we remove usage of 'isClinicCreated' and just check 'isRegisteredOnPlatform'
           if (supplier.isRegisteredOnPlatform) {
-            console.log("Supplier is clinic-created - showing in results"); // Debug log
             // Clinic yaratgan supplier - natijalarni ko'rsatish (ma'lumotlar allaqachon bor)
             setSupplierSearchResults(results);
           } else if (supplier.isRegisteredOnPlatform) {
-            console.log(
-              "Supplier is registered on platform - showing approval modal"
-            ); // Debug log
             // Supplier is registered on platform - show approval modal with supplier info
             setPendingSupplier(supplier); // Show modal for first result
             setShowSupplierConfirmModal(true);
             setSupplierSearchResults([]); // Don't show in table yet
           } else {
-            console.log("Supplier found but not registered on platform"); // Debug log
             // Supplier found but not registered on platform - show in results
             setSupplierSearchResults(results);
           }
         } else {
-          console.log("No supplier found - showing manual entry"); // Debug log
           // No supplier found - show manual entry option
           setPendingSupplierPhone(phoneNumber);
           setShowSupplierConfirmModal(true);
@@ -654,7 +632,7 @@ export default function InboundNewPage() {
       } else {
         // Error or no results - show modal with direct input option
         const errorText = await response.text();
-        console.error("Phone search error:", response.status, errorText); // Debug log
+
         setPendingSupplierPhone(phoneNumber);
         setShowSupplierConfirmModal(true);
         setSupplierSearchResults([]);
@@ -760,7 +738,6 @@ export default function InboundNewPage() {
 
         // Success - trade link approved
         const result = await response.json();
-        console.log("Trade link approved:", result);
 
         // Show success message
         alert("거래 관계가 승인되었습니다. 담당자 정보가 추가되었습니다.");
@@ -999,8 +976,6 @@ export default function InboundNewPage() {
         position: manualEntryForm.position || undefined,
       };
 
-      console.log("Creating supplier manually:", supplierData);
-
       // Call API to create supplier
       const response = await fetch(`${apiUrl}/supplier/create-manual`, {
         method: "POST",
@@ -1017,7 +992,6 @@ export default function InboundNewPage() {
       }
 
       const result = await response.json();
-      console.log("Supplier created successfully:", result);
 
       // Update form data with supplier info
       handleInputChange("supplierId", result.supplier?.id || ""); // ✅ Use Supplier.id (UUID)
@@ -1241,14 +1215,8 @@ export default function InboundNewPage() {
 
       // Call API using authenticated request
       const { apiPost } = await import("../../../lib/api");
-      console.log("Sending payload with alertDays:", {
-        productLevel: payload.alertDays,
-        batchLevel: payload.initial_batches?.[0]?.alert_days,
-        formDataAlertDays: formData.alertDays,
-        noExpiryPeriod: formData.noExpiryPeriod,
-      });
+
       const result = await apiPost("/products", payload);
-      console.log("Product created:", result);
 
       // Clear unsaved changes flag and redirect to inbound list page
       setShowUnsavedChangesDialog(false);

@@ -1,4 +1,9 @@
-import { Injectable, Logger, UnauthorizedException, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { compare, hash } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sign, SignOptions } from "jsonwebtoken";
@@ -16,7 +21,8 @@ type CreatedMemberResult = {
 export class MembersService {
   private readonly logger = new Logger(MembersService.name);
 
-  constructor(private readonly repository: MembersRepository,
+  constructor(
+    private readonly repository: MembersRepository,
     private readonly messageService: MessageService
   ) {}
 
@@ -143,7 +149,7 @@ export class MembersService {
         );
         if (existingMembers.length > 0) {
           const existingMemberIds = existingMembers.map(
-            (m: { member_id: string; tenant_id: string }) => 
+            (m: { member_id: string; tenant_id: string }) =>
               `${m.member_id} (tenant: ${m.tenant_id})`
           );
           throw new Error(
@@ -169,30 +175,28 @@ export class MembersService {
       throw error;
     }
     // Ownerga barcha memberlarning (owner, manager, member) ID va passwordlari yuboriladi
-if (!dto.isEditMode && dto.ownerPhoneNumber) {
-  try {
-    // Barcha memberlarni (owner, manager, member) SMS'ga qo'shish
-    const allMembers = definitions.map((definition) => {
-      const memberId = `${definition.label}@${clinicIdentifier}`;
-      return {
-        memberId: memberId,
-        role: definition.role,
-        temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
-      };
-    });
+    if (!dto.isEditMode && dto.ownerPhoneNumber) {
+      try {
+        // Barcha memberlarni (owner, manager, member) SMS'ga qo'shish
+        const allMembers = definitions.map((definition) => {
+          const memberId = `${definition.label}@${clinicIdentifier}`;
+          return {
+            memberId: memberId,
+            role: definition.role,
+            temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
+          };
+        });
 
-    await this.messageService.sendMemberCredentials(
-      dto.ownerPhoneNumber,
-      dto.clinicName,
-      allMembers // Barcha memberlarni (owner, manager, member) yuborish
-    );
-    this.logger.log(`SMS sent to owner with all members (owner, manager, member): ${dto.ownerPhoneNumber}`);
-  } catch (error) {
-    this.logger.warn('Failed to send SMS to owner', error);
-    // Continue even if SMS fails - don't throw error
-  }
-}
-    
+        await this.messageService.sendMemberCredentials(
+          dto.ownerPhoneNumber,
+          dto.clinicName,
+          allMembers // Barcha memberlarni (owner, manager, member) yuborish
+        );
+      } catch (error) {
+        this.logger.warn("Failed to send SMS to owner", error);
+        // Continue even if SMS fails - don't throw error
+      }
+    }
 
     return payload.map((item) => item.result);
   }
@@ -212,8 +216,8 @@ if (!dto.isEditMode && dto.ownerPhoneNumber) {
    * Temporary password generate qilish (8-12 belgili, harflar va raqamlar)
    */
   private generateTemporaryPassword(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-    let password = '';
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let password = "";
     for (let i = 0; i < 10; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -230,47 +234,47 @@ if (!dto.isEditMode && dto.ownerPhoneNumber) {
         throw new UnauthorizedException("Invalid member ID or password");
       }
 
-    const isValid = await compare(password, member.password_hash);
-    if (!isValid) {
-      throw new UnauthorizedException("Invalid member ID or password");
-    }
+      const isValid = await compare(password, member.password_hash);
+      if (!isValid) {
+        throw new UnauthorizedException("Invalid member ID or password");
+      }
 
-    const secret =
-      process.env.MEMBER_JWT_SECRET ??
-      process.env.SUPABASE_JWT_SECRET ??
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const secret =
+        process.env.MEMBER_JWT_SECRET ??
+        process.env.SUPABASE_JWT_SECRET ??
+        process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!secret) {
-      this.logger.error(
-        "Missing MEMBER_JWT_SECRET or Supabase secret for issuing member tokens"
+      if (!secret) {
+        this.logger.error(
+          "Missing MEMBER_JWT_SECRET or Supabase secret for issuing member tokens"
+        );
+        throw new UnauthorizedException("Authentication not configured");
+      }
+
+      const expiresInEnv = process.env.MEMBER_JWT_EXPIRES_IN;
+      const signOptions: SignOptions = {
+        expiresIn: expiresInEnv
+          ? isNaN(Number(expiresInEnv))
+            ? expiresInEnv
+            : Number(expiresInEnv)
+          : "12h",
+      } as SignOptions;
+
+      // must_change_password flag'ni olish
+      const mustChangePassword = member.must_change_password || false;
+
+      const token = sign(
+        {
+          sub: member.id,
+          member_id: member.member_id,
+          tenant_id: member.tenant_id,
+          roles: [member.role],
+          clinic_name: member.clinic_name,
+          must_change_password: mustChangePassword,
+        },
+        secret,
+        signOptions
       );
-      throw new UnauthorizedException("Authentication not configured");
-    }
-
-    const expiresInEnv = process.env.MEMBER_JWT_EXPIRES_IN;
-    const signOptions: SignOptions = {
-      expiresIn: expiresInEnv
-        ? isNaN(Number(expiresInEnv))
-          ? expiresInEnv
-          : Number(expiresInEnv)
-        : "12h",
-    } as SignOptions;
-
-    // must_change_password flag'ni olish
-    const mustChangePassword = member.must_change_password || false;
-
-    const token = sign(
-      {
-        sub: member.id,
-        member_id: member.member_id,
-        tenant_id: member.tenant_id,
-        roles: [member.role],
-        clinic_name: member.clinic_name,
-        must_change_password: mustChangePassword,
-      },
-      secret,
-      signOptions
-    );
 
       return {
         message: "You successfully login",
@@ -295,7 +299,10 @@ if (!dto.isEditMode && dto.ownerPhoneNumber) {
         errorMessage.includes("timeout") ||
         error?.code === "P1001"
       ) {
-        this.logger.error("Database connection error during login", errorMessage);
+        this.logger.error(
+          "Database connection error during login",
+          errorMessage
+        );
         throw new ServiceUnavailableException(
           "Database server is currently unavailable. Please try again later."
         );
@@ -322,7 +329,10 @@ if (!dto.isEditMode && dto.ownerPhoneNumber) {
       }
 
       // Current password'ni tekshirish
-      const isPasswordValid = await compare(currentPassword, member.password_hash);
+      const isPasswordValid = await compare(
+        currentPassword,
+        member.password_hash
+      );
       if (!isPasswordValid) {
         throw new UnauthorizedException("Current password is incorrect");
       }
@@ -336,8 +346,6 @@ if (!dto.isEditMode && dto.ownerPhoneNumber) {
         must_change_password: false,
         updated_at: new Date(),
       });
-
-      this.logger.log(`Password changed for member: ${memberId}`);
     } catch (error) {
       this.logger.error(`Failed to change password for ${memberId}`, error);
       throw error;

@@ -2127,7 +2127,7 @@ function PendingOrdersList({
                             })) || [];
 
                           const endpoint = `${apiUrl}/order/rejected-order/confirm`;
-                          console.log("Calling endpoint:", endpoint);
+
                           await apiPost(endpoint, {
                             orderId: order.orderId,
                             orderNo: order.orderNo,

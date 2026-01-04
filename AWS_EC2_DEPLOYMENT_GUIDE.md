@@ -791,7 +791,7 @@ cd ~/clinic-erp
 docker compose -f docker-compose.prod.yml pull
 
 # Container'larni yangilash (yangi image'larni ishlatish)
-docker compose -f docker-compose.prod.yml up -d --force-recreate
+docker-compose -f docker-compose.prod.yml up -d --force-recreate
 
 # Yoki faqat bitta servisni yangilash (masalan, backend)
 docker-compose -f docker-compose.prod.yml pull backend

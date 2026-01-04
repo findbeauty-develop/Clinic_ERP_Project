@@ -33,13 +33,6 @@ export class SupplierReturnNotificationService {
         },
       });
 
-      if (!productSupplier || !productSupplier.clinicSupplierManager) {
-        this.logger.log(
-          `No supplier found for product ${returnRecord.product_id}, skipping notification creation`
-        );
-        return;
-      }
-
       // 2. Clinic nomini olish
       const clinic = await (prisma as any).clinic.findFirst({
         where: {
@@ -55,13 +48,6 @@ export class SupplierReturnNotificationService {
       // 3. Check if linked to platform supplier
       const clinicSupplierManager = productSupplier.clinicSupplierManager;
       const linkedManager = clinicSupplierManager.linkedManager;
-
-      if (!linkedManager) {
-        this.logger.log(
-          `Supplier not linked to platform for product ${returnRecord.product_id}, skipping notification`
-        );
-        return;
-      }
 
       // 4. Find supplier via linkedManager
       const supplier = await (prisma as any).supplier.findFirst({
@@ -84,9 +70,6 @@ export class SupplierReturnNotificationService {
       });
 
       if (!supplierManagers || supplierManagers.length === 0) {
-        this.logger.log(
-          `No active managers found for supplier ${supplier.id}, skipping notification`
-        );
         return;
       }
 
@@ -113,10 +96,6 @@ export class SupplierReturnNotificationService {
               is_read: false,
             },
           });
-
-          this.logger.log(
-            `Created return notification for supplier manager ${manager.id} (${manager.name}) for return ${returnRecord.id}`
-          );
         } catch (error: any) {
           this.logger.error(
             `Failed to create notification for manager ${manager.id}: ${error.message}`,

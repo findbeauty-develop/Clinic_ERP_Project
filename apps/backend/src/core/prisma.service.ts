@@ -42,9 +42,6 @@ export class PrismaService
         if (isPooler && !url.searchParams.has("pgbouncer")) {
           url.searchParams.set("pgbouncer", "true");
           databaseUrl = url.toString();
-          console.log(
-            "✅ Added ?pgbouncer=true to DATABASE_URL to disable prepared statements for connection pooling"
-          );
         }
 
         // Check if using port 5432 and suggest port 6543 for pgbouncer
@@ -109,9 +106,7 @@ export class PrismaService
     // Prisma Client automatically manages connections
     // Don't attempt connection during startup - let Prisma connect on first query
     // This prevents blocking startup and connection error spam
-    this.logger.log(
-      "PrismaService initialized. Database will connect automatically on first query."
-    );
+
     this.isConnected = false; // Will be set to true when first query succeeds
   }
 
@@ -257,7 +252,7 @@ export class PrismaService
         );
 
         await Promise.race([connectPromise, timeoutPromise]);
-        this.logger.log("Database connection established");
+
         this.isConnected = true;
         this.lastConnectionCheck = Date.now();
       } catch (connectError: any) {
@@ -367,7 +362,6 @@ export class PrismaService
   async onModuleDestroy() {
     try {
       await this.$disconnect();
-      this.logger.log("Database connection closed");
     } catch (error) {
       this.logger.error(
         `Error closing database connection: ${

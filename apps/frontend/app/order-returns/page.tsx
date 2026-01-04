@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
 
 export default function OrderReturnsPage() {
   const [activeTab, setActiveTab] = useState<
@@ -28,21 +28,24 @@ export default function OrderReturnsPage() {
   const CACHE_TTL = 30000; // 30 seconds
 
   // Cache invalidation helper
-  const invalidateCache = useCallback((cacheType?: "returns" | "members" | "all") => {
-    if (!cacheType || cacheType === "all") {
-      returnsCacheRef.current = null;
-      membersCacheRef.current = null;
-    } else {
-      switch (cacheType) {
-        case "returns":
-          returnsCacheRef.current = null;
-          break;
-        case "members":
-          membersCacheRef.current = null;
-          break;
+  const invalidateCache = useCallback(
+    (cacheType?: "returns" | "members" | "all") => {
+      if (!cacheType || cacheType === "all") {
+        returnsCacheRef.current = null;
+        membersCacheRef.current = null;
+      } else {
+        switch (cacheType) {
+          case "returns":
+            returnsCacheRef.current = null;
+            break;
+          case "members":
+            membersCacheRef.current = null;
+            break;
+        }
       }
-    }
-  }, []);
+    },
+    []
+  );
 
   const fetchMembers = useCallback(async () => {
     // Check cache first
@@ -65,7 +68,7 @@ export default function OrderReturnsPage() {
         timestamp: Date.now(),
       };
     } catch (err) {
-      console.error("Failed to load members", err);
+      // Silent error handling
     }
   }, [apiUrl]);
 
@@ -103,15 +106,17 @@ export default function OrderReturnsPage() {
         status,
       };
     } catch (err) {
-      console.error("Failed to load returns", err);
+      // Silent error handling
     } finally {
       setLoading(false);
     }
   }, [apiUrl, activeTab]);
 
   useEffect(() => {
-    fetchReturns();
-    fetchMembers();
+    // Parallel fetching - ikkala request bir vaqtda
+    Promise.all([fetchReturns(), fetchMembers()]).catch(() => {
+      // Silent error handling
+    });
   }, [fetchReturns, fetchMembers]);
 
   const formatReturnType = (returnType: string) => {
@@ -234,7 +239,7 @@ export default function OrderReturnsPage() {
   );
 }
 
-function ReturnCard({
+const ReturnCard = memo(function ReturnCard({
   returnItem,
   members,
   onRefresh,
@@ -350,15 +355,12 @@ function ReturnCard({
         }
       );
 
-      console.log("Process return response:", response);
-
       // Remove the item from the list immediately
       if (onRemove) {
         onRemove(returnItem.id);
       }
       alert("반품 처리가 완료되었습니다.");
     } catch (err: any) {
-      console.error("Failed to process return:", err);
       alert(err?.message || "오류가 발생했습니다.");
       // Only refresh on error to reload data
       onRefresh();
@@ -387,7 +389,6 @@ function ReturnCard({
       onRefresh();
       alert("교환이 확인되었습니다.");
     } catch (err: any) {
-      console.error("Failed to confirm exchange:", err);
       alert(err?.message || "오류가 발생했습니다.");
     } finally {
       setConfirming(false);
@@ -638,6 +639,7 @@ function ReturnCard({
                         <img
                           src={images[idx]}
                           alt={`Upload ${idx + 1}`}
+                          loading="lazy"
                           className="h-full w-full rounded-lg object-cover border-2 border-slate-300"
                         />
                         <button
@@ -846,6 +848,7 @@ function ReturnCard({
                               : `${apiUrl}${imageUrl}`
                           }
                           alt={`Image ${idx + 1}`}
+                          loading="lazy"
                           className="w-full h-full object-cover rounded-lg border border-slate-200"
                         />
                       ) : (
@@ -874,4 +877,4 @@ function ReturnCard({
       )}
     </div>
   );
-}
+});

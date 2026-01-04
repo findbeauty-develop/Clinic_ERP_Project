@@ -148,7 +148,7 @@ export class SupplierService {
                 responsibleProducts: m.responsible_products,
                 status: m.status,
               })) || [],
-            
+
             // Note: clinicManagers removed - no direct relation in Supplier model
           };
         });
@@ -164,9 +164,7 @@ export class SupplierService {
    * Returns all suppliers that have APPROVED ClinicSupplierLink
    */
   async listAllSuppliers(tenantId: string) {
-    this.logger.log(`Listing all suppliers for tenant: ${tenantId}`);
     const suppliers = await this.repository.listAllApprovedSuppliers(tenantId);
-    this.logger.log(`Found ${suppliers.length} approved suppliers`);
 
     // Format response same as searchSuppliers
     return suppliers.map((supplier: any) => {
@@ -202,7 +200,7 @@ export class SupplierService {
             responsibleProducts: m.responsible_products,
             status: m.status,
           })) || [],
-        
+
         // Note: clinicManagers removed - no direct relation in Supplier model
       };
     });
@@ -218,14 +216,10 @@ export class SupplierService {
       throw new Error("핸드폰 번호는 필수입니다");
     }
 
-    this.logger.log(
-      `Searching suppliers by phone: ${phoneNumber} for tenant: ${tenantId}`
-    );
     const suppliers = await this.repository.searchSuppliersByPhone(
       phoneNumber,
       tenantId
     );
-    this.logger.log(`Found ${suppliers.length} suppliers by phone`);
 
     // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
     return suppliers.map((supplier: any) => {
@@ -249,9 +243,6 @@ export class SupplierService {
       const clinicSupplierManagerId = supplier.clinicSupplierManagerId || null;
 
       // Debug logging
-      this.logger.log(
-        `Supplier: ${supplier.company_name}, isRegisteredOnPlatform: ${isRegisteredOnPlatform}, isClinicCreated: ${supplier.isClinicCreated || false}, supplierManagerId: ${supplierManagerId}, clinicSupplierManagerId: ${clinicSupplierManagerId}, managerId: ${manager?.manager_id}`
-      );
 
       return {
         id: supplier.id, // Supplier company ID yoki ClinicSupplierManager ID
@@ -301,10 +292,6 @@ export class SupplierService {
     dto: CreateSupplierManualDto,
     tenantId: string
   ) {
-    this.logger.log(
-      `Creating/updating supplier manually: ${dto.companyName}, businessNumber: ${dto.businessNumber}, tenantId: ${tenantId}`
-    );
-
     // Validation
     if (!dto.companyName || !dto.businessNumber) {
       throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
@@ -317,9 +304,7 @@ export class SupplierService {
     try {
       return await this.prisma.executeWithRetry(async () => {
         // 1. Supplier upsert (business_number bo'yicha)
-        this.logger.log(
-          `Upserting supplier with business_number: ${dto.businessNumber}`
-        );
+
         const supplier = await this.prisma.supplier.upsert({
           where: { business_number: dto.businessNumber },
           update: {
@@ -340,15 +325,9 @@ export class SupplierService {
           },
         });
 
-        this.logger.log(`Supplier created/updated: ${supplier.id}`);
-
         // 2. ClinicSupplierManager upsert (tenant_id + phone_number bo'yicha, agar berilgan bo'lsa)
         let clinicManager = null;
         if (dto.phoneNumber && dto.managerName) {
-          this.logger.log(
-            `Creating/updating clinic manager with phone_number: ${dto.phoneNumber}, tenantId: ${tenantId}`
-          );
-
           // Clinic context'da phone_number + tenant_id bo'yicha qidirish
           const existingClinicManager =
             await this.prisma.clinicSupplierManager.findFirst({
@@ -396,10 +375,6 @@ export class SupplierService {
               },
             });
           }
-
-          this.logger.log(
-            `Clinic manager created/updated: ${clinicManager.id}`
-          );
         }
 
         // 3. Trade link creation removed
@@ -409,9 +384,6 @@ export class SupplierService {
         // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
         // This ensures that only clinics that have actually done business with the supplier
         // will see the supplier in primary search results
-        this.logger.log(
-          `Supplier and ClinicSupplierManager created. Trade link will be created when product is created or manually approved.`
-        );
 
         return {
           supplier: {
@@ -455,10 +427,6 @@ export class SupplierService {
     managerId?: string,
     supplierManagerId?: string
   ) {
-    this.logger.log(
-      `Approving trade link: tenantId=${tenantId}, supplierId=${supplierId}, managerId=${managerId}, supplierManagerId=${supplierManagerId}`
-    );
-
     try {
       const prisma = this.prisma as any;
 
@@ -486,11 +454,6 @@ export class SupplierService {
             status: "ACTIVE",
           },
         });
-        if (supplierManager) {
-          this.logger.log(
-            `Found SupplierManager by supplierManagerId: ${supplierManagerId}`
-          );
-        }
       }
 
       // If not found by supplierManagerId, try managerId (manager_id)
@@ -502,9 +465,6 @@ export class SupplierService {
             status: "ACTIVE",
           },
         });
-        if (supplierManager) {
-          this.logger.log(`Found SupplierManager by managerId: ${managerId}`);
-        }
       }
 
       // If still not found, find first ACTIVE manager for this supplier
@@ -518,11 +478,6 @@ export class SupplierService {
             created_at: "asc", // Use first/oldest manager
           },
         });
-        if (supplierManager) {
-          this.logger.log(
-            `Found SupplierManager by first ACTIVE: ${supplierManager.id}`
-          );
-        }
       }
 
       if (!supplierManager) {
@@ -531,18 +486,10 @@ export class SupplierService {
         );
       }
 
-      this.logger.log(
-        `Found SupplierManager: ${supplierManager.id} (manager_id: ${supplierManager.manager_id})`
-      );
-
       // Approve link using SupplierManager ID
       const link = await this.repository.approveTradeLink(
         tenantId,
         supplierManager.id
-      );
-
-      this.logger.log(
-        `Trade link approved: ${link.id} for SupplierManager ${supplierManager.id}`
       );
 
       return {
@@ -575,10 +522,6 @@ export class SupplierService {
    * Only clinic-created managers can be deleted, not SupplierManager (platform managers)
    */
   async deleteClinicManager(managerId: string, tenantId: string) {
-    this.logger.log(
-      `Deleting clinic manager: ${managerId} for tenant: ${tenantId}`
-    );
-
     // Faqat ClinicSupplierManager'ni o'chirish mumkin (SupplierManager o'chirilmaydi)
     const manager = await this.prisma.clinicSupplierManager.findFirst({
       where: {
@@ -597,7 +540,6 @@ export class SupplierService {
       },
     });
 
-    this.logger.log(`Clinic manager deleted successfully: ${managerId}`);
     return { success: true, message: "담당자가 삭제되었습니다" };
   }
 
@@ -606,10 +548,6 @@ export class SupplierService {
    * Supplier-frontend uchun
    */
   async getClinicsForSupplier(supplierManagerId: string) {
-    this.logger.log(
-      `Getting clinics for supplier manager: ${supplierManagerId}`
-    );
-
     try {
       // Get ClinicSupplierLink records for this supplier manager
       const links = await this.prisma.clinicSupplierLink.findMany({
@@ -620,10 +558,6 @@ export class SupplierService {
           created_at: "desc",
         },
       });
-
-      this.logger.log(
-        `Found ${links.length} ClinicSupplierLink records for supplier manager ${supplierManagerId}`
-      );
 
       // Get clinic data for each tenant_id
       const clinics = await Promise.all(
@@ -674,10 +608,6 @@ export class SupplierService {
           },
         }));
 
-      this.logger.log(
-        `Returning ${result.length} clinics for supplier manager ${supplierManagerId}`
-      );
-
       return result;
     } catch (error: any) {
       this.logger.error(
@@ -697,10 +627,6 @@ export class SupplierService {
     supplierManagerId: string,
     memo: string | null
   ) {
-    this.logger.log(
-      `Updating memo for clinic ${tenantId}, supplier manager ${supplierManagerId}`
-    );
-
     const updated = await (this.prisma.clinicSupplierLink as any).updateMany({
       where: {
         tenant_id: tenantId,

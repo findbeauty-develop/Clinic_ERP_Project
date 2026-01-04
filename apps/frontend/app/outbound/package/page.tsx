@@ -403,7 +403,9 @@ export default function PackageOutboundPage() {
         packageQty: number;
       }> = [];
 
-      for (const [packageId, packageItems] of Object.entries(itemsByPackageId)) {
+      for (const [packageId, packageItems] of Object.entries(
+        itemsByPackageId
+      )) {
         if (packageItems.length === 0) continue;
 
         // Package count'ni olish
@@ -436,12 +438,6 @@ export default function PackageOutboundPage() {
       const response = await apiPost(`${apiUrl}/outbound/unified`, payload);
 
       // 출고 후 목록 초기화 및 로그 기록
-      console.log("패키지 출고 완료:", {
-        timestamp: new Date().toISOString(),
-        manager: managerName.trim(),
-        items: scheduledItems.length,
-        itemsDetail: scheduledItems,
-      });
 
       // 성공한 항목과 실패한 항목 분리
       if (response && response.failedItems && response.failedItems.length > 0) {

@@ -1892,9 +1892,6 @@ export class OrderService {
                           clinicManagerName,
                           products
                         );
-                        this.logger.log(
-                          `✅ SMS sent to SupplierManager ${manager.name} (${manager.phone_number}) for ${group.items.length} product(s)`
-                        );
                       } catch (smsError: any) {
                         this.logger.error(
                           `❌ Failed to send SMS to SupplierManager ${
@@ -1958,9 +1955,6 @@ export class OrderService {
                     totalQuantity,
                     clinicManagerName,
                     products
-                  );
-                  this.logger.log(
-                    `✅ SMS sent to ${group.phoneSource} (${group.phoneNumber}) for ${group.items.length} product(s)`
                   );
                 }
               }
@@ -2035,9 +2029,6 @@ export class OrderService {
             : clinicSupplierManager?.email1
             ? "ClinicSupplierManager.email1"
             : "ClinicSupplierManager.email2";
-          this.logger.log(
-            `Order notification email sent to supplier: ${supplierEmail} (source: ${emailSource})`
-          );
         } else {
           this.logger.warn(
             `No email address found for supplier ${order.supplier_id} (checked SupplierManager.email1, SupplierManager.email2, Supplier.company_email, ClinicSupplierManager.company_email, ClinicSupplierManager.email1, ClinicSupplierManager.email2), skipping email notification`
@@ -2636,9 +2627,7 @@ export class OrderService {
         if (clinicSupplierManager?.linkedManager?.supplier?.tenant_id) {
           const supplierTenantId =
             clinicSupplierManager.linkedManager.supplier.tenant_id;
-          this.logger.log(
-            `Notifying supplier-backend: orderNo=${order.order_no}, supplierTenantId=${supplierTenantId}, clinicTenantId=${tenantId}`
-          );
+
           await this.notifySupplierOrderCompleted(
             order.order_no,
             supplierTenantId,
@@ -2758,8 +2747,6 @@ export class OrderService {
         },
       });
     });
-
-    this.logger.log(`Order ${order.order_no} cancelled`);
 
     return { success: true, message: "Order cancelled successfully" };
   }

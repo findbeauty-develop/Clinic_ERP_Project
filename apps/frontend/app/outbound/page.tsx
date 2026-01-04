@@ -788,12 +788,6 @@ function OutboundPageContent() {
       const productItems = scheduledItems.filter((item) => !item.isPackageItem);
       const packageItems = scheduledItems.filter((item) => item.isPackageItem);
 
-      console.log("출고 시작:", {
-        productItems: productItems.length,
-        packageItems: packageItems.length,
-        total: scheduledItems.length,
-      });
-
       // Ikkala rejim uchun ham 출고 qilish
       const promises: Promise<any>[] = [];
 
@@ -896,16 +890,6 @@ function OutboundPageContent() {
           allFailed.push(...items);
           failedCount += items.length;
         }
-      });
-
-      // Log
-      console.log("출고 완료:", {
-        timestamp: new Date().toISOString(),
-        manager: managerName.trim(),
-        productItems: productItems.length,
-        packageItems: packageItems.length,
-        successCount,
-        failedCount,
       });
 
       // Natijalarni ko'rsatish

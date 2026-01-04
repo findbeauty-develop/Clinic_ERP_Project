@@ -1157,9 +1157,6 @@ export class ProductsService {
       },
     });
 
-    console.log("Created warehouse:", warehouse);
-    console.log("Warehouse items:", warehouse.items);
-
     return {
       success: true,
       message: "창고 위치가 추가되었습니다",

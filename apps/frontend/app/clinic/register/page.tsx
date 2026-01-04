@@ -84,7 +84,6 @@ export default function ClinicRegisterPage() {
 
       // If NOT in edit mode, clear any old localStorage data to prevent showing other users' data
       if (!editingClinicId && !clinicSummaryRaw) {
-        console.log("🔄 New registration - clearing old localStorage data");
         localStorage.removeItem("clinic_register_form");
       }
 
@@ -117,7 +116,6 @@ export default function ClinicRegisterPage() {
           setCertificateVerificationError(
             parsed.certificateVerificationError || null
           );
-          console.log("✅ Loaded form data from storage");
         } catch (error) {
           console.error("Error loading saved form data:", error);
         }
@@ -136,16 +134,12 @@ export default function ClinicRegisterPage() {
       try {
         // Check if we're in edit mode (clinic ID from success page)
         const editingClinicId = sessionStorage.getItem("erp_editing_clinic_id");
-        console.log("Editing clinic ID from sessionStorage:", editingClinicId);
 
         // Get clinic name from sessionStorage (from success page)
         const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
 
         // Only load from API if we're in edit mode
         if (!editingClinicId && !clinicSummaryRaw) {
-          console.log(
-            "No edit mode - skipping API load, using localStorage data"
-          );
           setIsLoadingClinic(false);
           return;
         }
@@ -173,11 +167,7 @@ export default function ClinicRegisterPage() {
 
         if (matchedClinic) {
           // Store clinic ID for update mode
-          console.log(
-            "Found clinic for editing:",
-            matchedClinic.id,
-            matchedClinic.name
-          );
+
           setClinicId(matchedClinic.id);
 
           // Convert image URLs to absolute URLs if they are relative
@@ -220,7 +210,6 @@ export default function ClinicRegisterPage() {
           setIsCertificateVerified(true);
           setCertificateVerificationError(null);
         } else {
-          console.log("Clinic not found for editing");
         }
       } catch (error) {
         console.error("Failed to load clinic data", error);
@@ -260,7 +249,6 @@ export default function ClinicRegisterPage() {
             JSON.stringify(formData)
           );
         }
-        console.log("💾 Saved form data to sessionStorage");
       }
     }
   }, [form, isCertificateVerified, certificateVerificationError]);
@@ -488,12 +476,7 @@ export default function ClinicRegisterPage() {
 
       // If clinicId exists, update existing clinic; otherwise create new one
       const isUpdateMode = clinicId !== null;
-      console.log(
-        "Submit mode:",
-        isUpdateMode ? "UPDATE" : "CREATE",
-        "Clinic ID:",
-        clinicId
-      );
+
       const url = isUpdateMode
         ? `${apiUrl}/iam/members/clinics/${clinicId}`
         : `${apiUrl}/iam/members/clinics`;
@@ -533,7 +516,6 @@ export default function ClinicRegisterPage() {
         // Save tenant_id for use in complete page and member creation
         if (result && result.tenant_id) {
           sessionStorage.setItem("erp_tenant_id", result.tenant_id);
-          console.log("✅ Saved tenant_id:", result.tenant_id);
         }
 
         // Update sessionStorage with new clinic data

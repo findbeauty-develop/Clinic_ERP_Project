@@ -37,10 +37,6 @@ export class ClinicSupplierHelperService {
           phone_number: "000-0000-0000",
         },
       });
-
-      this.logger.log(
-        `Created default ClinicSupplierManager for tenant ${tenantId}`
-      );
     }
 
     return { id: supplierManager.id };
@@ -82,9 +78,6 @@ export class ClinicSupplierHelperService {
           });
 
         if (supplierManager) {
-          this.logger.log(
-            `Found ClinicSupplierManager by linked_supplier_manager_id: ${supplierData.supplier_id}`
-          );
           return { id: supplierManager.id };
         }
       }
@@ -102,9 +95,6 @@ export class ClinicSupplierHelperService {
       );
 
       if (supplierManager) {
-        this.logger.log(
-          `Found ClinicSupplierManager by phone_number: ${supplierData.contact_phone}`
-        );
         return { id: supplierManager.id };
       }
     }
@@ -121,9 +111,6 @@ export class ClinicSupplierHelperService {
       );
 
       if (supplierManager) {
-        this.logger.log(
-          `Found ClinicSupplierManager by business_number: ${supplierData.business_number}`
-        );
         return { id: supplierManager.id };
       }
     }
@@ -146,10 +133,6 @@ export class ClinicSupplierHelperService {
       },
     });
 
-    this.logger.log(
-      `Created new ClinicSupplierManager: ${newSupplierManager.id} for tenant ${tenantId}`
-    );
-
     return { id: newSupplierManager.id };
   }
 
@@ -171,10 +154,6 @@ export class ClinicSupplierHelperService {
         linked_supplier_manager_id: supplierManagerId,
       },
     });
-
-    this.logger.log(
-      `Claimed ClinicSupplierManager ${clinicSupplierManagerId} to SupplierManager ${supplierManagerId}`
-    );
   }
 
   /**

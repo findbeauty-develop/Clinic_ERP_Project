@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Header,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { OrderReturnService } from "./order-return.service";
@@ -22,6 +23,7 @@ export class OrderReturnController {
   @Get()
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({ summary: "Get order returns by status" })
   async getReturns(
     @Tenant() tenantId: string,
@@ -49,7 +51,9 @@ export class OrderReturnController {
   @Post("webhook/complete")
   @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: "Webhook: Supplier'dan return completion xabari" })
-  async handleReturnComplete(@Body() dto: { return_no: string; item_id?: string; status: string }) {
+  async handleReturnComplete(
+    @Body() dto: { return_no: string; item_id?: string; status: string }
+  ) {
     try {
       return await this.service.handleReturnComplete(dto);
     } catch (error: any) {
@@ -86,11 +90,7 @@ export class OrderReturnController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Confirm exchange (교환 확인)" })
-  async confirmExchange(
-    @Tenant() tenantId: string,
-    @Param("id") id: string
-  ) {
+  async confirmExchange(@Tenant() tenantId: string, @Param("id") id: string) {
     return this.service.confirmExchange(tenantId, id);
   }
 }
-
