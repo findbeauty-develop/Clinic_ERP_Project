@@ -252,19 +252,22 @@ export default function ProductDetailPage() {
                       )
                         return;
                       try {
-                        const { apiRequest } = await import("../../../lib/api");
-                        const response = await apiRequest(
-                          `${apiUrl}/products/${params.id}`,
-                          {
-                            method: "DELETE",
-                          }
-                        );
-                        if (!response.ok) {
-                          const error = await response.json().catch(() => ({}));
-                          throw new Error(
-                            error?.message || "제품 삭제에 실패했습니다."
+                        // ✅ Use apiDelete instead of apiRequest for automatic cache invalidation and event dispatch
+                        const { apiDelete } = await import("../../../lib/api");
+                        await apiDelete(`${apiUrl}/products/${params.id}`);
+                        
+                        // ✅ Additional event dispatch to ensure inbound page gets notified
+                        // (apiDelete already does this, but we do it here too for redundancy)
+                        if (typeof window !== "undefined") {
+                          sessionStorage.setItem("inbound_force_refresh", "true");
+                          window.dispatchEvent(
+                            new CustomEvent("productDeleted", {
+                              detail: { productId: params.id },
+                            })
                           );
+                          console.log("[ProductDetail] Product deleted event dispatched:", params.id);
                         }
+                        
                         alert("제품이 성공적으로 삭제되었습니다.");
                         router.push("/inventory/products");
                       } catch (err) {

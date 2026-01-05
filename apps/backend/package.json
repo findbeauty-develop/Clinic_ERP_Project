@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.2",
     "korean-lunar-calendar": "^0.3.6",
     "multer": "1.4.5-lts.2",
+    "path-to-regexp": "^6.2.1",
     "reflect-metadata": "^0.1.13",
     "rss-parser": "^3.13.0",
     "rxjs": "^7.8.2",

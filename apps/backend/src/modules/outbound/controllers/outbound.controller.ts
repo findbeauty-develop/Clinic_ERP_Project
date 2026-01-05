@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   Delete,
+  Header,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { CreateOutboundDto, BulkOutboundDto } from "../dto/create-outbound.dto";
@@ -25,6 +26,7 @@ export class OutboundController {
   @Get("products")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({ summary: "Get all products with batches for outbound processing (FEFO sorted)" })
   @ApiQuery({ name: "search", required: false, type: String, description: "Search by product name, brand, or batch number" })
   getProductsForOutbound(
@@ -62,6 +64,7 @@ export class OutboundController {
   @Get("history")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({
     summary: "출고 내역 조회 - 기간별, 담당자별, 제품/패키지별로 조회 및 관리",
     description:

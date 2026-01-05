@@ -66,6 +66,38 @@ export class PrismaService
       }
     }
 
+    // Optimize connection pool parameters
+    const connectionLimit = parseInt(
+      process.env.DATABASE_CONNECTION_LIMIT || "10",
+      10
+    );
+    const poolTimeout = parseInt(process.env.DATABASE_POOL_TIMEOUT || "10", 10);
+    const connectTimeout = parseInt(
+      process.env.DATABASE_CONNECT_TIMEOUT || "5",
+      10
+    );
+
+    // Add connection pool parameters to DATABASE_URL if not present
+    if (databaseUrl) {
+      try {
+        const url = new URL(databaseUrl);
+        if (!url.searchParams.has("connection_limit")) {
+          url.searchParams.set("connection_limit", connectionLimit.toString());
+        }
+        if (!url.searchParams.has("pool_timeout")) {
+          url.searchParams.set("pool_timeout", poolTimeout.toString());
+        }
+        if (!url.searchParams.has("connect_timeout")) {
+          url.searchParams.set("connect_timeout", connectTimeout.toString());
+        }
+        databaseUrl = url.toString();
+      } catch (error) {
+        // If URL parsing fails, use original URL - log after super() call
+        // We'll log this after super() is called
+      }
+    }
+
+    // Call super() first before using 'this'
     super({
       datasources: {
         db: {
@@ -78,6 +110,17 @@ export class PrismaService
       // Prisma uses connection pooling automatically
       // For Supabase, use port 6543 with ?pgbouncer=true in DATABASE_URL
     });
+
+    // Now we can use this.logger after super() is called
+    if (databaseUrl) {
+      try {
+        new URL(databaseUrl);
+      } catch (error) {
+        this.logger.warn(
+          "Failed to parse DATABASE_URL for connection pool optimization"
+        );
+      }
+    }
   }
 
   /**
@@ -108,6 +151,26 @@ export class PrismaService
     // This prevents blocking startup and connection error spam
 
     this.isConnected = false; // Will be set to true when first query succeeds
+
+    // Query logging - to'g'ri typing bilan
+    if (process.env.NODE_ENV === "development") {
+      try {
+        // Prisma $on method'ni to'g'ri chaqirish
+        (this as any).$on(
+          "query",
+          (e: {
+            duration: number;
+            query: string;
+            params?: string;
+            target?: string;
+          }) => {
+            console.log("QUERY", e.duration, "ms", e.query);
+          }
+        );
+      } catch (error) {
+        this.logger.warn("Failed to set up query logging:", error);
+      }
+    }
   }
 
   /**

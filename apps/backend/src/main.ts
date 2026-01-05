@@ -30,16 +30,22 @@ async function bootstrap() {
   const uploadsDir = join(process.cwd(), "uploads");
   app.use("/uploads", express.static(uploadsDir));
 
-  const cfg = new DocumentBuilder()
-    .setTitle("ERP API")
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .build();
-  const doc = SwaggerModule.createDocument(app, cfg);
-  SwaggerModule.setup("docs", app, doc);
-  app.getHttpAdapter().get("/docs-json", (req, res) => {
-    res.json(doc);
-  });
+  // Swagger setup with error handling
+  try {
+    const cfg = new DocumentBuilder()
+      .setTitle("ERP API")
+      .setVersion("0.1.0")
+      .addBearerAuth()
+      .build();
+    const doc = SwaggerModule.createDocument(app, cfg);
+    SwaggerModule.setup("docs", app, doc);
+    app.getHttpAdapter().get("/docs-json", (req, res) => {
+      res.json(doc);
+    });
+  } catch (error: any) {
+    console.warn("Swagger setup failed:", error?.message || String(error));
+    // Continue without Swagger if setup fails
+  }
 
   const port = Number(process.env.PORT) || 3000;
   await app.listen(port);

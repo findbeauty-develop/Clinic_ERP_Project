@@ -42,8 +42,24 @@ export class PackageRepository {
         items: {
           include: {
             product: {
-              include: {
-                batches: true,
+              select: {
+                id: true,
+                name: true,
+                brand: true,
+                unit: true,
+                // Only fetch necessary batch fields for outbound page
+                batches: {
+                  select: {
+                    id: true,
+                    batch_no: true,
+                    qty: true,
+                    expiry_date: true,
+                    storage: true,
+                  },
+                  where: {
+                    qty: { gt: 0 }, // Only batches with stock > 0
+                  },
+                },
               },
             },
           },

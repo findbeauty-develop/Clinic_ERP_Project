@@ -1214,13 +1214,28 @@ export default function InboundNewPage() {
       }
 
       // Call API using authenticated request
-      const { apiPost } = await import("../../../lib/api");
+      const { apiPost, clearCache } = await import("../../../lib/api");
 
       const result = await apiPost("/products", payload);
+
+      // ✅ Clear frontend cache so new product appears immediately
+      // Clear cache for both "/products" and full URL format
+      clearCache("/products");
+      clearCache("products"); // Also clear without leading slash
+      
+      // Set flag to force refresh on inbound page
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("inbound_force_refresh", "true");
+        
+        // ✅ Dispatch custom event to notify inbound page immediately
+        window.dispatchEvent(new CustomEvent("productCreated"));
+      }
 
       // Clear unsaved changes flag and redirect to inbound list page
       setShowUnsavedChangesDialog(false);
       setPendingNavigation(null);
+      
+      // Use router.push for smooth navigation (cache already cleared)
       router.push("/inbound");
       // isSaving will be reset when component unmounts or navigation completes
     } catch (error) {

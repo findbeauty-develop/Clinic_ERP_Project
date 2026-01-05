@@ -7,10 +7,11 @@ import {
   Suspense,
   useCallback,
   useRef,
+  memo,
 } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { apiGet, apiPost, apiDelete } from "../../lib/api";
+import { apiGet, apiPost, apiDelete, clearCache } from "../../lib/api";
 
 type Batch = {
   id: string;
@@ -153,10 +154,11 @@ function OutboundPageContent() {
   } | null>(null);
   const CACHE_TTL = 30000; // 30 seconds
 
-  const fetchProducts = useCallback(async () => {
-    // Check cache first
+  const fetchProducts = useCallback(async (forceRefresh = false) => {
+    // Check cache first (unless force refresh)
     const cacheKey = searchQuery || "";
     if (
+      !forceRefresh &&
       productsCacheRef.current &&
       productsCacheRef.current.searchQuery === cacheKey &&
       Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
@@ -169,11 +171,21 @@ function OutboundPageContent() {
     setLoading(true);
     setError(null);
     try {
+      // Add cache-busting parameter when force refresh
+      const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
       const searchParam = searchQuery
         ? `?search=${encodeURIComponent(searchQuery)}`
-        : "";
+        : "?";
       const data = await apiGet<ProductForOutbound[]>(
-        `${apiUrl}/outbound/products${searchParam}`
+        `${apiUrl}/outbound/products${searchParam}${cacheBuster}`,
+        forceRefresh
+          ? {
+              headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                Pragma: "no-cache",
+              },
+            }
+          : {}
       );
 
       // Format image URLs and filter out products with 0 stock
@@ -202,9 +214,10 @@ function OutboundPageContent() {
     }
   }, [apiUrl, searchQuery]);
 
-  const fetchPackages = useCallback(async () => {
-    // Check cache first
+  const fetchPackages = useCallback(async (forceRefresh = false) => {
+    // Check cache first (unless force refresh)
     if (
+      !forceRefresh &&
       packagesCacheRef.current &&
       Date.now() - packagesCacheRef.current.timestamp < CACHE_TTL
     ) {
@@ -216,7 +229,19 @@ function OutboundPageContent() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet<PackageForOutbound[]>(`${apiUrl}/packages`);
+      // Add cache-busting parameter when force refresh
+      const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
+      const data = await apiGet<PackageForOutbound[]>(
+        `${apiUrl}/packages${cacheBuster}`,
+        forceRefresh
+          ? {
+              headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                Pragma: "no-cache",
+              },
+            }
+          : {}
+      );
 
       setPackages(data);
 
@@ -278,7 +303,65 @@ function OutboundPageContent() {
       fetchProducts();
     }
     setCurrentPage(1); // Reset to first page when search changes
-  }, [isPackageMode, fetchProducts, fetchPackages]);
+  }, [isPackageMode, searchQuery, fetchProducts, fetchPackages]);
+
+  // ✅ Listen for product deletion events and update state immediately
+  useEffect(() => {
+    const handleProductDeleted = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ productId: string }>;
+      const { productId } = customEvent.detail;
+      
+      console.log("[Outbound] Product deleted event received:", productId);
+      
+      if (!productId) {
+        console.warn("[Outbound] No productId in event detail");
+        return;
+      }
+
+      // ✅ Always remove product from local state immediately (optimistic update)
+      setProducts((prevProducts) => {
+        const filtered = prevProducts.filter((p) => p.id !== productId);
+        console.log(
+          "[Outbound] Products before:",
+          prevProducts.length,
+          "after:",
+          filtered.length,
+          "removed productId:",
+          productId
+        );
+        return filtered;
+      });
+
+      // Clear cache to ensure consistency
+      const { clearCache } = await import("../../lib/api");
+      clearCache("/outbound/products");
+      clearCache("outbound/products");
+      clearCache(`${apiUrl}/outbound/products`);
+      
+      // ✅ Also clear component-level cache refs BEFORE fetching
+      productsCacheRef.current = null;
+      
+      // ✅ Small delay to ensure cache is cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // ✅ Force refresh from API to bypass browser HTTP cache
+      if (!isPackageMode) {
+        try {
+          await fetchProducts(true);
+          console.log("[Outbound] Products refreshed after deletion");
+        } catch (err) {
+          console.error("[Outbound] Failed to refresh products after deletion", err);
+          // Keep the optimistic update even if refresh fails
+        }
+      }
+    };
+
+    window.addEventListener("productDeleted", handleProductDeleted);
+
+    return () => {
+      window.removeEventListener("productDeleted", handleProductDeleted);
+    };
+  }, [apiUrl, isPackageMode, fetchProducts]);
 
   // Handle highlight from URL parameter (when navigating from package mode)
   useEffect(() => {
@@ -903,11 +986,31 @@ function OutboundPageContent() {
         setChartNumber("");
         setPackageCounts({});
 
-        // Refresh products and packages list to remove 0-stock items
+        // ✅ Clear ALL caches (frontend API cache + component cache)
+        // Clear with different endpoint formats to ensure all variants are cleared
+        clearCache("/outbound/products");
+        clearCache("outbound/products");
+        clearCache(`${apiUrl}/outbound/products`);
+        clearCache("/packages");
+        clearCache("packages");
+        clearCache(`${apiUrl}/packages`);
+        
+        // ✅ Also clear component-level cache refs BEFORE fetching
+        productsCacheRef.current = null;
+        packagesCacheRef.current = null;
+        
+        // ✅ Force clear all pending requests for outbound endpoints to prevent stale data
+        // This ensures fresh request is made
+        // Note: We don't clear ALL cache, only outbound-related cache
+        
+        // ✅ Small delay to ensure cache is cleared and backend cache is invalidated
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Refresh products and packages list to remove 0-stock items (force refresh)
         if (isPackageMode) {
-          await fetchPackages();
+          await fetchPackages(true);
         } else {
-          await fetchProducts();
+          await fetchProducts(true);
         }
       } else if (allFailed.length > 0) {
         setFailedItems(allFailed);
@@ -925,19 +1028,28 @@ function OutboundPageContent() {
           )
         );
 
-        // Refresh products/packages list even for partial success
+        // ✅ Clear ALL caches (frontend API cache + component cache)
+        // Clear with different endpoint formats to ensure all variants are cleared
+        clearCache("/outbound/products");
+        clearCache("outbound/products");
+        clearCache(`${apiUrl}/outbound/products`);
+        clearCache("/packages");
+        clearCache("packages");
+        clearCache(`${apiUrl}/packages`);
+        
+        // ✅ Also clear component-level cache refs BEFORE fetching
+        productsCacheRef.current = null;
+        packagesCacheRef.current = null;
+        
+        // ✅ Small delay to ensure cache is cleared
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Refresh products/packages list even for partial success (force refresh)
         if (isPackageMode) {
-          await fetchPackages();
+          await fetchPackages(true);
         } else {
-          await fetchProducts();
+          await fetchProducts(true);
         }
-      }
-
-      // Refresh data
-      if (isPackageMode) {
-        fetchPackages();
-      } else {
-        fetchProducts();
       }
     } catch (err: any) {
       console.error("Failed to process outbound", err);
@@ -1071,11 +1183,26 @@ function OutboundPageContent() {
       );
       alert("재시도 성공");
 
-      // Refresh data
+      // ✅ Clear ALL caches (frontend API cache + component cache)
+      // Clear with different endpoint formats to ensure all variants are cleared
+      clearCache("/outbound/products");
+      clearCache("outbound/products");
+      clearCache(`${apiUrl}/outbound/products`);
+      clearCache("/packages");
+      clearCache("packages");
+      clearCache(`${apiUrl}/packages`);
+      
+      // ✅ Also clear component-level cache refs BEFORE fetching
+      productsCacheRef.current = null;
+      packagesCacheRef.current = null;
+      
+      // ✅ Small delay to ensure cache is cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (isPackageMode) {
-        fetchPackages();
+        fetchPackages(true);
       } else {
-        fetchProducts();
+        fetchProducts(true);
       }
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || "재시도 실패");
@@ -1193,11 +1320,26 @@ function OutboundPageContent() {
         );
       }
 
-      // Refresh data
+      // ✅ Clear ALL caches (frontend API cache + component cache)
+      // Clear with different endpoint formats to ensure all variants are cleared
+      clearCache("/outbound/products");
+      clearCache("outbound/products");
+      clearCache(`${apiUrl}/outbound/products`);
+      clearCache("/packages");
+      clearCache("packages");
+      clearCache(`${apiUrl}/packages`);
+      
+      // ✅ Also clear component-level cache refs BEFORE fetching
+      productsCacheRef.current = null;
+      packagesCacheRef.current = null;
+      
+      // ✅ Small delay to ensure cache is cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (isPackageMode) {
-        fetchPackages();
+        fetchPackages(true);
       } else {
-        fetchProducts();
+        fetchProducts(true);
       }
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || "재시도 실패");
@@ -2402,7 +2544,7 @@ function OutboundPageContent() {
 }
 
 // Product Card Component
-function ProductCard({
+const ProductCard = memo(function ProductCard({
   product,
   scheduledItems,
   onQuantityChange,
@@ -2592,7 +2734,9 @@ function ProductCard({
       )}
     </div>
   );
-}
+});
+
+ProductCard.displayName = "ProductCard";
 
 export default function OutboundPage() {
   return (

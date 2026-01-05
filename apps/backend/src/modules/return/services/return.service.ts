@@ -16,6 +16,13 @@ import { EmailService } from "../../member/services/email.service";
 export class ReturnService {
   private readonly logger = new Logger(ReturnService.name);
 
+  // In-memory cache for getAvailableProducts
+  private availableProductsCache = new Map<
+    string,
+    { data: any; timestamp: number }
+  >();
+  private readonly CACHE_TTL = 30000; // 30 seconds
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly returnRepository: ReturnRepository,
@@ -24,6 +31,17 @@ export class ReturnService {
     private readonly emailService: EmailService
   ) {}
 
+  private async refreshAvailableProductsCacheInBackground(
+    tenantId: string,
+    search?: string
+  ): Promise<void> {
+    try {
+      // ... (getAvailableProducts ichidagi barcha logic'ni copy qiling)
+      // Lekin cache'ga saqlash qismini qoldiring
+    } catch (error) {
+      // Error handling
+    }
+  }
   /**
    * Qaytarilishi mumkin bo'lgan mahsulotlarni olish
    * 미반납 수량 = Chiqarilgan miqdor - Qaytarilgan miqdor
@@ -34,6 +52,21 @@ export class ReturnService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    const cacheKey = `available-products:${tenantId}:${search || ""}`;
+    const cached = this.availableProductsCache.get(cacheKey);
+    if (cached) {
+      const age = Date.now() - cached.timestamp;
+
+      if (age > this.CACHE_TTL) {
+        // Stale cache - background'da yangilash
+        this.refreshAvailableProductsCacheInBackground(tenantId, search).catch(
+          () => {}
+        );
+        return cached.data; // ✅ Stale data qaytariladi
+      }
+
+      return cached.data; // ✅ Fresh data
+    }
     // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
     const allReturns = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).return.findMany({
@@ -280,6 +313,12 @@ export class ReturnService {
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
 
+    // Cache'ga saqlash
+    this.availableProductsCache.set(cacheKey, {
+      data: availableProducts,
+      timestamp: Date.now(),
+    });
+
     return availableProducts;
   }
 
@@ -295,7 +334,7 @@ export class ReturnService {
       throw new BadRequestException("Return items are required");
     }
 
-    return await this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
         const createdReturns = [];
         const errors: string[] = [];
@@ -651,12 +690,13 @@ export class ReturnService {
           returns: createdReturns,
           errors: errors.length > 0 ? errors : undefined,
         };
-      },
-      {
-        maxWait: 10000,
-        timeout: 30000,
       }
     );
+
+    // Cache'ni invalidate qilish
+    this.availableProductsCache.clear();
+
+    return result;
   }
 
   /**

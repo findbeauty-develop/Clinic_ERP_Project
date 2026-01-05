@@ -206,52 +206,66 @@ export default function DashboardPage() {
     },
   ];
 
-  // Fetch weather data
+  // Fetch weather data - parallelized for better performance
   useEffect(() => {
     const fetchWeatherData = async () => {
       setLoadingWeather(true);
       try {
-        // Fetch current weather
-        const currentWeather = await apiGet(
-          `/api/weather/current/${selectedCity}`
-        );
-        setWeatherData(currentWeather);
+        // Fetch all weather data in parallel
+        const [currentWeatherResult, forecastResult, hourlyResult, airQualityResult] =
+          await Promise.allSettled([
+            apiGet(`/api/weather/current/${selectedCity}`),
+            apiGet(`/api/weather/forecast/${selectedCity}?days=7`),
+            apiGet(`/api/weather/hourly/${selectedCity}`),
+            apiGet(`/api/weather/air-quality/${selectedCity}`),
+          ]);
 
-        // Fetch forecast (7 days)
-        try {
-          const forecast = await apiGet(
-            `/api/weather/forecast/${selectedCity}?days=7`
-          );
-          if (
-            forecast &&
-            forecast.forecast &&
-            Array.isArray(forecast.forecast)
-          ) {
+        // Process current weather
+        if (currentWeatherResult.status === "fulfilled") {
+          setWeatherData(currentWeatherResult.value);
+        } else {
+          setWeatherData({
+            temperature: 6.2,
+            condition: "맑음",
+            conditionEn: "Clear",
+          });
+        }
+
+        // Process forecast
+        if (forecastResult.status === "fulfilled") {
+          const forecast = forecastResult.value;
+          if (forecast && forecast.forecast && Array.isArray(forecast.forecast)) {
             setForecastData(forecast.forecast);
           } else if (forecast && Array.isArray(forecast)) {
             setForecastData(forecast);
           } else {
             setForecastData([]);
           }
-        } catch (error) {
+        } else {
           setForecastData([]);
         }
 
-        // Fetch hourly forecast
-        const hourly = await apiGet(`/api/weather/hourly/${selectedCity}`);
-        if (hourly && hourly.hourly) {
-          setHourlyData(hourly.hourly.slice(0, 6)); // First 6 hours
+        // Process hourly forecast
+        if (hourlyResult.status === "fulfilled") {
+          const hourly = hourlyResult.value;
+          if (hourly && hourly.hourly) {
+            setHourlyData(hourly.hourly.slice(0, 6)); // First 6 hours
+          } else {
+            setHourlyData([]);
+          }
+        } else {
+          setHourlyData([]);
         }
 
-        // Fetch air quality
-        try {
-          const airQuality = await apiGet(
-            `/api/weather/air-quality/${selectedCity}`
-          );
+        // Process air quality
+        if (airQualityResult.status === "fulfilled") {
+          const airQuality = airQualityResult.value;
           if (airQuality && airQuality.airQuality) {
             setAirQualityData(airQuality.airQuality);
+          } else {
+            setAirQualityData({ fine: "좋음", ultrafine: "좋음" });
           }
-        } catch (error) {
+        } else {
           setAirQualityData({ fine: "좋음", ultrafine: "좋음" });
         }
       } catch (error) {

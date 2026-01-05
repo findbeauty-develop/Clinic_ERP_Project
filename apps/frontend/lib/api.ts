@@ -2,6 +2,26 @@
  * API helper functions for making authenticated requests
  */
 
+// Global in-memory cache for GET requests
+const requestCache = new Map<
+  string,
+  { data: any; timestamp: number; promise?: Promise<any> }
+>();
+
+// Track pending requests for deduplication
+const pendingRequests = new Map<string, Promise<any>>();
+
+// Cache statistics
+let cacheStats = {
+  hits: 0,
+  misses: 0,
+  deduplications: 0,
+};
+
+// Cache configuration
+const CACHE_TTL = 30000; // 30 seconds
+const REQUEST_TIMEOUT = 10000; // 10 seconds
+
 const getApiUrl = () => {
   if (typeof window !== "undefined") {
     return (
@@ -10,6 +30,104 @@ const getApiUrl = () => {
     );
   }
   return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+};
+
+/**
+ * Generate cache key from endpoint and options
+ */
+const getCacheKey = (endpoint: string, options: RequestInit = {}): string => {
+  const apiUrl = getApiUrl();
+  const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
+  const method = options.method || "GET";
+  
+  // ✅ Normalize headers: ignore cache-busting headers for cache key generation
+  // This ensures that requests with/without cache-busting headers use the same cache key
+  const headers = options.headers as Record<string, string> || {};
+  const normalizedHeaders = {
+    Authorization: headers.Authorization || '',
+    'X-Tenant-Id': headers['X-Tenant-Id'] || '',
+    // Ignore Cache-Control, Pragma, and other cache-busting headers
+  };
+  
+  return `${method}:${url}:${JSON.stringify(normalizedHeaders)}`;
+};
+
+/**
+ * Clear the request cache (useful for cache invalidation)
+ */
+export const clearCache = (endpoint?: string) => {
+  console.log(`[API] Clearing cache for:`, endpoint || "ALL");
+  if (endpoint) {
+    const apiUrl = getApiUrl();
+    // Normalize endpoint - remove leading slash if present
+    const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${normalizedEndpoint}`;
+    
+    // ✅ More aggressive cache clearing: match by URL pattern (with or without query params)
+    const keysToDelete: string[] = [];
+    for (const key of requestCache.keys()) {
+      // Extract base URL from cache key (format: "GET:http://...:headers")
+      const keyParts = key.split(":");
+      if (keyParts.length >= 2) {
+        const keyUrl = keyParts.slice(1, -1).join(":"); // Get URL part (may contain multiple colons)
+        // Match by base URL (without query params) or endpoint path
+        const baseUrl = keyUrl.split("?")[0]; // Remove query params
+        if (
+          baseUrl.includes(url.split("?")[0]) || 
+          baseUrl.includes(normalizedEndpoint) || 
+          key.includes(normalizedEndpoint) ||
+          key.includes(endpoint)
+        ) {
+          keysToDelete.push(key);
+        }
+      }
+    }
+    
+    // Delete matched keys
+    keysToDelete.forEach((key) => {
+      requestCache.delete(key);
+    });
+    
+    // Also clear any pending requests for this endpoint
+    const pendingKeysToDelete: string[] = [];
+    for (const key of pendingRequests.keys()) {
+      const keyParts = key.split(":");
+      if (keyParts.length >= 2) {
+        const keyUrl = keyParts.slice(1, -1).join(":");
+        const baseUrl = keyUrl.split("?")[0];
+        if (
+          baseUrl.includes(url.split("?")[0]) || 
+          baseUrl.includes(normalizedEndpoint) || 
+          key.includes(normalizedEndpoint) ||
+          key.includes(endpoint)
+        ) {
+          pendingKeysToDelete.push(key);
+        }
+      }
+    }
+    pendingKeysToDelete.forEach((key) => {
+      pendingRequests.delete(key);
+    });
+  } else {
+    requestCache.clear();
+    pendingRequests.clear();
+  }
+};
+
+/**
+ * Get cache statistics (for monitoring)
+ */
+export const getCacheStats = () => {
+  return {
+    ...cacheStats,
+    hitRate:
+      cacheStats.hits + cacheStats.misses > 0
+        ? (
+            (cacheStats.hits / (cacheStats.hits + cacheStats.misses)) *
+            100
+          ).toFixed(2) + "%"
+        : "0%",
+  };
 };
 
 /**
@@ -61,7 +179,7 @@ export const getMemberData = (): any | null => {
 };
 
 /**
- * Make an authenticated API request
+ * Make an authenticated API request with timeout and deduplication
  */
 export const apiRequest = async (
   endpoint: string,
@@ -76,6 +194,9 @@ export const apiRequest = async (
     ...options.headers,
   };
 
+  // ✅ Cache-busting headers are only added when explicitly requested via options.headers
+  // This allows normal requests to use browser HTTP cache for better performance
+
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
@@ -85,30 +206,55 @@ export const apiRequest = async (
   }
 
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
+  const requestKey = getCacheKey(endpoint, { ...options, headers });
 
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
+  // Check for pending request (deduplication)
+  if (pendingRequests.has(requestKey)) {
+    const pendingResponse = await pendingRequests.get(requestKey)!;
+    return pendingResponse as Response;
+  }
+
+  // Create request with timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+  const fetchPromise = fetch(url, {
+    ...options,
+    headers,
+    signal: controller.signal,
+  })
+    .then((response) => {
+      clearTimeout(timeoutId);
+      pendingRequests.delete(requestKey);
+
+      // Handle 401 Unauthorized (token expired or invalid)
+      if (response.status === 401) {
+        clearAuthAndRedirect();
+        throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+      }
+
+      return response;
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      pendingRequests.delete(requestKey);
+
+      // Handle timeout
+      if (error.name === "AbortError") {
+        throw new Error(`Request timeout after ${REQUEST_TIMEOUT}ms`);
+      }
+
+      // Handle network errors (CORS, connection refused, etc.)
+      if (error.message?.includes("인증이 만료되었습니다")) {
+        throw error;
+      }
+      throw new Error(`Network error: ${error.message || "Failed to fetch"}`);
     });
 
-    // Handle 401 Unauthorized (token expired or invalid)
-    if (response.status === 401) {
-      clearAuthAndRedirect();
-      throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
-    }
+  // Store pending request for deduplication
+  pendingRequests.set(requestKey, fetchPromise);
 
-    return response;
-  } catch (networkError: any) {
-    // Handle network errors (CORS, connection refused, etc.)
-    // Don't redirect on network errors, only on 401
-    if (networkError.message?.includes("인증이 만료되었습니다")) {
-      throw networkError;
-    }
-    throw new Error(
-      `Network error: ${networkError.message || "Failed to fetch"}`
-    );
-  }
+  return fetchPromise;
 };
 
 /**
@@ -174,32 +320,120 @@ export const apiPut = async <T = any>(
 };
 
 /**
- * Make a GET request
+ * Make a GET request with caching and deduplication
  */
 export const apiGet = async <T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
-  const response = await apiRequest(endpoint, {
-    method: "GET",
-    ...options,
-  });
+  // ✅ Check if this is a force refresh request (has cache-busting headers)
+  const isForceRefresh = options.headers && (
+    (options.headers as Record<string, string>)["Cache-Control"]?.includes("no-cache") ||
+    (options.headers as Record<string, string>)["Pragma"] === "no-cache"
+  );
+  
+  const cacheKey = getCacheKey(endpoint, { ...options, method: "GET" });
 
-  if (!response.ok) {
-    let errorMessage = "Request failed";
-    try {
-      const error = await response.json();
-      errorMessage =
-        typeof error?.message === "string"
-          ? error.message
-          : `HTTP ${response.status}: ${response.statusText}`;
-    } catch {
-      errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+  // ✅ Skip cache check if force refresh
+  if (!isForceRefresh) {
+    // Check cache first
+    const cached = requestCache.get(cacheKey);
+    if (cached) {
+      const now = Date.now();
+      const age = now - cached.timestamp;
+
+      if (age < CACHE_TTL) {
+        // Fresh cache
+        cacheStats.hits++;
+        return cached.data as T;
+      } else {
+        // Stale cache - background'da yangilash
+        const refreshPromise = apiRequest(endpoint, {
+          method: "GET",
+          ...options,
+        })
+          .then(async (response) => {
+            if (response.ok) {
+              const data = await response.json();
+              requestCache.set(cacheKey, {
+                data,
+                timestamp: Date.now(),
+              });
+            }
+          })
+          .catch(() => {
+            // Error handling (user'ga ko'rsatilmaydi)
+          });
+
+        // Stale data darhol qaytariladi
+        cacheStats.hits++;
+        return cached.data as T; // ✅ Stale data qaytariladi
+      }
     }
-    throw new Error(errorMessage);
+  } else {
+    // ✅ Force refresh: Delete any existing cache entry for this endpoint
+    // Clear cache for this endpoint (with and without query params)
+    const baseUrl = endpoint.split("?")[0];
+    const keysToDelete: string[] = [];
+    for (const key of requestCache.keys()) {
+      if (key.includes(baseUrl)) {
+        keysToDelete.push(key);
+      }
+    }
+    keysToDelete.forEach((key) => {
+      requestCache.delete(key);
+      pendingRequests.delete(key);
+    });
   }
 
-  return response.json();
+  // Check for pending request (deduplication)
+  if (pendingRequests.has(cacheKey)) {
+    cacheStats.deduplications++;
+    return pendingRequests.get(cacheKey)! as Promise<T>;
+  }
+
+  cacheStats.misses++;
+
+  // Make the request
+  const requestPromise = apiRequest(endpoint, {
+    method: "GET",
+    ...options,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        let errorMessage = "Request failed";
+        try {
+          const error = await response.json();
+          errorMessage =
+            typeof error?.message === "string"
+              ? error.message
+              : `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    })
+    .then((data) => {
+      // Cache successful GET requests
+      requestCache.set(cacheKey, {
+        data,
+        timestamp: Date.now(),
+      });
+      pendingRequests.delete(cacheKey);
+      return data as T;
+    })
+    .catch((error) => {
+      pendingRequests.delete(cacheKey);
+      throw error;
+    });
+
+  // Store pending request for deduplication
+  pendingRequests.set(cacheKey, requestPromise);
+
+  return requestPromise;
 };
 
 /**
@@ -228,5 +462,33 @@ export const apiDelete = async <T = any>(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  const result = await response.json();
+
+  // ✅ Auto-invalidate cache for product-related endpoints
+  if (endpoint.includes("/products")) {
+    clearCache("/products");
+    clearCache("products");
+    // ✅ Also clear outbound cache since outbound page uses products
+    clearCache("/outbound/products");
+    clearCache("outbound/products");
+    
+    // Set flag for inbound page refresh
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("inbound_force_refresh", "true");
+      
+      // Extract product ID from endpoint (e.g., "/products/123" -> "123")
+      const productIdMatch = endpoint.match(/\/products\/([^\/]+)/);
+      if (productIdMatch) {
+        const productId = productIdMatch[1];
+        // ✅ Dispatch custom event to notify inbound and outbound pages immediately
+        window.dispatchEvent(
+          new CustomEvent("productDeleted", {
+            detail: { productId },
+          })
+        );
+      }
+    }
+  }
+
+  return result;
 };

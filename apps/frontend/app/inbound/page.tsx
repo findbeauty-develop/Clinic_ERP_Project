@@ -7,6 +7,7 @@ import {
   ChangeEvent,
   useCallback,
   useRef,
+  memo,
 } from "react";
 import Link from "next/link";
 
@@ -86,6 +87,19 @@ export default function InboundPage() {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 10;
 
+  // ✅ Use ref to track activeTab in event listener (avoid closure issues)
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // Cache for pending orders to prevent duplicate requests
+  const pendingOrdersCacheRef = useRef<{
+    data: any[];
+    timestamp: number;
+  } | null>(null);
+  const PENDING_ORDERS_CACHE_TTL = 30000; // 30 seconds
+
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
@@ -94,57 +108,248 @@ export default function InboundPage() {
   const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
 
   // Fetch products for "빠른 입고" tab - memoized to prevent duplicate requests
-  const fetchProducts = useCallback(async () => {
-    if (activeTab !== "quick") return;
+  const fetchProducts = useCallback(
+    async (forceRefresh = false) => {
+      if (activeTab !== "quick") return;
 
-    setLoading(true);
-    setError(null);
-    try {
-      const { apiGet } = await import("../../lib/api");
-      const data = await apiGet<any[]>(`${apiUrl}/products`);
+      setLoading(true);
+      setError(null);
+      try {
+        const { apiGet, clearCache } = await import("../../lib/api");
 
-      // Helper function to format image URL (relative path -> full URL)
-      const formatImageUrl = (
-        imageUrl: string | null | undefined
-      ): string | null => {
-        if (!imageUrl) return null;
-        // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
-        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+        // ✅ Force refresh: Clear cache before fetching if requested
+        if (forceRefresh) {
+          clearCache("/products");
+          clearCache("products");
+        }
+
+        // Add cache-busting parameter to bypass browser HTTP cache when force refresh
+        const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
+        const data = await apiGet<any[]>(`${apiUrl}/products${cacheBuster}`, {
+          headers: forceRefresh
+            ? {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                Pragma: "no-cache",
+              }
+            : {},
+        });
+
+        // Helper function to format image URL (relative path -> full URL)
+        const formatImageUrl = (
+          imageUrl: string | null | undefined
+        ): string | null => {
+          if (!imageUrl) return null;
+          // Agar to'liq URL bo'lsa (http:// yoki https:// bilan boshlansa), o'zgartirmaslik
+          if (
+            imageUrl.startsWith("http://") ||
+            imageUrl.startsWith("https://")
+          ) {
+            return imageUrl;
+          }
+          // Agar base64 bo'lsa, o'zgartirmaslik
+          if (imageUrl.startsWith("data:image")) {
+            return imageUrl;
+          }
+          // Relative path bo'lsa, apiUrl qo'shish
+          if (imageUrl.startsWith("/")) {
+            return `${apiUrl}${imageUrl}`;
+          }
           return imageUrl;
-        }
-        // Agar base64 bo'lsa, o'zgartirmaslik
-        if (imageUrl.startsWith("data:image")) {
-          return imageUrl;
-        }
-        // Relative path bo'lsa, apiUrl qo'shish
-        if (imageUrl.startsWith("/")) {
-          return `${apiUrl}${imageUrl}`;
-        }
-        return imageUrl;
-      };
+        };
 
-      // Format image URLs for all products
-      const formattedProducts: ProductListItem[] = data.map((product: any) => ({
-        ...product,
-        productImage: formatImageUrl(product.productImage || product.image_url),
-      }));
+        // Format image URLs for all products
+        const formattedProducts: ProductListItem[] = data.map(
+          (product: any) => ({
+            ...product,
+            productImage: formatImageUrl(
+              product.productImage || product.image_url
+            ),
+          })
+        );
 
-      setProducts(formattedProducts);
-    } catch (err) {
-      console.error("Failed to load products", err);
-      setError("제품 정보를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [apiUrl, activeTab]);
+        setProducts(formattedProducts);
+      } catch (err) {
+        console.error("Failed to load products", err);
+        setError("제품 정보를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiUrl, activeTab]
+  );
 
   useEffect(() => {
-    fetchProducts();
+    // Check if we should force refresh (e.g., after product creation/deletion)
+    const shouldForceRefresh =
+      sessionStorage.getItem("inbound_force_refresh") === "true";
+    if (shouldForceRefresh) {
+      sessionStorage.removeItem("inbound_force_refresh");
+      fetchProducts(true); // Force refresh
+    } else {
+      fetchProducts();
+    }
   }, [fetchProducts]);
+
+  // ✅ Listen for product deletion events and update state immediately
+  useEffect(() => {
+    const handleProductDeleted = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ productId: string }>;
+      const { productId } = customEvent.detail;
+
+      // Use ref to get current activeTab value (avoid closure issues)
+      const currentActiveTab = activeTabRef.current;
+      console.log(
+        "[Inbound] Product deleted event received:",
+        productId,
+        "activeTab:",
+        currentActiveTab
+      );
+
+      if (!productId) {
+        console.warn("[Inbound] No productId in event detail");
+        return;
+      }
+
+      // ✅ Always remove product from local state immediately (optimistic update)
+      // Don't check activeTab - we want to update state regardless of tab
+      setProducts((prevProducts) => {
+        const filtered = prevProducts.filter((p) => p.id !== productId);
+        console.log(
+          "[Inbound] Products before:",
+          prevProducts.length,
+          "after:",
+          filtered.length,
+          "removed productId:",
+          productId
+        );
+        return filtered;
+      });
+
+      // Clear cache to ensure consistency
+      const { clearCache } = require("../../lib/api");
+      clearCache("/products");
+      clearCache("products");
+
+      // ✅ Force refresh from API to bypass browser HTTP cache
+      // Add cache-busting parameter to ensure fresh data
+      if (currentActiveTab === "quick") {
+        try {
+          const { apiGet } = await import("../../lib/api");
+          console.log("[Inbound] Fetching fresh products from API...");
+          const freshData = await apiGet<any[]>(
+            `${apiUrl}/products?_t=${Date.now()}`,
+            {
+              headers: {
+                "Cache-Control": "no-cache",
+                Pragma: "no-cache",
+              },
+            }
+          );
+
+          console.log("[Inbound] Fresh products received:", freshData.length);
+
+          // Update state with fresh data from API
+          const formatImageUrl = (
+            imageUrl: string | null | undefined
+          ): string | null => {
+            if (!imageUrl) return null;
+            if (
+              imageUrl.startsWith("http://") ||
+              imageUrl.startsWith("https://")
+            ) {
+              return imageUrl;
+            }
+            if (imageUrl.startsWith("data:image")) {
+              return imageUrl;
+            }
+            if (imageUrl.startsWith("/")) {
+              return `${apiUrl}${imageUrl}`;
+            }
+            return imageUrl;
+          };
+
+          const formattedProducts: ProductListItem[] = freshData.map(
+            (product: any) => ({
+              ...product,
+              productImage: formatImageUrl(
+                product.productImage || product.image_url
+              ),
+            })
+          );
+
+          setProducts(formattedProducts);
+          console.log("[Inbound] Products updated:", formattedProducts.length);
+        } catch (err) {
+          console.error(
+            "[Inbound] Failed to refresh products after deletion",
+            err
+          );
+          // Keep the optimistic update even if refresh fails
+        }
+      }
+    };
+
+    const handleProductCreated = () => {
+      if (activeTab === "quick") {
+        // Force refresh to show new product
+        fetchProducts(true);
+      }
+    };
+
+    window.addEventListener("productDeleted", handleProductDeleted);
+    window.addEventListener("productCreated", handleProductCreated);
+
+    return () => {
+      window.removeEventListener("productDeleted", handleProductDeleted);
+      window.removeEventListener("productCreated", handleProductCreated);
+    };
+  }, [apiUrl]); // Only apiUrl in dependencies - activeTab is accessed via ref to avoid closure issues
+
+  // ✅ Refresh products when page becomes visible (after product deletion from other pages)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && activeTab === "quick") {
+        // Check if force refresh flag is set
+        const shouldForceRefresh =
+          sessionStorage.getItem("inbound_force_refresh") === "true";
+        if (shouldForceRefresh) {
+          sessionStorage.removeItem("inbound_force_refresh");
+          fetchProducts(true); // Force refresh
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      if (activeTab === "quick") {
+        const shouldForceRefresh =
+          sessionStorage.getItem("inbound_force_refresh") === "true";
+        if (shouldForceRefresh) {
+          sessionStorage.removeItem("inbound_force_refresh");
+          fetchProducts(true);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [activeTab, fetchProducts]);
 
   // Fetch pending orders function - memoized to prevent duplicate requests
   const fetchPendingOrders = useCallback(async () => {
     if (activeTab !== "pending") return;
+
+    // Check cache first
+    const cached = pendingOrdersCacheRef.current;
+    if (cached && Date.now() - cached.timestamp < PENDING_ORDERS_CACHE_TTL) {
+      setPendingOrders(cached.data);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -168,6 +373,11 @@ export default function InboundPage() {
       });
 
       setPendingOrders(flatOrders);
+      // Update cache
+      pendingOrdersCacheRef.current = {
+        data: flatOrders,
+        timestamp: Date.now(),
+      };
     } catch (err) {
       console.error("Failed to load pending orders", err);
       setError("입고 대기 주문을 불러오지 못했습니다.");
@@ -429,7 +639,11 @@ export default function InboundPage() {
               loading={loading}
               error={error}
               apiUrl={apiUrl}
-              onRefresh={fetchPendingOrders}
+              onRefresh={() => {
+                // Clear cache before refresh
+                pendingOrdersCacheRef.current = null;
+                fetchPendingOrders();
+              }}
             />
           )}
         </section>
@@ -438,7 +652,7 @@ export default function InboundPage() {
   );
 }
 
-function ProductCard({
+const ProductCard = memo(function ProductCard({
   product,
   isExpanded,
   onToggle,
@@ -919,7 +1133,7 @@ function ProductCard({
       )}
     </div>
   );
-}
+});
 
 interface FilterChipProps {
   label: string;
@@ -1474,7 +1688,7 @@ function PencilIcon({ className }: { className?: string }) {
 }
 
 // Pending Orders List Component
-function PendingOrdersList({
+const PendingOrdersList = memo(function PendingOrdersList({
   orders,
   loading,
   error,
@@ -1489,16 +1703,26 @@ function PendingOrdersList({
 }) {
   const [processing, setProcessing] = useState<string | null>(null);
   const [editedItems, setEditedItems] = useState<Record<string, any>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  // Initialize edited items when orders change
-  useEffect(() => {
+  // Extract member data once with useMemo
+  const memberInfo = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const memberData = localStorage.getItem("erp_member_data");
+    return memberData ? JSON.parse(memberData) : {};
+  }, []);
+
+  const inboundManagerName = useMemo(
+    () => memberInfo?.full_name || memberInfo?.member_id || "알 수 없음",
+    [memberInfo]
+  );
+
+  // Initialize edited items when orders change - optimized with useMemo
+  const initialEditedItems = useMemo(() => {
     const initialEdits: Record<string, any> = {};
     orders.forEach((order) => {
       order.items?.forEach((item: any) => {
-        // Use original ordered quantity from clinic (not supplier's confirmed qty)
-        const originalQty = item.orderedQuantity;
-        const finalPrice = item.confirmedPrice || item.orderedPrice;
-
         initialEdits[item.id] = {
           quantity: "",
           expiryDate: "",
@@ -1507,8 +1731,29 @@ function PendingOrdersList({
         };
       });
     });
-    setEditedItems(initialEdits);
+    return initialEdits;
   }, [orders]);
+
+  // Sync editedItems with initialEditedItems when orders change
+  useEffect(() => {
+    setEditedItems(initialEditedItems);
+  }, [initialEditedItems]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentOrders = orders.slice(startIndex, endIndex);
+
+  // Reset to page 1 when orders change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [orders.length]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const updateItemField = (itemId: string, field: string, value: any) => {
     setEditedItems((prev) => ({
@@ -1768,416 +2013,429 @@ function PendingOrdersList({
       </div>
 
       <div className="space-y-4">
-        {orders.map((order) => {
-          // Get current member info for inbound manager
-          const memberData =
-            typeof window !== "undefined"
-              ? localStorage.getItem("erp_member_data")
-              : null;
-          const memberInfo = memberData ? JSON.parse(memberData) : {};
-          const inboundManagerName =
-            memberInfo.full_name || memberInfo.member_id || "알 수 없음";
+        {currentOrders.map((order) => (
+          <OrderCard
+            key={order.orderId}
+            order={order}
+            editedItems={editedItems}
+            updateItemField={updateItemField}
+            handleProcessOrder={handleProcessOrder}
+            processing={processing}
+            inboundManagerName={inboundManagerName}
+            onRefresh={onRefresh}
+            apiUrl={apiUrl}
+          />
+        ))}
+      </div>
 
-          // Determine order status
-          const isPending = order.status === "pending";
-          const isSupplierConfirmed = order.status === "supplier_confirmed";
-          const isRejected = order.status === "rejected";
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
+    </div>
+  );
+});
 
-          return (
-            <div key={order.orderId} className="space-y-2">
-              {/* Badge - Above Card */}
-              <div className="flex items-start">
-                {isPending ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    주문 요청
-                  </span>
-                ) : isRejected ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                    주문 거절
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    주문 진행
-                  </span>
+// Order Card Component - Memoized
+const OrderCard = memo(function OrderCard({
+  order,
+  editedItems,
+  updateItemField,
+  handleProcessOrder,
+  processing,
+  inboundManagerName,
+  onRefresh,
+  apiUrl,
+}: {
+  order: any;
+  editedItems: Record<string, any>;
+  updateItemField: (itemId: string, field: string, value: any) => void;
+  handleProcessOrder: (order: any) => void;
+  processing: string | null;
+  inboundManagerName: string;
+  onRefresh: () => void;
+  apiUrl: string;
+}) {
+  // Determine order status
+  const isPending = order.status === "pending";
+  const isSupplierConfirmed = order.status === "supplier_confirmed";
+  const isRejected = order.status === "rejected";
+
+  return (
+    <div className="space-y-2">
+      {/* Badge - Above Card */}
+      <div className="flex items-start">
+        {isPending ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            주문 요청
+          </span>
+        ) : isRejected ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            주문 거절
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            주문 진행
+          </span>
+        )}
+      </div>
+
+      {/* Card */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        {/* Order Info - 3 Columns */}
+        <div className="mb-4 grid grid-cols-1 gap-0.9 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
+          {/* Left: 공급업체 + Manager */}
+          <div className="space-y-1">
+            <div className="mt-3">
+              <div className="flex items-center gap-1">
+                <TruckIcon className="h-5 w-5 text-indigo-500" />
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-900 dark:text-white">
+                  {order.supplierName || "알 수 없음"}
+                </h3>
+                {order.managerName && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 ml-2">
+                    담당자: {order.managerName}
+                    {order.managerPosition && `${order.managerPosition}`}
+                  </p>
                 )}
               </div>
+            </div>
+          </div>
 
-              {/* Card */}
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                {/* Order Info - 3 Columns */}
-                <div className="mb-4 grid grid-cols-1 gap-0.9 border-b border-slate-200 pb-4 dark:border-slate-700 lg:grid-cols-3">
-                  {/* Left: 공급업체 + Manager */}
-                  <div className="space-y-1">
-                    <div className="mt-3">
-                      <div className="flex items-center gap-1">
-                        <TruckIcon className="h-5 w-5 text-indigo-500" />
-                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-900 dark:text-white">
-                          {order.supplierName || "알 수 없음"}
-                        </h3>
-                        {order.managerName && (
-                          <p className="text-sm text-slate-500 dark:text-slate-400 ml-2">
-                            담당자: {order.managerName}
-                            {order.managerPosition &&
-                              `${order.managerPosition}`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+          {/* Center: 주문번호 */}
+          <div className="flex items-center justify-center">
+            <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                주문번호
+              </span>
+              <span className="text-base font-bold text-sky-600 dark:text-sky-400">
+                {order.orderNo}
+              </span>
+            </div>
+          </div>
 
-                  {/* Center: 주문번호 */}
-                  <div className="flex items-center justify-center">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
-                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        주문번호
+          {/* Right: 확인일/거절일 + 주문자 */}
+          <div className="space-y-2 lg:text-right">
+            {isSupplierConfirmed && order.confirmedAt && (
+              <div className="flex items-center gap-2 lg:justify-end">
+                <CalendarIcon className="h-4 w-4 text-emerald-400" />
+                <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                  확인일: {new Date(order.confirmedAt).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+            {isRejected && order.confirmedAt && (
+              <div className="flex items-center gap-2 lg:justify-end">
+                <CalendarIcon className="h-4 w-4 text-red-400" />
+                <span className="text-sm text-red-600 dark:text-red-400">
+                  거절일: {new Date(order.confirmedAt).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+            {isPending && order.orderDate && (
+              <div className="flex items-center gap-2 lg:justify-end">
+                <CalendarIcon className="h-4 w-4 text-slate-400" />
+                <span className="text-sm text-slate-600 dark:text-slate-400">
+                  주문일: {new Date(order.orderDate).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 lg:justify-end">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                주문자: {order.createdByName || "알 수 없음"}님
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Order Items - Editable Form */}
+        <div className="space-y-4">
+          {order.items?.map((item: any, index: number) => {
+            const edited = editedItems[item.id] || {};
+            const hasQtyChange =
+              item.confirmedQuantity !== item.orderedQuantity;
+            const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
+
+            return (
+              <div
+                key={index}
+                className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
+              >
+                {/* Product Name + Reasons */}
+                <div className="mb-3">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                      {item.productName || "알 수 없음"}
+                    </h4>
+                    {item.brand && (
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {item.brand}
                       </span>
-                      <span className="text-base font-bold text-sky-600 dark:text-sky-400">
-                        {order.orderNo}
-                      </span>
-                    </div>
+                    )}
                   </div>
-
-                  {/* Right: 확인일/거절일 + 주문자 */}
-                  <div className="space-y-2 lg:text-right">
-                    {isSupplierConfirmed && order.confirmedAt && (
-                      <div className="flex items-center gap-2 lg:justify-end">
-                        <CalendarIcon className="h-4 w-4 text-emerald-400" />
-                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                          확인일:{" "}
-                          {new Date(order.confirmedAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    {isRejected && order.confirmedAt && (
-                      <div className="flex items-center gap-2 lg:justify-end">
-                        <CalendarIcon className="h-4 w-4 text-red-400" />
-                        <span className="text-sm text-red-600 dark:text-red-400">
-                          거절일:{" "}
-                          {new Date(order.confirmedAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    {isPending && order.orderDate && (
-                      <div className="flex items-center gap-2 lg:justify-end">
-                        <CalendarIcon className="h-4 w-4 text-slate-400" />
-                        <span className="text-sm text-slate-600 dark:text-slate-400">
-                          주문일:{" "}
-                          {new Date(order.orderDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        주문자: {order.createdByName || "알 수 없음"}님
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Order Items - Editable Form */}
-                <div className="space-y-4">
-                  {order.items?.map((item: any, index: number) => {
-                    const edited = editedItems[item.id] || {};
-                    const hasQtyChange =
-                      item.confirmedQuantity !== item.orderedQuantity;
-                    const hasPriceChange =
-                      item.confirmedPrice !== item.orderedPrice;
-
-                    return (
-                      <div
-                        key={index}
-                        className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
-                      >
-                        {/* Product Name + Reasons */}
-                        <div className="mb-3">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-base font-semibold text-slate-900 dark:text-white">
-                              {item.productName || "알 수 없음"}
-                            </h4>
-                            {item.brand && (
-                              <span className="text-sm text-slate-500 dark:text-slate-400">
-                                {item.brand}
-                              </span>
-                            )}
-                          </div>
-                          {(isSupplierConfirmed || isRejected) && (
-                            <div className="mt-1 flex flex-wrap gap-2">
-                              {item.quantityReason && (
-                                <span className="text-xs text-rose-600 dark:text-rose-400">
-                                  ⚠ 수량 변경: {item.quantityReason}
-                                </span>
-                              )}
-                              {item.priceReason && (
-                                <span className="text-xs text-amber-600 dark:text-amber-400">
-                                  💰 가격 변경: {item.priceReason}
-                                </span>
-                              )}
-                              {isRejected && item.memo && (
-                                <span className="text-xs text-red-600 dark:text-red-400">
-                                  ❌ 거절 사유: {item.memo}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Editable Fields - Read-only for pending orders */}
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          {/* 입고수량 (Editable with original qty shown) */}
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                              입고수량:
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                value={edited.quantity || ""}
-                                onChange={(e) =>
-                                  updateItemField(
-                                    item.id,
-                                    "quantity",
-                                    parseInt(e.target.value) || 0
-                                  )
-                                }
-                                disabled={isPending || isRejected}
-                                className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                              />
-                              <span className="text-sm text-slate-400">|</span>
-                              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                                {item.orderedQuantity}개
-                              </span>
-                            </div>
-                            {(isSupplierConfirmed || isRejected) &&
-                              hasQtyChange && (
-                                <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                                  공급업체 조정: {item.confirmedQuantity}개
-                                </p>
-                              )}
-                          </div>
-
-                          {/* 유통기간: (Editable) */}
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                              유통기간:
-                            </label>
-                            <input
-                              type="date"
-                              value={edited.expiryDate || ""}
-                              onChange={(e) =>
-                                updateItemField(
-                                  item.id,
-                                  "expiryDate",
-                                  e.target.value
-                                )
-                              }
-                              disabled={isPending || isRejected}
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                            />
-                          </div>
-
-                          {/* 보관위치 (Editable) */}
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                              보관위치
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="창고 A-3, 냉장실 선반 1"
-                              value={edited.storageLocation || ""}
-                              onChange={(e) =>
-                                updateItemField(
-                                  item.id,
-                                  "storageLocation",
-                                  e.target.value
-                                )
-                              }
-                              disabled={isPending || isRejected}
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                            />
-                          </div>
-
-                          {/* 이번 구매가 (Editable) */}
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                              이번 구매가
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="구매가 입력"
-                              value={edited.purchasePrice || ""}
-                              onChange={(e) =>
-                                updateItemField(
-                                  item.id,
-                                  "purchasePrice",
-                                  parseInt(e.target.value) || ""
-                                )
-                              }
-                              disabled={isPending || isRejected}
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                            />
-                            {(isSupplierConfirmed || isRejected) &&
-                              hasPriceChange && (
-                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                                  공급업체 조정:{" "}
-                                  {item.orderedPrice.toLocaleString()}원 →{" "}
-                                  {item.confirmedPrice.toLocaleString()}원
-                                </p>
-                              )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Footer - 입고 담당자 + Button */}
-                <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
                   {(isSupplierConfirmed || isRejected) && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        입고 담당자:
-                      </span>
-                      <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                        {inboundManagerName}
-                      </span>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {item.quantityReason && (
+                        <span className="text-xs text-rose-600 dark:text-rose-400">
+                          ⚠ 수량 변경: {item.quantityReason}
+                        </span>
+                      )}
+                      {item.priceReason && (
+                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                          💰 가격 변경: {item.priceReason}
+                        </span>
+                      )}
+                      {isRejected && item.memo && (
+                        <span className="text-xs text-red-600 dark:text-red-400">
+                          ❌ 거절 사유: {item.memo}
+                        </span>
+                      )}
                     </div>
                   )}
-                  {isPending ? (
-                    <button
-                      disabled
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm cursor-not-allowed dark:bg-slate-600 dark:text-slate-300"
-                    >
-                      요청중
-                    </button>
-                  ) : isRejected ? (
-                    <button
-                      onClick={async () => {
-                        if (
-                          !confirm(
-                            `주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`
+                </div>
+
+                {/* Editable Fields - Read-only for pending orders */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {/* 입고수량 (Editable with original qty shown) */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      입고수량:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        value={edited.quantity || ""}
+                        onChange={(e) =>
+                          updateItemField(
+                            item.id,
+                            "quantity",
+                            parseInt(e.target.value) || 0
                           )
-                        ) {
-                          return;
                         }
+                        disabled={isPending || isRejected}
+                        className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                      />
+                      <span className="text-sm text-slate-400">|</span>
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {item.orderedQuantity}개
+                      </span>
+                    </div>
+                    {(isSupplierConfirmed || isRejected) && hasQtyChange && (
+                      <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
+                        공급업체 조정: {item.confirmedQuantity}개
+                      </p>
+                    )}
+                  </div>
 
-                        try {
-                          const { apiPost } = await import("../../lib/api");
-                          const memberData =
-                            typeof window !== "undefined"
-                              ? localStorage.getItem("erp_member_data")
-                              : null;
-                          const memberInfo = memberData
-                            ? JSON.parse(memberData)
-                            : {};
-                          const memberName =
-                            memberInfo.full_name ||
-                            memberInfo.member_id ||
-                            "알 수 없음";
+                  {/* 유통기간: (Editable) */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      유통기간:
+                    </label>
+                    <input
+                      type="date"
+                      value={edited.expiryDate || ""}
+                      onChange={(e) =>
+                        updateItemField(item.id, "expiryDate", e.target.value)
+                      }
+                      disabled={isPending || isRejected}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                    />
+                  </div>
 
-                          // Prepare items array with product info
-                          const items =
-                            order.items?.map((item: any) => ({
-                              productName: item.productName || "알 수 없음",
-                              productBrand: item.brand || null,
-                              qty:
-                                item.orderedQuantity ||
-                                item.confirmedQuantity ||
-                                0,
-                            })) || [];
+                  {/* 보관위치 (Editable) */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      보관위치
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="창고 A-3, 냉장실 선반 1"
+                      value={edited.storageLocation || ""}
+                      onChange={(e) =>
+                        updateItemField(
+                          item.id,
+                          "storageLocation",
+                          e.target.value
+                        )
+                      }
+                      disabled={isPending || isRejected}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                    />
+                  </div>
 
-                          const endpoint = `${apiUrl}/order/rejected-order/confirm`;
-
-                          await apiPost(endpoint, {
-                            orderId: order.orderId,
-                            orderNo: order.orderNo,
-                            companyName: order.supplierName || "알 수 없음",
-                            managerName: order.managerName || "알 수 없음",
-                            memberName: memberName,
-                            items: items,
-                          });
-
-                          alert("거절 상황이 확인되었습니다.");
-                          // Refresh the orders list to remove the confirmed rejected order
-                          if (onRefresh) {
-                            onRefresh();
-                          }
-                          // Trigger a custom event to notify order page to refresh rejected orders
-                          window.dispatchEvent(
-                            new CustomEvent("rejectedOrderConfirmed", {
-                              detail: { orderNo: order.orderNo },
-                            })
-                          );
-                          // Also trigger a page visibility refresh to ensure data is updated
-                          window.dispatchEvent(new Event("visibilitychange"));
-                        } catch (err: any) {
-                          console.error("Failed to confirm rejection:", err);
-                          alert(
-                            `거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`
-                          );
-                        }
-                      }}
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                    >
-                      상황 확인
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleProcessOrder(order)}
-                      disabled={processing === order.orderId}
-                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {processing === order.orderId
-                        ? "처리 중..."
-                        : "✓ 입고 처리"}
-                    </button>
-                  )}
+                  {/* 이번 구매가 (Editable) */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      이번 구매가
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="구매가 입력"
+                      value={edited.purchasePrice || ""}
+                      onChange={(e) =>
+                        updateItemField(
+                          item.id,
+                          "purchasePrice",
+                          parseInt(e.target.value) || ""
+                        )
+                      }
+                      disabled={isPending || isRejected}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                    />
+                    {(isSupplierConfirmed || isRejected) && hasPriceChange && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        공급업체 조정: {item.orderedPrice.toLocaleString()}원 →{" "}
+                        {item.confirmedPrice.toLocaleString()}원
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+
+        {/* Footer - 입고 담당자 + Button */}
+        <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
+          {(isSupplierConfirmed || isRejected) && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                입고 담당자:
+              </span>
+              <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                {inboundManagerName}
+              </span>
             </div>
-          );
-        })}
+          )}
+          {isPending ? (
+            <button
+              disabled
+              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm cursor-not-allowed dark:bg-slate-600 dark:text-slate-300"
+            >
+              요청중
+            </button>
+          ) : isRejected ? (
+            <button
+              onClick={async () => {
+                if (
+                  !confirm(
+                    `주문번호 ${order.orderNo}의 거절 상황을 확인하시겠습니까?`
+                  )
+                ) {
+                  return;
+                }
+
+                try {
+                  const { apiPost } = await import("../../lib/api");
+                  const memberData =
+                    typeof window !== "undefined"
+                      ? localStorage.getItem("erp_member_data")
+                      : null;
+                  const memberInfo = memberData ? JSON.parse(memberData) : {};
+                  const memberName =
+                    memberInfo.full_name ||
+                    memberInfo.member_id ||
+                    "알 수 없음";
+
+                  // Prepare items array with product info
+                  const items =
+                    order.items?.map((item: any) => ({
+                      productName: item.productName || "알 수 없음",
+                      productBrand: item.brand || null,
+                      qty: item.orderedQuantity || item.confirmedQuantity || 0,
+                    })) || [];
+
+                  const endpoint = `${apiUrl}/order/rejected-order/confirm`;
+
+                  await apiPost(endpoint, {
+                    orderId: order.orderId,
+                    orderNo: order.orderNo,
+                    companyName: order.supplierName || "알 수 없음",
+                    managerName: order.managerName || "알 수 없음",
+                    memberName: memberName,
+                    items: items,
+                  });
+
+                  alert("거절 상황이 확인되었습니다.");
+                  // Refresh the orders list to remove the confirmed rejected order
+                  if (onRefresh) {
+                    onRefresh();
+                  }
+                  // Trigger a custom event to notify order page to refresh rejected orders
+                  window.dispatchEvent(
+                    new CustomEvent("rejectedOrderConfirmed", {
+                      detail: { orderNo: order.orderNo },
+                    })
+                  );
+                  // Also trigger a page visibility refresh to ensure data is updated
+                  window.dispatchEvent(new Event("visibilitychange"));
+                } catch (err: any) {
+                  console.error("Failed to confirm rejection:", err);
+                  alert(
+                    `거절 확인 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`
+                  );
+                }
+              }}
+              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
+            >
+              상황 확인
+            </button>
+          ) : (
+            <button
+              onClick={() => handleProcessOrder(order)}
+              disabled={processing === order.orderId}
+              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
-}
+});

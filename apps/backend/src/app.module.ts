@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./core/prisma.module";
 import { IamModule } from "./modules/iam/iam.module";
@@ -17,6 +17,7 @@ import { HiraModule } from "./modules/hira/hira.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
 import { WeatherModule } from "./modules/weather/weather.module";
 import { SupportModule } from "./modules/support/support.module";
+import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
 
 @Module({
   imports: [
@@ -52,4 +53,8 @@ import { SupportModule } from "./modules/support/support.module";
     SupportModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(PerformanceLoggerMiddleware).forRoutes("*");
+  }
+}

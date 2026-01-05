@@ -14,6 +14,7 @@ COPY packages ./packages
 RUN pnpm install --no-frozen-lockfile
 
 FROM deps AS builder
+ENV NODE_ENV=production
 COPY . .
 RUN pnpm --filter @erp/backend exec prisma generate
 RUN pnpm --filter @erp/backend build

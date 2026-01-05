@@ -9,6 +9,7 @@ import {
   Param,
   UseGuards,
   Req,
+  Header,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
@@ -36,6 +37,7 @@ export class OrderController {
    * 주문 처리용 제품 목록 (모든 제품 반환, frontend에서 sorting/filtering)
    */
   @Get("products")
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({
     summary: "Get all products for order - filtering done on frontend",
   })
@@ -176,6 +178,7 @@ export class OrderController {
    */
   @Get("pending-inbound")
   @UseGuards(JwtTenantGuard)
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({
     summary: "Get orders ready for inbound (supplier confirmed)",
   })

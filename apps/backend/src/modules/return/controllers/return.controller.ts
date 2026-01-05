@@ -6,6 +6,7 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  Header,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiHeader } from "@nestjs/swagger";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
@@ -22,6 +23,7 @@ export class ReturnController {
   constructor(private readonly returnService: ReturnService) {}
 
   @Get("available-products")
+  @Header("Cache-Control", "public, max-age=30")
   @ApiOperation({
     summary: "Qaytarilishi mumkin bo'lgan mahsulotlar ro'yxati",
     description:

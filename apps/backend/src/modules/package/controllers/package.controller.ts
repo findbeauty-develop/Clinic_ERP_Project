@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  Header,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { PackageService } from "../services/package.service";
@@ -26,6 +27,7 @@ export class PackageController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get all packages" })
+  @Header("Cache-Control", "public, max-age=30")
   getAllPackages(@Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -120,6 +122,7 @@ export class PackageController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get package details with items" })
+  @Header("Cache-Control", "public, max-age=30")
   getPackage(@Param("id") id: string, @Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -133,6 +136,7 @@ export class PackageController {
   @ApiOperation({
     summary: "Get package items for outbound (with batches, stock, expiry info)",
   })
+  @Header("Cache-Control", "public, max-age=30")
   getPackageItemsForOutbound(
     @Param("id") id: string,
     @Tenant() tenantId: string

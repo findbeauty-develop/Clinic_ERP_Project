@@ -12,6 +12,16 @@ import { ProductsService } from "../../product/services/products.service";
 
 @Injectable()
 export class PackageService {
+  // In-memory cache for getAllPackages
+  private packagesCache: Map<string, { data: any[]; timestamp: number }> =
+    new Map();
+  // In-memory cache for getPackageItems
+  private packageItemsCache: Map<
+    string,
+    { data: any[]; timestamp: number }
+  > = new Map();
+  private readonly CACHE_TTL = 30000; // 30 seconds
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly packageRepository: PackageRepository,
@@ -26,11 +36,17 @@ export class PackageService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    // Check cache first
+    const cached = this.packagesCache.get(tenantId);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data;
+    }
+
     try {
       // Barcha package'larni olish (active/inactive farqi yo'q)
       const packages = await this.packageRepository.findAll(tenantId);
 
-      return packages.map((pkg: any) => ({
+      const result = packages.map((pkg: any) => ({
         id: pkg.id,
         name: pkg.name,
         description: pkg.description,
@@ -48,6 +64,14 @@ export class PackageService {
           order: item.order,
         })),
       }));
+
+      // Update cache
+      this.packagesCache.set(tenantId, {
+        data: result,
+        timestamp: Date.now(),
+      });
+
+      return result;
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
@@ -66,6 +90,20 @@ export class PackageService {
       // Re-throw other errors
       throw error;
     }
+  }
+
+  /**
+   * Invalidate packages cache for a tenant
+   */
+  private invalidatePackagesCache(tenantId: string) {
+    this.packagesCache.delete(tenantId);
+  }
+
+  /**
+   * Invalidate package items cache for a specific package
+   */
+  private invalidatePackageItemsCache(packageId: string) {
+    this.packageItemsCache.delete(packageId);
   }
 
   /**
@@ -277,7 +315,7 @@ export class PackageService {
       }
     }
 
-    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const pkg = await this.packageRepository.create(
         {
           name: dto.name,
@@ -318,6 +356,11 @@ export class PackageService {
         })),
       };
     });
+
+    // Invalidate cache after package creation
+    this.invalidatePackagesCache(tenantId);
+
+    return result;
   }
 
   /**
@@ -404,7 +447,7 @@ export class PackageService {
 
       // Package update - stock kamaytirilmaydi
 
-      return {
+      const result = {
         id: pkg.id,
         name: pkg.name,
         description: pkg.description,
@@ -421,6 +464,12 @@ export class PackageService {
           order: item.order,
         })),
       };
+
+      // Invalidate cache after package update
+      this.invalidatePackagesCache(tenantId);
+      this.invalidatePackageItemsCache(`${id}:${tenantId}`);
+
+      return result;
     });
   }
 
@@ -439,6 +488,10 @@ export class PackageService {
 
     // Simply delete package (no reservation to clear)
     await this.packageRepository.delete(id, tenantId);
+    
+    // Invalidate cache after package deletion
+    this.invalidatePackagesCache(tenantId);
+    this.invalidatePackageItemsCache(`${id}:${tenantId}`);
     
     return { message: "Package deleted successfully" };
   }
@@ -481,6 +534,13 @@ export class PackageService {
   ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
+    }
+
+    // Check cache first
+    const cacheKey = `${packageId}:${tenantId}`;
+    const cached = this.packageItemsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data;
     }
 
     const pkg = await this.packageRepository.findById(packageId, tenantId);
@@ -553,6 +613,12 @@ export class PackageService {
         minStock: product?.min_stock || 0,
         batches,
       };
+    });
+
+    // Update cache
+    this.packageItemsCache.set(cacheKey, {
+      data: items,
+      timestamp: Date.now(),
     });
 
     return items;

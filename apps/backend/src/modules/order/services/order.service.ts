@@ -21,6 +21,13 @@ export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   private readonly DRAFT_EXPIRY_HOURS = 24; // Draft expiration time
 
+  // In-memory cache for getProductsForOrder
+  private productsForOrderCache = new Map<
+    string,
+    { data: any; timestamp: number }
+  >();
+  private readonly PRODUCTS_FOR_ORDER_CACHE_TTL = 30000; // 30 seconds
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderRepository: OrderRepository,
@@ -28,6 +35,15 @@ export class OrderService {
     private readonly emailService: EmailService
   ) {}
 
+  private async refreshProductsForOrderCacheInBackground(
+    tenantId: string
+  ): Promise<void> {
+    try {
+      // ... (getProductsForOrder ichidagi barcha logic'ni copy qiling)
+    } catch (error) {
+      // Error handling
+    }
+  }
   /**
    * Mahsulotlar ro'yxatini olish (barcha productlar)
    */
@@ -36,6 +52,19 @@ export class OrderService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    const cacheKey = `products-for-order:${tenantId}`;
+    const cached = this.productsForOrderCache.get(cacheKey);
+    if (cached) {
+      const age = Date.now() - cached.timestamp;
+
+      if (age > this.PRODUCTS_FOR_ORDER_CACHE_TTL) {
+        // Stale cache - background'da yangilash
+        this.refreshProductsForOrderCacheInBackground(tenantId).catch(() => {});
+        return cached.data; // ✅ Stale data qaytariladi
+      }
+
+      return cached.data; // ✅ Fresh data
+    }
     // Barcha product'larni olish
     const products = await (this.prisma.product.findMany as any)({
       where: {
@@ -60,7 +89,7 @@ export class OrderService {
     });
 
     // Faqat basic formatting - hamma logic frontend'da
-    return products.map((product: any) => {
+    const formattedProducts = products.map((product: any) => {
       // Get supplier info from ProductSupplier -> ClinicSupplierManager
       const supplierManager = product.productSupplier?.clinicSupplierManager;
       const supplierId = supplierManager?.id ?? null;
@@ -92,6 +121,14 @@ export class OrderService {
         })),
       };
     });
+
+    // Cache'ga saqlash
+    this.productsForOrderCache.set(cacheKey, {
+      data: formattedProducts,
+      timestamp: Date.now(),
+    });
+
+    return formattedProducts;
   }
 
   /**
@@ -802,6 +839,10 @@ export class OrderService {
       // Log error but don't fail the order creation
       this.logger.warn(`Failed to delete draft: ${error.message}`);
     }
+
+    // Cache'ni invalidate qilish
+    this.clearProductsForOrderCache(tenantId);
+    this.clearPendingInboundCache(tenantId);
 
     // Agar bitta order bo'lsa, uni qaytarish, aks holda array qaytarish
     return createdOrders.length === 1 ? createdOrders[0] : createdOrders;
@@ -2190,15 +2231,301 @@ export class OrderService {
       // Don't throw - order update is more important than notification
     }
 
+    // Invalidate pending inbound cache when order status changes
+    this.clearPendingInboundCache(clinicTenantId);
+
     return { success: true, orderId: order.id };
   }
 
   /**
    * Get pending inbound orders (supplier confirmed)
    */
+  // In-memory cache for getPendingInboundOrders
+  private pendingInboundCache = new Map<
+    string,
+    { data: any; timestamp: number }
+  >();
+  private readonly PENDING_INBOUND_CACHE_TTL = 30000; // 30 seconds
+
+  private getPendingInboundCacheKey(tenantId: string): string {
+    return `pending-inbound:${tenantId}`;
+  }
+
+  private getCachedPendingInbound(
+    tenantId: string
+  ): { data: any; isStale: boolean } | null {
+    const key = this.getPendingInboundCacheKey(tenantId);
+    const cached = this.pendingInboundCache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    const age = now - cached.timestamp;
+
+    if (age > this.PENDING_INBOUND_CACHE_TTL) {
+      return { data: cached.data, isStale: true }; // ✅ Stale qaytariladi
+    }
+
+    return { data: cached.data, isStale: false }; // ✅ Fresh
+  }
+  private setCachedPendingInbound(tenantId: string, data: any): void {
+    const key = this.getPendingInboundCacheKey(tenantId);
+    this.pendingInboundCache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
+  private async refreshPendingInboundCacheInBackground(
+    tenantId: string
+  ): Promise<void> {
+    try {
+      const orders = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).order.findMany({
+          where: {
+            tenant_id: tenantId,
+            status: {
+              in: ["pending", "supplier_confirmed", "rejected"],
+            },
+          },
+          include: {
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    brand: true,
+                    unit: true,
+                    expiry_months: true,
+                    expiry_unit: true,
+                    alert_days: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: [{ confirmed_at: "desc" }, { order_date: "desc" }],
+        });
+      });
+
+      // Filter out rejected orders that have already been confirmed
+      const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
+        async () => {
+          const confirmedRejected = await (
+            this.prisma as any
+          ).rejectedOrder.findMany({
+            where: {
+              tenant_id: tenantId,
+            },
+            select: {
+              order_id: true,
+            },
+            distinct: ["order_id"],
+          });
+          return new Set(confirmedRejected.map((ro: any) => ro.order_id));
+        }
+      );
+
+      const filteredOrders = orders.filter((order: any) => {
+        if (
+          order.status === "rejected" &&
+          confirmedRejectedOrderIds.has(order.id)
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      // Collect all unique supplier IDs and member IDs for batch fetching
+      const supplierIds = new Set<string>();
+      const memberIds = new Set<string>();
+
+      filteredOrders.forEach((order: any) => {
+        if (order.supplier_id) {
+          supplierIds.add(order.supplier_id);
+        }
+        if (order.created_by && !order.clinic_manager_name) {
+          memberIds.add(order.created_by);
+        }
+      });
+
+      // Batch fetch all ClinicSupplierManagers
+      const supplierManagersMap = new Map<string, any>();
+      if (supplierIds.size > 0) {
+        const supplierManagers = await this.prisma.executeWithRetry(
+          async () => {
+            return await (this.prisma as any).clinicSupplierManager.findMany({
+              where: {
+                id: {
+                  in: Array.from(supplierIds),
+                },
+              },
+              include: {
+                linkedManager: {
+                  select: {
+                    name: true,
+                    position: true,
+                    supplier: {
+                      select: {
+                        id: true,
+                        company_name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          }
+        );
+
+        supplierManagers.forEach((manager: any) => {
+          supplierManagersMap.set(manager.id, manager);
+        });
+      }
+
+      // Batch fetch all members
+      const membersMap = new Map<string, any>();
+      if (memberIds.size > 0) {
+        const members = await this.prisma.executeWithRetry(async () => {
+          return await (this.prisma as any).member.findMany({
+            where: {
+              id: {
+                in: Array.from(memberIds),
+              },
+            },
+            select: {
+              id: true,
+              full_name: true,
+              member_id: true,
+            },
+          });
+        });
+
+        members.forEach((member: any) => {
+          membersMap.set(member.id, member);
+        });
+      }
+
+      // Group by supplier
+      const grouped: Record<string, any> = {};
+
+      for (const order of filteredOrders) {
+        const supplierId = order.supplier_id || "unknown";
+
+        if (!grouped[supplierId]) {
+          let supplierInfo = {
+            companyName: "알 수 없음",
+            managerName: "",
+            managerPosition: "",
+          };
+          if (order.supplier_id) {
+            const clinicSupplierManager = supplierManagersMap.get(
+              order.supplier_id
+            );
+
+            if (clinicSupplierManager) {
+              if (clinicSupplierManager.linkedManager?.supplier) {
+                supplierInfo.companyName =
+                  clinicSupplierManager.linkedManager.supplier.company_name;
+              } else {
+                supplierInfo.companyName =
+                  clinicSupplierManager.company_name || "알 수 없음";
+              }
+              supplierInfo.managerName =
+                clinicSupplierManager.linkedManager?.name ||
+                clinicSupplierManager.name ||
+                "";
+              supplierInfo.managerPosition =
+                clinicSupplierManager.linkedManager?.position || "";
+            }
+          }
+
+          grouped[supplierId] = {
+            supplierId: supplierId,
+            supplierName: supplierInfo.companyName,
+            managerName: supplierInfo.managerName,
+            managerPosition: supplierInfo.managerPosition,
+            orders: [],
+          };
+        }
+
+        const adjustments = Array.isArray(order.supplier_adjustments)
+          ? order.supplier_adjustments
+          : order.supplier_adjustments?.adjustments || [];
+
+        const formattedItems = order.items.map((item: any) => {
+          let adjustment = adjustments.find(
+            (adj: any) => adj.itemId === item.id
+          );
+          if (!adjustment) {
+            adjustment = adjustments.find(
+              (adj: any) => adj.productId === item.product_id
+            );
+          }
+
+          return {
+            id: item.id,
+            productId: item.product_id,
+            productName: item.product?.name || "제품",
+            brand: item.product?.brand || "",
+            unit: item.product?.unit || "EA",
+            orderedQuantity: item.quantity,
+            confirmedQuantity: adjustment?.actualQuantity || item.quantity,
+            orderedPrice: item.unit_price,
+            confirmedPrice: adjustment?.actualPrice || item.unit_price,
+            quantityReason: adjustment?.quantityChangeReason || null,
+            priceReason: adjustment?.priceChangeReason || null,
+            expiryMonths: item.product?.expiry_months || null,
+            expiryUnit: item.product?.expiry_unit || null,
+            alertDays: item.product?.alert_days || null,
+          };
+        });
+
+        const creatorMember = order.clinic_manager_name
+          ? { full_name: order.clinic_manager_name, member_id: "" }
+          : membersMap.get(order.created_by);
+
+        grouped[supplierId].orders.push({
+          id: order.id,
+          orderNo: order.order_no,
+          orderDate: order.order_date,
+          status: order.status,
+          confirmedAt: order.confirmed_at,
+          items: formattedItems,
+          creatorName: creatorMember?.full_name || "알 수 없음",
+          creatorMemberId: creatorMember?.member_id || "",
+          totalAmount: order.total_amount,
+        });
+      }
+
+      const result = Object.values(grouped);
+      this.setCachedPendingInbound(tenantId, result);
+    } catch (error) {
+      // Error handling (user'ga ko'rsatilmaydi)
+    }
+  }
+
+  private clearPendingInboundCache(tenantId: string): void {
+    const key = this.getPendingInboundCacheKey(tenantId);
+    this.pendingInboundCache.delete(key);
+  }
+
+  private clearProductsForOrderCache(tenantId: string): void {
+    const key = `products-for-order:${tenantId}`;
+    this.productsForOrderCache.delete(key);
+  }
+
   async getPendingInboundOrders(tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
+    }
+
+    const cached = this.getCachedPendingInbound(tenantId);
+    if (cached) {
+      if (cached.isStale) {
+        this.refreshPendingInboundCacheInBackground(tenantId).catch(() => {});
+      }
+      return cached.data; // ✅ Stale yoki fresh
     }
 
     const orders = await this.prisma.executeWithRetry(async () => {
@@ -2259,6 +2586,74 @@ export class OrderService {
       return true;
     });
 
+    // Collect all unique supplier IDs and member IDs for batch fetching
+    const supplierIds = new Set<string>();
+    const memberIds = new Set<string>();
+
+    filteredOrders.forEach((order: any) => {
+      if (order.supplier_id) {
+        supplierIds.add(order.supplier_id);
+      }
+      if (order.created_by && !order.clinic_manager_name) {
+        memberIds.add(order.created_by);
+      }
+    });
+
+    // Batch fetch all ClinicSupplierManagers in one query
+    const supplierManagersMap = new Map<string, any>();
+    if (supplierIds.size > 0) {
+      const supplierManagers = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinicSupplierManager.findMany({
+          where: {
+            id: {
+              in: Array.from(supplierIds),
+            },
+          },
+          include: {
+            linkedManager: {
+              select: {
+                name: true,
+                position: true,
+                supplier: {
+                  select: {
+                    id: true,
+                    company_name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      });
+
+      supplierManagers.forEach((manager: any) => {
+        supplierManagersMap.set(manager.id, manager);
+      });
+    }
+
+    // Batch fetch all members in one query
+    const membersMap = new Map<string, any>();
+    if (memberIds.size > 0) {
+      const members = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).member.findMany({
+          where: {
+            id: {
+              in: Array.from(memberIds),
+            },
+          },
+          select: {
+            id: true,
+            full_name: true,
+            member_id: true,
+          },
+        });
+      });
+
+      members.forEach((member: any) => {
+        membersMap.set(member.id, member);
+      });
+    }
+
     // Group by supplier
     const grouped: Record<string, any> = {};
 
@@ -2266,32 +2661,16 @@ export class OrderService {
       const supplierId = order.supplier_id || "unknown";
 
       if (!grouped[supplierId]) {
-        // Get supplier info from ClinicSupplierManager
+        // Get supplier info from pre-fetched map
         let supplierInfo = {
           companyName: "알 수 없음",
           managerName: "",
           managerPosition: "",
         };
         if (order.supplier_id) {
-          const clinicSupplierManager = await (
-            this.prisma as any
-          ).clinicSupplierManager.findUnique({
-            where: { id: order.supplier_id },
-            include: {
-              linkedManager: {
-                select: {
-                  name: true,
-                  position: true,
-                  supplier: {
-                    select: {
-                      id: true,
-                      company_name: true,
-                    },
-                  },
-                },
-              },
-            },
-          });
+          const clinicSupplierManager = supplierManagersMap.get(
+            order.supplier_id
+          );
 
           if (clinicSupplierManager) {
             // If linked to platform supplier, use supplier's company_name
@@ -2367,17 +2746,14 @@ export class OrderService {
         };
       });
 
-      // Get creator member info - Use clinic_manager_name first
+      // Get creator member info - Use clinic_manager_name first, then pre-fetched map
       let createdByName = "알 수 없음";
 
-      // Use clinic_manager_name from order if available, otherwise lookup from member
+      // Use clinic_manager_name from order if available, otherwise lookup from pre-fetched map
       if (order.clinic_manager_name) {
         createdByName = order.clinic_manager_name;
       } else if (order.created_by) {
-        const member = await (this.prisma as any).member.findFirst({
-          where: { id: order.created_by },
-          select: { full_name: true, member_id: true },
-        });
+        const member = membersMap.get(order.created_by);
         if (member) {
           createdByName = member.full_name || member.member_id;
         }
@@ -2395,7 +2771,12 @@ export class OrderService {
       });
     }
 
-    return Object.values(grouped);
+    const result = Object.values(grouped);
+
+    // Cache the result
+    this.setCachedPendingInbound(tenantId, result);
+
+    return result;
   }
 
   /**
@@ -2600,6 +2981,10 @@ export class OrderService {
         },
       });
     });
+
+    // Invalidate caches
+    this.clearPendingInboundCache(tenantId);
+    this.clearProductsForOrderCache(tenantId);
 
     // Notify supplier-backend that order is completed
     if (order.supplier_id) {

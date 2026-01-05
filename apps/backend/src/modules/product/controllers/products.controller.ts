@@ -9,7 +9,9 @@ import {
   Put,
   Delete,
   Header,
+  Res,
 } from "@nestjs/common";
+import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { CreateProductDto, CreateBatchDto } from "../dto/create-product.dto";
 import { ProductsService } from "../services/products.service";
@@ -37,6 +39,7 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get product details" })
+  @Header("Cache-Control", "public, max-age=30")
   getProduct(@Param("id") id: string, @Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -74,18 +77,39 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "List all products for current tenant" })
-  @Header("Cache-Control", "public, max-age=30") // Browser cache 30 seconds
-  getAllProducts(@Tenant() tenantId: string) {
+  @Header("Cache-Control", "public, max-age=30")
+  async getAllProducts(@Tenant() tenantId: string, @Res() res: Response) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-    return this.productsService.getAllProducts(tenantId);
+
+    const t0 = Date.now();
+    const products = await this.productsService.getAllProducts(tenantId);
+    const t1 = Date.now();
+    console.log("[products] db=", t1 - t0, "ms");
+
+    // ETag yaratish (cache timestamp asosida)
+    const cacheTimestamp = this.productsService.getCacheTimestamp(tenantId);
+    const etag = `"${Buffer.from(`${tenantId}-${cacheTimestamp}`)
+      .toString("base64")
+      .substring(0, 16)}"`;
+
+    // If-None-Match tekshirish - AGAR ETag mos kelsa, 304 qaytarish
+    const ifNoneMatch = res.req.headers["if-none-match"];
+    if (ifNoneMatch === etag) {
+      return res.status(304).end();
+    }
+
+    // ETag header'ni qo'shish
+    res.setHeader("ETag", etag);
+    return res.json(products);
   }
 
   @Get("storages/list")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get distinct storage locations for tenant" })
+  @Header("Cache-Control", "public, max-age=60")
   getStorages(@Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -99,6 +123,7 @@ export class ProductsController {
   @ApiOperation({
     summary: "Get all warehouse locations with categories and items",
   })
+  @Header("Cache-Control", "public, max-age=60")
   getWarehouses(@Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -131,6 +156,7 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get all batches for a product" })
+  @Header("Cache-Control", "public, max-age=30")
   getProductBatches(
     @Param("id") productId: string,
     @Tenant() tenantId: string

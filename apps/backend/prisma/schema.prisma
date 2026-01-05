@@ -377,6 +377,7 @@ model Order {
   @@index([order_date])
   @@index([tenant_id, status])
   @@index([tenant_id, order_date])
+  @@index([tenant_id, status, confirmed_at])
 }
 
 model OrderItem {
