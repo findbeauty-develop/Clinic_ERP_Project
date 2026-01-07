@@ -9,24 +9,33 @@ import { PackageRepository } from "../repositories/package.repository";
 import { CreatePackageDto } from "../dto/create-package.dto";
 import { UpdatePackageDto } from "../dto/update-package.dto";
 import { ProductsService } from "../../product/services/products.service";
+import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class PackageService {
-  // In-memory cache for getAllPackages
-  private packagesCache: Map<string, { data: any[]; timestamp: number }> =
-    new Map();
-  // In-memory cache for getPackageItems
-  private packageItemsCache: Map<
-    string,
-    { data: any[]; timestamp: number }
-  > = new Map();
-  private readonly CACHE_TTL = 30000; // 30 seconds
+  // ✅ Replaced Maps with CacheManagers
+  private packagesCache: CacheManager<any[]>;
+  private packageItemsCache: CacheManager<any[]>;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly packageRepository: PackageRepository,
     private readonly productsService: ProductsService
-  ) {}
+  ) {
+    this.packagesCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "PackageService:Packages",
+    });
+
+    this.packageItemsCache = new CacheManager({
+      maxSize: 200, // More items expected
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "PackageService:Items",
+    });
+  }
 
   /**
    * 모든 패키지 목록 가져오기 (barcha package'lar)
@@ -38,8 +47,8 @@ export class PackageService {
 
     // Check cache first
     const cached = this.packagesCache.get(tenantId);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.data;
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -66,15 +75,13 @@ export class PackageService {
       }));
 
       // Update cache
-      this.packagesCache.set(tenantId, {
-        data: result,
-        timestamp: Date.now(),
-      });
+      this.packagesCache.set(tenantId, result);
 
       return result;
     } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
       // Check if it's a connection error
       if (
         errorMessage.includes("Can't reach database server") ||
@@ -86,7 +93,7 @@ export class PackageService {
           "데이터베이스 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
         );
       }
-      
+
       // Re-throw other errors
       throw error;
     }
@@ -161,9 +168,7 @@ export class PackageService {
 
       const searchLower = query.toLowerCase().trim();
       const matching = packages
-        .filter((pkg: any) =>
-          pkg.name?.toLowerCase().includes(searchLower)
-        )
+        .filter((pkg: any) => pkg.name?.toLowerCase().includes(searchLower))
         .slice(0, limit)
         .map((pkg: any) => ({
           id: pkg.id,
@@ -174,8 +179,9 @@ export class PackageService {
 
       return matching;
     } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
       // Check if it's a connection error
       if (
         errorMessage.includes("Can't reach database server") ||
@@ -187,7 +193,7 @@ export class PackageService {
           "데이터베이스 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
         );
       }
-      
+
       // Re-throw other errors
       throw error;
     }
@@ -309,53 +315,53 @@ export class PackageService {
       });
 
       if (!product) {
-        throw new NotFoundException(
-          `Product not found: ${item.productId}`
-        );
+        throw new NotFoundException(`Product not found: ${item.productId}`);
       }
     }
 
-    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const pkg = await this.packageRepository.create(
-        {
-          name: dto.name,
-          description: dto.description || null,
-          is_active: true,
-          items: {
-            create: dto.items.map((item, index) => ({
-              tenant_id: tenantId,
-              product_id: item.productId,
-              package_name: dto.name, // Denormalized package name
-              quantity: item.quantity,
-              order: item.order ?? index,
-            })),
+    const result = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const pkg = await this.packageRepository.create(
+          {
+            name: dto.name,
+            description: dto.description || null,
+            is_active: true,
+            items: {
+              create: dto.items.map((item, index) => ({
+                tenant_id: tenantId,
+                product_id: item.productId,
+                package_name: dto.name, // Denormalized package name
+                quantity: item.quantity,
+                order: item.order ?? index,
+              })),
+            },
           },
-        },
-        tenantId,
-        tx
-      );
+          tenantId,
+          tx
+        );
 
-      // Package yaratish - faqat template, stock kamaytirilmaydi
-      // Stock kamayishi faqat outbound qilinganda bo'ladi
+        // Package yaratish - faqat template, stock kamaytirilmaydi
+        // Stock kamayishi faqat outbound qilinganda bo'ladi
 
-      return {
-        id: pkg.id,
-        name: pkg.name,
-        description: pkg.description,
-        isActive: pkg.is_active,
-        createdAt: pkg.created_at,
-        updatedAt: pkg.updated_at,
-        items: (pkg.items || []).map((item: any) => ({
-          id: item.id,
-          productId: item.product_id,
-          productName: item.product?.name || "",
-          brand: item.product?.brand || "",
-          unit: item.product?.unit || "",
-          quantity: item.quantity,
-          order: item.order,
-        })),
-      };
-    });
+        return {
+          id: pkg.id,
+          name: pkg.name,
+          description: pkg.description,
+          isActive: pkg.is_active,
+          createdAt: pkg.created_at,
+          updatedAt: pkg.updated_at,
+          items: (pkg.items || []).map((item: any) => ({
+            id: item.id,
+            productId: item.product_id,
+            productName: item.product?.name || "",
+            brand: item.product?.brand || "",
+            unit: item.product?.unit || "",
+            quantity: item.quantity,
+            order: item.order,
+          })),
+        };
+      }
+    );
 
     // Invalidate cache after package creation
     this.invalidatePackagesCache(tenantId);
@@ -366,11 +372,7 @@ export class PackageService {
   /**
    * 패키지 수정
    */
-  async updatePackage(
-    id: string,
-    dto: UpdatePackageDto,
-    tenantId: string
-  ) {
+  async updatePackage(id: string, dto: UpdatePackageDto, tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
@@ -403,9 +405,7 @@ export class PackageService {
         });
 
         if (!product) {
-          throw new NotFoundException(
-            `Product not found: ${item.productId}`
-          );
+          throw new NotFoundException(`Product not found: ${item.productId}`);
         }
       }
     }
@@ -418,15 +418,20 @@ export class PackageService {
 
       const updateData: any = {};
       if (dto.name) updateData.name = dto.name;
-      if (dto.description !== undefined) updateData.description = dto.description;
+      if (dto.description !== undefined)
+        updateData.description = dto.description;
       updateData.updated_at = new Date();
 
       // Add items if provided
       if (dto.items) {
         // Get package name for denormalization
-        const packageData = await this.packageRepository.findById(id, tenantId, tx);
+        const packageData = await this.packageRepository.findById(
+          id,
+          tenantId,
+          tx
+        );
         const packageName = dto.name || packageData?.name || "";
-        
+
         updateData.items = {
           create: dto.items.map((item, index) => ({
             tenant_id: tenantId,
@@ -439,10 +444,10 @@ export class PackageService {
       }
 
       const pkg = await this.packageRepository.update(
-        id,           // ✅ First: id
-        updateData,   // ✅ Second: data
-        tenantId,     // ✅ Third: tenantId
-        tx            // ✅ Fourth: tx
+        id, // ✅ First: id
+        updateData, // ✅ Second: data
+        tenantId, // ✅ Third: tenantId
+        tx // ✅ Fourth: tx
       );
 
       // Package update - stock kamaytirilmaydi
@@ -488,11 +493,11 @@ export class PackageService {
 
     // Simply delete package (no reservation to clear)
     await this.packageRepository.delete(id, tenantId);
-    
+
     // Invalidate cache after package deletion
     this.invalidatePackagesCache(tenantId);
     this.invalidatePackageItemsCache(`${id}:${tenantId}`);
-    
+
     return { message: "Package deleted successfully" };
   }
 
@@ -528,10 +533,7 @@ export class PackageService {
    * - 각 제품의 batch 정보, 재고, 유효기간 등 포함
    * - 유효기간 임박 제품은 상단 우선 노출
    */
-  async getPackageItemsForOutbound(
-    packageId: string,
-    tenantId: string
-  ) {
+  async getPackageItemsForOutbound(packageId: string, tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
@@ -539,8 +541,8 @@ export class PackageService {
     // Check cache first
     const cacheKey = `${packageId}:${tenantId}`;
     const cached = this.packageItemsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.data;
+    if (cached) {
+      return cached;
     }
 
     const pkg = await this.packageRepository.findById(packageId, tenantId);
@@ -588,8 +590,12 @@ export class PackageService {
         if (!a.isExpiringSoon && b.isExpiringSoon) return 1;
 
         // 2. 유효기간으로 정렬 (오래된 것 먼저)
-        const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
-        const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
+        const dateA = a.expiryDate
+          ? new Date(a.expiryDate).getTime()
+          : Infinity;
+        const dateB = b.expiryDate
+          ? new Date(b.expiryDate).getTime()
+          : Infinity;
         if (dateA !== dateB) {
           return dateA - dateB;
         }
@@ -616,10 +622,7 @@ export class PackageService {
     });
 
     // Update cache
-    this.packageItemsCache.set(cacheKey, {
-      data: items,
-      timestamp: Date.now(),
-    });
+    this.packageItemsCache.set(cacheKey, items);
 
     return items;
   }
@@ -640,7 +643,7 @@ export class PackageService {
     tx: Prisma.TransactionClient
   ): Promise<void> {
     const prisma = tx as any;
-    
+
     // Get all batches for this product, sorted by FEFO + qty
     const batches = await prisma.batch.findMany({
       where: {
@@ -649,9 +652,9 @@ export class PackageService {
         qty: { gt: 0 }, // Faqat stock bor batch'lar
       },
       orderBy: [
-        { expiry_date: 'asc' },  // Eng eski birinchi (FEFO)
-        { qty: 'asc' },           // Kam qty birinchi
-        { batch_no: 'asc' },      // Batch number
+        { expiry_date: "asc" }, // Eng eski birinchi (FEFO)
+        { qty: "asc" }, // Kam qty birinchi
+        { batch_no: "asc" }, // Batch number
       ],
     });
 
@@ -678,7 +681,7 @@ export class PackageService {
 
       if (availableQty > 0) {
         const qtyToReserve = Math.min(remainingQty, availableQty);
-        
+
         reservations.push({
           tenant_id: tenantId,
           package_id: packageId,
@@ -722,4 +725,3 @@ export class PackageService {
     });
   }
 }
-

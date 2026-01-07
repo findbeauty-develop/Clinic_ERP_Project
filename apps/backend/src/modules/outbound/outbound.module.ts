@@ -9,7 +9,11 @@ import { OrderReturnModule } from "../order-return/order-return.module";
 import { ReturnModule } from "../return/return.module";
 
 @Module({
-  imports: [ProductModule, forwardRef(() => OrderReturnModule), ReturnModule],
+  imports: [
+    forwardRef(() => ProductModule), // Forward reference to avoid circular dependency
+    forwardRef(() => OrderReturnModule),
+    ReturnModule,
+  ],
   controllers: [OutboundController],
   providers: [OutboundService, SupabaseService, JwtTenantGuard],
   exports: [OutboundService],

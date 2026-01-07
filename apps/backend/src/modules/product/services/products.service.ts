@@ -11,12 +11,12 @@ import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { CreateBatchDto, CreateProductDto } from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
+import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class ProductsService {
-  // In-memory cache for getAllProducts
-  private productsCache = new Map<string, { data: any; timestamp: number }>();
-  private readonly CACHE_TTL = 30000; // 30 seconds
+  // ✅ Replaced Map with CacheManager - automatic cleanup, size limits, LRU eviction
+  private productsCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -32,7 +32,15 @@ export class ProductsService {
       })
     )
     private readonly outboundService?: any
-  ) {}
+  ) {
+    // Initialize CacheManager with auto-cleanup
+    this.productsCache = new CacheManager({
+      maxSize: 100, // Max 100 tenants cached
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000, // Cleanup every minute
+      name: "ProductsService",
+    });
+  }
 
   // Cache helper methods
   private getCacheKey(tenantId: string): string {
@@ -43,19 +51,8 @@ export class ProductsService {
     tenantId: string
   ): { data: any; isStale: boolean } | null {
     const key = this.getCacheKey(tenantId);
-    const cached = this.productsCache.get(key);
-    if (!cached) return null;
-
-    const now = Date.now();
-    const age = now - cached.timestamp;
-
-    if (age > this.CACHE_TTL) {
-      // ✅ Stale cache qaytariladi (o'chirilmaydi)
-      return { data: cached.data, isStale: true };
-    }
-
-    // ✅ Fresh cache
-    return { data: cached.data, isStale: false };
+    const result = this.productsCache.getWithStaleCheck(key);
+    return result;
   }
   private async refreshProductsCacheInBackground(
     tenantId: string
@@ -192,17 +189,14 @@ export class ProductsService {
 
   private setCachedData(tenantId: string, data: any): void {
     const key = this.getCacheKey(tenantId);
-    this.productsCache.set(key, {
-      data,
-      timestamp: Date.now(),
-    });
+    this.productsCache.set(key, data);
   }
 
   // ETag uchun cache timestamp olish
   getCacheTimestamp(tenantId: string): number {
     const key = this.getCacheKey(tenantId);
-    const cached = this.productsCache.get(key);
-    return cached?.timestamp || 0;
+    const cached = this.productsCache.getWithStaleCheck(key);
+    return cached ? Date.now() : 0; // Return current time if cached, 0 if not
   }
 
   private clearProductsCache(tenantId: string): void {
@@ -257,9 +251,10 @@ export class ProductsService {
    */
   private addProductToCache(tenantId: string, product: any): void {
     const key = this.getCacheKey(tenantId);
-    const cached = this.productsCache.get(key);
+    const result = this.productsCache.getWithStaleCheck(key);
 
-    if (cached && cached.data) {
+    if (result && result.data) {
+      const cached = result.data;
       // Format new product
       const returnPolicy = product.returnPolicy;
       const productSupplier = product.productSupplier?.[0];
@@ -270,20 +265,18 @@ export class ProductsService {
       );
 
       // Check if product already exists in cache (update case)
-      const existingIndex = cached.data.findIndex(
-        (p: any) => p.id === product.id
-      );
+      const existingIndex = cached.findIndex((p: any) => p.id === product.id);
 
       if (existingIndex >= 0) {
         // Update existing product
-        cached.data[existingIndex] = formattedProduct;
+        cached[existingIndex] = formattedProduct;
       } else {
         // Add new product at the beginning (most recent first)
-        cached.data.unshift(formattedProduct);
+        cached.unshift(formattedProduct);
       }
 
-      // Update timestamp
-      cached.timestamp = Date.now();
+      // Update cache with modified data
+      this.productsCache.set(key, cached);
     } else {
       // Cache doesn't exist, invalidate to force refresh on next request
       this.clearProductsCache(tenantId);
@@ -295,14 +288,14 @@ export class ProductsService {
    */
   private removeProductFromCache(tenantId: string, productId: string): void {
     const key = this.getCacheKey(tenantId);
-    const cached = this.productsCache.get(key);
+    const result = this.productsCache.getWithStaleCheck(key);
 
-    if (cached && cached.data) {
+    if (result && result.data) {
       // Remove product from cache array
-      cached.data = cached.data.filter((p: any) => p.id !== productId);
+      const filteredData = result.data.filter((p: any) => p.id !== productId);
 
-      // Update timestamp
-      cached.timestamp = Date.now();
+      // Update cache with filtered data
+      this.productsCache.set(key, filteredData);
     } else {
       // Cache doesn't exist, invalidate to force refresh on next request
       this.clearProductsCache(tenantId);

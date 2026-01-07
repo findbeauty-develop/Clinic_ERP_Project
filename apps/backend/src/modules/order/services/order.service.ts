@@ -15,25 +15,37 @@ import {
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { MessageService } from "../../member/services/message.service";
 import { EmailService } from "../../member/services/email.service";
+import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   private readonly DRAFT_EXPIRY_HOURS = 24; // Draft expiration time
 
-  // In-memory cache for getProductsForOrder
-  private productsForOrderCache = new Map<
-    string,
-    { data: any; timestamp: number }
-  >();
-  private readonly PRODUCTS_FOR_ORDER_CACHE_TTL = 30000; // 30 seconds
+  // ✅ Replaced Maps with CacheManagers
+  private productsForOrderCache: CacheManager<any>;
+  private pendingInboundCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderRepository: OrderRepository,
     private readonly messageService: MessageService,
     private readonly emailService: EmailService
-  ) {}
+  ) {
+    this.productsForOrderCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: 'OrderService:Products',
+    });
+
+    this.pendingInboundCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: 'OrderService:PendingInbound',
+    });
+  }
 
   private async refreshProductsForOrderCacheInBackground(
     tenantId: string
@@ -53,17 +65,14 @@ export class OrderService {
     }
 
     const cacheKey = `products-for-order:${tenantId}`;
-    const cached = this.productsForOrderCache.get(cacheKey);
-    if (cached) {
-      const age = Date.now() - cached.timestamp;
-
-      if (age > this.PRODUCTS_FOR_ORDER_CACHE_TTL) {
+    const result = this.productsForOrderCache.getWithStaleCheck(cacheKey);
+    
+    if (result) {
+      if (result.isStale) {
         // Stale cache - background'da yangilash
         this.refreshProductsForOrderCacheInBackground(tenantId).catch(() => {});
-        return cached.data; // ✅ Stale data qaytariladi
       }
-
-      return cached.data; // ✅ Fresh data
+      return result.data; // Return cached data (fresh or stale)
     }
     // Barcha product'larni olish
     const products = await (this.prisma.product.findMany as any)({
@@ -123,10 +132,7 @@ export class OrderService {
     });
 
     // Cache'ga saqlash
-    this.productsForOrderCache.set(cacheKey, {
-      data: formattedProducts,
-      timestamp: Date.now(),
-    });
+    this.productsForOrderCache.set(cacheKey, formattedProducts);
 
     return formattedProducts;
   }
@@ -2240,12 +2246,6 @@ export class OrderService {
   /**
    * Get pending inbound orders (supplier confirmed)
    */
-  // In-memory cache for getPendingInboundOrders
-  private pendingInboundCache = new Map<
-    string,
-    { data: any; timestamp: number }
-  >();
-  private readonly PENDING_INBOUND_CACHE_TTL = 30000; // 30 seconds
 
   private getPendingInboundCacheKey(tenantId: string): string {
     return `pending-inbound:${tenantId}`;
@@ -2255,24 +2255,12 @@ export class OrderService {
     tenantId: string
   ): { data: any; isStale: boolean } | null {
     const key = this.getPendingInboundCacheKey(tenantId);
-    const cached = this.pendingInboundCache.get(key);
-    if (!cached) return null;
-
-    const now = Date.now();
-    const age = now - cached.timestamp;
-
-    if (age > this.PENDING_INBOUND_CACHE_TTL) {
-      return { data: cached.data, isStale: true }; // ✅ Stale qaytariladi
-    }
-
-    return { data: cached.data, isStale: false }; // ✅ Fresh
+    return this.pendingInboundCache.getWithStaleCheck(key);
   }
+  
   private setCachedPendingInbound(tenantId: string, data: any): void {
     const key = this.getPendingInboundCacheKey(tenantId);
-    this.pendingInboundCache.set(key, {
-      data,
-      timestamp: Date.now(),
-    });
+    this.pendingInboundCache.set(key, data);
   }
 
   private async refreshPendingInboundCacheInBackground(

@@ -3,25 +3,34 @@ import { PrismaService } from "../../core/prisma.service";
 import { MessageService } from "../member/services/message.service";
 import { EmailService } from "../member/services/email.service";
 import { saveBase64Images } from "../../common/utils/upload.utils";
+import { CacheManager } from "../../common/cache";
 
 @Injectable()
 export class OrderReturnService {
   private readonly logger = new Logger(OrderReturnService.name);
-  private returnsCache = new Map<string, { data: any; timestamp: number }>();
-  private readonly CACHE_TTL = 30000; // 30 soniya
+
+  // ✅ Replaced Map with CacheManager
+  private returnsCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly messageService: MessageService,
     private readonly emailService: EmailService
-  ) {}
+  ) {
+    this.returnsCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "OrderReturnService",
+    });
+  }
 
   async getReturns(tenantId: string, status?: string) {
     // Check cache first
     const cacheKey = `${tenantId}:${status || "all"}`;
     const cached = this.returnsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.data;
+    if (cached) {
+      return cached;
     }
 
     const where: any = { tenant_id: tenantId };
@@ -293,23 +302,17 @@ export class OrderReturnService {
     });
 
     // Cache'ga saqlash
-    this.returnsCache.set(cacheKey, {
-      data,
-      timestamp: Date.now(),
-    });
+    this.returnsCache.set(cacheKey, data);
 
     return data;
   }
 
   private invalidateCache(tenantId: string) {
-    // Remove all cache entries for this tenant
-    const keysToDelete: string[] = [];
-    for (const [key] of this.returnsCache.entries()) {
-      if (key.startsWith(`${tenantId}:`)) {
-        keysToDelete.push(key);
-      }
-    }
-    keysToDelete.forEach((key) => this.returnsCache.delete(key));
+    // Remove all cache entries for this tenant using deletePattern
+    const deleted = this.returnsCache.deletePattern(`^${tenantId}:`);
+    this.logger.debug(
+      `Invalidated ${deleted} cache entries for tenant: ${tenantId}`
+    );
   }
 
   async createFromInbound(tenantId: string, dto: any) {

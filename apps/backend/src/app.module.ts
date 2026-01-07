@@ -18,6 +18,8 @@ import { CalendarModule } from "./modules/calendar/calendar.module";
 import { WeatherModule } from "./modules/weather/weather.module";
 import { SupportModule } from "./modules/support/support.module";
 import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
+import { MonitoringMiddleware } from "./common/middleware/monitoring.middleware";
+import { MonitoringModule } from "./common/monitoring.module";
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { PerformanceLoggerMiddleware } from "./common/middleware/performance-log
       expandVariables: true,
     }),
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
+    MonitoringModule, // System and database monitoring
     IamModule,
     ProductModule,
     MemberModule,
@@ -55,6 +58,9 @@ import { PerformanceLoggerMiddleware } from "./common/middleware/performance-log
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(PerformanceLoggerMiddleware).forRoutes("*");
+    // Apply both middleware - PerformanceLoggerMiddleware first, then MonitoringMiddleware
+    consumer
+      .apply(PerformanceLoggerMiddleware, MonitoringMiddleware)
+      .forRoutes("*");
   }
 }

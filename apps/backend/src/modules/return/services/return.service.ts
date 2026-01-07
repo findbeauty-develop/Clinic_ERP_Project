@@ -11,17 +11,14 @@ import { SupplierReturnNotificationService } from "./supplier-return-notificatio
 import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
 import { MessageService } from "../../member/services/message.service";
 import { EmailService } from "../../member/services/email.service";
+import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class ReturnService {
   private readonly logger = new Logger(ReturnService.name);
 
-  // In-memory cache for getAvailableProducts
-  private availableProductsCache = new Map<
-    string,
-    { data: any; timestamp: number }
-  >();
-  private readonly CACHE_TTL = 30000; // 30 seconds
+  // ✅ Replaced Map with CacheManager
+  private availableProductsCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -29,7 +26,14 @@ export class ReturnService {
     private readonly supplierReturnNotificationService: SupplierReturnNotificationService,
     private readonly messageService: MessageService,
     private readonly emailService: EmailService
-  ) {}
+  ) {
+    this.availableProductsCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "ReturnService",
+    });
+  }
 
   private async refreshAvailableProductsCacheInBackground(
     tenantId: string,
@@ -53,19 +57,16 @@ export class ReturnService {
     }
 
     const cacheKey = `available-products:${tenantId}:${search || ""}`;
-    const cached = this.availableProductsCache.get(cacheKey);
-    if (cached) {
-      const age = Date.now() - cached.timestamp;
+    const result = this.availableProductsCache.getWithStaleCheck(cacheKey);
 
-      if (age > this.CACHE_TTL) {
+    if (result) {
+      if (result.isStale) {
         // Stale cache - background'da yangilash
         this.refreshAvailableProductsCacheInBackground(tenantId, search).catch(
           () => {}
         );
-        return cached.data; // ✅ Stale data qaytariladi
       }
-
-      return cached.data; // ✅ Fresh data
+      return result.data; // Return cached data (fresh or stale)
     }
     // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
     const allReturns = await this.prisma.executeWithRetry(async () => {
@@ -314,10 +315,7 @@ export class ReturnService {
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
 
     // Cache'ga saqlash
-    this.availableProductsCache.set(cacheKey, {
-      data: availableProducts,
-      timestamp: Date.now(),
-    });
+    this.availableProductsCache.set(cacheKey, availableProducts);
 
     return availableProducts;
   }

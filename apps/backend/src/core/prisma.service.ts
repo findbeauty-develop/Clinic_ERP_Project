@@ -152,24 +152,50 @@ export class PrismaService
 
     this.isConnected = false; // Will be set to true when first query succeeds
 
-    // Query logging - to'g'ri typing bilan
-    if (process.env.NODE_ENV === "development") {
-      try {
-        // Prisma $on method'ni to'g'ri chaqirish
-        (this as any).$on(
-          "query",
-          (e: {
-            duration: number;
-            query: string;
-            params?: string;
-            target?: string;
-          }) => {
+    // Query performance monitoring - slow query detection
+    try {
+      // Prisma $on method'ni to'g'ri chaqirish
+      (this as any).$on(
+        "query",
+        (e: {
+          duration: number;
+          query: string;
+          params?: string;
+          target?: string;
+        }) => {
+          // Slow query detection (1 second threshold)
+          if (e.duration > 1000) {
+            this.logger.warn("🐌 SLOW QUERY DETECTED:");
+            this.logger.warn(`Query: ${e.query}`);
+            this.logger.warn(`Duration: ${e.duration}ms`);
+            if (e.params) {
+              this.logger.warn(`Params: ${e.params}`);
+            }
+          }
+
+          // Development mode: log all queries
+          if (process.env.NODE_ENV === "development") {
             console.log("QUERY", e.duration, "ms", e.query);
           }
-        );
-      } catch (error) {
-        this.logger.warn("Failed to set up query logging:", error);
-      }
+        }
+      );
+    } catch (error) {
+      this.logger.warn("Failed to set up query logging:", error);
+    }
+
+    // Connection pool monitoring (every 30 seconds)
+    if (process.env.NODE_ENV === "development") {
+      setInterval(() => {
+        try {
+          // Log connection pool stats if available
+          const poolStats = (this as any).$metrics?.json();
+          if (poolStats) {
+            this.logger.debug("DB Pool Stats:", JSON.stringify(poolStats));
+          }
+        } catch (error) {
+          // Ignore errors - metrics might not be available
+        }
+      }, 30000); // Har 30 sekundda
     }
   }
 

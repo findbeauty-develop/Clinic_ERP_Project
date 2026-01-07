@@ -61,6 +61,7 @@ services:
       # ✅ Docker network ichida container nomi ishlatiladi
       - CLINIC_BACKEND_URL=http://clinic-erp-backend-prod:3000
       - SUPPLIER_BACKEND_API_KEY=your_secret_api_key_here_34534sdffsd69ds8f8e9sdf89sd4e9e8w9f
+      - CORS_ORIGINS=http://13.209.40.48:3001,http://13.209.40.48:3003,http://localhost:3001,http://localhost:3003
     volumes:
       - ./apps/supplier-backend/keys:/app/apps/supplier-backend/keys:ro
     networks:

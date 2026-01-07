@@ -9,8 +9,14 @@ import { existsSync } from "fs";
 
 async function bootstrap() {
   // Set GOOGLE_APPLICATION_CREDENTIALS to absolute path if it's relative
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_APPLICATION_CREDENTIALS.startsWith("/")) {
-    const credentialsPath = resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  if (
+    process.env.GOOGLE_APPLICATION_CREDENTIALS &&
+    !process.env.GOOGLE_APPLICATION_CREDENTIALS.startsWith("/")
+  ) {
+    const credentialsPath = resolve(
+      process.cwd(),
+      process.env.GOOGLE_APPLICATION_CREDENTIALS
+    );
     if (existsSync(credentialsPath)) {
       process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
       console.log(`Set GOOGLE_APPLICATION_CREDENTIALS to: ${credentialsPath}`);
@@ -18,7 +24,20 @@ async function bootstrap() {
   }
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({ origin: true });
+
+  // ✅ CORS configuration from environment variable
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+    : ["http://localhost:3001", "http://localhost:3003"];
+
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+  });
+
+  console.log("✅ CORS enabled for origins:", allowedOrigins);
 
   app.use(
     bodyParser.json({
@@ -52,4 +71,3 @@ async function bootstrap() {
   console.log(`Supplier Backend is running on port ${port}`);
 }
 bootstrap();
-

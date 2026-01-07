@@ -12,22 +12,13 @@ import { PackageOutboundDto } from "../../package/dto/package-outbound.dto";
 import { UnifiedOutboundDto, OutboundType } from "../dto/unified-outbound.dto";
 import { OrderReturnService } from "../../order-return/order-return.service";
 import { ReturnRepository } from "../../return/repositories/return.repository";
+import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class OutboundService {
-  // In-memory cache for getProductsForOutbound
-  private productsForOutboundCache: Map<
-    string,
-    { data: any[]; timestamp: number; search?: string }
-  > = new Map();
-  private readonly CACHE_TTL = 30000; // 30 seconds
-
-  // In-memory cache for getOutboundHistory
-  private outboundHistoryCache = new Map<
-    string,
-    { data: any; timestamp: number }
-  >();
-  private readonly HISTORY_CACHE_TTL = 30000; // 30 seconds
+  // ✅ Replaced Map with CacheManager
+  private productsForOutboundCache: CacheManager<any[]>;
+  private outboundHistoryCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -35,7 +26,22 @@ export class OutboundService {
     @Inject(forwardRef(() => OrderReturnService))
     private readonly orderReturnService: OrderReturnService,
     private readonly returnRepository: ReturnRepository
-  ) {}
+  ) {
+    // Initialize CacheManagers
+    this.productsForOutboundCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "OutboundService:Products",
+    });
+
+    this.outboundHistoryCache = new CacheManager({
+      maxSize: 100,
+      ttl: 30000, // 30 seconds
+      cleanupInterval: 60000,
+      name: "OutboundService:History",
+    });
+  }
 
   /**
    * Barcha product'larni batch'lari bilan olish (출고 uchun)
@@ -50,20 +56,18 @@ export class OutboundService {
 
     // Check cache first
     const cacheKey = `${tenantId}:${search || ""}`;
-    const cached = this.productsForOutboundCache.get(cacheKey);
-    if (cached && cached.search === search) {
-      const age = Date.now() - cached.timestamp;
+    const cachedData =
+      this.productsForOutboundCache.getWithStaleCheck(cacheKey);
 
-      if (age > this.CACHE_TTL) {
+    if (cachedData) {
+      if (cachedData.isStale) {
         // Stale cache - background'da yangilash
         this.refreshProductsForOutboundCacheInBackground(
           tenantId,
           search
         ).catch(() => {});
-        return cached.data; // ✅ Stale data qaytariladi
       }
-
-      return cached.data; // ✅ Fresh data
+      return cachedData.data; // Return cached data (fresh or stale)
     }
 
     // ProductsService'dan getAllProducts ishlatish (FEFO sort va tag'lar bilan)
@@ -116,11 +120,7 @@ export class OutboundService {
     }
 
     // Update cache
-    this.productsForOutboundCache.set(cacheKey, {
-      data: result,
-      timestamp: Date.now(),
-      search: search || undefined,
-    });
+    this.productsForOutboundCache.set(cacheKey, result);
 
     return result;
   }
@@ -130,17 +130,13 @@ export class OutboundService {
    * Public method to allow ProductsService to invalidate outbound cache
    */
   public invalidateProductsCache(tenantId: string) {
-    // ✅ Clear ALL cache entries for this tenant (regardless of search query)
-    const keysToDelete: string[] = [];
-    for (const key of this.productsForOutboundCache.keys()) {
-      if (key.startsWith(`${tenantId}:`)) {
-        keysToDelete.push(key);
-      }
-    }
-    keysToDelete.forEach((key) => {
-      this.productsForOutboundCache.delete(key);
-      console.log(`[OutboundService] Outbound cache invalidated: ${key}`);
-    });
+    // ✅ Clear ALL cache entries for this tenant using deletePattern
+    const deleted = this.productsForOutboundCache.deletePattern(
+      `^${tenantId}:`
+    );
+    console.log(
+      `[OutboundService] Invalidated ${deleted} outbound cache entries for tenant: ${tenantId}`
+    );
 
     // ✅ CRITICAL: Also clear ProductsService cache since getProductsForOutbound uses getAllProducts
     // This ensures fresh data from database after outbound creation
@@ -150,23 +146,13 @@ export class OutboundService {
         const productsService = this.productsService as any;
         const productsCache = productsService.productsCache;
 
-        if (productsCache && productsCache instanceof Map) {
+        if (productsCache && productsCache.delete) {
           // ProductsService uses cache key format: "products:${tenantId}"
           const productsCacheKey = `products:${tenantId}`;
-          if (productsCache.has(productsCacheKey)) {
-            productsCache.delete(productsCacheKey);
-            console.log(
-              `[OutboundService] ProductsService cache invalidated: ${productsCacheKey}`
-            );
-          } else {
-            // Also try direct tenantId key (in case format changed)
-            if (productsCache.has(tenantId)) {
-              productsCache.delete(tenantId);
-              console.log(
-                `[OutboundService] ProductsService cache invalidated (direct key): ${tenantId}`
-              );
-            }
-          }
+          productsCache.delete(productsCacheKey);
+          console.log(
+            `[OutboundService] ProductsService cache invalidated: ${productsCacheKey}`
+          );
         }
       } catch (error) {
         // If cache doesn't exist or method doesn't exist, log warning but continue
@@ -232,24 +218,20 @@ export class OutboundService {
       }
 
       const cacheKey = `${tenantId}:${search || ""}`;
-      this.productsForOutboundCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now(),
-        search: search || undefined,
-      });
+      this.productsForOutboundCache.set(cacheKey, result);
     } catch (error) {
       // Error handling
     }
   }
 
   private invalidateOutboundHistoryCache(tenantId: string) {
-    const keysToDelete: string[] = [];
-    for (const key of this.outboundHistoryCache.keys()) {
-      if (key.startsWith(`outbound-history:${tenantId}:`)) {
-        keysToDelete.push(key);
-      }
-    }
-    keysToDelete.forEach((key) => this.outboundHistoryCache.delete(key));
+    // Use deletePattern for efficient cache invalidation
+    const deleted = this.outboundHistoryCache.deletePattern(
+      `^outbound-history:${tenantId}:`
+    );
+    console.log(
+      `[OutboundService] Invalidated ${deleted} history cache entries for tenant: ${tenantId}`
+    );
   }
 
   private async refreshOutboundHistoryCacheInBackground(
@@ -505,10 +487,7 @@ export class OutboundService {
       const cacheKey = `outbound-history:${tenantId}:${JSON.stringify(
         filters || {}
       )}`;
-      this.outboundHistoryCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now(),
-      });
+      this.outboundHistoryCache.set(cacheKey, result);
     } catch (error) {
       // Error handling (user'ga ko'rsatilmaydi)
     }
@@ -1051,19 +1030,16 @@ export class OutboundService {
     const cacheKey = `outbound-history:${tenantId}:${JSON.stringify(
       filters || {}
     )}`;
-    const cached = this.outboundHistoryCache.get(cacheKey);
-    if (cached) {
-      const age = Date.now() - cached.timestamp;
+    const cachedResult = this.outboundHistoryCache.getWithStaleCheck(cacheKey);
 
-      if (age > this.HISTORY_CACHE_TTL) {
+    if (cachedResult) {
+      if (cachedResult.isStale) {
         // Stale cache - background'da yangilash
         this.refreshOutboundHistoryCacheInBackground(tenantId, filters).catch(
           () => {}
         );
-        return cached.data; // ✅ Stale data qaytariladi
       }
-
-      return cached.data; // ✅ Fresh data
+      return cachedResult.data; // Return cached data (fresh or stale)
     }
 
     // Build where clause once (reused for all queries)
