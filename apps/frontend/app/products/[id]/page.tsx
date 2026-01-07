@@ -421,9 +421,24 @@ export default function ProductDetailPage() {
                                       .split("T")[0]}
                               </span>
                             )}
-                            <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-white ml-auto">
-                              {batch.qty.toLocaleString()}{" "}
-                              {product.unit || "EA"}
+                            <span className="inline-flex items-center gap-2 ml-auto">
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                현재:
+                              </span>
+                              <span className="font-semibold text-slate-900 dark:text-white">
+                                {batch.qty.toLocaleString()} {product.unit || "EA"}
+                              </span>
+                              {batch.inbound_qty && (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600">|</span>
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    입고수량:
+                                  </span>
+                                  <span className="font-semibold text-sky-600 dark:text-sky-400">
+                                    {batch.inbound_qty.toLocaleString()} {product.unit || "EA"}
+                                  </span>
+                                </>
+                              )}
                             </span>
                           </div>
                         </div>

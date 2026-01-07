@@ -199,18 +199,18 @@ export default function InboundNewPage() {
     isActive: true,
     isUrgent: false,
     currentStock: 0,
-    currentStockUnit: unitOptions[1] || "cc / mL", // Default to first real unit
+    currentStockUnit: unitOptions[0] || "cc / mL", // Default to first real unit
     minStock: 0,
-    minStockUnit: unitOptions[1] || "cc / mL",
+    minStockUnit: unitOptions[0] || "cc / mL",
     unit: unitOptions[0],
     capacityPerProduct: 0,
-    capacityUnit: unitOptions[1] || "cc / mL", // 제품 용량 unit
+    capacityUnit: unitOptions[0] || "cc / mL", // 제품 용량 unit
     usageCapacity: 0,
-    usageCapacityUnit: unitOptions[1] || "cc / mL", // 사용 단위 unit (alohida)
+    usageCapacityUnit: unitOptions[0] || "cc / mL", // 사용 단위 unit (alohida)
     purchasePrice: "",
-    purchasePriceUnit: unitOptions[1] || "cc / mL",
+    purchasePriceUnit: unitOptions[0] || "cc / mL",
     salePrice: "",
-    salePriceUnit: unitOptions[1] || "cc / mL",
+    salePriceUnit: unitOptions[0] || "cc / mL",
     usageSalePrice: "", // 사용량에 대한 별도 판매가
     // Return policy
     refundAmount: "",
@@ -1222,11 +1222,11 @@ export default function InboundNewPage() {
       // Clear cache for both "/products" and full URL format
       clearCache("/products");
       clearCache("products"); // Also clear without leading slash
-      
+
       // Set flag to force refresh on inbound page
       if (typeof window !== "undefined") {
         sessionStorage.setItem("inbound_force_refresh", "true");
-        
+
         // ✅ Dispatch custom event to notify inbound page immediately
         window.dispatchEvent(new CustomEvent("productCreated"));
       }
@@ -1234,7 +1234,7 @@ export default function InboundNewPage() {
       // Clear unsaved changes flag and redirect to inbound list page
       setShowUnsavedChangesDialog(false);
       setPendingNavigation(null);
-      
+
       // Use router.push for smooth navigation (cache already cleared)
       router.push("/inbound");
       // isSaving will be reset when component unmounts or navigation completes
@@ -1314,13 +1314,13 @@ export default function InboundNewPage() {
                 {/* Left Side - Image Upload */}
                 <div className="flex flex-col gap-3">
                   {/* Large Image Upload */}
-                  <div className="relative flex h-96 flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-0 overflow-hidden transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
+                  <div className="relative flex w-full min-h-[24rem] max-h-[32rem] flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 overflow-hidden transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
                     {formData.image ? (
                       <>
                         <img
                           src={formData.image}
                           alt="Preview"
-                          className="h-full w-full object-cover rounded-xl"
+                          className="max-w-full max-h-full object-contain rounded-xl"
                         />
                         <label className="absolute inset-0 cursor-pointer">
                           <input
@@ -1554,7 +1554,7 @@ export default function InboundNewPage() {
                       }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      {unitOptions.slice(1).map((option) => (
+                      {unitOptions.slice(0).map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1604,7 +1604,7 @@ export default function InboundNewPage() {
                       }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      {unitOptions.slice(1).map((option) => (
+                      {unitOptions.slice(0).map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1642,11 +1642,12 @@ export default function InboundNewPage() {
                   <input
                     type="number"
                     min="0"
+                    step="0.1"
                     value={formData.capacityPerProduct || ""}
                     onChange={(e) =>
                       handleInputChange(
                         "capacityPerProduct",
-                        e.target.value ? Number(e.target.value) : 0
+                        e.target.value ? parseFloat(e.target.value) : 0
                       )
                     }
                     placeholder="0"
@@ -1660,7 +1661,7 @@ export default function InboundNewPage() {
                       }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      {unitOptions.slice(1).map((option) => (
+                      {unitOptions.slice(0).map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1720,11 +1721,12 @@ export default function InboundNewPage() {
                   <input
                     type="number"
                     min="0"
+                    step="0.1"
                     value={formData.usageCapacity || ""}
                     onChange={(e) =>
                       handleInputChange(
                         "usageCapacity",
-                        e.target.value ? Number(e.target.value) : 0
+                        e.target.value ? parseFloat(e.target.value) : 0
                       )
                     }
                     placeholder="전제 사용 아닌 경우,실제 사용량을 입력하세요"
@@ -1740,7 +1742,7 @@ export default function InboundNewPage() {
                       disabled={!formData.enableUsageCapacity}
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                     >
-                      {unitOptions.slice(1).map((option) => (
+                      {unitOptions.slice(0).map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1799,7 +1801,7 @@ export default function InboundNewPage() {
                       }
                       className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      {unitOptions.slice(1).map((option) => (
+                      {unitOptions.slice(0).map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>

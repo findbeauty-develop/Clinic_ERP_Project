@@ -47,6 +47,7 @@ type ProductBatch = {
   유효기간: string | null;
   보관위치: string | null;
   "입고 수량": number;
+  inbound_qty?: number; // Original qty from inbound (immutable)
   created_at: string;
 };
 
@@ -1029,8 +1030,11 @@ const ProductCard = memo(function ProductCard({
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1 ml-auto">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        입고수량:
+                      </span>
                       <span className="text-base font-bold text-slate-900 dark:text-white">
-                        {batch["입고 수량"]?.toLocaleString() ?? 0}
+                        {batch.inbound_qty?.toLocaleString() ?? 0}
                       </span>
                       <span className="text-xs text-slate-500 dark:text-slate-400">
                         {product.unit ?? "EA"}

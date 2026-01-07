@@ -2654,6 +2654,12 @@ const ProductCard = memo(function ProductCard({
                         재고: {batch.qty.toString().padStart(2, "0")}{" "}
                         {product.unit || "단위"}
                       </span>
+                      {batch.inbound_qty && (
+                        <span className="text-sky-600 dark:text-sky-400">
+                          입고수량: {batch.inbound_qty.toLocaleString()}{" "}
+                          {product.unit || "단위"}
+                        </span>
+                      )}
                       {product.supplierName && (
                         <span>공급처: {product.supplierName}</span>
                       )}

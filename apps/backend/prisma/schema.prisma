@@ -19,6 +19,7 @@ model Product {
   brand                String
   category             String
   current_stock        Int       @default(0)
+  inbound_qty          Int?      // Original qty from first inbound (immutable)
   image_url            String?
   is_active            Boolean   @default(true)
   min_stock            Int       @default(0)
@@ -28,7 +29,7 @@ model Product {
   sale_price           Int?
   capacity_per_product Float?
   capacity_unit        String?
-  usage_capacity       Int?
+  usage_capacity       Float?
   storage              String?
 
   // Product-level expiry defaults (yangi fieldlar)
@@ -133,6 +134,7 @@ model Batch {
   expiry_date      DateTime?
   expiry_months    Int?
   qty              Int
+  inbound_qty      Int?         // Original qty when batch was created (immutable)
   alert_days       String?
   used_count       Int         @default(0) // Ishlatilgan mahsulotlar soni (usageCapacity asosida)
   created_at       DateTime    @default(now())

@@ -485,6 +485,7 @@ export class ProductsService {
                 product_id: product.id,
                 batch_no: batchNo,
                 qty: batch.qty, // 입고 수량 (Inbound quantity)
+                inbound_qty: batch.qty, // ✅ Original qty from inbound (immutable)
                 expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
                 expiry_unit: batch.expiry_unit ?? null,
                 manufacture_date: batch.manufacture_date
@@ -504,6 +505,15 @@ export class ProductsService {
                     ? product.alert_days
                     : null,
               } as any,
+            });
+          }
+
+          // ✅ Set Product's inbound_qty from first batch (one-time only)
+          if (dto.initial_batches.length > 0) {
+            const firstBatchQty = dto.initial_batches[0].qty;
+            await tx.product.update({
+              where: { id: product.id },
+              data: { inbound_qty: firstBatchQty },
             });
           }
         }
@@ -1271,6 +1281,7 @@ export class ProductsService {
             product_id: productId,
             batch_no: batchNo,
             qty: dto.qty,
+            inbound_qty: dto.qty, // ✅ Original qty from inbound (immutable)
             expiry_months: dto.expiry_months ?? null,
             expiry_unit: dto.expiry_unit ?? null,
             manufacture_date: dto.manufacture_date
@@ -1285,6 +1296,20 @@ export class ProductsService {
             alert_days: dto.alert_days ?? (product as any).alert_days ?? null,
           } as any,
         });
+
+        // ✅ Check if this is the FIRST batch for this product
+        const existingBatches = await tx.batch.count({
+          where: { product_id: productId, tenant_id: tenantId },
+        });
+
+        // If this is the first batch, set Product's inbound_qty
+        if (existingBatches === 1) {
+          // Count includes the just-created batch
+          await tx.product.update({
+            where: { id: productId, tenant_id: tenantId },
+            data: { inbound_qty: dto.qty },
+          });
+        }
 
         // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
         const totalStock = await tx.batch.aggregate({
