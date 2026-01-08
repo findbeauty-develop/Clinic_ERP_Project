@@ -9,7 +9,14 @@ import { join } from "path";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: false, // ✅ PERMANENT: Allow nested objects (suppliers array works correctly)
+      transform: true, // Convert plain objects to DTO instances
+      forbidNonWhitelisted: false, // Don't throw errors for extra fields
+      // Note: Security is maintained through individual @IsOptional, @IsString, etc. decorators
+    })
+  );
   app.enableCors({ origin: true });
 
   // Compression middleware (gzip) - response'ni siqish

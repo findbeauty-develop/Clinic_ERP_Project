@@ -1,7 +1,9 @@
 # Edit Page - Complete Implementation Summary
 
 ## 🎯 Purpose
+
 Edit page is for **data correction** when product was created with wrong information. When user edits product, changes should propagate to:
+
 1. ✅ Product table
 2. ✅ First Batch (oldest, created with product)
 3. ✅ ProductSupplier (for purchase price only)
@@ -12,14 +14,14 @@ Edit page is for **data correction** when product was created with wrong informa
 
 ## 📊 Complete Field Update Matrix
 
-| Field Name (Korean) | Field Name (English) | Product Table | First Batch | ProductSupplier | Other Batches |
-|---------------------|---------------------|---------------|-------------|-----------------|---------------|
-| 제품 재고 수량 | currentStock | ✅ `current_stock` + `inbound_qty` | ✅ `inbound_qty` | ❌ | ❌ |
-| 구매가 | purchasePrice | ✅ `purchase_price` | ✅ `purchase_price` | ✅ `purchase_price` | ❌ |
-| 보관 위치 | storage | ✅ `storage` | ✅ `storage` | ❌ | ❌ |
-| 입고 담당자 | inboundManager | ✅ `inbound_manager` | ✅ `inbound_manager` | ❌ | ❌ |
-| 단위 | unit | ✅ `unit` | ✅ `unit` | ❌ | ❌ |
-| 유효기간 | expiryDate | ✅ `expiry_date` | ✅ `expiry_date` | ❌ | ❌ |
+| Field Name (Korean) | Field Name (English) | Product Table                      | First Batch          | ProductSupplier     | Other Batches |
+| ------------------- | -------------------- | ---------------------------------- | -------------------- | ------------------- | ------------- |
+| 제품 재고 수량      | currentStock         | ✅ `current_stock` + `inbound_qty` | ✅ `inbound_qty`     | ❌                  | ❌            |
+| 구매가              | purchasePrice        | ✅ `purchase_price`                | ✅ `purchase_price`  | ✅ `purchase_price` | ❌            |
+| 보관 위치           | storage              | ✅ `storage`                       | ✅ `storage`         | ❌                  | ❌            |
+| 입고 담당자         | inboundManager       | ✅ `inbound_manager`               | ✅ `inbound_manager` | ❌                  | ❌            |
+| 단위                | unit                 | ✅ `unit`                          | ✅ `unit`            | ❌                  | ❌            |
+| 유효기간            | expiryDate           | ✅ `expiry_date`                   | ✅ `expiry_date`     | ❌                  | ❌            |
 
 **Total: 6 fields** update Product + First Batch simultaneously
 
@@ -61,7 +63,9 @@ if (firstBatch) {
   }
 
   if (dto.expiryDate !== undefined) {
-    batchUpdateData.expiry_date = dto.expiryDate ? new Date(dto.expiryDate) : null;
+    batchUpdateData.expiry_date = dto.expiryDate
+      ? new Date(dto.expiryDate)
+      : null;
   }
 
   // 3. Apply updates if there are changes
@@ -93,6 +97,7 @@ if (dto.purchasePrice !== undefined) {
 ## 🧪 Complete Testing Guide
 
 ### Test Setup: Create Product
+
 ```
 1. Create product with:
    - 제품 재고 수량: 100
@@ -106,26 +111,27 @@ if (dto.purchasePrice !== undefined) {
 ```
 
 **SQL Check:**
+
 ```sql
 -- Product table
-SELECT current_stock, inbound_qty, purchase_price, storage, 
-       inbound_manager, unit, expiry_date 
-FROM "Product" 
+SELECT current_stock, inbound_qty, purchase_price, storage,
+       inbound_manager, unit, expiry_date
+FROM "Product"
 WHERE name = 'Test Product';
 -- Expected: 100, 100, 10000, "냉장고", "이영희", "EA", 2025-12-31
 
 -- First batch
-SELECT inbound_qty, purchase_price, storage, inbound_manager, 
-       unit, expiry_date, created_at 
-FROM "Batch" 
-WHERE product_id = '<id>' 
-ORDER BY created_at ASC 
+SELECT inbound_qty, purchase_price, storage, inbound_manager,
+       unit, expiry_date, created_at
+FROM "Batch"
+WHERE product_id = '<id>'
+ORDER BY created_at ASC
 LIMIT 1;
 -- Expected: 100, 10000, "냉장고", "이영희", "EA", 2025-12-31
 
 -- ProductSupplier
-SELECT purchase_price 
-FROM "ProductSupplier" 
+SELECT purchase_price
+FROM "ProductSupplier"
 WHERE product_id = '<id>';
 -- Expected: 10000
 ```
@@ -133,6 +139,7 @@ WHERE product_id = '<id>';
 ---
 
 ### Test 1: Edit All Fields
+
 ```
 1. Go to product edit page
 2. Change all fields:
@@ -146,6 +153,7 @@ WHERE product_id = '<id>';
 ```
 
 **Expected Console Output:**
+
 ```
 📥 Received DTO for product update: {
   "currentStock": 150,
@@ -170,26 +178,27 @@ WHERE product_id = '<id>';
 ```
 
 **Expected Database State:**
+
 ```sql
 -- Product table
-SELECT current_stock, inbound_qty, purchase_price, storage, 
-       inbound_manager, unit, expiry_date 
-FROM "Product" 
+SELECT current_stock, inbound_qty, purchase_price, storage,
+       inbound_manager, unit, expiry_date
+FROM "Product"
 WHERE name = 'Test Product';
 -- Expected: 150, 150, 15000, "냉동고", "김철수", "BOX", 2026-06-30 ✅
 
 -- First batch
-SELECT inbound_qty, purchase_price, storage, inbound_manager, 
-       unit, expiry_date 
-FROM "Batch" 
-WHERE product_id = '<id>' 
-ORDER BY created_at ASC 
+SELECT inbound_qty, purchase_price, storage, inbound_manager,
+       unit, expiry_date
+FROM "Batch"
+WHERE product_id = '<id>'
+ORDER BY created_at ASC
 LIMIT 1;
 -- Expected: 150, 15000, "냉동고", "김철수", "BOX", 2026-06-30 ✅
 
 -- ProductSupplier
-SELECT purchase_price 
-FROM "ProductSupplier" 
+SELECT purchase_price
+FROM "ProductSupplier"
 WHERE product_id = '<id>';
 -- Expected: 15000 ✅
 ```
@@ -197,6 +206,7 @@ WHERE product_id = '<id>';
 ---
 
 ### Test 2: Add New Batch (Inbound Page)
+
 ```
 1. Go to inbound page
 2. Add new batch with DIFFERENT values:
@@ -208,11 +218,12 @@ WHERE product_id = '<id>';
 ```
 
 **Expected Database State:**
+
 ```sql
-SELECT inbound_qty, purchase_price, storage, inbound_manager, 
-       unit, expiry_date, created_at 
-FROM "Batch" 
-WHERE product_id = '<id>' 
+SELECT inbound_qty, purchase_price, storage, inbound_manager,
+       unit, expiry_date, created_at
+FROM "Batch"
+WHERE product_id = '<id>'
 ORDER BY created_at ASC;
 
 -- Expected 2 rows:
@@ -226,6 +237,7 @@ ORDER BY created_at ASC;
 ---
 
 ### Test 3: Edit Again (Verify First Batch Only)
+
 ```
 1. Go to product edit page again
 2. Change 구매가: 15000 → 20000
@@ -233,10 +245,11 @@ ORDER BY created_at ASC;
 ```
 
 **Expected Database State:**
+
 ```sql
-SELECT inbound_qty, purchase_price, created_at 
-FROM "Batch" 
-WHERE product_id = '<id>' 
+SELECT inbound_qty, purchase_price, created_at
+FROM "Batch"
+WHERE product_id = '<id>'
 ORDER BY created_at ASC;
 
 -- Expected:
@@ -249,21 +262,25 @@ ORDER BY created_at ASC;
 ## 🎯 Key Design Principles
 
 ### 1. First Batch = Product Default
+
 - First batch is created **with** the product
 - Represents the **original/default** values
 - Should stay in sync with product-level corrections
 
 ### 2. Later Batches = Independent Operations
+
 - Each inbound is a **separate transaction**
 - May have **different prices/storage/dates**
 - Historical accuracy preserved
 
 ### 3. Edit Page = Data Correction
+
 - Not a normal operation, but a **mistake fix**
 - Should update **original records** (Product + First Batch)
 - Should **NOT** affect historical data (Other Batches)
 
 ### 4. ProductSupplier Special Case
+
 - Only `purchase_price` updates
 - Represents **corrected contract price**
 - Other fields (MOQ, lead time) are contract terms, don't auto-update
@@ -304,6 +321,7 @@ Edit Page Changes
 ## 🐛 Debugging Tips
 
 ### Check First Batch Identification
+
 ```sql
 -- Make sure you're finding the FIRST batch (oldest)
 SELECT id, batch_no, created_at, inbound_qty, purchase_price
@@ -314,6 +332,7 @@ ORDER BY created_at ASC;
 ```
 
 ### Check Update Logs
+
 ```bash
 # Backend logs should show:
 🔍 Updating first batch inbound_qty from X to Y
@@ -323,6 +342,7 @@ ORDER BY created_at ASC;
 ```
 
 ### Verify ProductSupplier Exists
+
 ```sql
 SELECT ps.id, ps.purchase_price, p.name
 FROM "ProductSupplier" ps
@@ -336,6 +356,7 @@ WHERE p.id = '<id>';
 ## ✅ Implementation Checklist
 
 ### Backend
+
 - [x] Find first batch using `created_at ASC`
 - [x] Update `inbound_qty` when `currentStock` changes
 - [x] Update `purchase_price` when `purchasePrice` changes
@@ -348,12 +369,14 @@ WHERE p.id = '<id>';
 - [x] Handle null/undefined values correctly
 
 ### Frontend
+
 - [x] Send all edited fields in payload
 - [x] Clear cache after update
 - [x] Display updated values immediately
 - [x] Handle 0 values correctly (not treated as falsy)
 
 ### Testing
+
 - [ ] Create product with all fields
 - [ ] Edit all fields and verify updates
 - [ ] Add new batch with different values
@@ -366,26 +389,29 @@ WHERE p.id = '<id>';
 ## 🚀 Deployment Steps
 
 1. **Local Testing**
+
    ```bash
    cd apps/backend && pnpm run start:dev
    cd apps/frontend && pnpm run dev
    ```
 
 2. **Test All Scenarios**
+
    - Create product
    - Edit all 6 fields
    - Add new batch
    - Edit again, verify first batch only
 
 3. **Deploy to VPS**
+
    ```bash
    # Rebuild backend
    docker build -t findbeauty/clinic-backend:latest \
      --platform linux/amd64 \
      -f apps/backend/Dockerfile .
-   
+
    docker push findbeauty/clinic-backend:latest
-   
+
    # VPS: Pull and restart
    ssh -i ~/.ssh/seoul-clinic.pem ubuntu@<VPS_IP>
    cd ~/clinic-erp
@@ -399,4 +425,3 @@ WHERE p.id = '<id>';
 **Date:** 2026-01-08
 **Fields Updated:** 6 (currentStock, purchasePrice, storage, inboundManager, unit, expiryDate)
 **Tables Updated:** 3 (Product, Batch, ProductSupplier)
-

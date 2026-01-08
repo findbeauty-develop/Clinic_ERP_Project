@@ -830,7 +830,7 @@ function ProductEditForm({
     salePriceUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
     purchasePrice: product.purchasePrice?.toString() || "",
     salePrice: product.salePrice?.toString() || "",
-    currentStock: product.inboundQty?.toString() || "0",
+    currentStock: product.inboundQty?.toString() || "",
     minStock: product.minStock?.toString() || "0",
     capacityPerProduct: product.capacityPerProduct?.toString() || "",
     usageCapacity: product.usageCapacity?.toString() || "",
@@ -999,6 +999,7 @@ function ProductEditForm({
   const handleSupplierSearchByPhone = async () => {
     if (!supplierSearchPhoneNumber) return;
 
+    console.log("🔍 Searching supplier by phone:", supplierSearchPhoneNumber);
     setSupplierSearchLoading(true);
     try {
       // searchSuppliers funksiyasini chaqirish va natijani kutish
@@ -1008,19 +1009,28 @@ function ProductEditForm({
         supplierSearchPhoneNumber
       );
 
+      console.log("🔍 Search results:", results);
+      console.log("🔍 Results count:", results?.length);
+
       // Natijalarni tekshirish
       if (results && results.length > 0) {
         // Supplier topildi - malumotlarni ko'rsatish
+        console.log("✅ Supplier found, showing results");
         setSupplierViewMode("results");
         setPhoneSearchNoResults(false);
       } else {
         // Supplier topilmadi - oddiy modal ochish (imagdagiday)
+        console.log("⚠️ Supplier not found, opening confirm modal");
+        console.log(
+          "🔍 Setting pendingSupplierPhone to:",
+          supplierSearchPhoneNumber
+        );
         setPhoneSearchNoResults(true);
         setPendingSupplierPhone(supplierSearchPhoneNumber);
         setShowNewSupplierConfirmModal(true);
       }
     } catch (error) {
-      console.error("Error searching suppliers by phone:", error);
+      console.error("❌ Error searching suppliers by phone:", error);
       setSupplierSearchResults([]);
       setPhoneSearchNoResults(true);
       setPendingSupplierPhone(supplierSearchPhoneNumber);
@@ -1162,6 +1172,44 @@ function ProductEditForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submitted", formData);
+    console.log("🔍 showNewSupplierModal:", showNewSupplierModal);
+    console.log("🔍 selectedSupplierDetails:", selectedSupplierDetails);
+
+    // ✅ Validate manual supplier form if active
+    if (showNewSupplierModal) {
+      console.log("🔍 Manual supplier form validation starting...");
+      console.log("🔍 supplierSearchManagerName:", supplierSearchManagerName);
+      console.log("🔍 pendingSupplierPhone:", pendingSupplierPhone);
+      console.log(
+        "🔍 newSupplierForm.companyName:",
+        newSupplierForm.companyName
+      );
+
+      if (
+        !supplierSearchManagerName ||
+        !pendingSupplierPhone ||
+        !newSupplierForm.companyName
+      ) {
+        alert("담당자 이름, 핸드폰 번호, 회사명은 필수 입력 사항입니다.");
+        setLoading(false);
+        return;
+      }
+
+      if (!newSupplierForm.businessNumber || !newSupplierForm.companyPhone) {
+        alert("사업자번호와 회사 전화번호는 필수 입력 사항입니다.");
+        setLoading(false);
+        return;
+      }
+
+      if (!newSupplierForm.companyEmail) {
+        alert("회사 이메일은 필수 입력 사항입니다.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("✅ Manual supplier form validation passed!");
+    }
+
     setLoading(true);
 
     try {
@@ -1253,8 +1301,47 @@ function ProductEditForm({
         JSON.stringify(payload, null, 2)
       );
 
+      console.log(
+        "🔍 showNewSupplierModal BEFORE supplier logic:",
+        showNewSupplierModal
+      );
+      console.log(
+        "🔍 selectedSupplierDetails BEFORE supplier logic:",
+        selectedSupplierDetails
+      );
+      console.log("🔍 newSupplierForm BEFORE supplier logic:", newSupplierForm);
+
+      // ✅ Manual Supplier Information (from newSupplierForm)
+      if (showNewSupplierModal && newSupplierForm.companyName) {
+        console.log("🔍 Manual supplier form detected!");
+        console.log("🔍 supplierSearchManagerName:", supplierSearchManagerName);
+        console.log("🔍 pendingSupplierPhone:", pendingSupplierPhone);
+        console.log("🔍 newSupplierForm:", newSupplierForm);
+
+        payload.suppliers = [
+          {
+            supplier_id: null, // Will trigger CREATE in backend
+            company_name: newSupplierForm.companyName,
+            business_number: newSupplierForm.businessNumber,
+            company_phone: newSupplierForm.companyPhone,
+            company_email: newSupplierForm.companyEmail,
+            company_address: newSupplierForm.companyAddress,
+            contact_name: supplierSearchManagerName,
+            contact_phone: pendingSupplierPhone,
+            contact_email: newSupplierForm.companyEmail,
+            purchase_price: formData.purchasePrice
+              ? Number(formData.purchasePrice)
+              : undefined,
+            moq: undefined,
+            lead_time_days: undefined,
+            note: newSupplierForm.memo || undefined,
+          },
+        ];
+        console.log("✅ Supplier payload created:", payload.suppliers);
+      }
       // ✅ Supplier information (ProductSupplier table uchun)
-      if (selectedSupplierDetails) {
+      else if (selectedSupplierDetails && selectedSupplierDetails.companyName) {
+        console.log("🔍 Existing supplier selected:", selectedSupplierDetails);
         payload.suppliers = [
           {
             supplier_id:
@@ -1277,8 +1364,29 @@ function ProductEditForm({
             note: undefined, // Note edit qilish mumkin emas
           },
         ];
+        console.log("✅ Existing supplier payload created:", payload.suppliers);
+      } else {
+        console.log("⚠️ No supplier data to update (skipping suppliers field)");
+        console.log("🔍 Reason: showNewSupplierModal =", showNewSupplierModal);
+        console.log(
+          "🔍 Reason: selectedSupplierDetails =",
+          selectedSupplierDetails
+        );
+        console.log(
+          "🔍 Reason: selectedSupplierDetails?.companyName =",
+          selectedSupplierDetails?.companyName
+        );
+        // Don't send empty suppliers array - but check if payload.suppliers already exists
+        if (payload.suppliers) {
+          console.log(
+            "⚠️ WARNING: payload.suppliers already exists but conditions not met!"
+          );
+          console.log("⚠️ Current payload.suppliers:", payload.suppliers);
+        }
       }
 
+      console.log("🚀 FINAL CHECK before sending:");
+      console.log("🚀 payload.suppliers:", payload.suppliers);
       console.log("Sending payload:", payload);
       console.log("API URL:", `${apiUrl}/products/${product.id}`);
 
@@ -2217,6 +2325,10 @@ function ProductEditForm({
                   </label>
                   <input
                     type="text"
+                    value={supplierSearchManagerName}
+                    onChange={(e) =>
+                      setSupplierSearchManagerName(e.target.value)
+                    }
                     placeholder="성함"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2478,6 +2590,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="tel"
+                    value={newSupplierForm.companyPhone}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        companyPhone: e.target.value,
+                      }))
+                    }
                     placeholder="00-0000-0000"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2488,6 +2607,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="email"
+                    value={newSupplierForm.companyEmail}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        companyEmail: e.target.value,
+                      }))
+                    }
                     placeholder="이메일을 입력해주세요"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2498,6 +2624,13 @@ function ProductEditForm({
                   </label>
                   <input
                     type="text"
+                    value={newSupplierForm.responsibleProducts}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        responsibleProducts: e.target.value,
+                      }))
+                    }
                     placeholder="제품을 입력해주세요"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
@@ -2507,6 +2640,13 @@ function ProductEditForm({
                     메모
                   </label>
                   <textarea
+                    value={newSupplierForm.memo}
+                    onChange={(e) =>
+                      setNewSupplierForm((prev) => ({
+                        ...prev,
+                        memo: e.target.value,
+                      }))
+                    }
                     placeholder="메모를 입력하세요"
                     rows={3}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
@@ -2516,10 +2656,11 @@ function ProductEditForm({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => {
+                  console.log("❌ Cancel button clicked - Closing manual form");
                   setShowNewSupplierModal(false);
                   setPendingSupplierPhone("");
                   setPhoneSearchNoResults(false);
@@ -2544,17 +2685,29 @@ function ProductEditForm({
               >
                 취소
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  // TODO: Implement save logic
-                  console.log("저장 및 등록 clicked");
-                  setShowNewSupplierModal(false);
-                }}
-                className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                저장 및 등록
-              </button>
+              {/* INFO: User should scroll down and click the main GREEN "저장" button at the bottom of the page */}
+              <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <svg
+                  className="h-5 w-5 text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="font-medium">
+                  공급업체 정보를 입력한 후, 페이지 하단의{" "}
+                  <span className="text-green-600 dark:text-green-400 font-bold">
+                    "저장"
+                  </span>{" "}
+                  버튼을 클릭하세요
+                </span>
+              </div>
             </div>
           </div>
         ) : (
@@ -2988,8 +3141,16 @@ function ProductEditForm({
                   type="button"
                   onClick={() => {
                     // "직접 입력" button bosilganda, to'liq form modal'ni ochish
+                    console.log(
+                      "🆕 '직접 입력' button clicked - Opening manual supplier form"
+                    );
+                    console.log(
+                      "🔍 pendingSupplierPhone:",
+                      pendingSupplierPhone
+                    );
                     setShowNewSupplierConfirmModal(false);
                     setShowNewSupplierModal(true);
+                    console.log("✅ showNewSupplierModal set to TRUE");
                   }}
                   className="rounded-lg bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
                 >

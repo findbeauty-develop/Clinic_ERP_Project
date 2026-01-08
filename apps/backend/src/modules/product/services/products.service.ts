@@ -819,6 +819,14 @@ export class ProductsService {
     );
     console.log("🔍 dto.currentStock:", dto.currentStock);
     console.log("🔍 typeof dto.currentStock:", typeof dto.currentStock);
+    console.log("🔍 dto.suppliers:", dto.suppliers);
+    console.log("🔍 dto.suppliers?.length:", dto.suppliers?.length);
+    if (dto.suppliers && dto.suppliers.length > 0) {
+      console.log(
+        "🔍 First supplier:",
+        JSON.stringify(dto.suppliers[0], null, 2)
+      );
+    }
 
     const existing = await this.prisma.product.findFirst({
       where: { id, tenant_id: tenantId },
@@ -869,13 +877,18 @@ export class ProductsService {
       newCurrentStock
     );
 
-    // ✅ Update inbound_qty when manually editing (not from outbound operation)
-    const newInboundQty =
-      dto.currentStock !== undefined
-        ? dto.currentStock
-        : (existing as any).inbound_qty;
+    // ✅ Update inbound_qty ONLY if user explicitly changed the stock field
+    // If currentStock is different from existing, user edited it manually on edit page
+    const stockWasChanged =
+      dto.currentStock !== undefined &&
+      dto.currentStock !== existing.current_stock;
+    const newInboundQty = stockWasChanged
+      ? dto.currentStock
+      : (existing as any).inbound_qty;
     console.log(
-      "🔍 Updating inbound_qty from",
+      "🔍 Stock changed:",
+      stockWasChanged,
+      "| Updating inbound_qty from",
       (existing as any).inbound_qty,
       "to",
       newInboundQty
@@ -897,7 +910,7 @@ export class ProductsService {
             purchase_price: dto.purchasePrice ?? existing.purchase_price,
             sale_price: dto.salePrice ?? existing.sale_price,
             current_stock: newCurrentStock, // Use the computed value
-            inbound_qty: newInboundQty, // Update inbound_qty when editing
+            inbound_qty: newInboundQty, // ✅ Update ONLY if user manually edited stock
             min_stock:
               dto.minStock !== undefined ? dto.minStock : existing.min_stock, // Allow 0
             capacity_per_product:
@@ -943,118 +956,195 @@ export class ProductsService {
         if (dto.suppliers && dto.suppliers.length > 0) {
           const supplier = dto.suppliers[0];
 
-          // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
-          if (supplier.contact_name || supplier.contact_phone) {
-            let clinicSupplierManagerId: string;
+          console.log(
+            "🔍 Backend: Received supplier data:",
+            JSON.stringify(supplier, null, 2)
+          );
 
-            // 1. Avval ClinicSupplierManager'ni topish (phone_number yoki business_number bo'yicha)
-            let existingClinicSupplierManager = null;
+          // ✅ Check if supplier has meaningful data (not empty object)
+          const hasSupplierData =
+            supplier.contact_name ||
+            supplier.contact_phone ||
+            supplier.company_name;
 
-            if (supplier.contact_phone) {
-              existingClinicSupplierManager =
-                await tx.clinicSupplierManager.findFirst({
-                  where: {
-                    tenant_id: tenantId,
-                    phone_number: supplier.contact_phone,
-                  },
-                });
-            }
+          if (!hasSupplierData) {
+            console.log(
+              "⚠️ Empty supplier object received, skipping supplier update"
+            );
+          } else {
+            // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
+            if (supplier.contact_name || supplier.contact_phone) {
+              let clinicSupplierManagerId: string;
 
-            if (!existingClinicSupplierManager && supplier.business_number) {
-              existingClinicSupplierManager =
-                await tx.clinicSupplierManager.findFirst({
-                  where: {
-                    tenant_id: tenantId,
-                    business_number: supplier.business_number,
-                  },
-                });
-            }
+              // 1. Faqat phone_number bo'yicha qidirish (manager unique identifier)
+              // Business number bir xil bo'lishi mumkin (bir kompaniyada ko'p manager)
+              let existingClinicSupplierManager = null;
 
-            // 2. Agar topilsa, yangilash (UPDATE)
-            if (existingClinicSupplierManager) {
-              await tx.clinicSupplierManager.update({
-                where: { id: existingClinicSupplierManager.id },
-                data: {
-                  company_name:
-                    supplier.company_name ||
-                    existingClinicSupplierManager.company_name,
-                  business_number:
-                    supplier.business_number ||
-                    existingClinicSupplierManager.business_number,
-                  company_phone:
-                    supplier.company_phone ||
-                    existingClinicSupplierManager.company_phone,
-                  company_email:
-                    supplier.company_email ||
-                    existingClinicSupplierManager.company_email,
-                  company_address:
-                    supplier.company_address ||
-                    existingClinicSupplierManager.company_address,
-                  name:
-                    supplier.contact_name || existingClinicSupplierManager.name,
-                  phone_number:
-                    supplier.contact_phone ||
-                    existingClinicSupplierManager.phone_number,
-                  email1:
-                    supplier.contact_email ||
-                    existingClinicSupplierManager.email1,
-                },
-              });
-              clinicSupplierManagerId = existingClinicSupplierManager.id;
-            } else {
-              // 3. Agar topilmasa, yangi yaratish (CREATE)
-              const newClinicSupplierManager =
-                await tx.clinicSupplierManager.create({
+              if (supplier.contact_phone) {
+                console.log("🔍 Searching by phone:", supplier.contact_phone);
+                existingClinicSupplierManager =
+                  await tx.clinicSupplierManager.findFirst({
+                    where: {
+                      tenant_id: tenantId,
+                      phone_number: supplier.contact_phone,
+                    },
+                  });
+                console.log(
+                  "🔍 Found by phone?",
+                  existingClinicSupplierManager ? "YES" : "NO"
+                );
+              }
+
+              // ❌ REMOVED: Business number search
+              // Business number is company identifier, not manager identifier
+              // One company can have multiple managers!
+
+              // 2. Agar topilsa, yangilash (UPDATE)
+              if (existingClinicSupplierManager) {
+                console.log(
+                  "✅ Updating existing supplier:",
+                  existingClinicSupplierManager.id
+                );
+                await tx.clinicSupplierManager.update({
+                  where: { id: existingClinicSupplierManager.id },
                   data: {
-                    tenant_id: tenantId,
-                    company_name: supplier.company_name || "공급업체 없음",
-                    business_number: supplier.business_number || null,
-                    company_phone: supplier.company_phone || null,
-                    company_email: supplier.company_email || null,
-                    company_address: supplier.company_address || null,
-                    name: supplier.contact_name || "담당자 없음",
-                    phone_number: supplier.contact_phone || "000-0000-0000",
-                    email1: supplier.contact_email || null,
-                    // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
-                    linked_supplier_manager_id:
-                      supplier.supplier_id &&
-                      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                        supplier.supplier_id
-                      )
-                        ? supplier.supplier_id
-                        : null,
+                    company_name:
+                      supplier.company_name ||
+                      existingClinicSupplierManager.company_name,
+                    business_number:
+                      supplier.business_number ||
+                      existingClinicSupplierManager.business_number,
+                    company_phone:
+                      supplier.company_phone ||
+                      existingClinicSupplierManager.company_phone,
+                    company_email:
+                      supplier.company_email ||
+                      existingClinicSupplierManager.company_email,
+                    company_address:
+                      supplier.company_address ||
+                      existingClinicSupplierManager.company_address,
+                    name:
+                      supplier.contact_name ||
+                      existingClinicSupplierManager.name,
+                    phone_number:
+                      supplier.contact_phone ||
+                      existingClinicSupplierManager.phone_number,
+                    email1:
+                      supplier.contact_email ||
+                      existingClinicSupplierManager.email1,
                   },
                 });
-              clinicSupplierManagerId = newClinicSupplierManager.id;
-            }
+                clinicSupplierManagerId = existingClinicSupplierManager.id;
+              } else {
+                // 3. Agar topilmasa, yangi yaratish (CREATE)
+                console.log("🆕 Creating NEW supplier manager...");
+                // ✅ Validation: Check uniqueness before creating
 
-            // 4. ProductSupplier'ni upsert qilish (mapping table)
-            await tx.productSupplier.upsert({
-              where: {
-                tenant_id_product_id: {
+                // Check if phone number already exists (phone is unique per manager)
+                if (supplier.contact_phone) {
+                  console.log(
+                    "🔍 Validating phone uniqueness:",
+                    supplier.contact_phone
+                  );
+                  const phoneExists = await tx.clinicSupplierManager.findFirst({
+                    where: {
+                      tenant_id: tenantId,
+                      phone_number: supplier.contact_phone,
+                    },
+                  });
+
+                  if (phoneExists) {
+                    console.log("❌ Phone already exists!");
+                    throw new BadRequestException(
+                      `이 전화번호(${supplier.contact_phone})는 이미 등록되어 있습니다.`
+                    );
+                  }
+                  console.log("✅ Phone is unique");
+                }
+
+                // ❌ REMOVED: Business number uniqueness check
+                // Business number is company identifier, not manager identifier
+                // Multiple managers can have the same business_number (same company)
+                console.log(
+                  "ℹ️ Business number:",
+                  supplier.business_number,
+                  "(multiple managers can share same business_number)"
+                );
+
+                // Proceed with CREATE
+                console.log("📝 Creating with data:", {
+                  tenant_id: tenantId,
+                  company_name: supplier.company_name,
+                  business_number: supplier.business_number,
+                  company_phone: supplier.company_phone,
+                  company_email: supplier.company_email,
+                  company_address: supplier.company_address,
+                  name: supplier.contact_name,
+                  phone_number: supplier.contact_phone,
+                  email1: supplier.contact_email,
+                });
+
+                const newClinicSupplierManager =
+                  await tx.clinicSupplierManager.create({
+                    data: {
+                      tenant_id: tenantId,
+                      company_name: supplier.company_name || "공급업체 없음",
+                      business_number: supplier.business_number || null,
+                      company_phone: supplier.company_phone || null,
+                      company_email: supplier.company_email || null,
+                      company_address: supplier.company_address || null,
+                      name: supplier.contact_name || "담당자 없음",
+                      phone_number: supplier.contact_phone || "000-0000-0000",
+                      email1: supplier.contact_email || null,
+                      // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
+                      linked_supplier_manager_id:
+                        supplier.supplier_id &&
+                        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                          supplier.supplier_id
+                        )
+                          ? supplier.supplier_id
+                          : null,
+                    },
+                  });
+                console.log(
+                  "✅ NEW Supplier created! ID:",
+                  newClinicSupplierManager.id
+                );
+                clinicSupplierManagerId = newClinicSupplierManager.id;
+              }
+
+              // 4. ProductSupplier'ni upsert qilish (mapping table)
+              console.log("🔗 Upserting ProductSupplier link...");
+              await tx.productSupplier.upsert({
+                where: {
+                  tenant_id_product_id: {
+                    tenant_id: tenantId,
+                    product_id: id,
+                  },
+                },
+                create: {
                   tenant_id: tenantId,
                   product_id: id,
+                  clinic_supplier_manager_id: clinicSupplierManagerId,
+                  purchase_price:
+                    supplier.purchase_price ?? dto.purchasePrice ?? null,
+                  moq: supplier.moq ?? null,
+                  lead_time_days: supplier.lead_time_days ?? null,
+                  note: supplier.note ?? null,
                 },
-              },
-              create: {
-                tenant_id: tenantId,
-                product_id: id,
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price:
-                  supplier.purchase_price ?? dto.purchasePrice ?? null,
-                moq: supplier.moq ?? null,
-                lead_time_days: supplier.lead_time_days ?? null,
-                note: supplier.note ?? null,
-              },
-              update: {
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price:
-                  supplier.purchase_price ?? dto.purchasePrice ?? null,
-                moq: supplier.moq ?? null,
-                lead_time_days: supplier.lead_time_days ?? null,
-                note: supplier.note ?? null,
-              },
-            });
+                update: {
+                  clinic_supplier_manager_id: clinicSupplierManagerId,
+                  purchase_price:
+                    supplier.purchase_price ?? dto.purchasePrice ?? null,
+                  moq: supplier.moq ?? null,
+                  lead_time_days: supplier.lead_time_days ?? null,
+                  note: supplier.note ?? null,
+                },
+              });
+              console.log(
+                "✅ ProductSupplier link created/updated successfully!"
+              );
+            }
           }
         }
 
@@ -1068,8 +1158,8 @@ export class ProductsService {
         if (firstBatch) {
           const batchUpdateData: any = {};
 
-          // Update inbound_qty if stock changed
-          if (dto.currentStock !== undefined) {
+          // ✅ Update inbound_qty ONLY if user explicitly changed stock on edit page
+          if (stockWasChanged) {
             batchUpdateData.inbound_qty = dto.currentStock;
             console.log(
               "🔍 Updating first batch inbound_qty from",

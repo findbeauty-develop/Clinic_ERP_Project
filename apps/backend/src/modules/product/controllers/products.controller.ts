@@ -86,7 +86,6 @@ export class ProductsController {
     const t0 = Date.now();
     const products = await this.productsService.getAllProducts(tenantId);
     const t1 = Date.now();
-    console.log("[products] db=", t1 - t0, "ms");
 
     // ETag yaratish (cache timestamp asosida)
     const cacheTimestamp = this.productsService.getCacheTimestamp(tenantId);
