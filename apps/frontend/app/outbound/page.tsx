@@ -17,6 +17,7 @@ type Batch = {
   id: string;
   batch_no: string;
   qty: number;
+  inbound_qty?: number | null;
   expiry_date?: string | null;
   storage?: string | null;
   isExpiringSoon?: boolean;
@@ -154,147 +155,153 @@ function OutboundPageContent() {
   } | null>(null);
   const CACHE_TTL = 30000; // 30 seconds
 
-  const fetchProducts = useCallback(async (forceRefresh = false) => {
-    // Check cache first (unless force refresh)
-    const cacheKey = searchQuery || "";
-    if (
-      !forceRefresh &&
-      productsCacheRef.current &&
-      productsCacheRef.current.searchQuery === cacheKey &&
-      Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setProducts(productsCacheRef.current.data);
-      setLoading(false);
-      return;
-    }
+  const fetchProducts = useCallback(
+    async (forceRefresh = false) => {
+      // Check cache first (unless force refresh)
+      const cacheKey = searchQuery || "";
+      if (
+        !forceRefresh &&
+        productsCacheRef.current &&
+        productsCacheRef.current.searchQuery === cacheKey &&
+        Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
+      ) {
+        setProducts(productsCacheRef.current.data);
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
-    try {
-      // Add cache-busting parameter when force refresh
-      const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
-      const searchParam = searchQuery
-        ? `?search=${encodeURIComponent(searchQuery)}`
-        : "?";
-      const data = await apiGet<ProductForOutbound[]>(
-        `${apiUrl}/outbound/products${searchParam}${cacheBuster}`,
-        forceRefresh
-          ? {
-              headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                Pragma: "no-cache",
-              },
-            }
-          : {}
-      );
-
-      // Format image URLs and filter out products with 0 stock
-      const formattedProducts = data
-        .map((product) => ({
-          ...product,
-          productImage: formatImageUrl(product.productImage),
-          // Filter out batches with 0 quantity
-          batches: product.batches.filter((batch) => batch.qty > 0),
-        }))
-        // Filter out products that have no batches with stock
-        .filter((product) => product.batches.length > 0);
-
-      setProducts(formattedProducts);
-      // Update cache
-      productsCacheRef.current = {
-        data: formattedProducts,
-        timestamp: Date.now(),
-        searchQuery: cacheKey,
-      };
-    } catch (err) {
-      console.error("Failed to load products", err);
-      setError("제품 정보를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [apiUrl, searchQuery]);
-
-  const fetchPackages = useCallback(async (forceRefresh = false) => {
-    // Check cache first (unless force refresh)
-    if (
-      !forceRefresh &&
-      packagesCacheRef.current &&
-      Date.now() - packagesCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setPackages(packagesCacheRef.current.data);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      // Add cache-busting parameter when force refresh
-      const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
-      const data = await apiGet<PackageForOutbound[]>(
-        `${apiUrl}/packages${cacheBuster}`,
-        forceRefresh
-          ? {
-              headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                Pragma: "no-cache",
-              },
-            }
-          : {}
-      );
-
-      setPackages(data);
-
-      // Fetch expiry info for each package in parallel (for sorting)
-      const expiryPromises = data.map(async (pkg) => {
-        try {
-          const items = await apiGet<PackageItemForOutbound[]>(
-            `${apiUrl}/packages/${pkg.id}/items`
-          );
-
-          // Find earliest expiry date from all batches
-          let earliestExpiry: number | null = null;
-
-          items.forEach((item) => {
-            item.batches?.forEach((batch) => {
-              if (batch.expiryDate) {
-                const expiryDate = new Date(batch.expiryDate).getTime();
-                if (earliestExpiry === null || expiryDate < earliestExpiry) {
-                  earliestExpiry = expiryDate;
-                }
+      setLoading(true);
+      setError(null);
+      try {
+        // Add cache-busting parameter when force refresh
+        const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
+        const searchParam = searchQuery
+          ? `?search=${encodeURIComponent(searchQuery)}`
+          : "?";
+        const data = await apiGet<ProductForOutbound[]>(
+          `${apiUrl}/outbound/products${searchParam}${cacheBuster}`,
+          forceRefresh
+            ? {
+                headers: {
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  Pragma: "no-cache",
+                },
               }
+            : {}
+        );
+
+        // Format image URLs and filter out products with 0 stock
+        const formattedProducts = data
+          .map((product) => ({
+            ...product,
+            productImage: formatImageUrl(product.productImage),
+            // Filter out batches with 0 quantity
+            batches: product.batches.filter((batch) => batch.qty > 0),
+          }))
+          // Filter out products that have no batches with stock
+          .filter((product) => product.batches.length > 0);
+
+        setProducts(formattedProducts);
+        // Update cache
+        productsCacheRef.current = {
+          data: formattedProducts,
+          timestamp: Date.now(),
+          searchQuery: cacheKey,
+        };
+      } catch (err) {
+        console.error("Failed to load products", err);
+        setError("제품 정보를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiUrl, searchQuery]
+  );
+
+  const fetchPackages = useCallback(
+    async (forceRefresh = false) => {
+      // Check cache first (unless force refresh)
+      if (
+        !forceRefresh &&
+        packagesCacheRef.current &&
+        Date.now() - packagesCacheRef.current.timestamp < CACHE_TTL
+      ) {
+        setPackages(packagesCacheRef.current.data);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        // Add cache-busting parameter when force refresh
+        const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
+        const data = await apiGet<PackageForOutbound[]>(
+          `${apiUrl}/packages${cacheBuster}`,
+          forceRefresh
+            ? {
+                headers: {
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  Pragma: "no-cache",
+                },
+              }
+            : {}
+        );
+
+        setPackages(data);
+
+        // Fetch expiry info for each package in parallel (for sorting)
+        const expiryPromises = data.map(async (pkg) => {
+          try {
+            const items = await apiGet<PackageItemForOutbound[]>(
+              `${apiUrl}/packages/${pkg.id}/items`
+            );
+
+            // Find earliest expiry date from all batches
+            let earliestExpiry: number | null = null;
+
+            items.forEach((item) => {
+              item.batches?.forEach((batch) => {
+                if (batch.expiryDate) {
+                  const expiryDate = new Date(batch.expiryDate).getTime();
+                  if (earliestExpiry === null || expiryDate < earliestExpiry) {
+                    earliestExpiry = expiryDate;
+                  }
+                }
+              });
             });
-          });
 
-          return { packageId: pkg.id, expiry: earliestExpiry };
-        } catch (err) {
-          console.error(
-            `Failed to load expiry info for package ${pkg.id}`,
-            err
-          );
-          return { packageId: pkg.id, expiry: null };
-        }
-      });
+            return { packageId: pkg.id, expiry: earliestExpiry };
+          } catch (err) {
+            console.error(
+              `Failed to load expiry info for package ${pkg.id}`,
+              err
+            );
+            return { packageId: pkg.id, expiry: null };
+          }
+        });
 
-      // Wait for all expiry info to load
-      const expiryResults = await Promise.all(expiryPromises);
+        // Wait for all expiry info to load
+        const expiryResults = await Promise.all(expiryPromises);
 
-      // Update cache
-      const newCache: Record<string, number | null> = {};
-      expiryResults.forEach(({ packageId, expiry }) => {
-        newCache[packageId] = expiry;
-      });
-      setPackageExpiryCache(newCache);
+        // Update cache
+        const newCache: Record<string, number | null> = {};
+        expiryResults.forEach(({ packageId, expiry }) => {
+          newCache[packageId] = expiry;
+        });
+        setPackageExpiryCache(newCache);
 
-      // Update packages cache
-      packagesCacheRef.current = { data, timestamp: Date.now() };
-    } catch (err) {
-      console.error("Failed to load packages", err);
-      setError("패키지 정보를 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [apiUrl]);
+        // Update packages cache
+        packagesCacheRef.current = { data, timestamp: Date.now() };
+      } catch (err) {
+        console.error("Failed to load packages", err);
+        setError("패키지 정보를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiUrl]
+  );
 
   useEffect(() => {
     if (isPackageMode) {
@@ -310,9 +317,9 @@ function OutboundPageContent() {
     const handleProductDeleted = async (event: Event) => {
       const customEvent = event as CustomEvent<{ productId: string }>;
       const { productId } = customEvent.detail;
-      
+
       console.log("[Outbound] Product deleted event received:", productId);
-      
+
       if (!productId) {
         console.warn("[Outbound] No productId in event detail");
         return;
@@ -337,20 +344,23 @@ function OutboundPageContent() {
       clearCache("/outbound/products");
       clearCache("outbound/products");
       clearCache(`${apiUrl}/outbound/products`);
-      
+
       // ✅ Also clear component-level cache refs BEFORE fetching
       productsCacheRef.current = null;
-      
+
       // ✅ Small delay to ensure cache is cleared
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       // ✅ Force refresh from API to bypass browser HTTP cache
       if (!isPackageMode) {
         try {
           await fetchProducts(true);
           console.log("[Outbound] Products refreshed after deletion");
         } catch (err) {
-          console.error("[Outbound] Failed to refresh products after deletion", err);
+          console.error(
+            "[Outbound] Failed to refresh products after deletion",
+            err
+          );
           // Keep the optimistic update even if refresh fails
         }
       }
@@ -994,18 +1004,18 @@ function OutboundPageContent() {
         clearCache("/packages");
         clearCache("packages");
         clearCache(`${apiUrl}/packages`);
-        
+
         // ✅ Also clear component-level cache refs BEFORE fetching
         productsCacheRef.current = null;
         packagesCacheRef.current = null;
-        
+
         // ✅ Force clear all pending requests for outbound endpoints to prevent stale data
         // This ensures fresh request is made
         // Note: We don't clear ALL cache, only outbound-related cache
-        
+
         // ✅ Small delay to ensure cache is cleared and backend cache is invalidated
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
         // Refresh products and packages list to remove 0-stock items (force refresh)
         if (isPackageMode) {
           await fetchPackages(true);
@@ -1036,14 +1046,14 @@ function OutboundPageContent() {
         clearCache("/packages");
         clearCache("packages");
         clearCache(`${apiUrl}/packages`);
-        
+
         // ✅ Also clear component-level cache refs BEFORE fetching
         productsCacheRef.current = null;
         packagesCacheRef.current = null;
-        
+
         // ✅ Small delay to ensure cache is cleared
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         // Refresh products/packages list even for partial success (force refresh)
         if (isPackageMode) {
           await fetchPackages(true);
@@ -1191,14 +1201,14 @@ function OutboundPageContent() {
       clearCache("/packages");
       clearCache("packages");
       clearCache(`${apiUrl}/packages`);
-      
+
       // ✅ Also clear component-level cache refs BEFORE fetching
       productsCacheRef.current = null;
       packagesCacheRef.current = null;
-      
+
       // ✅ Small delay to ensure cache is cleared
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       if (isPackageMode) {
         fetchPackages(true);
       } else {
@@ -1328,14 +1338,14 @@ function OutboundPageContent() {
       clearCache("/packages");
       clearCache("packages");
       clearCache(`${apiUrl}/packages`);
-      
+
       // ✅ Also clear component-level cache refs BEFORE fetching
       productsCacheRef.current = null;
       packagesCacheRef.current = null;
-      
+
       // ✅ Small delay to ensure cache is cleared
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       if (isPackageMode) {
         fetchPackages(true);
       } else {

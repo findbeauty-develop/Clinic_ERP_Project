@@ -35,6 +35,7 @@ model Product {
   // Product-level expiry defaults (yangi fieldlar)
   expiry_months Int? // 유통기한 기간 (default for all batches)
   expiry_unit   String? // 유통기한 단위 ("months" or "days")
+  expiry_date   DateTime? // 유효기간 (Product-level expiry date for display purposes)
   alert_days    String? // 알림 일수 (유효기간 임박 alert)
   inbound_manager String? // 입고 담당자 (Product-level manager)
 
@@ -135,6 +136,7 @@ model Batch {
   expiry_months    Int?
   qty              Int
   inbound_qty      Int?         // Original qty when batch was created (immutable)
+  unit             String?      // Unit from product (e.g., EA, BOX, etc.)
   alert_days       String?
   used_count       Int         @default(0) // Ishlatilgan mahsulotlar soni (usageCapacity asosida)
   created_at       DateTime    @default(now())

@@ -193,7 +193,7 @@ export class CreateProductDto {
   capacityUnit?: string;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   usageCapacity?: number;
 
@@ -210,6 +210,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   alertDays?: string;
+
+  @IsOptional()
+  @IsString()
+  expiryDate?: string;
 
   @IsOptional()
   @IsString()

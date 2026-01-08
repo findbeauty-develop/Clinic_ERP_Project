@@ -486,6 +486,7 @@ export class ProductsService {
                 batch_no: batchNo,
                 qty: batch.qty, // 입고 수량 (Inbound quantity)
                 inbound_qty: batch.qty, // ✅ Original qty from inbound (immutable)
+                unit: product.unit ?? null, // ✅ Copy unit from product
                 expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
                 expiry_unit: batch.expiry_unit ?? null,
                 manufacture_date: batch.manufacture_date
@@ -628,6 +629,7 @@ export class ProductsService {
       category: product.category,
       status: product.status,
       currentStock: product.current_stock,
+      inboundQty: product.inbound_qty ?? null, // ✅ Original qty from first inbound
       minStock: product.min_stock,
       purchasePrice: purchasePrice, // ProductSupplier.purchase_price or Product.purchase_price
       salePrice: product.sale_price,
@@ -649,8 +651,8 @@ export class ProductsService {
       supplierEmail2: supplierManager?.email2 ?? null,
       supplierResponsibleProducts: supplierManager?.responsible_products ?? [],
       supplierMemo: supplierManager?.memo ?? null,
-      expiryDate: latestBatch?.expiry_date ?? null,
-      storageLocation: latestBatch?.storage ?? product.storage ?? null, // Batch level yoki Product level
+      expiryDate: product.expiry_date ?? latestBatch?.expiry_date ?? null, // Product level first, then batch
+      storageLocation: product.storage ?? latestBatch?.storage ?? null, // Product level first, then batch
       productStorage: product.storage ?? null, // Product level storage (fallback uchun)
       inboundManager: product.inbound_manager ?? null, // 입고 담당자
       memo: product.returnPolicy?.note ?? null,
@@ -811,6 +813,13 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    console.log(
+      "📥 Received DTO for product update:",
+      JSON.stringify(dto, null, 2)
+    );
+    console.log("🔍 dto.currentStock:", dto.currentStock);
+    console.log("🔍 typeof dto.currentStock:", typeof dto.currentStock);
+
     const existing = await this.prisma.product.findFirst({
       where: { id, tenant_id: tenantId },
       include: { returnPolicy: true },
@@ -849,6 +858,29 @@ export class ProductsService {
       dto.isActive ??
       (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
 
+    const newCurrentStock =
+      dto.currentStock !== undefined
+        ? dto.currentStock
+        : existing.current_stock;
+    console.log(
+      "🔍 Updating current_stock from",
+      existing.current_stock,
+      "to",
+      newCurrentStock
+    );
+
+    // ✅ Update inbound_qty when manually editing (not from outbound operation)
+    const newInboundQty =
+      dto.currentStock !== undefined
+        ? dto.currentStock
+        : (existing as any).inbound_qty;
+    console.log(
+      "🔍 Updating inbound_qty from",
+      (existing as any).inbound_qty,
+      "to",
+      newInboundQty
+    );
+
     await this.prisma.$transaction(
       async (tx: any) => {
         await tx.product.update({
@@ -864,16 +896,23 @@ export class ProductsService {
             unit: dto.unit ?? existing.unit,
             purchase_price: dto.purchasePrice ?? existing.purchase_price,
             sale_price: dto.salePrice ?? existing.sale_price,
-            current_stock: dto.currentStock ?? existing.current_stock,
-            min_stock: dto.minStock ?? existing.min_stock,
+            current_stock: newCurrentStock, // Use the computed value
+            inbound_qty: newInboundQty, // Update inbound_qty when editing
+            min_stock:
+              dto.minStock !== undefined ? dto.minStock : existing.min_stock, // Allow 0
             capacity_per_product:
               dto.capacityPerProduct ?? (existing as any).capacity_per_product,
             capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
             usage_capacity:
               dto.usageCapacity ?? (existing as any).usage_capacity,
-            storage: dto.storage !== undefined ? dto.storage : undefined, // Update storage
-            inbound_manager:
-              dto.inboundManager !== undefined ? dto.inboundManager : undefined, // Update inbound manager
+            ...(dto.storage !== undefined && { storage: dto.storage }), // Update storage (allows null)
+            ...(dto.inboundManager !== undefined && {
+              inbound_manager: dto.inboundManager,
+            }), // Update inbound manager (allows null)
+            ...(dto.alertDays !== undefined && { alert_days: dto.alertDays }), // Update alert days
+            ...(dto.expiryDate !== undefined && {
+              expiry_date: dto.expiryDate ? new Date(dto.expiryDate) : null,
+            }), // Update expiry date (allows null)
           } as any,
         });
 
@@ -1016,6 +1055,113 @@ export class ProductsService {
                 note: supplier.note ?? null,
               },
             });
+          }
+        }
+
+        // ✅ Update first (oldest) batch when manually editing
+        // Find the FIRST batch (oldest, created with product)
+        const firstBatch = await tx.batch.findFirst({
+          where: { product_id: id, tenant_id: tenantId },
+          orderBy: { created_at: "asc" }, // ASC = oldest first
+        });
+
+        if (firstBatch) {
+          const batchUpdateData: any = {};
+
+          // Update inbound_qty if stock changed
+          if (dto.currentStock !== undefined) {
+            batchUpdateData.inbound_qty = dto.currentStock;
+            console.log(
+              "🔍 Updating first batch inbound_qty from",
+              firstBatch.inbound_qty,
+              "to",
+              dto.currentStock
+            );
+          }
+
+          // Update purchase_price if price changed
+          if (dto.purchasePrice !== undefined) {
+            batchUpdateData.purchase_price = dto.purchasePrice;
+            console.log(
+              "🔍 Updating first batch purchase_price from",
+              firstBatch.purchase_price,
+              "to",
+              dto.purchasePrice
+            );
+          }
+
+          // Update storage if changed
+          if (dto.storage !== undefined) {
+            batchUpdateData.storage = dto.storage;
+            console.log(
+              "🔍 Updating first batch storage from",
+              firstBatch.storage,
+              "to",
+              dto.storage
+            );
+          }
+
+          // Update inbound_manager if changed
+          if (dto.inboundManager !== undefined) {
+            batchUpdateData.inbound_manager = dto.inboundManager;
+            console.log(
+              "🔍 Updating first batch inbound_manager from",
+              firstBatch.inbound_manager,
+              "to",
+              dto.inboundManager
+            );
+          }
+
+          // Update unit if changed
+          if (dto.unit !== undefined) {
+            batchUpdateData.unit = dto.unit;
+            console.log(
+              "🔍 Updating first batch unit from",
+              firstBatch.unit,
+              "to",
+              dto.unit
+            );
+          }
+
+          // Update expiry_date if changed
+          if (dto.expiryDate !== undefined) {
+            batchUpdateData.expiry_date = dto.expiryDate
+              ? new Date(dto.expiryDate)
+              : null;
+            console.log(
+              "🔍 Updating first batch expiry_date from",
+              firstBatch.expiry_date,
+              "to",
+              dto.expiryDate
+            );
+          }
+
+          // Only update if there are changes
+          if (Object.keys(batchUpdateData).length > 0) {
+            await tx.batch.update({
+              where: { id: firstBatch.id },
+              data: batchUpdateData,
+            });
+          }
+        }
+
+        // ✅ Update ProductSupplier purchase_price if changed
+        if (dto.purchasePrice !== undefined) {
+          const existingProductSupplier = await tx.productSupplier.findFirst({
+            where: { product_id: id, tenant_id: tenantId },
+          });
+
+          if (existingProductSupplier) {
+            await tx.productSupplier.update({
+              where: { id: existingProductSupplier.id },
+              data: { purchase_price: dto.purchasePrice },
+            });
+            console.log(
+              "🔍 Updated ProductSupplier purchase_price from",
+              existingProductSupplier.purchase_price,
+              "to",
+              dto.purchasePrice
+            );
           }
         }
 
@@ -1186,7 +1332,7 @@ export class ProductsService {
 
     // Product'ning barcha batch'larini olish
     // IMPORTANT: Faqat qty > 0 bo'lgan batch'larni ko'rsatish (0ga yetgan batch'lar ochib ketadi)
-    const batches = await this.prisma.batch.findMany({
+    const batches = await (this.prisma.batch.findMany as any)({
       where: {
         product_id: productId,
         tenant_id: tenantId,
@@ -1203,40 +1349,32 @@ export class ProductsService {
         storage: true,
         created_at: true,
         qty: true,
+        inbound_qty: true,
+        unit: true,
       },
     });
 
     // Formatlash: 유효기간 ni yaratish (expiry_date yoki expiry_months + expiry_unit)
-    return batches.map(
-      (batch: {
-        id: string;
-        batch_no: string;
-        expiry_date: Date | null;
-        expiry_months: number | null;
-        expiry_unit: string | null;
-        alert_days: string | null;
-        storage: string | null;
-        created_at: Date;
-        qty: number;
-      }) => ({
-        id: batch.id,
-        batch_no: batch.batch_no,
-        유효기간: batch.expiry_date
-          ? batch.expiry_date.toISOString().split("T")[0]
-          : batch.expiry_months && batch.expiry_unit
-          ? `${batch.expiry_months} ${batch.expiry_unit}`
-          : null,
-        보관위치: batch.storage ?? null,
-        "입고 수량": batch.qty,
-        created_at: batch.created_at,
-        // Raw fields for batch copying (입고 대기 page uchun)
-        expiry_months: batch.expiry_months,
-        expiry_unit: batch.expiry_unit,
-        alert_days: batch.alert_days,
-        storage: batch.storage,
-        qty: batch.qty,
-      })
-    );
+    return batches.map((batch: any) => ({
+      id: batch.id,
+      batch_no: batch.batch_no,
+      유효기간: batch.expiry_date
+        ? batch.expiry_date.toISOString().split("T")[0]
+        : batch.expiry_months && batch.expiry_unit
+        ? `${batch.expiry_months} ${batch.expiry_unit}`
+        : null,
+      보관위치: batch.storage ?? null,
+      "입고 수량": batch.qty,
+      inbound_qty: batch.inbound_qty ?? null,
+      unit: batch.unit ?? null,
+      created_at: batch.created_at,
+      // Raw fields for batch copying (입고 대기 page uchun)
+      expiry_months: batch.expiry_months,
+      expiry_unit: batch.expiry_unit,
+      alert_days: batch.alert_days,
+      storage: batch.storage,
+      qty: batch.qty,
+    }));
   }
 
   /**
@@ -1268,10 +1406,10 @@ export class ProductsService {
         // Avtomatik batch_no yaratish
         const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
-        // Product'ni olish (storage uchun)
+        // Product'ni olish (storage va unit uchun)
         const product = await tx.product.findFirst({
           where: { id: productId, tenant_id: tenantId },
-          select: { storage: true },
+          select: { storage: true, unit: true },
         });
 
         // Batch yaratish
@@ -1282,6 +1420,7 @@ export class ProductsService {
             batch_no: batchNo,
             qty: dto.qty,
             inbound_qty: dto.qty, // ✅ Original qty from inbound (immutable)
+            unit: (product as any)?.unit ?? null, // ✅ Copy unit from product
             expiry_months: dto.expiry_months ?? null,
             expiry_unit: dto.expiry_unit ?? null,
             manufacture_date: dto.manufacture_date

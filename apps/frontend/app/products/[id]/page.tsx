@@ -14,6 +14,18 @@ const positionOptions = [
   "부장",
 ];
 
+const formatDateToYYYYMMDD = (
+  date: string | Date | null | undefined
+): string => {
+  if (!date) return "";
+
+  if (typeof date === "string") {
+    return date.split("T")[0];
+  }
+
+  return new Date(date).toISOString().split("T")[0];
+};
+
 type ProductDetail = {
   id: string;
   productName: string;
@@ -23,6 +35,7 @@ type ProductDetail = {
   category: string;
   status: string;
   currentStock: number;
+  inboundQty?: number | null;
   minStock: number;
   unit?: string | null;
   purchasePrice?: number | null;
@@ -56,6 +69,8 @@ type ProductDetail = {
     batch_no: string;
     storage?: string | null;
     qty: number;
+    inbound_qty?: number | null;
+    unit?: string | null;
     expiry_date?: string | null;
     purchase_price?: number | null;
     sale_price?: number | null;
@@ -121,6 +136,7 @@ export default function ProductDetailPage() {
           category: data.category,
           status: data.status,
           currentStock: data.currentStock || data.current_stock,
+          inboundQty: data.inboundQty || data.inbound_qty || null,
           minStock: data.minStock || data.min_stock,
           unit: data.unit,
           purchasePrice: data.purchasePrice || data.purchase_price,
@@ -183,6 +199,8 @@ export default function ProductDetailPage() {
             batch_no: batch.batch_no,
             storage: batch.보관위치 || null,
             qty: batch["입고 수량"] || 0,
+            inbound_qty: batch.inbound_qty || null,
+            unit: batch.unit || null,
             expiry_date: batch.유효기간 || null,
             purchase_price: null,
             sale_price: null,
@@ -255,19 +273,25 @@ export default function ProductDetailPage() {
                         // ✅ Use apiDelete instead of apiRequest for automatic cache invalidation and event dispatch
                         const { apiDelete } = await import("../../../lib/api");
                         await apiDelete(`${apiUrl}/products/${params.id}`);
-                        
+
                         // ✅ Additional event dispatch to ensure inbound page gets notified
                         // (apiDelete already does this, but we do it here too for redundancy)
                         if (typeof window !== "undefined") {
-                          sessionStorage.setItem("inbound_force_refresh", "true");
+                          sessionStorage.setItem(
+                            "inbound_force_refresh",
+                            "true"
+                          );
                           window.dispatchEvent(
                             new CustomEvent("productDeleted", {
                               detail: { productId: params.id },
                             })
                           );
-                          console.log("[ProductDetail] Product deleted event dispatched:", params.id);
+                          console.log(
+                            "[ProductDetail] Product deleted event dispatched:",
+                            params.id
+                          );
                         }
-                        
+
                         alert("제품이 성공적으로 삭제되었습니다.");
                         router.push("/inventory/products");
                       } catch (err) {
@@ -394,12 +418,18 @@ export default function ProductDetailPage() {
                             {" "}
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-slate-800 dark:text-white">
-                                Batch:
+                                배치:
                               </span>
                               <span className="text-sm font-semibold text-slate-800 dark:text-white">
                                 {batch.batch_no}
                               </span>
                             </div>
+                            {batch.inbound_qty && (
+                              <span className="inline-flex items-center gap-1 font-semibold text-sky-600 dark:text-sky-400">
+                                입고수량: {batch.inbound_qty.toLocaleString()}{" "}
+                                {batch.unit ?? product?.unit ?? "EA"}
+                              </span>
+                            )}
                             {batch.storage && (
                               <span className="inline-flex items-center gap-1">
                                 <WarehouseIcon className="h-3.5 w-3.5" />
@@ -409,7 +439,11 @@ export default function ProductDetailPage() {
                             <span className="inline-flex items-center gap-1">
                               <CalendarIcon className="h-3.5 w-3.5" />
                               입고 날짜:{" "}
-                              {new Date(batch.created_at).toLocaleDateString()}
+                              {
+                                new Date(batch.created_at)
+                                  .toISOString()
+                                  .split("T")[0]
+                              }
                             </span>
                             {batch.expiry_date && (
                               <span className="inline-flex items-center gap-1">
@@ -421,24 +455,9 @@ export default function ProductDetailPage() {
                                       .split("T")[0]}
                               </span>
                             )}
-                            <span className="inline-flex items-center gap-2 ml-auto">
-                              <span className="text-xs text-slate-500 dark:text-slate-400">
-                                현재:
-                              </span>
-                              <span className="font-semibold text-slate-900 dark:text-white">
-                                {batch.qty.toLocaleString()} {product.unit || "EA"}
-                              </span>
-                              {batch.inbound_qty && (
-                                <>
-                                  <span className="text-slate-300 dark:text-slate-600">|</span>
-                                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                                    입고수량:
-                                  </span>
-                                  <span className="font-semibold text-sky-600 dark:text-sky-400">
-                                    {batch.inbound_qty.toLocaleString()} {product.unit || "EA"}
-                                  </span>
-                                </>
-                              )}
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-white ml-auto">
+                              {batch.qty.toLocaleString()}{" "}
+                              {batch.unit ?? product?.unit ?? "EA"}
                             </span>
                           </div>
                         </div>
@@ -457,11 +476,11 @@ export default function ProductDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <ReadOnlyField
                     label="제품 재고 수량"
-                    value={`${(product.currentStock || 0).toLocaleString()} ${product.unit || "EA"}`}
+                    value={`${(product.inboundQty || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
                   />
                   <ReadOnlyField
                     label="최소 제품 재고"
-                    value={`${(product.minStock || 0).toLocaleString()} ${product.unit || "EA"}`}
+                    value={`${(product.minStock || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
                   />
                 </div>
 
@@ -493,7 +512,7 @@ export default function ProductDetailPage() {
                     value={
                       product.purchasePrice !== null &&
                       product.purchasePrice !== undefined
-                        ? `${product.purchasePrice.toLocaleString()} 원${product.unit ? ` / ${product.unit}` : ""}`
+                        ? `${product.purchasePrice.toLocaleString()} 원${product?.unit ? ` / ${product.unit}` : ""}`
                         : "—"
                     }
                   />
@@ -502,7 +521,13 @@ export default function ProductDetailPage() {
                     value={
                       product.salePrice !== null &&
                       product.salePrice !== undefined
-                        ? `${product.salePrice.toLocaleString()} 원${product.unit ? ` / ${product.unit}` : ""}`
+                        ? `${product.salePrice.toLocaleString()} 원${
+                            product.usageCapacity
+                              ? ` / ${product.capacityUnit || "EA"}`
+                              : product.capacityPerProduct
+                                ? ` / ${product.capacityUnit || "EA"}`
+                                : ""
+                          }`
                         : "—"
                     }
                   />
@@ -564,15 +589,17 @@ export default function ProductDetailPage() {
                 <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
                   <div className="grid gap-6 md:grid-cols-2">
                     <ReadOnlyField
-                      label="유통기한"
+                      label="유효기간"
                       value={
                         product.expiryDate
-                          ? new Date(product.expiryDate).toLocaleDateString()
+                          ? new Date(product.expiryDate)
+                              .toISOString()
+                              .split("T")[0]
                           : "—"
                       }
                     />
                     <ReadOnlyField
-                      label="유통기한 임박 알림 기준"
+                      label="유효기간 임박 알림 기준"
                       value={
                         product.alertDays
                           ? typeof product.alertDays === "string" &&
@@ -803,7 +830,7 @@ function ProductEditForm({
     salePriceUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
     purchasePrice: product.purchasePrice?.toString() || "",
     salePrice: product.salePrice?.toString() || "",
-    currentStock: product.currentStock?.toString() || "0",
+    currentStock: product.inboundQty?.toString() || "0",
     minStock: product.minStock?.toString() || "0",
     capacityPerProduct: product.capacityPerProduct?.toString() || "",
     usageCapacity: product.usageCapacity?.toString() || "",
@@ -1150,9 +1177,23 @@ function ProductEditForm({
           ? Number(formData.purchasePrice)
           : undefined,
         salePrice: formData.salePrice ? Number(formData.salePrice) : undefined,
-        currentStock: Number(formData.currentStock) || 0,
-        minStock: Number(formData.minStock) || 0,
+        currentStock:
+          formData.currentStock !== "" && formData.currentStock !== undefined
+            ? Number(formData.currentStock)
+            : 0,
+        minStock:
+          formData.minStock !== "" && formData.minStock !== undefined
+            ? Number(formData.minStock)
+            : 0,
       };
+
+      console.log("🔍 formData.currentStock:", formData.currentStock);
+      console.log(
+        "🔍 Converted currentStock:",
+        formData.currentStock !== "" && formData.currentStock !== undefined
+          ? Number(formData.currentStock)
+          : 0
+      );
 
       // Capacity fields
       if (formData.capacityPerProduct) {
@@ -1192,6 +1233,11 @@ function ProductEditForm({
         payload.alertDays = formData.alertDays.toString();
       }
 
+      // Expiry date
+      if (formData.expiryDate) {
+        payload.expiryDate = formData.expiryDate;
+      }
+
       // Storage location
       if (formData.storageLocation !== undefined) {
         payload.storage = formData.storageLocation || null;
@@ -1201,6 +1247,11 @@ function ProductEditForm({
       if (formData.inboundManager !== undefined) {
         payload.inboundManager = formData.inboundManager || null;
       }
+
+      console.log(
+        "📦 Payload being sent to backend:",
+        JSON.stringify(payload, null, 2)
+      );
 
       // ✅ Supplier information (ProductSupplier table uchun)
       if (selectedSupplierDetails) {
@@ -1230,6 +1281,12 @@ function ProductEditForm({
 
       console.log("Sending payload:", payload);
       console.log("API URL:", `${apiUrl}/products/${product.id}`);
+
+      // Clear cache before update
+      const { clearCache } = await import("../../../lib/api");
+      clearCache(`/products/${product.id}`);
+      clearCache(`/products`);
+
       const updatedProductResponse = await apiPut<any>(
         `${apiUrl}/products/${product.id}`,
         payload
@@ -1286,13 +1343,17 @@ function ProductEditForm({
         category: finalProductResponse.category || product.category,
         status: finalProductResponse.status || product.status,
         currentStock:
-          finalProductResponse.currentStock ||
-          finalProductResponse.current_stock ||
-          product.currentStock,
+          finalProductResponse.currentStock !== undefined
+            ? finalProductResponse.currentStock
+            : finalProductResponse.current_stock !== undefined
+              ? finalProductResponse.current_stock
+              : product.currentStock,
         minStock:
-          finalProductResponse.minStock ||
-          finalProductResponse.min_stock ||
-          product.minStock,
+          finalProductResponse.minStock !== undefined
+            ? finalProductResponse.minStock
+            : finalProductResponse.min_stock !== undefined
+              ? finalProductResponse.min_stock
+              : product.minStock,
         unit: finalProductResponse.unit || product.unit,
         purchasePrice:
           finalProductResponse.purchasePrice ||
@@ -1925,7 +1986,7 @@ function ProductEditForm({
           />
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              유통기한 임박 알림 기준
+              유효기간 임박 알림 기준
             </label>
             <div className="relative">
               <select

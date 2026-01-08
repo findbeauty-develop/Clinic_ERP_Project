@@ -1067,10 +1067,14 @@ export default function InboundNewPage() {
         currentStock: Number(formData.currentStock) || 0,
         minStock: Number(formData.minStock) || 0,
         storage: formData.storage || undefined,
+        // ✅ Always send unit (use currentStockUnit, fallback to "EA")
+        unit:
+          formData.currentStockUnit &&
+          formData.currentStockUnit !== unitOptions[0]
+            ? formData.currentStockUnit
+            : "EA",
       };
-      if (formData.unit && formData.unit !== unitOptions[0]) {
-        payload.unit = formData.unit;
-      }
+      // ✅ unit already set above, no need for conditional
       if (formData.capacityPerProduct && formData.capacityPerProduct > 0) {
         payload.capacityPerProduct = Number(formData.capacityPerProduct);
       }
@@ -2121,7 +2125,7 @@ export default function InboundNewPage() {
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    유통기한 임박 알림 기준
+                    유효기간 임박 알림 기준
                   </label>
                   <div className="relative">
                     <select
