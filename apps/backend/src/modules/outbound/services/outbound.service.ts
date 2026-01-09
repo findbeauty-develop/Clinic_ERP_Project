@@ -13,6 +13,7 @@ import { UnifiedOutboundDto, OutboundType } from "../dto/unified-outbound.dto";
 import { OrderReturnService } from "../../order-return/order-return.service";
 import { ReturnRepository } from "../../return/repositories/return.repository";
 import { CacheManager } from "../../../common/cache";
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class OutboundService {
@@ -25,7 +26,8 @@ export class OutboundService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => OrderReturnService))
     private readonly orderReturnService: OrderReturnService,
-    private readonly returnRepository: ReturnRepository
+    private readonly returnRepository: ReturnRepository,
+    private readonly configService: ConfigService
   ) {
     // Initialize CacheManagers
     this.productsForOutboundCache = new CacheManager({
@@ -924,15 +926,36 @@ export class OutboundService {
       tenant_id: tenantId,
     };
 
-    // 기간별 조회
+    const retentionYears = parseInt(
+      this.configService.get<string>("OUTBOUND_HISTORY_RETENTION_YEARS") || "1",
+      10
+    );
+
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    // Agar user startDate kiritmagan bo'lsa, 1 yil chegarasini qo'llash
+    if (!filters?.startDate) {
+      where.outbound_date = {
+        gte: oneYearAgo, // 1 yildan keyingi ma'lumotlar
+      };
+    }
+
     if (filters?.startDate || filters?.endDate) {
-      where.outbound_date = {};
-      if (filters.startDate) {
-        where.outbound_date.gte = filters.startDate;
-      }
-      if (filters.endDate) {
-        where.outbound_date.lte = filters.endDate;
-      }
+      where.outbound_date = {
+        // Agar user startDate kiritgan bo'lsa, uni ishlatish
+        // Lekin agar u 1 yildan eski bo'lsa, 1 yil chegarasini qo'llash
+        gte:
+          filters?.startDate && filters.startDate >= oneYearAgo
+            ? filters.startDate
+            : oneYearAgo,
+        ...(filters.endDate && { lte: filters.endDate }),
+      };
+    } else {
+      // Agar user hech qanday sana kiritmagan bo'lsa, 1 yil chegarasini qo'llash
+      where.outbound_date = {
+        gte: oneYearAgo,
+      };
     }
 
     // 제품별 조회

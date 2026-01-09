@@ -13,6 +13,7 @@ type OutboundHistoryItem = {
   chartNumber?: string | null;
   packageQty?: number; // Only for package outbounds
   packageName?: string | null; // Only for package outbounds
+  packageId?: string | null; // Package ID for package outbounds
   packageItems?: {
     productId: string;
     productName: string;
@@ -55,7 +56,7 @@ export default function OutboundHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const itemsPerPage = 20;
+  const itemsPerPage = 10;
 
   // Cancel outbound modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -114,6 +115,46 @@ export default function OutboundHistoryPage() {
     } catch {
       return dateString;
     }
+  };
+
+  // Format date only (YYYY-MM-DD)
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Format time only (HH:MM)
+  const formatTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const hour = String(date.getHours()).padStart(2, "0");
+      const minute = String(date.getMinutes()).padStart(2, "0");
+      return `${hour}:${minute}`;
+    } catch {
+      return "";
+    }
+  };
+
+  // Format product ID/code for display
+  const formatProductId = (productId: string): string => {
+    if (!productId) return "[000000000-001]";
+    // Format UUID to shorter code: take first 9 chars and last 3 chars
+    // Remove hyphens and format as [000000000-001]
+    const cleaned = productId.replace(/-/g, "");
+    if (cleaned.length >= 12) {
+      const firstPart = cleaned.substring(0, 9).padStart(9, "0");
+      const lastPart = cleaned.substring(cleaned.length - 3).padStart(3, "0");
+      return `[${firstPart}-${lastPart}]`;
+    }
+    // Fallback: use first 12 chars
+    return `[${cleaned.substring(0, 12).padStart(12, "0")}]`;
   };
 
   // Calculate total price for an outbound item
@@ -361,45 +402,59 @@ export default function OutboundHistoryPage() {
                 });
               }
 
+              // Separate date and time for header display
+              const outboundDate = formatDate(firstItem.outboundDate);
+              const outboundTime = formatTime(firstItem.outboundDate);
+
               return (
                 <div
                   key={groupKey}
-                  className="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/70 overflow-hidden"
+                  className="rounded-xl border-2 border-blue-200 bg-white shadow-sm dark:border-blue-800 dark:bg-slate-900/70 overflow-hidden"
                 >
                   {/* Header */}
-                  <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+                  <div className="border-b border-blue-100 px-6 py-4 dark:border-blue-900">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-3 flex-wrap flex-1">
-                        {/* Outbound Type Badge */}
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                            isPackageOutbound
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                              : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                          }`}
-                        >
-                          {isPackageOutbound ? "패키지" : "단품"}
+                        {/* Date and Time */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            {outboundDate}
+                          </span>
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            {outboundTime}
+                          </span>
+                        </div>
+
+                        {/* Manager Name in Light Blue Box */}
+                        <span className="inline-flex items-center px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-lg dark:bg-blue-900/30 dark:text-blue-300">
+                          {manager}님
                         </span>
 
-                        {/* Defective Badge */}
+                        {/* Chart Number */}
+                        {chartNumber && (
+                          <span className="text-sm text-slate-600 dark:text-slate-400">
+                            차트번호 {chartNumber}
+                          </span>
+                        )}
+
+                        {/* Badges */}
                         {firstItem.isDefective && (
                           <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
                             불량
                           </span>
                         )}
 
-                        {/* Damaged Badge */}
                         {firstItem.isDamaged && (
                           <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
                             파손
                           </span>
                         )}
 
-                        <div className="text-base font-semibold text-slate-900 dark:text-white">
-                          {formatDateTime(firstItem.outboundDate)} {manager}님
-                          출고
-                          {chartNumber && <> 차트번호: {chartNumber}</>}
-                        </div>
+                        {isPackageOutbound && (
+                          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                            패키지
+                          </span>
+                        )}
                       </div>
 
                       {/* Cancel Button */}
@@ -414,45 +469,116 @@ export default function OutboundHistoryPage() {
                     </div>
                   </div>
 
-                  {/* Body - Items with Quantity and Price */}
-                  <div className="px-6 py-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 flex-wrap flex-1">
+                  {/* Body - Items displayed vertically */}
+                  <div className="px-6 py-4 space-y-4">
+                    {isPackageOutbound ? (
+                      // Package outbound: Show package name and nested items
+                      <>
+                        {items.map((item, itemIdx) => {
+                          if (!item.packageName || !item.packageItems)
+                            return null;
+
+                          return (
+                            <div
+                              key={`package-${itemIdx}`}
+                              className="space-y-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0 pb-3 last:pb-0"
+                            >
+                              {/* Package Main Item */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <span className="font-bold text-base text-slate-900 dark:text-white">
+                                    {item.packageName}
+                                  </span>
+                                  {item.packageId && (
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                      {formatProductId(item.packageId)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="font-bold text-base text-slate-900 dark:text-white">
+                                    {item.packageQty || 1}
+                                  </span>
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    패키지 Set
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Package Sub-items with bullet points */}
+                              {item.packageItems &&
+                                item.packageItems.length > 0 && (
+                                  <div className="pl-4 space-y-1.5 mt-2">
+                                    {item.packageItems.map(
+                                      (pkgItem, pkgItemIdx) => (
+                                        <div
+                                          key={`pkg-item-${pkgItemIdx}`}
+                                          className="flex items-center justify-between"
+                                        >
+                                          <div className="flex items-center gap-2 flex-1">
+                                            <span className="text-slate-600 dark:text-slate-400 text-sm">
+                                              •
+                                            </span>
+                                            <span className="text-sm text-slate-700 dark:text-slate-300">
+                                              {pkgItem.productName}
+                                            </span>
+                                            {pkgItem.productId && (
+                                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                                {formatProductId(
+                                                  pkgItem.productId
+                                                )}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                              {pkgItem.quantity}
+                                            </span>
+                                            {pkgItem.unit && (
+                                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                                {pkgItem.unit}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      // Regular outbound: Show products vertically
+                      <>
                         {displayItems.map((item, idx) => (
                           <div
                             key={`${item.productId}-${idx}`}
-                            className="text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap"
+                            className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0 pb-3 last:pb-0"
                           >
-                            <span className="font-medium">
-                              {item.productName}
-                            </span>
-                            {item.brand && (
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {" "}
-                                ({item.brand})
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className="font-bold text-base text-slate-900 dark:text-white">
+                                {item.productName}
                               </span>
-                            )}
-                            <span className="ml-1 text-slate-600 dark:text-slate-400">
-                              {item.quantity} {item.unit}
-                            </span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                {formatProductId(item.productId)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-bold text-base text-slate-900 dark:text-white">
+                                -{item.quantity} {item.unit}
+                              </span>
+                              {/* {item.unit && (
+                                
+                                  {item.unit}
+                               
+                              )} */}
+                            </div>
                           </div>
                         ))}
-                      </div>
-                      {/* Total Quantity and Price (right aligned) */}
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="text-base font-bold text-slate-900 dark:text-white">
-                          -{totalQty}
-                          {isPackageOutbound
-                            ? "개"
-                            : displayItems[0]?.unit || "개"}
-                        </div>
-                        {totalPrice > 0 && (
-                          <div className="text-base font-semibold text-slate-600 dark:text-slate-400">
-                            ₩{totalPrice.toLocaleString()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );

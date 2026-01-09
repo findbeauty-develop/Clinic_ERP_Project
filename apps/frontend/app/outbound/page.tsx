@@ -1998,29 +1998,29 @@ function OutboundPageContent() {
                     출고 처리
                   </h2>
                   {/* 출고 담당자 */}
-                  <div className="flex items-center ">
-                    <label className="w-42 shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      출고 담당자 <span className="text-red-500">*</span>
-                    </label>
+                </div>
+                <div className="flex items-center gap-2  mb-6">
+                  <label className="w-42 shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
+                    출고 담당자 <span className="text-red-500">*</span>
+                  </label>
 
-                    <input
-                      type="text"
-                      value={managerName}
-                      onChange={(e) => setManagerName(e.target.value)}
-                      placeholder="담당자 이름"
-                      className="flex-1 rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={managerName}
+                    onChange={(e) => setManagerName(e.target.value)}
+                    placeholder="담당자 이름"
+                    className="flex-1  rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+                  />
                 </div>
 
                 {/* Content - Scrollable */}
                 <div className="flex-1 overflow-y-auto space-y-4 pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                   {/* Status - Radio Buttons */}
                   <div className="space-y-4">
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      상태
-                    </label>
                     <div className="flex gap-4">
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        상태:
+                      </label>
                       {/* 파손 */}
                       <label
                         className="flex items-center gap-2 cursor-pointer"
@@ -2096,16 +2096,16 @@ function OutboundPageContent() {
 
                     {/* 차트번호 Field - faqat 파손 yoki 불량 tanlanmaganida */}
                     {!statusType && (
-                      <div className="mt-4">
-                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                          차트번호
+                      <div className="mt-4 flex flex-row items-center gap-3">
+                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                          차트번호 :
                         </label>
                         <input
                           type="text"
                           placeholder="차트번호"
                           value={chartNumber}
                           onChange={(e) => setChartNumber(e.target.value)}
-                          className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          className="flex-1 h-8 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                         />
                       </div>
                     )}
