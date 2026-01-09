@@ -64,7 +64,9 @@ export class OutboundController {
   @Get("history")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-cache, no-store, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({
     summary: "출고 내역 조회 - 기간별, 담당자별, 제품/패키지별로 조회 및 관리",
     description:

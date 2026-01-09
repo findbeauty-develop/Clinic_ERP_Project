@@ -142,6 +142,12 @@ function OutboundPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
 
+  // ✅ Navigation warning modal state
+  const [showNavigationWarning, setShowNavigationWarning] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(
+    null
+  );
+
   // Product expand/collapse state
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     new Set()
@@ -1103,6 +1109,55 @@ function OutboundPageContent() {
     }
   };
 
+  // ✅ Handle beforeunload (browser yopilganda)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (scheduledItems.length > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [scheduledItems]);
+
+  // ✅ Handle Next.js router navigation - intercept router.push
+  useEffect(() => {
+    // Intercept router.push calls
+    const originalPush = router.push;
+    router.push = ((url: string | { pathname: string }, options?: any) => {
+      // Don't show warning if we're submitting
+      if (submitting) {
+        return originalPush.call(router, url as any, options);
+      }
+
+      // Get the actual URL string
+      const urlString = typeof url === "string" ? url : url.pathname;
+
+      // If there are scheduled items and trying to navigate away from outbound pages
+      if (
+        scheduledItems.length > 0 &&
+        pathname.startsWith("/outbound") &&
+        !urlString.startsWith("/outbound")
+      ) {
+        setPendingNavigation(urlString);
+        setShowNavigationWarning(true);
+        return Promise.resolve(false);
+      }
+
+      return originalPush.call(router, url as any, options);
+    }) as typeof router.push;
+
+    return () => {
+      router.push = originalPush;
+    };
+  }, [router, scheduledItems, pathname, submitting]);
+
   // Product'ni chap panel'da ko'rsatish va scroll qilish
   const scrollToProduct = (productId: string) => {
     // Agar package mode'da bo'lsa, avval 제품 출고 pagega o'tish
@@ -1448,6 +1503,18 @@ function OutboundPageContent() {
           <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
             <Link
               href="/outbound"
+              onClick={(e) => {
+                // Agar cart'da item'lar bo'lsa va outbound page'dan boshqa page'ga o'tmoqchi bo'lsa
+                if (
+                  scheduledItems.length > 0 &&
+                  pathname.startsWith("/outbound") &&
+                  pathname !== "/outbound"
+                ) {
+                  e.preventDefault();
+                  setPendingNavigation("/outbound");
+                  setShowNavigationWarning(true);
+                }
+              }}
               className={`px-4 py-2 text-sm font-semibold transition ${
                 pathname === "/outbound"
                   ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
@@ -1458,6 +1525,18 @@ function OutboundPageContent() {
             </Link>
             <Link
               href="/outbound/history"
+              onClick={(e) => {
+                // ✅ Agar cart'da item'lar bo'lsa va "출고 내역" page'ga o'tmoqchi bo'lsa, modal ko'rsatish
+                if (
+                  scheduledItems.length > 0 &&
+                  pathname.startsWith("/outbound") &&
+                  pathname !== "/outbound/history"
+                ) {
+                  e.preventDefault();
+                  setPendingNavigation("/outbound/history");
+                  setShowNavigationWarning(true);
+                }
+              }}
               className={`px-4 py-2 text-sm font-semibold transition ${
                 pathname === "/outbound/history"
                   ? "border-b-2 border-sky-500 text-sky-600 dark:text-sky-400"
@@ -2571,6 +2650,58 @@ function OutboundPageContent() {
           </div>
         </div>
       </div>
+
+      {/* ✅ Navigation Warning Modal */}
+      {showNavigationWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-black bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {/* Modal Header */}
+            <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                작성 중인 내용
+              </h2>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-4">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                아직 출고되지 않은 제품이 있습니다.
+              </p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                지금 나가면 작성 중인 내용이 저장되지 않습니다.
+              </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
+              <button
+                onClick={() => {
+                  // 나가기 - cart'ni tozalash va navigation'ni davom ettirish
+                  setScheduledItems([]);
+                  setShowNavigationWarning(false);
+                  if (pendingNavigation) {
+                    router.push(pendingNavigation);
+                    setPendingNavigation(null);
+                  }
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                나가기
+              </button>
+              <button
+                onClick={() => {
+                  // 계속 출고하기 - modal'ni yopish va outbound'ni davom ettirish
+                  setShowNavigationWarning(false);
+                  setPendingNavigation(null);
+                }}
+                className="rounded-lg bg-gradient-to-r from-blue-500 to-teal-500 px-4 py-2 text-sm font-medium text-white transition hover:from-blue-600 hover:to-teal-600"
+              >
+                계속 출고하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

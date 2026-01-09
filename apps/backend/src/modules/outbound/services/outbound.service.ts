@@ -39,7 +39,7 @@ export class OutboundService {
 
     this.outboundHistoryCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // ✅ 5 seconds (qisqartirildi - tezroq yangilanish uchun)
       cleanupInterval: 60000,
       name: "OutboundService:History",
     });
@@ -256,10 +256,11 @@ export class OutboundService {
       const skip = (page - 1) * limit;
 
       // Build where clause
-      const where = this.buildOutboundWhereClause(tenantId, filters);
+      const where = this.buildOutboundWhereClause(tenantId, filters, false); // Outbound uchun
       const packageOutboundWhere = this.buildOutboundWhereClause(
         tenantId,
-        filters
+        filters,
+        true // ✅ PackageOutbound uchun - patient_name ni exclude qiladi
       );
 
       // Parallel fetching
@@ -920,41 +921,43 @@ export class OutboundService {
       managerName?: string;
       outboundType?: string;
       search?: string;
-    }
+    },
+    isPackageOutbound: boolean = false // ✅ PackageOutbound uchun patient_name ni exclude qilish
   ): any {
     const where: any = {
       tenant_id: tenantId,
     };
 
+    // ✅ .env dan retention period o'qib olish (default: 1 yil)
     const retentionYears = parseInt(
       this.configService.get<string>("OUTBOUND_HISTORY_RETENTION_YEARS") || "1",
       10
     );
 
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const retentionDate = new Date();
+    retentionDate.setFullYear(retentionDate.getFullYear() - retentionYears);
 
-    // Agar user startDate kiritmagan bo'lsa, 1 yil chegarasini qo'llash
+    // Agar user startDate kiritmagan bo'lsa, retention period chegarasini qo'llash
     if (!filters?.startDate) {
       where.outbound_date = {
-        gte: oneYearAgo, // 1 yildan keyingi ma'lumotlar
+        gte: retentionDate, // Retention period'dan keyingi ma'lumotlar
       };
     }
 
     if (filters?.startDate || filters?.endDate) {
       where.outbound_date = {
         // Agar user startDate kiritgan bo'lsa, uni ishlatish
-        // Lekin agar u 1 yildan eski bo'lsa, 1 yil chegarasini qo'llash
+        // Lekin agar u retentionDate'dan eski bo'lsa, retentionDate'ni qo'llash
         gte:
-          filters?.startDate && filters.startDate >= oneYearAgo
+          filters?.startDate && filters.startDate >= retentionDate
             ? filters.startDate
-            : oneYearAgo,
+            : retentionDate,
         ...(filters.endDate && { lte: filters.endDate }),
       };
     } else {
-      // Agar user hech qanday sana kiritmagan bo'lsa, 1 yil chegarasini qo'llash
+      // Agar user hech qanday sana kiritmagan bo'lsa, retention period chegarasini qo'llash
       where.outbound_date = {
-        gte: oneYearAgo,
+        gte: retentionDate,
       };
     }
 
@@ -981,7 +984,7 @@ export class OutboundService {
       where.outbound_type = filters.outboundType;
     }
 
-    // 검색어 (제품명, 출고자 등)
+    // 검색어 (제품명, 출고자, 차트번호 등)
     if (filters?.search) {
       const searchLower = filters.search.toLowerCase().trim();
       where.OR = [
@@ -1007,12 +1010,24 @@ export class OutboundService {
             mode: "insensitive",
           },
         },
+        // ✅ 차트번호 (Chart Number) qidirish
         {
-          patient_name: {
+          chart_number: {
             contains: searchLower,
             mode: "insensitive",
           },
         },
+        // ✅ patient_name faqat Outbound uchun (PackageOutbound da yo'q)
+        ...(isPackageOutbound
+          ? []
+          : [
+              {
+                patient_name: {
+                  contains: searchLower,
+                  mode: "insensitive",
+                },
+              },
+            ]),
         {
           batch: {
             batch_no: {
@@ -1066,12 +1081,13 @@ export class OutboundService {
     }
 
     // Build where clause once (reused for all queries)
-    const where = this.buildOutboundWhereClause(tenantId, filters);
+    const where = this.buildOutboundWhereClause(tenantId, filters, false); // Outbound uchun
 
-    // Build where clause for PackageOutbound (same structure)
+    // Build where clause for PackageOutbound (patient_name ni exclude qilish)
     const packageOutboundWhere = this.buildOutboundWhereClause(
       tenantId,
-      filters
+      filters,
+      true // ✅ PackageOutbound uchun - patient_name ni exclude qiladi
     );
 
     // Parallel fetching - all queries at once
@@ -1975,6 +1991,10 @@ export class OutboundService {
             error: "Validation failed",
           });
         }
+
+        // ✅ Cache invalidation - outbound history yangilanishi uchun
+        this.invalidateProductsCache(tenantId);
+        this.invalidateOutboundHistoryCache(tenantId);
 
         return {
           success: true,

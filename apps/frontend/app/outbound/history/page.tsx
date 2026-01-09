@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiDelete } from "../../../lib/api";
+import { apiGet, apiDelete, clearCache } from "../../../lib/api";
 
 type OutboundHistoryItem = {
   id: string;
@@ -58,6 +58,11 @@ export default function OutboundHistoryPage() {
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 10;
 
+  // ✅ Filter states
+  const [filterNormal, setFilterNormal] = useState(true); // 정상 (Normal)
+  const [filterDamaged, setFilterDamaged] = useState(true); // 파손 (Damaged)
+  const [filterDefective, setFilterDefective] = useState(true); // 불량 (Defective)
+
   // Cancel outbound modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<{
@@ -66,11 +71,7 @@ export default function OutboundHistoryPage() {
   } | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [apiUrl, currentPage, searchQuery]);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -83,24 +84,104 @@ export default function OutboundHistoryPage() {
       queryParams.append("limit", itemsPerPage.toString());
 
       const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
+
+      // ✅ Cache busting - force refresh with no-cache headers
       const data = await apiGet<{
         items: OutboundHistoryItem[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
-      }>(url);
+      }>(url, {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      });
 
-      setHistoryData(data.items || []);
-      setTotalPages(data.totalPages || 1);
-      setTotalItems(data.total || 0);
+      // ✅ Filter items based on filter states
+      let filteredItems = data.items || [];
+
+      // Agar barcha filter'lar false bo'lsa, hech narsa ko'rsatilmaydi
+      if (!filterNormal && !filterDamaged && !filterDefective) {
+        filteredItems = [];
+      } else {
+        // Filter items based on isDamaged and isDefective
+        filteredItems = filteredItems.filter((item) => {
+          const isDamaged = item.isDamaged || false;
+          const isDefective = item.isDefective || false;
+
+          // 정상 (Normal) - isDamaged va isDefective false
+          if (filterNormal && !isDamaged && !isDefective) {
+            return true;
+          }
+
+          // 파손 (Damaged) - isDamaged true
+          if (filterDamaged && isDamaged) {
+            return true;
+          }
+
+          // 불량 (Defective) - isDefective true
+          if (filterDefective && isDefective) {
+            return true;
+          }
+
+          return false;
+        });
+      }
+
+      setHistoryData(filteredItems);
+      // ✅ Total pages va total items - filtered items bo'yicha hisoblash
+      const filteredTotal = filteredItems.length;
+      const filteredTotalPages = Math.ceil(filteredTotal / itemsPerPage);
+      setTotalPages(filteredTotalPages || 1);
+      setTotalItems(filteredTotal);
     } catch (err) {
       console.error("Failed to load history", err);
       setError("출고 내역을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    apiUrl,
+    currentPage,
+    searchQuery,
+    filterNormal,
+    filterDamaged,
+    filterDefective,
+  ]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  // ✅ Listen for outbound creation events to refresh cache
+  useEffect(() => {
+    const handleOutboundCreated = () => {
+      // Clear cache and refresh
+      clearCache("/outbound/history");
+      fetchHistory();
+    };
+
+    // Listen for custom events
+    window.addEventListener("outboundCreated", handleOutboundCreated);
+
+    // Also listen for page visibility change (when user comes back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // Refresh when page becomes visible
+        clearCache("/outbound/history");
+        fetchHistory();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("outboundCreated", handleOutboundCreated);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [fetchHistory]);
 
   // Format date and time
   const formatDateTime = (dateString: string) => {
@@ -210,6 +291,7 @@ export default function OutboundHistoryPage() {
   };
 
   // Group outbounds by date, time (rounded to nearest minute), manager, and chart number
+  // ✅ Bir vaqtda oddiy product va package product outbound qilinsa, ikkalasi ham bir kartada ko'rsatiladi
   const groupedHistory = useMemo(() => {
     const groups: { [key: string]: OutboundHistoryItem[] } = {};
 
@@ -227,7 +309,7 @@ export default function OutboundHistoryPage() {
       const manager = item.managerName || "Unknown";
       const chartNumber = item.chartNumber || "";
 
-      // Group key: date + time + manager + chart number
+      // Group key: date + time + manager + chart number (outboundType'siz - ikkala tur bir kartada)
       const groupKey = `${dateStr} ${timeStr}|||${manager}|||${chartNumber}`;
 
       if (!groups[groupKey]) {
@@ -280,31 +362,85 @@ export default function OutboundHistoryPage() {
             </Link>
           </div>
 
-          {/* Search Bar */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="제품명, 담당자명, 차트번호로 검색..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            />
-            <svg
-              className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          {/* Search Bar and Filters */}
+          <div className="flex items-center gap-4">
+            {/* Search Bar */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="제품명, 담당자명, 차트번호 입력해주세요."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 pl-10 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
               />
-            </svg>
+              <svg
+                className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+
+            {/* Filter Checkboxes */}
+            <div className="flex items-center gap-4">
+              {/* 정상 (Normal) */}
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={filterNormal}
+                  onChange={(e) => {
+                    setFilterNormal(e.target.checked);
+                    setCurrentPage(1);
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  정상
+                </span>
+              </label>
+
+              {/* 파손 (Damaged) */}
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={filterDamaged}
+                  onChange={(e) => {
+                    setFilterDamaged(e.target.checked);
+                    setCurrentPage(1);
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  파손
+                </span>
+              </label>
+
+              {/* 불량 (Defective) */}
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={filterDefective}
+                  onChange={(e) => {
+                    setFilterDefective(e.target.checked);
+                    setCurrentPage(1);
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  불량
+                </span>
+              </label>
+            </div>
           </div>
         </header>
 
@@ -328,29 +464,33 @@ export default function OutboundHistoryPage() {
               const [dateTimeStr, manager, chartNumber] = groupKey.split("|||");
               const firstItem = items[0];
 
-              // Check if this is a package outbound group or regular outbound group
-              const isPackageOutbound = firstItem.outboundType === "패키지";
+              // ✅ Separate items by outbound type (bir kartada ikkala tur ham bo'lishi mumkin)
+              const packageOutbounds = items.filter(
+                (item) => item.outboundType === "패키지"
+              );
+              const regularOutbounds = items.filter(
+                (item) => item.outboundType !== "패키지"
+              );
+              const hasPackageOutbound = packageOutbounds.length > 0;
+              const hasRegularOutbound = regularOutbounds.length > 0;
 
-              // Calculate total quantity for the group
+              // Calculate total quantity for the group (ikkala tur uchun)
               let totalQty = 0;
-              if (isPackageOutbound) {
-                // Package outbound: sum package quantities
-                totalQty = items.reduce((sum, item) => {
-                  return sum + (item.packageQty || 1);
-                }, 0);
-              } else {
-                // Regular outbound: sum outbound quantities
-                totalQty = items.reduce((sum, item) => {
-                  return sum + (item.outboundQty || 0);
-                }, 0);
-              }
+              // Regular outbound quantities
+              totalQty += regularOutbounds.reduce((sum, item) => {
+                return sum + (item.outboundQty || 0);
+              }, 0);
+              // Package outbound quantities
+              totalQty += packageOutbounds.reduce((sum, item) => {
+                return sum + (item.packageQty || 1);
+              }, 0);
 
-              // Calculate total price for the group
+              // Calculate total price for the group (ikkala tur uchun)
               const totalPrice = items.reduce((sum, item) => {
                 return sum + calculateTotalPrice(item);
               }, 0);
 
-              // Collect items for display
+              // ✅ Collect items for display (ikkala tur uchun)
               const displayItems: {
                 productId: string;
                 productName: string;
@@ -358,49 +498,51 @@ export default function OutboundHistoryPage() {
                 unit: string;
                 quantity: number;
                 salePrice: number;
+                isPackageItem?: boolean; // Package item ekanligini belgilash
               }[] = [];
 
-              if (isPackageOutbound) {
-                // Package outbound: collect package items
-                items.forEach((item) => {
-                  if (item.packageItems) {
-                    item.packageItems.forEach((pkgItem) => {
-                      const existingItem = displayItems.find(
-                        (p) => p.productId === pkgItem.productId
-                      );
-                      if (existingItem) {
-                        existingItem.quantity += pkgItem.quantity;
-                      } else {
-                        displayItems.push({
-                          ...pkgItem,
-                          quantity: pkgItem.quantity,
-                        });
-                      }
+              // Regular outbound items
+              regularOutbounds.forEach((item) => {
+                if (item.product && item.outboundQty) {
+                  const existingItem = displayItems.find(
+                    (p) => p.productId === item.product!.id && !p.isPackageItem
+                  );
+                  if (existingItem) {
+                    existingItem.quantity += item.outboundQty;
+                  } else {
+                    displayItems.push({
+                      productId: item.product.id,
+                      productName: item.product.name,
+                      brand: item.product.brand || "",
+                      unit: item.product.unit || "",
+                      quantity: item.outboundQty,
+                      salePrice: item.product.salePrice || 0,
+                      isPackageItem: false,
                     });
                   }
-                });
-              } else {
-                // Regular outbound: collect product items
-                items.forEach((item) => {
-                  if (item.product && item.outboundQty) {
+                }
+              });
+
+              // Package outbound items
+              packageOutbounds.forEach((item) => {
+                if (item.packageItems) {
+                  item.packageItems.forEach((pkgItem) => {
                     const existingItem = displayItems.find(
-                      (p) => p.productId === item.product!.id
+                      (p) =>
+                        p.productId === pkgItem.productId && p.isPackageItem
                     );
                     if (existingItem) {
-                      existingItem.quantity += item.outboundQty;
+                      existingItem.quantity += pkgItem.quantity;
                     } else {
                       displayItems.push({
-                        productId: item.product.id,
-                        productName: item.product.name,
-                        brand: item.product.brand || "",
-                        unit: item.product.unit || "",
-                        quantity: item.outboundQty,
-                        salePrice: item.product.salePrice || 0,
+                        ...pkgItem,
+                        quantity: pkgItem.quantity,
+                        isPackageItem: true,
                       });
                     }
-                  }
-                });
-              }
+                  });
+                }
+              });
 
               // Separate date and time for header display
               const outboundDate = formatDate(firstItem.outboundDate);
@@ -430,13 +572,6 @@ export default function OutboundHistoryPage() {
                           {manager}님
                         </span>
 
-                        {/* Chart Number */}
-                        {chartNumber && (
-                          <span className="text-sm text-slate-600 dark:text-slate-400">
-                            차트번호 {chartNumber}
-                          </span>
-                        )}
-
                         {/* Badges */}
                         {firstItem.isDefective && (
                           <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
@@ -450,13 +585,21 @@ export default function OutboundHistoryPage() {
                           </span>
                         )}
 
-                        {isPackageOutbound && (
+                        {/* ✅ Badge'lar - ikkala tur uchun ham ko'rsatish */}
+
+                        {/* {hasPackageOutbound && (
                           <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                             패키지
                           </span>
-                        )}
+                        )} */}
                       </div>
 
+                      {/* Chart Number */}
+                      {chartNumber && (
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          차트번호: {chartNumber}
+                        </span>
+                      )}
                       {/* Cancel Button */}
                       <button
                         onClick={() =>
@@ -469,12 +612,56 @@ export default function OutboundHistoryPage() {
                     </div>
                   </div>
 
-                  {/* Body - Items displayed vertically */}
+                  {/* Body - Items displayed vertically (✅ ikkala tur uchun) */}
                   <div className="px-6 py-4 space-y-4">
-                    {isPackageOutbound ? (
-                      // Package outbound: Show package name and nested items
-                      <>
-                        {items.map((item, itemIdx) => {
+                    {/* ✅ Regular Outbound Items (제품) */}
+                    {hasRegularOutbound && (
+                      <div className="space-y-3">
+                        {regularOutbounds.map((item, idx) => {
+                          if (!item.product || !item.outboundQty) return null;
+
+                          return (
+                            <div
+                              key={`product-${item.id}-${idx}`}
+                              className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0 pb-3 last:pb-0"
+                            >
+                              <div className="flex items-center gap-2 flex-1">
+                                <span className="font-bold text-base text-slate-900 dark:text-white">
+                                  {item.product.name}
+                                </span>
+                                {/* ✅ Batch No ko'rsatish */}
+
+                                {item.product.brand && (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {item.product.brand}
+                                  </span>
+                                )}
+                                {item.batch?.batchNo && (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    배치: {item.batch.batchNo}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-bold text-base text-slate-900 dark:text-white">
+                                  -{item.outboundQty}
+                                </span>
+                                {item.product.unit && (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {item.product.unit}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* ✅ Package Outbound Items (패키지) */}
+                    {hasPackageOutbound && (
+                      <div className="space-y-3">
+                        {packageOutbounds.map((item, itemIdx) => {
                           if (!item.packageName || !item.packageItems)
                             return null;
 
@@ -489,15 +676,10 @@ export default function OutboundHistoryPage() {
                                   <span className="font-bold text-base text-slate-900 dark:text-white">
                                     {item.packageName}
                                   </span>
-                                  {item.packageId && (
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                                      {formatProductId(item.packageId)}
-                                    </span>
-                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <span className="font-bold text-base text-slate-900 dark:text-white">
-                                    {item.packageQty || 1}
+                                    -{item.packageQty || 1}
                                   </span>
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
                                     패키지 Set
@@ -522,17 +704,18 @@ export default function OutboundHistoryPage() {
                                             <span className="text-sm text-slate-700 dark:text-slate-300">
                                               {pkgItem.productName}
                                             </span>
-                                            {pkgItem.productId && (
+                                            {/* ✅ Batch No ko'rsatish */}
+                                            {item.batch?.batchNo && (
                                               <span className="text-xs text-slate-500 dark:text-slate-400">
-                                                {formatProductId(
-                                                  pkgItem.productId
-                                                )}
+                                                배치: {item.batch.batchNo}
                                               </span>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-2 shrink-0">
+                                            {/* ✅ Jami outbound qty = package item quantity * package qty */}
                                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                              {pkgItem.quantity}
+                                              {pkgItem.quantity *
+                                                (item.packageQty || 1)}
                                             </span>
                                             {pkgItem.unit && (
                                               <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -548,36 +731,7 @@ export default function OutboundHistoryPage() {
                             </div>
                           );
                         })}
-                      </>
-                    ) : (
-                      // Regular outbound: Show products vertically
-                      <>
-                        {displayItems.map((item, idx) => (
-                          <div
-                            key={`${item.productId}-${idx}`}
-                            className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0 pb-3 last:pb-0"
-                          >
-                            <div className="flex items-center gap-2 flex-1">
-                              <span className="font-bold text-base text-slate-900 dark:text-white">
-                                {item.productName}
-                              </span>
-                              <span className="text-xs text-slate-500 dark:text-slate-400">
-                                {formatProductId(item.productId)}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="font-bold text-base text-slate-900 dark:text-white">
-                                -{item.quantity} {item.unit}
-                              </span>
-                              {/* {item.unit && (
-                                
-                                  {item.unit}
-                               
-                              )} */}
-                            </div>
-                          </div>
-                        ))}
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
