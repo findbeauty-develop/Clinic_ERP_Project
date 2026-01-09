@@ -408,7 +408,7 @@ export default function PackageNewPage() {
                             </span>
                           </div>
                           <div className="text-sm text-slate-600 dark:text-slate-400">
-                            브랜드:{product.brand}
+                            제조사:{product.brand}
                           </div>
                         </div>
                         <div className="ml-4 flex items-center gap-2">

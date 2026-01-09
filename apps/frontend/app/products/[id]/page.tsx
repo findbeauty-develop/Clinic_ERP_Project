@@ -383,7 +383,7 @@ export default function ProductDetailPage() {
                           value={product.productName || "—"}
                         />
                         <ReadOnlyField
-                          label="브랜드"
+                          label="제조사"
                           value={product.brand || "—"}
                         />
                         <ReadOnlyField
@@ -1637,7 +1637,7 @@ function ProductEditForm({
                   onChange={(e) => handleInputChange("name", e.target.value)}
                 />
                 <InputField
-                  label="브랜드"
+                  label="제조사"
                   placeholder="브랜드"
                   value={formData.brand}
                   onChange={(e) => handleInputChange("brand", e.target.value)}

@@ -2631,13 +2631,13 @@ const ProductCard = memo(function ProductCard({
                   className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60"
                 >
                   {/* Left Section - Product Info */}
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     {/* Top Line - Product Name and Batch */}
                     <div className="mb-3 flex items-center gap-3">
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      <h3 className="truncate text-base font-bold text-slate-900 dark:text-white">
                         {product.productName}
                       </h3>
-                      <span className="text-base font-bold text-slate-900 dark:text-white">
+                      <span className="flex-shrink-0 text-base font-bold text-slate-900 dark:text-white">
                         {batch.batch_no}
                       </span>
                       {batch.isExpiringSoon && (
@@ -2686,8 +2686,8 @@ const ProductCard = memo(function ProductCard({
                     </div>
                   </div>
 
-                  {/* Right Section - Quantity Controls */}
-                  <div className="ml-4 flex items-center gap-2">
+                  {/* Right Section - Quantity Controls + minStock */}
+                  <div className="ml-4 flex flex-shrink-0 items-center gap-2">
                     <button
                       onClick={() =>
                         onQuantityChange(
@@ -2700,7 +2700,7 @@ const ProductCard = memo(function ProductCard({
                           batch.qty
                         )
                       }
-                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       -
                     </button>
@@ -2721,7 +2721,7 @@ const ProductCard = memo(function ProductCard({
                           batch.qty
                         );
                       }}
-                      className="h-10 w-16 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="h-10 w-20 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <button
                       onClick={() =>
@@ -2735,12 +2735,12 @@ const ProductCard = memo(function ProductCard({
                           batch.qty
                         )
                       }
-                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       +
                     </button>
-                    <span className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {displayUnit}
+                    <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {product.minStock?.toLocaleString() ?? 0} {displayUnit}
                     </span>
                   </div>
                 </div>

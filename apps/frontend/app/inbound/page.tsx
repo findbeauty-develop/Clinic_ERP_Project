@@ -47,7 +47,7 @@ type ProductBatch = {
   유효기간: string | null;
   보관위치: string | null;
   "입고 수량": number;
-  inbound_qty?: number; // Original qty from inbound (immutable)
+  qty?: number; // Original qty from inbound (immutable)
   created_at: string;
 };
 
@@ -71,6 +71,7 @@ type ProductListItem = {
   memo?: string | null;
   expiryMonths?: number | null;
   expiryUnit?: string | null;
+  alertDays?: string | null;
   productStorage?: string | null;
 };
 
@@ -297,12 +298,31 @@ export default function InboundPage() {
       }
     };
 
+    const handleBatchCreated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const productId = customEvent.detail?.productId;
+      if (!productId) return;
+
+      // ✅ Clear cache for products list (current_stock might have changed)
+      import("../../lib/api").then(({ clearCache }) => {
+        clearCache("/products");
+        clearCache("products");
+      });
+
+      // ✅ Force refresh product list to show updated current_stock
+      if (activeTab === "quick") {
+        fetchProducts(true);
+      }
+    };
+
     window.addEventListener("productDeleted", handleProductDeleted);
     window.addEventListener("productCreated", handleProductCreated);
+    window.addEventListener("batchCreated", handleBatchCreated);
 
     return () => {
       window.removeEventListener("productDeleted", handleProductDeleted);
       window.removeEventListener("productCreated", handleProductCreated);
+      window.removeEventListener("batchCreated", handleBatchCreated);
     };
   }, [apiUrl]); // Only apiUrl in dependencies - activeTab is accessed via ref to avoid closure issues
 
@@ -676,25 +696,23 @@ const ProductCard = memo(function ProductCard({
     storageLocation: "",
   });
 
-  // Ref to track if we've already initialized from localStorage
-  const hasInitialized = useRef(false);
-
+  // ✅ Avtomatik to'ldirish o'chirildi - placeholder har doim bo'sh bo'lishi kerak
+  // Ref removed - no longer needed since auto-fill is disabled
   // Initialize inboundManager from localStorage (current logged-in member)
-  // NOTE: Bu faqat bir marta, component mount bo'lganda ishlaydi.
-  // Foydalanuvchi keyin istalgan nomni kirita oladi va o'chirsa, qayta to'ldirilmaydi.
-  useEffect(() => {
-    if (hasInitialized.current) return;
+  // NOTE: Disabled - user wants placeholder to always be empty
+  // useEffect(() => {
+  //   if (hasInitialized.current) return;
 
-    const memberData = localStorage.getItem("erp_member_data");
-    if (memberData) {
-      const member = JSON.parse(memberData);
-      setBatchForm((prev) => ({
-        ...prev,
-        inboundManager: member.full_name || member.member_id || "",
-      }));
-      hasInitialized.current = true;
-    }
-  }, []); // Empty dependency array
+  //   const memberData = localStorage.getItem("erp_member_data");
+  //   if (memberData) {
+  //     const member = JSON.parse(memberData);
+  //     setBatchForm((prev) => ({
+  //       ...prev,
+  //       inboundManager: member.full_name || member.member_id || "",
+  //     }));
+  //     hasInitialized.current = true;
+  //   }
+  // }, []); // Empty dependency array
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
@@ -836,6 +854,23 @@ const ProductCard = memo(function ProductCard({
         payload.purchase_price = parseInt(batchForm.purchasePrice);
       }
 
+      // ✅ Product'dan sale_price, expiry_months, expiry_unit, alert_days ni olib yuborish
+      // Backend fallback qiladi agar frontend'dan yuborilmasa
+      if (product.salePrice !== null && product.salePrice !== undefined) {
+        payload.sale_price = product.salePrice;
+      }
+      // expiry_months va expiry_unit - product'dan olish (0 ham to'g'ri qiymat)
+      // Agar undefined yoki null bo'lsa, backend product'dan fallback qiladi
+      if (product.expiryMonths !== null && product.expiryMonths !== undefined) {
+        payload.expiry_months = Number(product.expiryMonths);
+      }
+      if (product.expiryUnit !== null && product.expiryUnit !== undefined) {
+        payload.expiry_unit = product.expiryUnit;
+      }
+      if (product.alertDays !== null && product.alertDays !== undefined) {
+        payload.alert_days = product.alertDays;
+      }
+
       // 보관 위치: User input yoki Product level storage (fallback)
       const storageLocation = batchForm.storageLocation.trim()
         ? batchForm.storageLocation
@@ -873,18 +908,42 @@ const ProductCard = memo(function ProductCard({
       });
       setBatchQuantity(1);
 
-      // Refresh batches list and update cache
-      const { apiGet } = await import("../../lib/api");
-      const updatedBatches = await apiGet<ProductBatch[]>(
-        `${apiUrl}/products/${product.id}/batches`
-      );
-      setBatches(updatedBatches);
-      // Update cache
+      // ✅ Clear cache va force refresh batches list
+      const { apiGet, clearCache } = await import("../../lib/api");
+
+      // Clear API cache for batches endpoint
+      clearCache(`/products/${product.id}/batches`);
+      clearCache(`products/${product.id}/batches`);
+
+      // Clear local batches cache
       const cacheKey = `${product.id}`;
+      batchesCacheRef.current.delete(cacheKey);
+
+      // Fetch fresh batches with cache-busting
+      const updatedBatches = await apiGet<ProductBatch[]>(
+        `${apiUrl}/products/${product.id}/batches?_t=${Date.now()}`,
+        {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        }
+      );
+
+      setBatches(updatedBatches);
+
+      // Update local cache with fresh data
       batchesCacheRef.current.set(cacheKey, {
         data: updatedBatches,
         timestamp: Date.now(),
       });
+
+      // ✅ Dispatch event to refresh product list (for current_stock update)
+      window.dispatchEvent(
+        new CustomEvent("batchCreated", {
+          detail: { productId: product.id },
+        })
+      );
 
       alert("배치가 성공적으로 추가되었습니다.");
     } catch (error: any) {
@@ -1022,7 +1081,7 @@ const ProductCard = memo(function ProductCard({
                     <span className="inline-flex items-center gap-1">
                       <CalendarIcon className="h-3.5 w-3.5" />
                       입고 날짜:{" "}
-                      {new Date(batch.created_at).toLocaleDateString()}
+                      {new Date(batch.created_at).toISOString().split("T")[0]}
                     </span>
                     {batch.유효기간 && (
                       <span className="inline-flex items-center gap-1">
@@ -1031,10 +1090,10 @@ const ProductCard = memo(function ProductCard({
                     )}
                     <span className="inline-flex items-center gap-1 ml-auto">
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        입고수량:
+                        현재수량:
                       </span>
                       <span className="text-base font-bold text-slate-900 dark:text-white">
-                        {batch.inbound_qty?.toLocaleString() ?? 0}
+                        {batch.qty?.toLocaleString() ?? 0}
                       </span>
                       <span className="text-xs text-slate-500 dark:text-slate-400">
                         {product.unit ?? "EA"}
@@ -1058,7 +1117,7 @@ const ProductCard = memo(function ProductCard({
             </div>
 
             {/* 입고 담당자 - Editable input field */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center">
               <label className="w-28 shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
                 입고 담당자 *
               </label>
@@ -1071,7 +1130,7 @@ const ProductCard = memo(function ProductCard({
                   setBatchForm({ ...batchForm, inboundManager: e.target.value })
                 }
                 onClick={(e) => e.stopPropagation()}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800
+                className="rounded-xl border border-slate-200 bg-white px-1 w-full  max-w-sm py-2 text-sm text-slate-800
                focus:border-sky-400 focus:outline-none
                dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
                dark:focus:border-sky-500"
@@ -1086,11 +1145,17 @@ const ProductCard = memo(function ProductCard({
               <InlineField
                 label="구매원가 (원)"
                 placeholder="구매원가를 입력하세요"
-                type="number"
-                value={batchForm.purchasePrice}
-                onChange={(value) =>
-                  setBatchForm({ ...batchForm, purchasePrice: value })
+                type="text"
+                value={
+                  batchForm.purchasePrice
+                    ? Number(batchForm.purchasePrice).toLocaleString()
+                    : ""
                 }
+                onChange={(value) => {
+                  // Remove commas and keep only numbers
+                  const numericValue = value.replace(/,/g, "");
+                  setBatchForm({ ...batchForm, purchasePrice: numericValue });
+                }}
               />
             </div>
 

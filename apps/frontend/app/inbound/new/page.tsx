@@ -26,7 +26,7 @@ const unitOptions = [
   "cc / mL",
   "unit / U",
   "mg",
-  "vial/bottel",
+  "vial",
   "shot",
   "ea",
   "box",
@@ -1124,6 +1124,19 @@ export default function InboundNewPage() {
       if (formData.barcode) payload.barcode = formData.barcode;
       if (formData.image) payload.image = formData.image;
       else if (formData.imageUrl) payload.image = formData.imageUrl;
+
+      // ✅ Add expiry_months and expiry_unit at product level if not noExpiryPeriod
+      if (!formData.noExpiryPeriod) {
+        if (
+          formData.expiryMonths !== null &&
+          formData.expiryMonths !== undefined
+        ) {
+          payload.expiryMonths = Number(formData.expiryMonths);
+        }
+        if (formData.expiryUnit) {
+          payload.expiryUnit = formData.expiryUnit;
+        }
+      }
 
       // Add alert_days at product level if not noExpiryPeriod
       if (
@@ -2286,7 +2299,7 @@ export default function InboundNewPage() {
                   />
                 </div>
 
-                <div className="flex justify-end pt-4">
+                {/* <div className="flex justify-end pt-4">
                   <button
                     type="button"
                     onClick={handleSupplierDetailsClose}
@@ -2294,7 +2307,7 @@ export default function InboundNewPage() {
                   >
                     확인하기
                   </button>
-                </div>
+                </div> */}
               </div>
             ) : showManualEntryForm ? (
               /* Manual Entry Form */

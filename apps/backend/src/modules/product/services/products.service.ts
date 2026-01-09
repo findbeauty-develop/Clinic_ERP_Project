@@ -797,6 +797,7 @@ export class ProductsService {
         memo: returnPolicy?.note ?? null,
         expiryMonths: product.expiry_months ?? null,
         expiryUnit: product.expiry_unit ?? null,
+        alertDays: product.alert_days ?? null,
         isLowStock: product.current_stock < product.min_stock,
         batches: product.batches || [],
       };
@@ -1454,8 +1455,8 @@ export class ProductsService {
         ? `${batch.expiry_months} ${batch.expiry_unit}`
         : null,
       보관위치: batch.storage ?? null,
-      "입고 수량": batch.qty,
-      inbound_qty: batch.inbound_qty ?? null,
+      "입고 수량": batch.qty, // ✅ Current stock (for display in inbound page)
+      inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
       unit: batch.unit ?? null,
       created_at: batch.created_at,
       // Raw fields for batch copying (입고 대기 page uchun)
@@ -1496,10 +1497,17 @@ export class ProductsService {
         // Avtomatik batch_no yaratish
         const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
-        // Product'ni olish (storage va unit uchun)
+        // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price uchun)
         const product = await tx.product.findFirst({
           where: { id: productId, tenant_id: tenantId },
-          select: { storage: true, unit: true },
+          select: {
+            storage: true,
+            unit: true,
+            expiry_months: true,
+            expiry_unit: true,
+            alert_days: true,
+            sale_price: true,
+          },
         });
 
         // Batch yaratish
@@ -1511,8 +1519,16 @@ export class ProductsService {
             qty: dto.qty,
             inbound_qty: dto.qty, // ✅ Original qty from inbound (immutable)
             unit: (product as any)?.unit ?? null, // ✅ Copy unit from product
-            expiry_months: dto.expiry_months ?? null,
-            expiry_unit: dto.expiry_unit ?? null,
+            // ✅ Expiry info: DTO'dan yoki Product level'dan (fallback)
+            // !== undefined ishlatish kerak, chunki 0 yoki null ham to'g'ri qiymatlar
+            expiry_months:
+              dto.expiry_months !== undefined
+                ? dto.expiry_months
+                : (product as any)?.expiry_months ?? null,
+            expiry_unit:
+              dto.expiry_unit !== undefined
+                ? dto.expiry_unit
+                : (product as any)?.expiry_unit ?? null,
             manufacture_date: dto.manufacture_date
               ? new Date(dto.manufacture_date)
               : null,
@@ -1520,9 +1536,11 @@ export class ProductsService {
             storage: dto.storage ?? (product as any)?.storage ?? null,
             purchase_price: dto.purchase_price ?? null,
             inbound_manager: dto.inbound_manager ?? null,
-            sale_price: dto.sale_price ?? null,
+            // ✅ Sale price: DTO'dan yoki Product level'dan (fallback)
+            sale_price: dto.sale_price ?? (product as any)?.sale_price ?? null,
             expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
-            alert_days: dto.alert_days ?? (product as any).alert_days ?? null,
+            // ✅ Alert days: DTO'dan yoki Product level'dan (fallback)
+            alert_days: dto.alert_days ?? (product as any)?.alert_days ?? null,
           } as any,
         });
 
