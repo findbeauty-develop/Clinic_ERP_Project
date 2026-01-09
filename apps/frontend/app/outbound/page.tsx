@@ -18,6 +18,7 @@ type Batch = {
   batch_no: string;
   qty: number;
   inbound_qty?: number | null;
+  min_stock?: number | null;
   expiry_date?: string | null;
   storage?: string | null;
   isExpiringSoon?: boolean;
@@ -140,6 +141,11 @@ function OutboundPageContent() {
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
+
+  // Product expand/collapse state
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
+    new Set()
+  );
 
   // Manager name should be empty on page load - user must enter it manually
 
@@ -811,6 +817,18 @@ function OutboundPageContent() {
       ];
     });
   };
+
+  const toggleProductExpand = useCallback((productId: string) => {
+    setExpandedProducts((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  }, []);
 
   const removeScheduledItem = (productId: string, batchId: string) => {
     // Faqat product items o'chiriladi (package items emas!)
@@ -1849,6 +1867,10 @@ function OutboundPageContent() {
                               product={product}
                               scheduledItems={scheduledItems}
                               onQuantityChange={handleQuantityChange}
+                              isExpanded={expandedProducts.has(product.id)}
+                              onToggleExpand={() =>
+                                toggleProductExpand(product.id)
+                              }
                             />
                           </div>
                         ))}
@@ -2558,6 +2580,8 @@ const ProductCard = memo(function ProductCard({
   product,
   scheduledItems,
   onQuantityChange,
+  isExpanded,
+  onToggleExpand,
 }: {
   product: ProductForOutbound;
   scheduledItems: ScheduledItem[];
@@ -2570,28 +2594,123 @@ const ProductCard = memo(function ProductCard({
     quantity: number,
     maxQuantity?: number
   ) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
+  // Calculate total stock (sum of all batches with qty > 0)
+  const totalStock =
+    product.batches
+      ?.filter((batch) => batch.qty > 0)
+      .reduce((sum, batch) => sum + batch.qty, 0) ?? 0;
+
+  // Filter batches (only qty > 0) and sort (qty ascending, then FEFO)
+  const availableBatches =
+    product.batches
+      ?.filter((batch) => batch.qty > 0)
+      .sort((a, b) => {
+        // 1. 재고량으로 정렬 (적은 것 먼저 - kam miqdordagi batch'lar birinchi)
+        if (a.qty !== b.qty) {
+          return a.qty - b.qty; // Ascending order (kam qty birinchi)
+        }
+        // 2. 유효기간으로 정렬 (오래된 것 먼저 - FEFO)
+        const dateA = a.expiry_date ? new Date(a.expiry_date).getTime() : 0;
+        const dateB = b.expiry_date ? new Date(b.expiry_date).getTime() : 0;
+        if (dateA !== dateB) {
+          return dateA - dateB;
+        }
+        // 3. 배치번호로 정렬 (같은 재고량과 유효기간일 경우)
+        return (a.batch_no || "").localeCompare(b.batch_no || "");
+      }) ?? [];
+
+  // Unit logic: if usageCapacity exists, use usageCapacityUnit, otherwise use unit
+  const displayUnit =
+    product.usageCapacity && product.usageCapacityUnit
+      ? product.usageCapacityUnit
+      : product.unit || "단위";
+
+  if (availableBatches.length === 0) {
+    return null; // Don't show product if no available batches
+  }
+
   return (
-    <div className="space-y-3">
-      {product.batches && product.batches.length > 0 && (
-        <>
-          {[...product.batches]
-            // 정렬 우선순위: ① 유효기간 → ② 배치번호
-            .sort((a, b) => {
-              // 1. 유효기간으로 정렬 (오래된 것 먼저 - FEFO)
-              const dateA = a.expiry_date
-                ? new Date(a.expiry_date).getTime()
-                : 0;
-              const dateB = b.expiry_date
-                ? new Date(b.expiry_date).getTime()
-                : 0;
-              if (dateA !== dateB) {
-                return dateA - dateB;
-              }
-              // 2. 배치번호로 정렬 (같은 유효기간일 경우)
-              return (a.batch_no || "").localeCompare(b.batch_no || "");
-            })
-            .map((batch) => {
+    <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60">
+      {/* Product Parent Card Header */}
+      <div className="flex items-center justify-between p-4">
+        {/* Product Info */}
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              {product.productName}
+            </h3>
+            {product.brand && (
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                {product.brand}
+              </span>
+            )}
+            {product.category && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {product.category}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+            <span className="font-semibold text-slate-900 dark:text-white">
+              총 재고: {totalStock.toLocaleString()} {displayUnit}
+            </span>
+            {product.supplierName && (
+              <span>공급처: {product.supplierName}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Batch Count and Expand/Collapse Button */}
+        <div className="ml-4 flex flex-shrink-0 items-center gap-2">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            {availableBatches.length} 배치
+          </span>
+          <button
+            onClick={onToggleExpand}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? (
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Batch Cards (when expanded) */}
+      {isExpanded && (
+        <div className="border-t border-slate-200 dark:border-slate-700">
+          <div className="space-y-2 p-4">
+            {availableBatches.map((batch) => {
               // Faqat product items'ni hisobga olish (package items emas!)
               const scheduledItem = scheduledItems.find(
                 (item) =>
@@ -2609,36 +2728,28 @@ const ProductCard = memo(function ProductCard({
                       month: "2-digit",
                       day: "2-digit",
                     })
-
                     .replace(/\s/g, "-")
                     .replace(/\./g, "")
                 : "00-00-00";
 
               // Check if THIS batch has low stock (batch.qty <= minStock)
-              const isBatchLowStock = product.minStock
-                ? batch.qty <= product.minStock
+              // Use batch's own min_stock if available, otherwise fallback to product's minStock
+              const batchMinStock = batch.min_stock ?? product.minStock;
+              const isBatchLowStock = batchMinStock
+                ? batch.qty <= batchMinStock
                 : false;
-
-              // Unit logic: if usageCapacity exists, use usageCapacityUnit, otherwise use unit
-              const displayUnit =
-                product.usageCapacity && product.usageCapacityUnit
-                  ? product.usageCapacityUnit
-                  : product.unit || "단위";
 
               return (
                 <div
                   key={batch.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
                 >
-                  {/* Left Section - Product Info */}
+                  {/* Left Section - Batch Info (NO product name) */}
                   <div className="min-w-0 flex-1">
-                    {/* Top Line - Product Name and Batch */}
-                    <div className="mb-3 flex items-center gap-3">
-                      <h3 className="truncate text-base font-bold text-slate-900 dark:text-white">
-                        {product.productName}
-                      </h3>
-                      <span className="flex-shrink-0 text-base font-bold text-slate-900 dark:text-white">
-                        {batch.batch_no}
+                    {/* Top Line - Batch Number and Badges */}
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-base font-bold text-slate-900 dark:text-white">
+                        베치: {batch.batch_no}
                       </span>
                       {batch.isExpiringSoon && (
                         <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
@@ -2647,12 +2758,12 @@ const ProductCard = memo(function ProductCard({
                       )}
                       {isBatchLowStock && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
-                          재고부족
+                          부족
                         </span>
                       )}
                     </div>
 
-                    {/* Bottom Line - Details */}
+                    {/* Bottom Line - Batch Details */}
                     <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
                       <span
                         className={
@@ -2662,17 +2773,14 @@ const ProductCard = memo(function ProductCard({
                         }
                       >
                         재고: {batch.qty.toString().padStart(2, "0")}{" "}
-                        {product.unit || "단위"}
+                        {displayUnit}
                       </span>
-                      {batch.inbound_qty && (
+                      {/* {batch.inbound_qty && (
                         <span className="text-sky-600 dark:text-sky-400">
                           입고수량: {batch.inbound_qty.toLocaleString()}{" "}
-                          {product.unit || "단위"}
+                          {displayUnit}
                         </span>
-                      )}
-                      {product.supplierName && (
-                        <span>공급처: {product.supplierName}</span>
-                      )}
+                      )} */}
                       <span
                         className={
                           batch.isExpiringSoon
@@ -2682,7 +2790,7 @@ const ProductCard = memo(function ProductCard({
                       >
                         유효기한: {expiryDateStr}
                       </span>
-                      {batch.storage && <span>위치:{batch.storage}</span>}
+                      {batch.storage && <span>위치: {batch.storage}</span>}
                     </div>
                   </div>
 
@@ -2740,13 +2848,19 @@ const ProductCard = memo(function ProductCard({
                       +
                     </button>
                     <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {product.minStock?.toLocaleString() ?? 0} {displayUnit}
+                      {(
+                        batchMinStock ??
+                        product.minStock ??
+                        0
+                      ).toLocaleString()}{" "}
+                      {displayUnit}
                     </span>
                   </div>
                 </div>
               );
             })}
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

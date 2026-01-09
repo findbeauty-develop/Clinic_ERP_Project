@@ -90,13 +90,16 @@ export class ProductsService {
                   id: true,
                   batch_no: true,
                   qty: true,
+                  inbound_qty: true,
+                  unit: true,
+                  min_stock: true,
                   expiry_date: true,
                   storage: true,
                   alert_days: true,
                   created_at: true,
                 },
                 orderBy: { created_at: "desc" },
-                take: 1, // Faqat eng so'nggi batch
+                // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
               },
             },
             orderBy: { created_at: "desc" },
@@ -487,6 +490,7 @@ export class ProductsService {
                 qty: batch.qty, // 입고 수량 (Inbound quantity)
                 inbound_qty: batch.qty, // ✅ Original qty from inbound (immutable)
                 unit: product.unit ?? null, // ✅ Copy unit from product
+                min_stock: product.min_stock, // ✅ Copy min_stock from product (immutable, can be 0, null, or any number)
                 expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
                 expiry_unit: batch.expiry_unit ?? null,
                 manufacture_date: batch.manufacture_date
@@ -712,13 +716,16 @@ export class ProductsService {
                 id: true,
                 batch_no: true,
                 qty: true,
+                inbound_qty: true,
+                unit: true,
+                min_stock: true,
                 expiry_date: true,
                 storage: true,
                 alert_days: true,
                 created_at: true,
               },
               orderBy: { created_at: "desc" },
-              take: 1, // Faqat eng so'nggi batch
+              // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
             },
           },
           orderBy: { created_at: "desc" },
@@ -1442,6 +1449,7 @@ export class ProductsService {
         qty: true,
         inbound_qty: true,
         unit: true,
+        min_stock: true,
       },
     });
 
@@ -1458,6 +1466,7 @@ export class ProductsService {
       "입고 수량": batch.qty, // ✅ Current stock (for display in inbound page)
       inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
       unit: batch.unit ?? null,
+      min_stock: batch.min_stock ?? null, // ✅ Minimum stock from product (immutable)
       created_at: batch.created_at,
       // Raw fields for batch copying (입고 대기 page uchun)
       expiry_months: batch.expiry_months,
@@ -1497,7 +1506,7 @@ export class ProductsService {
         // Avtomatik batch_no yaratish
         const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
-        // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price uchun)
+        // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price, min_stock uchun)
         const product = await tx.product.findFirst({
           where: { id: productId, tenant_id: tenantId },
           select: {
@@ -1507,10 +1516,23 @@ export class ProductsService {
             expiry_unit: true,
             alert_days: true,
             sale_price: true,
+            min_stock: true,
           },
         });
 
+        if (!product) {
+          throw new NotFoundException("Product not found");
+        }
+
         // Batch yaratish
+        // ✅ min_stock: Product'dan olish (0 yoki null bo'lsa ham, product'ning qiymatini saqlash)
+        // product.min_stock qiymatini to'g'ridan-to'g'ri ishlatish (0 ham to'g'ri qiymat)
+        const productMinStock = product.min_stock;
+
+        // Debug: Product'ning min_stock'ini log qilish
+        console.log(
+          `[createBatchForProduct] Product ID: ${productId}, Product min_stock: ${productMinStock}, type: ${typeof productMinStock}`
+        );
         const batch = await tx.batch.create({
           data: {
             tenant_id: tenantId,
@@ -1519,6 +1541,7 @@ export class ProductsService {
             qty: dto.qty,
             inbound_qty: dto.qty, // ✅ Original qty from inbound (immutable)
             unit: (product as any)?.unit ?? null, // ✅ Copy unit from product
+            min_stock: productMinStock, // ✅ Copy min_stock from product (immutable, can be 0, null, or any number)
             // ✅ Expiry info: DTO'dan yoki Product level'dan (fallback)
             // !== undefined ishlatish kerak, chunki 0 yoki null ham to'g'ri qiymatlar
             expiry_months:
@@ -1543,6 +1566,11 @@ export class ProductsService {
             alert_days: dto.alert_days ?? (product as any)?.alert_days ?? null,
           } as any,
         });
+
+        // Debug: Yaratilgan batch'ning min_stock'ini log qilish
+        console.log(
+          `[createBatchForProduct] Created batch ID: ${batch.id}, batch min_stock: ${batch.min_stock}, Product min_stock was: ${productMinStock}`
+        );
 
         // ✅ Check if this is the FIRST batch for this product
         const existingBatches = await tx.batch.count({
