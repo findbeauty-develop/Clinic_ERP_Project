@@ -19,7 +19,6 @@ import { ConfigService } from "@nestjs/config";
 export class OutboundService {
   // ✅ Replaced Map with CacheManager
   private productsForOutboundCache: CacheManager<any[]>;
-  private outboundHistoryCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -35,13 +34,6 @@ export class OutboundService {
       ttl: 30000, // 30 seconds
       cleanupInterval: 60000,
       name: "OutboundService:Products",
-    });
-
-    this.outboundHistoryCache = new CacheManager({
-      maxSize: 100,
-      ttl: 5000, // ✅ 5 seconds (qisqartirildi - tezroq yangilanish uchun)
-      cleanupInterval: 60000,
-      name: "OutboundService:History",
     });
   }
 
@@ -226,276 +218,6 @@ export class OutboundService {
     }
   }
 
-  private invalidateOutboundHistoryCache(tenantId: string) {
-    // Use deletePattern for efficient cache invalidation
-    const deleted = this.outboundHistoryCache.deletePattern(
-      `^outbound-history:${tenantId}:`
-    );
-    console.log(
-      `[OutboundService] Invalidated ${deleted} history cache entries for tenant: ${tenantId}`
-    );
-  }
-
-  private async refreshOutboundHistoryCacheInBackground(
-    tenantId: string,
-    filters?: {
-      startDate?: Date;
-      endDate?: Date;
-      productId?: string;
-      packageId?: string;
-      managerName?: string;
-      outboundType?: string;
-      search?: string;
-      page?: number;
-      limit?: number;
-    }
-  ): Promise<void> {
-    try {
-      const page = filters?.page ?? 1;
-      const limit = filters?.limit ?? 20;
-      const skip = (page - 1) * limit;
-
-      // Build where clause
-      const where = this.buildOutboundWhereClause(tenantId, filters, false); // Outbound uchun
-      const packageOutboundWhere = this.buildOutboundWhereClause(
-        tenantId,
-        filters,
-        true // ✅ PackageOutbound uchun - patient_name ni exclude qiladi
-      );
-
-      // Parallel fetching
-      const [outbounds, packageOutbounds, outboundTotal, packageOutboundTotal] =
-        await Promise.all([
-          this.prisma.executeWithRetry(async () => {
-            return await (this.prisma as any).outbound.findMany({
-              where,
-              select: {
-                id: true,
-                tenant_id: true,
-                product_id: true,
-                batch_id: true,
-                batch_no: true,
-                outbound_qty: true,
-                outbound_date: true,
-                manager_name: true,
-                patient_name: true,
-                chart_number: true,
-                memo: true,
-                created_at: true,
-                updated_at: true,
-                is_damaged: true,
-                is_defective: true,
-                outbound_type: true,
-                package_id: true,
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    brand: true,
-                    category: true,
-                    sale_price: true,
-                    unit: true,
-                  },
-                },
-                batch: {
-                  select: {
-                    id: true,
-                    batch_no: true,
-                    expiry_date: true,
-                  },
-                },
-              },
-              orderBy: { outbound_date: "desc" },
-              skip,
-              take: limit,
-            });
-          }),
-          this.prisma.executeWithRetry(async () => {
-            return await (this.prisma as any).packageOutbound.findMany({
-              where: packageOutboundWhere,
-              select: {
-                id: true,
-                tenant_id: true,
-                package_id: true,
-                package_name: true,
-                product_id: true,
-                batch_id: true,
-                package_qty: true,
-                outbound_date: true,
-                manager_name: true,
-                chart_number: true,
-                memo: true,
-                created_at: true,
-                is_damaged: true,
-                is_defective: true,
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    brand: true,
-                    category: true,
-                    sale_price: true,
-                    unit: true,
-                  },
-                },
-                batch: {
-                  select: {
-                    id: true,
-                    batch_no: true,
-                    expiry_date: true,
-                  },
-                },
-                package: {
-                  select: {
-                    id: true,
-                    name: true,
-                    items: {
-                      select: {
-                        product_id: true,
-                        quantity: true,
-                        product: {
-                          select: {
-                            id: true,
-                            name: true,
-                            brand: true,
-                            unit: true,
-                            sale_price: true,
-                          },
-                        },
-                      },
-                      orderBy: {
-                        order: "asc",
-                      },
-                    },
-                  },
-                },
-              },
-              orderBy: { outbound_date: "desc" },
-              skip,
-              take: limit,
-            });
-          }),
-          this.prisma.executeWithRetry(async () => {
-            return await (this.prisma as any).outbound.count({ where });
-          }),
-          this.prisma.executeWithRetry(async () => {
-            return await (this.prisma as any).packageOutbound.count({
-              where: packageOutboundWhere,
-            });
-          }),
-        ]);
-
-      // Combine and sort
-      const allOutbounds = [
-        ...outbounds.map((outbound: any) => ({
-          ...outbound,
-          _type: "outbound" as const,
-        })),
-        ...packageOutbounds.map((pkgOutbound: any) => ({
-          ...pkgOutbound,
-          _type: "packageOutbound" as const,
-        })),
-      ]
-        .sort((a, b) => {
-          const dateA = new Date(a.outbound_date).getTime();
-          const dateB = new Date(b.outbound_date).getTime();
-          return dateB - dateA;
-        })
-        .slice(0, limit);
-
-      const total = outboundTotal + packageOutboundTotal;
-
-      // Format response
-      const result = {
-        items: allOutbounds.map((item: any) => {
-          if (item._type === "packageOutbound") {
-            const packageItems = item.package?.items || [];
-            return {
-              id: item.id,
-              outboundType: "패키지",
-              outboundDate: item.outbound_date,
-              outboundQty: item.package_qty,
-              managerName: item.manager_name,
-              patientName: null,
-              chartNumber: item.chart_number,
-              memo: item.memo,
-              isDamaged: item.is_damaged,
-              isDefective: item.is_defective,
-              packageId: item.package_id,
-              packageName: item.package_name || item.package?.name || null,
-              packageQty: item.package_qty,
-              packageItems: packageItems.map((pkgItem: any) => ({
-                productId: pkgItem.product_id || pkgItem.product?.id,
-                productName: pkgItem.product?.name || "",
-                brand: pkgItem.product?.brand || "",
-                unit: pkgItem.product?.unit || "",
-                quantity: pkgItem.quantity || 1,
-                salePrice: pkgItem.product?.sale_price || 0,
-              })),
-              product: {
-                id: item.product?.id,
-                name: item.product?.name,
-                brand: item.product?.brand,
-                category: item.product?.category,
-                salePrice: item.product?.sale_price,
-                unit: item.product?.unit,
-              },
-              batch: {
-                id: item.batch?.id,
-                batchNo: item.batch?.batch_no,
-                expiryDate: item.batch?.expiry_date,
-              },
-              createdAt: item.created_at,
-              updatedAt: null,
-            };
-          } else {
-            return {
-              id: item.id,
-              outboundType: item.outbound_type || "제품",
-              outboundDate: item.outbound_date,
-              outboundQty: item.outbound_qty,
-              managerName: item.manager_name,
-              patientName: item.patient_name,
-              chartNumber: item.chart_number,
-              memo: item.memo,
-              isDamaged: item.is_damaged,
-              isDefective: item.is_defective,
-              packageId: item.package_id,
-              packageName: item.package_id ? item.package?.name || null : null,
-              product: {
-                id: item.product?.id,
-                name: item.product?.name,
-                brand: item.product?.brand,
-                category: item.product?.category,
-                salePrice: item.product?.sale_price,
-                unit: item.product?.unit,
-              },
-              batch: {
-                id: item.batch?.id,
-                batchNo: item.batch?.batch_no,
-                expiryDate: item.batch?.expiry_date,
-              },
-              createdAt: item.created_at,
-              updatedAt: item.updated_at,
-            };
-          }
-        }),
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      };
-
-      // Cache'ga saqlash
-      const cacheKey = `outbound-history:${tenantId}:${JSON.stringify(
-        filters || {}
-      )}`;
-      this.outboundHistoryCache.set(cacheKey, result);
-    } catch (error) {
-      // Error handling (user'ga ko'rsatilmaydi)
-    }
-  }
-
   /**
    * Bitta 출고 yaratish
    */
@@ -655,7 +377,6 @@ export class OutboundService {
         }
         // Invalidate caches after successful outbound creation
         this.invalidateProductsCache(tenantId);
-        this.invalidateOutboundHistoryCache(tenantId);
         return outbound;
       });
   }
@@ -897,7 +618,6 @@ export class OutboundService {
         // Invalidate caches after successful bulk outbound creation
         if (result.success) {
           this.invalidateProductsCache(tenantId);
-          this.invalidateOutboundHistoryCache(tenantId);
         }
         return result;
       });
@@ -1054,6 +774,7 @@ export class OutboundService {
       search?: string; // 검색어 (제품명, 출고자 등)
       page?: number;
       limit?: number;
+      capacity_unit?: string;
     }
   ) {
     if (!tenantId) {
@@ -1063,22 +784,6 @@ export class OutboundService {
     const page = filters?.page ?? 1;
     const limit = filters?.limit ?? 20;
     const skip = (page - 1) * limit;
-
-    // Check cache first (only if no filters or simple filters)
-    const cacheKey = `outbound-history:${tenantId}:${JSON.stringify(
-      filters || {}
-    )}`;
-    const cachedResult = this.outboundHistoryCache.getWithStaleCheck(cacheKey);
-
-    if (cachedResult) {
-      if (cachedResult.isStale) {
-        // Stale cache - background'da yangilash
-        this.refreshOutboundHistoryCacheInBackground(tenantId, filters).catch(
-          () => {}
-        );
-      }
-      return cachedResult.data; // Return cached data (fresh or stale)
-    }
 
     // Build where clause once (reused for all queries)
     const where = this.buildOutboundWhereClause(tenantId, filters, false); // Outbound uchun
@@ -1123,6 +828,7 @@ export class OutboundService {
                   category: true,
                   sale_price: true,
                   unit: true,
+                  capacity_unit: true,
                 },
               },
               batch: {
@@ -1165,6 +871,7 @@ export class OutboundService {
                   category: true,
                   sale_price: true,
                   unit: true,
+                  capacity_unit: true,
                 },
               },
               batch: {
@@ -1188,6 +895,7 @@ export class OutboundService {
                           name: true,
                           brand: true,
                           unit: true,
+                          capacity_unit: true,
                           sale_price: true,
                         },
                       },
@@ -1270,6 +978,7 @@ export class OutboundService {
               brand: pkgItem.product?.brand || "",
               unit: pkgItem.product?.unit || "",
               quantity: pkgItem.quantity || 1,
+              capacity_unit: pkgItem.product?.capacity_unit || "",
               salePrice: pkgItem.product?.sale_price || 0,
             })),
             product: {
@@ -1279,6 +988,7 @@ export class OutboundService {
               category: item.product?.category,
               salePrice: item.product?.sale_price,
               unit: item.product?.unit,
+              capacity_unit: item.product?.capacity_unit || "",
             },
             batch: {
               id: item.batch?.id,
@@ -1310,6 +1020,7 @@ export class OutboundService {
               category: item.product?.category,
               salePrice: item.product?.sale_price,
               unit: item.product?.unit,
+              capacity_unit: item.product?.capacity_unit || "",
             },
             batch: {
               id: item.batch?.id,
@@ -1326,12 +1037,6 @@ export class OutboundService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
-
-    // Cache'ga saqlash
-    this.outboundHistoryCache.set(cacheKey, {
-      data: result,
-      timestamp: Date.now(),
-    });
 
     return result;
   }
@@ -1480,6 +1185,22 @@ export class OutboundService {
       };
     }
 
+    // Product ma'lumotlarini olish (capacity_per_product va usage_capacity uchun)
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        tenant_id: tenantId,
+      },
+      select: {
+        id: true,
+        usage_capacity: true,
+        capacity_per_product: true,
+      },
+    });
+    const productMap = new Map<string, any>(
+      products.map((p: any) => [p.id, p])
+    );
+
     return this.prisma
       .$transaction(
         async (tx: any) => {
@@ -1513,18 +1234,60 @@ export class OutboundService {
               },
             });
 
-            // Batch qty ni kamaytirish
+            // 사용 단위 mantiqi: used_count yangilash va bo'sh box aniqlash
+            const product = productMap.get(item.productId);
+            let batchQtyDecrement = item.outboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
+
+            if (
+              product &&
+              product.usage_capacity &&
+              product.usage_capacity > 0 &&
+              product.capacity_per_product &&
+              product.capacity_per_product > 0
+            ) {
+              // Batch'ning hozirgi used_count'ini olish (yangilanishdan oldin)
+              const currentBatch = await tx.batch.findUnique({
+                where: { id: item.batchId },
+                select: { used_count: true, qty: true },
+              });
+
+              const currentUsedCount = currentBatch?.used_count || 0;
+
+              // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
+              const usageIncrement = product.usage_capacity * item.outboundQty;
+              const newUsedCount = currentUsedCount + usageIncrement;
+
+              // Bo'sh box aniqlash: yangilanishdan oldin va keyin
+              const previousEmptyBoxes = Math.floor(
+                currentUsedCount / product.capacity_per_product
+              );
+              const newEmptyBoxes = Math.floor(
+                newUsedCount / product.capacity_per_product
+              );
+              const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
+
+              // ✅ Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
+              batchQtyDecrement = emptyBoxesToCreate;
+
+              // used_count ni yangilash
+              await tx.batch.update({
+                where: { id: item.batchId },
+                data: { used_count: newUsedCount },
+              });
+            }
+
+            // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
             await tx.batch.update({
               where: { id: item.batchId },
-              data: { qty: { decrement: item.outboundQty } },
+              data: { qty: { decrement: batchQtyDecrement } },
             });
 
-            // Product stock yangilash uchun yig'ish
+            // Product stock yangilash uchun yig'ish (to'liq ishlatilgan box'lar yoki default)
             const currentDecrement =
               productStockUpdates.get(item.productId) || 0;
             productStockUpdates.set(
               item.productId,
-              currentDecrement + item.outboundQty
+              currentDecrement + batchQtyDecrement
             );
 
             createdOutbounds.push(outbound);
@@ -1565,7 +1328,6 @@ export class OutboundService {
         // Invalidate caches after successful package outbound creation
         if (result.success) {
           this.invalidateProductsCache(tenantId);
-          this.invalidateOutboundHistoryCache(tenantId);
         }
         return result;
       });
@@ -1794,20 +1556,62 @@ export class OutboundService {
 
                 if (!batch) continue;
 
-                // Stock yangilash - Batch'ning qty'sini kamaytirish
-                const currentQty = batch.qty || 0;
-                const newQty = Math.max(0, currentQty - item.outboundQty);
-                await (tx as any).batch.update({
+                // 사용 단위 mantiqi: used_count yangilash va bo'sh box aniqlash
+                const product = productMap.get(item.productId);
+                let batchQtyDecrement = item.outboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
+
+                if (
+                  product &&
+                  product.usage_capacity &&
+                  product.usage_capacity > 0 &&
+                  product.capacity_per_product &&
+                  product.capacity_per_product > 0
+                ) {
+                  // Batch'ning hozirgi used_count'ini olish (yangilanishdan oldin)
+                  const currentBatch = await tx.batch.findUnique({
+                    where: { id: item.batchId },
+                    select: { used_count: true, qty: true },
+                  });
+
+                  const currentUsedCount = currentBatch?.used_count || 0;
+
+                  // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
+                  // Masalan: outboundQty = 10 (2 package * 5 product), usage_capacity = 1 → usageIncrement = 10
+                  const usageIncrement =
+                    product.usage_capacity * item.outboundQty;
+                  const newUsedCount = currentUsedCount + usageIncrement;
+
+                  // Bo'sh box aniqlash: yangilanishdan oldin va keyin
+                  const previousEmptyBoxes = Math.floor(
+                    currentUsedCount / product.capacity_per_product
+                  );
+                  const newEmptyBoxes = Math.floor(
+                    newUsedCount / product.capacity_per_product
+                  );
+                  const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
+
+                  // ✅ Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
+                  batchQtyDecrement = emptyBoxesToCreate;
+
+                  // used_count ni yangilash
+                  await tx.batch.update({
+                    where: { id: item.batchId },
+                    data: { used_count: newUsedCount },
+                  });
+                }
+
+                // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
+                await tx.batch.update({
                   where: { id: batch.id },
-                  data: { qty: newQty },
+                  data: { qty: { decrement: batchQtyDecrement } },
                 });
 
-                // Product stock yangilash
-                const productStock =
+                // Product stock yangilash uchun yig'ish (to'liq ishlatilgan box'lar yoki default)
+                const currentDecrement =
                   productStockUpdates.get(item.productId) || 0;
                 productStockUpdates.set(
                   item.productId,
-                  productStock - item.outboundQty
+                  currentDecrement + batchQtyDecrement
                 );
               }
             } catch (error: any) {
@@ -1992,9 +1796,8 @@ export class OutboundService {
           });
         }
 
-        // ✅ Cache invalidation - outbound history yangilanishi uchun
+        // ✅ Cache invalidation
         this.invalidateProductsCache(tenantId);
-        this.invalidateOutboundHistoryCache(tenantId);
 
         return {
           success: true,

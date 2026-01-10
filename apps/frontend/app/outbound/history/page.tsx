@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiDelete, clearCache } from "../../../lib/api";
+import { apiGet, apiDelete } from "../../../lib/api";
 
 type OutboundHistoryItem = {
   id: string;
@@ -19,6 +19,7 @@ type OutboundHistoryItem = {
     productName: string;
     brand: string;
     unit: string;
+    capacity_unit: string;
     quantity: number;
     salePrice: number;
   }[]; // Only for package outbounds
@@ -33,6 +34,7 @@ type OutboundHistoryItem = {
     category: string;
     salePrice: number;
     unit: string;
+    capacity_unit: string;
   };
   batch?: {
     id: string;
@@ -85,19 +87,13 @@ export default function OutboundHistoryPage() {
 
       const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
 
-      // ✅ Cache busting - force refresh with no-cache headers
       const data = await apiGet<{
         items: OutboundHistoryItem[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
-      }>(url, {
-        headers: {
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
-      });
+      }>(url);
 
       // ✅ Filter items based on filter states
       let filteredItems = data.items || [];
@@ -155,31 +151,17 @@ export default function OutboundHistoryPage() {
     fetchHistory();
   }, [fetchHistory]);
 
-  // ✅ Listen for outbound creation events to refresh cache
+  // ✅ Listen for outbound creation events to refresh
   useEffect(() => {
     const handleOutboundCreated = () => {
-      // Clear cache and refresh
-      clearCache("/outbound/history");
       fetchHistory();
     };
 
     // Listen for custom events
     window.addEventListener("outboundCreated", handleOutboundCreated);
 
-    // Also listen for page visibility change (when user comes back to tab)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        // Refresh when page becomes visible
-        clearCache("/outbound/history");
-        fetchHistory();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
       window.removeEventListener("outboundCreated", handleOutboundCreated);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [fetchHistory]);
 
@@ -646,9 +628,9 @@ export default function OutboundHistoryPage() {
                                 <span className="font-bold text-base text-slate-900 dark:text-white">
                                   -{item.outboundQty}
                                 </span>
-                                {item.product.unit && (
+                                {item.product.capacity_unit && (
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
-                                    {item.product.unit}
+                                    {item.product.capacity_unit}
                                   </span>
                                 )}
                               </div>
@@ -719,7 +701,7 @@ export default function OutboundHistoryPage() {
                                             </span>
                                             {pkgItem.unit && (
                                               <span className="text-xs text-slate-500 dark:text-slate-400">
-                                                {pkgItem.unit}
+                                                {pkgItem.capacity_unit}
                                               </span>
                                             )}
                                           </div>

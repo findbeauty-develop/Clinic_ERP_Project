@@ -69,6 +69,7 @@ export class PackageService {
           productName: item.product?.name || "",
           brand: item.product?.brand || "",
           unit: item.product?.unit || "",
+          capacity_unit: item.product?.capacity_unit || "", // ✅ capacity_unit qo'shildi
           quantity: item.quantity,
           order: item.order,
         })),
@@ -140,6 +141,7 @@ export class PackageService {
         productName: item.product?.name || "",
         brand: item.product?.brand || "",
         unit: item.product?.unit || "",
+        capacity_unit: item.product?.capacity_unit || "", // ✅ capacity_unit qo'shildi
         quantity: item.quantity,
         order: item.order,
       })),
@@ -614,6 +616,7 @@ export class PackageService {
         productName: product?.name || "",
         brand: product?.brand || "",
         unit: product?.unit || "",
+        capacity_unit: product?.capacity_unit || "",
         packageQuantity: item.quantity, // 패키지당 수량
         currentStock: product?.current_stock || 0,
         minStock: product?.min_stock || 0,

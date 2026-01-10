@@ -18,6 +18,7 @@ type Batch = {
   batch_no: string;
   qty: number;
   inbound_qty?: number | null;
+  used_count?: number | null; // ✅ 사용 단위 mantiqi uchun kerak
   min_stock?: number | null;
   expiry_date?: string | null;
   storage?: string | null;
@@ -52,6 +53,7 @@ type ScheduledItem = {
   batchNo: string;
   quantity: number;
   unit: string;
+  capacity_unit?: string; // ✅ capacity_unit qo'shildi
   packageId?: string; // 패키지 출고인 경우
   packageName?: string; // 패키지명
   isPackageItem?: boolean; // 패키지 구성품인지 여부
@@ -67,6 +69,7 @@ type PackageForOutbound = {
     productName: string;
     brand: string;
     unit: string;
+    capacity_unit: string;
     quantity: number;
   }[];
 };
@@ -76,6 +79,7 @@ type PackageItemForOutbound = {
   productName: string;
   brand: string;
   unit: string;
+  capacity_unit?: string; // ✅ capacity_unit qo'shildi
   packageQuantity: number; // 패키지당 수량
   currentStock: number;
   minStock: number;
@@ -569,6 +573,10 @@ function OutboundPageContent() {
                     batchId: availableBatch.id,
                     batchNo: availableBatch.batchNo,
                     quantity: itemWithBatch.packageQuantity, // Use package quantity from API
+                    capacity_unit:
+                      itemWithBatch.capacity_unit ||
+                      scheduledItem.capacity_unit ||
+                      undefined,
                   };
                 } else {
                   // No available batch - mark for removal
@@ -632,6 +640,7 @@ function OutboundPageContent() {
         batchNo: "로딩중...", // Will be updated when batch info loads
         quantity: item.quantity,
         unit: item.unit,
+        capacity_unit: item.capacity_unit || undefined, // ✅ capacity_unit qo'shildi
         packageId: pkg.id,
         packageName: pkg.name,
         isPackageItem: true,
@@ -684,6 +693,7 @@ function OutboundPageContent() {
                 batchNo: availableBatch.batchNo,
                 quantity: itemWithBatch.packageQuantity,
                 unit: itemWithBatch.unit,
+                capacity_unit: itemWithBatch.capacity_unit || undefined, // ✅ capacity_unit qo'shildi
                 packageId: pkg.id,
                 packageName: pkg.name,
                 isPackageItem: true,
@@ -724,6 +734,7 @@ function OutboundPageContent() {
                   batchNo: availableBatch.batchNo,
                   quantity: itemWithBatch.packageQuantity,
                   unit: itemWithBatch.unit,
+                  capacity_unit: itemWithBatch.capacity_unit || undefined, // ✅ capacity_unit qo'shildi
                   packageId: pkg.id,
                   packageName: pkg.name,
                   isPackageItem: true,
@@ -766,7 +777,8 @@ function OutboundPageContent() {
     productName: string,
     unit: string,
     newQuantity: number,
-    maxQuantity?: number
+    maxQuantity?: number,
+    capacity_unit?: string // ✅ capacity_unit parametri qo'shildi
   ) => {
     // 재고 부족 체크: 최대 재고량을 초과할 수 없음
     if (maxQuantity !== undefined && newQuantity > maxQuantity) {
@@ -805,6 +817,7 @@ function OutboundPageContent() {
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQuantity,
+          capacity_unit: capacity_unit || updated[existingIndex].capacity_unit,
         };
         return updated;
       }
@@ -818,6 +831,7 @@ function OutboundPageContent() {
           batchNo,
           quantity: newQuantity,
           unit,
+          capacity_unit: capacity_unit || undefined, // ✅ capacity_unit qo'shildi
           isPackageItem: false, // ✅ Product item (not package)
         },
       ];
@@ -890,7 +904,16 @@ function OutboundPageContent() {
         if (!product) return false;
         const batch = product.batches?.find((b) => b.id === item.batchId);
         if (!batch) return false;
-        return item.quantity <= batch.qty;
+        // Calculate available quantity: batch.inbound_qty * capacity_per_product or fallback to batch.qty
+        const availableQuantity =
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0
+            ? batch.inbound_qty * product.capacityPerProduct
+            : batch.qty;
+        return item.quantity <= availableQuantity;
       });
 
       if (!stockCheck) {
@@ -1772,9 +1795,14 @@ function OutboundPageContent() {
                                     {pkg.items && pkg.items.length > 0 && (
                                       <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
                                         {pkg.items.map((item, idx) => {
+                                          // capacity_unit mavjud bo'lsa, uni ko'rsatish
+                                          const capacityUnitStr =
+                                            item.capacity_unit
+                                              ? item.capacity_unit
+                                              : "";
                                           const quantityStr =
                                             item.quantity > 0
-                                              ? `${item.quantity}${item.unit || ""}`
+                                              ? `${item.quantity}${capacityUnitStr ? ` ${capacityUnitStr}` : ""}`
                                               : "";
                                           const itemText = quantityStr
                                             ? `${item.productName}-${quantityStr}`
@@ -2240,7 +2268,7 @@ function OutboundPageContent() {
                                       : ""}
                                     {item.productName} {item.batchNo}{" "}
                                     {item.quantity}
-                                    {item.unit || "개"}
+                                    {item.capacity_unit || "개"}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -2372,7 +2400,8 @@ function OutboundPageContent() {
                                     {} as Record<string, ScheduledItem>
                                   );
                                   const firstItem = group.items[0];
-                                  const unit = firstItem.unit || "세트";
+                                  const capacity_unit =
+                                    firstItem.capacity_unit || "세트";
 
                                   return (
                                     <div
@@ -2391,7 +2420,7 @@ function OutboundPageContent() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className="text-sm text-slate-600 dark:text-slate-400">
-                                            {packageCount} {unit}
+                                            {packageCount} {capacity_unit}
                                           </span>
                                           <button
                                             onClick={(e) => {
@@ -2448,7 +2477,7 @@ function OutboundPageContent() {
                                                 </div>
                                                 <span className="text-sm text-slate-600 dark:text-slate-400">
                                                   {item.quantity * packageCount}
-                                                  {item.unit}
+                                                  {item.capacity_unit}
                                                 </span>
                                               </div>
                                             )
@@ -2487,7 +2516,7 @@ function OutboundPageContent() {
                                       >
                                         {item.productName} {item.batchNo}{" "}
                                         {item.quantity} {"   "}
-                                        {item.unit || "개"}
+                                        {item.capacity_unit || "개"}
                                         {isFailed && (
                                           <span className="ml-2 text-xs text-red-600 dark:text-red-400 ">
                                             (실패)
@@ -2503,7 +2532,9 @@ function OutboundPageContent() {
                                             item.batchNo,
                                             item.productName,
                                             item.unit || "개",
-                                            item.quantity - 1
+                                            item.quantity - 1,
+                                            undefined,
+                                            item.capacity_unit
                                           );
                                         }}
                                         className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -2555,7 +2586,7 @@ function OutboundPageContent() {
                                 >
                                   {item.productName} {item.batchNo}{" "}
                                   {item.quantity}
-                                  {item.unit || "개"}
+                                  {item.capacity_unit || "개"}
                                   {isFailed && (
                                     <span className="ml-2 text-xs text-red-600 dark:text-red-400">
                                       (실패)
@@ -2570,6 +2601,7 @@ function OutboundPageContent() {
                                       item.batchId,
                                       item.batchNo,
                                       item.productName,
+
                                       item.unit || "개",
                                       item.quantity - 1
                                     );
@@ -2630,7 +2662,19 @@ function OutboundPageContent() {
                           (b) => b.id === item.batchId
                         );
                         if (!batch) return true;
-                        return item.quantity > batch.qty || item.quantity <= 0;
+                        // Calculate available quantity: batch.inbound_qty * capacity_per_product or fallback to batch.qty
+                        const availableQuantity =
+                          batch.inbound_qty !== null &&
+                          batch.inbound_qty !== undefined &&
+                          product.capacityPerProduct !== null &&
+                          product.capacityPerProduct !== undefined &&
+                          product.capacityPerProduct > 0
+                            ? batch.inbound_qty * product.capacityPerProduct
+                            : batch.qty;
+                        return (
+                          item.quantity > availableQuantity ||
+                          item.quantity <= 0
+                        );
                       })
                     }
                     className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2723,16 +2767,41 @@ const ProductCard = memo(function ProductCard({
     productName: string,
     unit: string,
     quantity: number,
-    maxQuantity?: number
+    maxQuantity?: number,
+    capacity_unit?: string // ✅ capacity_unit parametri qo'shildi
   ) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
-  // Calculate total stock (sum of all batches with qty > 0)
+  // Helper function to calculate available quantity for a batch
+  const calculateAvailableQuantity = (batch: Batch): number => {
+    // If inbound_qty, capacity_per_product, and usage_capacity exist, use them
+    if (
+      batch.inbound_qty !== null &&
+      batch.inbound_qty !== undefined &&
+      product.capacityPerProduct !== null &&
+      product.capacityPerProduct !== undefined &&
+      product.capacityPerProduct > 0 &&
+      product.usageCapacity !== null &&
+      product.usageCapacity !== undefined &&
+      product.usageCapacity > 0
+    ) {
+      // Jami miqdor: inbound_qty * capacity_per_product
+      const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+      // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
+      const usedCount = batch.used_count || 0;
+      // Qolgan miqdor: totalQuantity - usedCount
+      return Math.max(0, totalQuantity - usedCount);
+    }
+    // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
+    return batch.qty;
+  };
+
+  // Calculate total stock (sum of all batches' available quantities)
   const totalStock =
     product.batches
       ?.filter((batch) => batch.qty > 0)
-      .reduce((sum, batch) => sum + batch.qty, 0) ?? 0;
+      .reduce((sum, batch) => sum + calculateAvailableQuantity(batch), 0) ?? 0;
 
   // Filter batches (only qty > 0) and sort (qty ascending, then FEFO)
   const availableBatches =
@@ -2851,6 +2920,9 @@ const ProductCard = memo(function ProductCard({
               );
               const quantity = scheduledItem?.quantity || 0;
 
+              // Calculate available quantity for this batch
+              const availableQuantity = calculateAvailableQuantity(batch);
+
               // Format expiry date
               const expiryDateStr = batch.expiry_date
                 ? new Date(batch.expiry_date)
@@ -2903,15 +2975,25 @@ const ProductCard = memo(function ProductCard({
                             : ""
                         }
                       >
-                        재고: {batch.qty.toString().padStart(2, "0")}{" "}
+                        재고:{" "}
+                        {batch.inbound_qty !== null &&
+                        batch.inbound_qty !== undefined &&
+                        product.capacityPerProduct !== null &&
+                        product.capacityPerProduct !== undefined &&
+                        product.capacityPerProduct > 0 &&
+                        product.usageCapacity !== null &&
+                        product.usageCapacity !== undefined &&
+                        product.usageCapacity > 0
+                          ? `${batch.qty.toLocaleString()} [${availableQuantity.toLocaleString()}]`
+                          : batch.inbound_qty !== null &&
+                              batch.inbound_qty !== undefined &&
+                              product.capacityPerProduct !== null &&
+                              product.capacityPerProduct !== undefined &&
+                              product.capacityPerProduct > 0
+                            ? `${batch.qty.toLocaleString()} [${availableQuantity.toLocaleString()}]`
+                            : `${batch.qty.toString().padStart(2, "0")}`}{" "}
                         {displayUnit}
                       </span>
-                      {/* {batch.inbound_qty && (
-                        <span className="text-sky-600 dark:text-sky-400">
-                          입고수량: {batch.inbound_qty.toLocaleString()}{" "}
-                          {displayUnit}
-                        </span>
-                      )} */}
                       <span
                         className={
                           batch.isExpiringSoon
@@ -2936,7 +3018,8 @@ const ProductCard = memo(function ProductCard({
                           product.productName,
                           displayUnit,
                           Math.max(0, quantity - 1),
-                          batch.qty
+                          availableQuantity,
+                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
                         )
                       }
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -2946,7 +3029,7 @@ const ProductCard = memo(function ProductCard({
                     <input
                       type="number"
                       min="0"
-                      max={batch.qty}
+                      max={availableQuantity}
                       value={quantity}
                       onChange={(e) => {
                         const newQty = parseInt(e.target.value) || 0;
@@ -2956,8 +3039,9 @@ const ProductCard = memo(function ProductCard({
                           batch.batch_no,
                           product.productName,
                           displayUnit,
-                          Math.min(newQty, batch.qty),
-                          batch.qty
+                          Math.min(newQty, availableQuantity),
+                          availableQuantity,
+                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
                         );
                       }}
                       className="h-10 w-20 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -2970,8 +3054,9 @@ const ProductCard = memo(function ProductCard({
                           batch.batch_no,
                           product.productName,
                           displayUnit,
-                          Math.min(quantity + 1, batch.qty),
-                          batch.qty
+                          Math.min(quantity + 1, availableQuantity),
+                          availableQuantity,
+                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
                         )
                       }
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -2979,11 +3064,7 @@ const ProductCard = memo(function ProductCard({
                       +
                     </button>
                     <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {(
-                        batchMinStock ??
-                        product.minStock ??
-                        0
-                      ).toLocaleString()}{" "}
+                      {(product.usageCapacity ?? 0).toLocaleString()}{" "}
                       {displayUnit}
                     </span>
                   </div>

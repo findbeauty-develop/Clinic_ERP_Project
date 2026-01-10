@@ -47,6 +47,7 @@ export class PackageRepository {
                 name: true,
                 brand: true,
                 unit: true,
+                capacity_unit: true, // ✅ capacity_unit qo'shildi
                 // Only fetch necessary batch fields for outbound page
                 batches: {
                   select: {
@@ -116,8 +117,30 @@ export class PackageRepository {
         items: {
           include: {
             product: {
-              include: {
-                batches: true,
+              select: {
+                id: true,
+                name: true,
+                brand: true,
+                unit: true,
+                capacity_unit: true, // ✅ capacity_unit qo'shildi
+                current_stock: true,
+                min_stock: true,
+                batches: {
+                  // ✅ batches select ichida (include emas!)
+                  select: {
+                    id: true,
+                    batch_no: true,
+                    qty: true,
+                    expiry_date: true,
+                    expiry_months: true,
+                    expiry_unit: true,
+                    storage: true,
+                    alert_days: true,
+                  },
+                  where: {
+                    qty: { gt: 0 }, // Faqat stock bor batch'lar
+                  },
+                },
               },
             },
           },
@@ -129,7 +152,12 @@ export class PackageRepository {
     });
   }
 
-  update(id: string, data: any, tenantId: string, tx?: Prisma.TransactionClient) {
+  update(
+    id: string,
+    data: any,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     const client = this.getClient(tx) as any;
     return client.package.update({
       where: { id },
@@ -158,7 +186,6 @@ export class PackageRepository {
     });
   }
 
-
   // PackageItem operations
   createItem(data: any, tenantId: string, tx?: Prisma.TransactionClient) {
     const client = this.getClient(tx) as any;
@@ -177,7 +204,11 @@ export class PackageRepository {
     });
   }
 
-  deleteItemsByPackageId(packageId: string, tenantId: string, tx?: Prisma.TransactionClient) {
+  deleteItemsByPackageId(
+    packageId: string,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     const client = this.getClient(tx) as any;
     return client.packageItem.deleteMany({
       where: {
@@ -187,4 +218,3 @@ export class PackageRepository {
     });
   }
 }
-

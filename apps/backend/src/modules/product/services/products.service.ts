@@ -717,6 +717,7 @@ export class ProductsService {
                 batch_no: true,
                 qty: true,
                 inbound_qty: true,
+                used_count: true, // ✅ 사용 단위 mantiqi uchun kerak
                 unit: true,
                 min_stock: true,
                 expiry_date: true,
