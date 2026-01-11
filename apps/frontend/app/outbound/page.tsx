@@ -19,6 +19,7 @@ type Batch = {
   qty: number;
   inbound_qty?: number | null;
   used_count?: number | null; // ✅ 사용 단위 mantiqi uchun kerak
+  available_quantity?: number | null; // ✅ Add available_quantity from database
   min_stock?: number | null;
   expiry_date?: string | null;
   storage?: string | null;
@@ -87,6 +88,9 @@ type PackageItemForOutbound = {
     id: string;
     batchNo: string;
     qty: number;
+    inbound_qty?: number | null; // ✅ Add for availableQuantity calculation
+    used_count?: number | null; // ✅ Add for availableQuantity calculation
+    available_quantity?: number | null; // ✅ Add available_quantity from database
     expiryDate?: string | null;
     storage?: string | null;
     isExpiringSoon?: boolean;
@@ -611,6 +615,9 @@ function OutboundPageContent() {
       });
 
       if (unmappedItems.length > 0) {
+        console.warn(
+          `[Package Outbound] Unmapped items: ${unmappedItems.join(", ")}`
+        );
         alert(
           `다음 제품의 재고가 부족하여 패키지에서 제외되었습니다:\n${unmappedItems.join(", ")}`
         );
@@ -654,10 +661,13 @@ function OutboundPageContent() {
       const cached = packageItemsCacheRef.current.get(pkg.id);
       if (cached && Date.now() - cached.timestamp < PACKAGE_ITEMS_CACHE_TTL) {
         // Use cached data
+
         const itemsWithBatches = cached.data;
+
         updateScheduledItemsWithBatches(itemsWithBatches, pkg);
       } else {
         // Fetch and cache
+
         apiGet<PackageItemForOutbound[]>(`${apiUrl}/packages/${pkg.id}/items`)
           .then((itemsWithBatches) => {
             // Update cache
@@ -668,7 +678,10 @@ function OutboundPageContent() {
             updateScheduledItemsWithBatches(itemsWithBatches, pkg);
           })
           .catch((err) => {
-            console.error("Failed to load package items for outbound", err);
+            console.error(
+              "[Package Outbound] Failed to load package items",
+              err
+            );
           });
       }
     } else if (currentCount > 0 && pkg.items && pkg.items.length > 0) {
@@ -886,9 +899,10 @@ function OutboundPageContent() {
     }
 
     // Check for temporary batch IDs (package items not fully loaded)
-    const packageItems = scheduledItems.filter((item) => item.isPackageItem);
-    const hasTemporaryBatchIds = packageItems.some(
-      (item) => item.batchId.startsWith("temp-") || item.batchNo === "로딩중..."
+    const hasTemporaryBatchIds = scheduledItems.some(
+      (item) =>
+        item.isPackageItem &&
+        (item.batchId.startsWith("temp-") || item.batchNo === "로딩중...")
     );
 
     if (hasTemporaryBatchIds) {
@@ -904,15 +918,34 @@ function OutboundPageContent() {
         if (!product) return false;
         const batch = product.batches?.find((b) => b.id === item.batchId);
         if (!batch) return false;
-        // Calculate available quantity: batch.inbound_qty * capacity_per_product or fallback to batch.qty
-        const availableQuantity =
+        // Calculate available quantity: (inbound_qty * capacity_per_product) - used_count or fallback to batch.qty
+        let availableQuantity = batch.qty; // Default fallback
+        if (
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0 &&
+          product.usageCapacity !== null &&
+          product.usageCapacity !== undefined &&
+          product.usageCapacity > 0
+        ) {
+          // Jami miqdor: inbound_qty * capacity_per_product
+          const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
+          const usedCount = batch.used_count || 0;
+          // Qolgan miqdor: totalQuantity - usedCount
+          availableQuantity = Math.max(0, totalQuantity - usedCount);
+        } else if (
           batch.inbound_qty !== null &&
           batch.inbound_qty !== undefined &&
           product.capacityPerProduct !== null &&
           product.capacityPerProduct !== undefined &&
           product.capacityPerProduct > 0
-            ? batch.inbound_qty * product.capacityPerProduct
-            : batch.qty;
+        ) {
+          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
+          availableQuantity = batch.inbound_qty * product.capacityPerProduct;
+        }
         return item.quantity <= availableQuantity;
       });
 
@@ -922,11 +955,92 @@ function OutboundPageContent() {
       }
     }
 
+    // 재고 부족 체크: Package items uchun (availableQuantity ga qarab)
+    const packageItems = scheduledItems.filter((item) => item.isPackageItem);
+    if (packageItems.length > 0) {
+      const packageStockCheck = packageItems.every((item) => {
+        // Get package items from cache
+        const cached = packageItemsCacheRef.current.get(item.packageId || "");
+        if (!cached || !cached.data) {
+          // If cache is missing, skip validation (will be caught by backend)
+          return true;
+        }
+
+        const itemsWithBatches = cached.data;
+        const itemWithBatch = itemsWithBatches.find(
+          (pkgItem) => pkgItem.productId === item.productId
+        );
+
+        if (!itemWithBatch || !itemWithBatch.batches) {
+          return false;
+        }
+
+        // Find the batch that matches the scheduled item
+        const batch = itemWithBatch.batches.find(
+          (b: any) => b.id === item.batchId
+        );
+
+        if (!batch) {
+          return false;
+        }
+
+        // Get product from products list to get capacity_per_product and usage_capacity
+        const product = products.find((p) => p.id === item.productId);
+        if (!product) {
+          // If product not found in products list, try to get from package item
+          // For now, fallback to batch.qty check
+          const packageCount = packageCounts[item.packageId || ""] || 1;
+          const totalQty = item.quantity * packageCount;
+          return totalQty <= (batch.qty || 0);
+        }
+
+        // Calculate availableQuantity: (inbound_qty * capacity_per_product) - used_count
+        let availableQuantity = batch.qty || 0; // Default fallback
+
+        if (
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0 &&
+          product.usageCapacity !== null &&
+          product.usageCapacity !== undefined &&
+          product.usageCapacity > 0
+        ) {
+          // Jami miqdor: inbound_qty * capacity_per_product
+          const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
+          const usedCount = batch.used_count || 0;
+          // Qolgan miqdor: totalQuantity - usedCount
+          availableQuantity = Math.max(0, totalQuantity - usedCount);
+        } else if (
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0
+        ) {
+          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
+          availableQuantity = batch.inbound_qty * product.capacityPerProduct;
+        }
+
+        // Check if total quantity (item.quantity * packageCount) <= availableQuantity
+        const packageCount = packageCounts[item.packageId || ""] || 1;
+        const totalQty = item.quantity * packageCount;
+
+        return totalQty <= availableQuantity;
+      });
+
+      if (!packageStockCheck) {
+        alert("재고가 부족한 패키지 제품이 있습니다. 수량을 확인해주세요.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       // Product items va Package items'ni ajratish
       const productItems = scheduledItems.filter((item) => !item.isPackageItem);
-      const packageItems = scheduledItems.filter((item) => item.isPackageItem);
 
       // Ikkala rejim uchun ham 출고 qilish
       const promises: Promise<any>[] = [];
@@ -951,20 +1065,28 @@ function OutboundPageContent() {
       // 2. Package items 출고 (agar mavjud bo'lsa)
       if (packageItems.length > 0) {
         // Group items by package and calculate total quantity based on packageCounts
+        // ✅ Muammo: Agar package 2 marta qo'shilgan bo'lsa, scheduledItems'da 2ta item bo'ladi
+        // Lekin itemsByPackage reduce'da bir xil key bo'lsa, ikkinchi item'ni qo'shmaslik kerak
+        // Chunki birinchi item'da allaqachon packageCount ga ko'paytirilgan
         const itemsByPackage = packageItems.reduce(
           (acc, item) => {
             const key = `${item.packageId}-${item.productId}-${item.batchId}`;
             const packageCount = packageCounts[item.packageId || ""] || 1;
 
             if (!acc[key]) {
+              // Birinchi marta: packageCount ga ko'paytirish
+              const finalQuantity = item.quantity * packageCount;
+
               acc[key] = {
                 ...item,
-                quantity: item.quantity * packageCount, // Multiply by package count
+                quantity: finalQuantity, // Multiply by package count
                 packageQty: packageCount, // Store package qty for backend
               };
             } else {
-              // If same item exists, add quantity (shouldn't happen but just in case)
-              acc[key].quantity += item.quantity * packageCount;
+              // ✅ FIX: Agar bir xil item allaqachon mavjud bo'lsa, qo'shmaslik kerak
+              // Chunki birinchi item'da allaqachon packageCount ga ko'paytirilgan
+              // Ikkinchi item duplicate bo'lgani uchun, uni skip qilamiz
+              // Skip this item - don't add it again
             }
             return acc;
           },
@@ -989,6 +1111,7 @@ function OutboundPageContent() {
             packageQty: item.packageQty, // Send package qty to backend
           })),
         };
+
         promises.push(apiPost(`${apiUrl}/outbound/unified`, packagePayload));
       }
 
@@ -2400,8 +2523,7 @@ function OutboundPageContent() {
                                     {} as Record<string, ScheduledItem>
                                   );
                                   const firstItem = group.items[0];
-                                  const capacity_unit =
-                                    firstItem.capacity_unit || "세트";
+                                  const capacity_unit = "세트";
 
                                   return (
                                     <div
@@ -2662,15 +2784,39 @@ function OutboundPageContent() {
                           (b) => b.id === item.batchId
                         );
                         if (!batch) return true;
-                        // Calculate available quantity: batch.inbound_qty * capacity_per_product or fallback to batch.qty
-                        const availableQuantity =
+                        // Calculate available quantity: (inbound_qty * capacity_per_product) - used_count or fallback to batch.qty
+                        let availableQuantity = batch.qty; // Default fallback
+                        if (
+                          batch.inbound_qty !== null &&
+                          batch.inbound_qty !== undefined &&
+                          product.capacityPerProduct !== null &&
+                          product.capacityPerProduct !== undefined &&
+                          product.capacityPerProduct > 0 &&
+                          product.usageCapacity !== null &&
+                          product.usageCapacity !== undefined &&
+                          product.usageCapacity > 0
+                        ) {
+                          // Jami miqdor: inbound_qty * capacity_per_product
+                          const totalQuantity =
+                            batch.inbound_qty * product.capacityPerProduct;
+                          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
+                          const usedCount = batch.used_count || 0;
+                          // Qolgan miqdor: totalQuantity - usedCount
+                          availableQuantity = Math.max(
+                            0,
+                            totalQuantity - usedCount
+                          );
+                        } else if (
                           batch.inbound_qty !== null &&
                           batch.inbound_qty !== undefined &&
                           product.capacityPerProduct !== null &&
                           product.capacityPerProduct !== undefined &&
                           product.capacityPerProduct > 0
-                            ? batch.inbound_qty * product.capacityPerProduct
-                            : batch.qty;
+                        ) {
+                          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
+                          availableQuantity =
+                            batch.inbound_qty * product.capacityPerProduct;
+                        }
                         return (
                           item.quantity > availableQuantity ||
                           item.quantity <= 0
@@ -2775,6 +2921,15 @@ const ProductCard = memo(function ProductCard({
 }) {
   // Helper function to calculate available quantity for a batch
   const calculateAvailableQuantity = (batch: Batch): number => {
+    // ✅ First: Use available_quantity from database if available
+    if (
+      batch.available_quantity !== null &&
+      batch.available_quantity !== undefined
+    ) {
+      return batch.available_quantity;
+    }
+
+    // Fallback: Calculate if available_quantity not in database
     // If inbound_qty, capacity_per_product, and usage_capacity exist, use them
     if (
       batch.inbound_qty !== null &&
@@ -2794,6 +2949,16 @@ const ProductCard = memo(function ProductCard({
       return Math.max(0, totalQuantity - usedCount);
     }
     // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
+    if (
+      batch.inbound_qty !== null &&
+      batch.inbound_qty !== undefined &&
+      product.capacityPerProduct !== null &&
+      product.capacityPerProduct !== undefined &&
+      product.capacityPerProduct > 0
+    ) {
+      // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
+      return batch.inbound_qty * product.capacityPerProduct;
+    }
     return batch.qty;
   };
 

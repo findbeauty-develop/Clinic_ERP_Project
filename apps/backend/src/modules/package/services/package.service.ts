@@ -367,6 +367,9 @@ export class PackageService {
 
     // Invalidate cache after package creation
     this.invalidatePackagesCache(tenantId);
+    // ✅ CRITICAL: Also invalidate ProductsService cache to ensure fresh data
+    // Package yaratilgandan keyin product'lar yangilanadi (package items qo'shiladi)
+    this.productsService.invalidateProductsCache(tenantId);
 
     return result;
   }
@@ -475,6 +478,9 @@ export class PackageService {
       // Invalidate cache after package update
       this.invalidatePackagesCache(tenantId);
       this.invalidatePackageItemsCache(`${id}:${tenantId}`);
+      // ✅ CRITICAL: Also invalidate ProductsService cache to ensure fresh data
+      // Package yangilangandan keyin product'lar yangilanadi
+      this.productsService.invalidateProductsCache(tenantId);
 
       return result;
     });
@@ -572,10 +578,12 @@ export class PackageService {
           isExpiringSoon = daysUntilExpiry <= alertDays && daysUntilExpiry >= 0;
         }
 
-        return {
+        const batchData = {
           id: batch.id,
           batchNo: batch.batch_no,
           qty: batch.qty,
+          inbound_qty: batch.inbound_qty, // ✅ Add for availableQuantity calculation
+          used_count: batch.used_count, // ✅ Add for availableQuantity calculation
           expiryDate: batch.expiry_date,
           expiryMonths: batch.expiry_months,
           expiryUnit: batch.expiry_unit,
@@ -583,6 +591,8 @@ export class PackageService {
           isExpiringSoon,
           daysUntilExpiry,
         };
+
+        return batchData;
       });
 
       // FEFO sort: 유효기간 임박 제품 상단 우선 노출 + 미량 재고 우선
@@ -611,7 +621,7 @@ export class PackageService {
         return (a.batchNo || "").localeCompare(b.batchNo || "");
       });
 
-      return {
+      const itemData = {
         productId: product?.id || "",
         productName: product?.name || "",
         brand: product?.brand || "",
@@ -622,6 +632,8 @@ export class PackageService {
         minStock: product?.min_stock || 0,
         batches,
       };
+
+      return itemData;
     });
 
     // Update cache

@@ -131,6 +131,9 @@ export class PackageRepository {
                     id: true,
                     batch_no: true,
                     qty: true,
+                    inbound_qty: true, // ✅ Add for availableQuantity calculation
+                    used_count: true,  // ✅ Add for availableQuantity calculation
+                    // available_quantity: true, // ✅ Will be available after migration
                     expiry_date: true,
                     expiry_months: true,
                     expiry_unit: true,

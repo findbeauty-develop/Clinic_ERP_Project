@@ -91,6 +91,8 @@ export class ProductsService {
                   batch_no: true,
                   qty: true,
                   inbound_qty: true,
+                  used_count: true, // ✅ Add for availableQuantity calculation
+                  // available_quantity: true, // ✅ Will be available after migration
                   unit: true,
                   min_stock: true,
                   expiry_date: true,
@@ -205,6 +207,14 @@ export class ProductsService {
   private clearProductsCache(tenantId: string): void {
     const key = this.getCacheKey(tenantId);
     this.productsCache.delete(key);
+  }
+
+  /**
+   * Public method to invalidate products cache
+   * Used by other services (e.g., PackageService) to clear cache when products might have changed
+   */
+  public invalidateProductsCache(tenantId: string): void {
+    this.clearProductsCache(tenantId);
   }
 
   /**
@@ -718,6 +728,7 @@ export class ProductsService {
                 qty: true,
                 inbound_qty: true,
                 used_count: true, // ✅ 사용 단위 mantiqi uchun kerak
+                // available_quantity: true, // ✅ Will be available after migration
                 unit: true,
                 min_stock: true,
                 expiry_date: true,
@@ -1449,6 +1460,8 @@ export class ProductsService {
         created_at: true,
         qty: true,
         inbound_qty: true,
+        used_count: true, // ✅ Add for availableQuantity calculation
+        // available_quantity: true, // ✅ Will be available after migration
         unit: true,
         min_stock: true,
       },

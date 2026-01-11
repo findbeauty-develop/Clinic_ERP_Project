@@ -10,6 +10,8 @@ type Batch = {
   batch_no: string;
   qty: number;
   inbound_qty?: number | null;
+  used_count?: number | null; // ✅ Add for availableQuantity calculation
+  available_quantity?: number | null; // ✅ Add available_quantity from database
   min_stock?: number | null;
   expiry_date?: string | null;
   storage?: string | null;
@@ -28,6 +30,8 @@ type Product = {
   minStock?: number;
   usageCapacity?: number | null;
   usageCapacityUnit?: string | null;
+  capacityPerProduct?: number | null; // ✅ Add for availableQuantity calculation
+  capacityUnit?: string | null; // ✅ Add for capacity_unit display
   supplierName?: string | null;
   batches?: Batch[];
 };
@@ -60,16 +64,60 @@ const ProductCard = memo(function ProductCard({
     brand: string,
     unit: string,
     quantity: number,
-    maxQuantity?: number
+    maxQuantity?: number,
+    capacity_unit?: string // ✅ Add capacity_unit parameter
   ) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
-  // Calculate total stock (sum of all batches with qty > 0)
+  // Helper function to calculate available quantity for a batch
+  const calculateAvailableQuantity = (batch: Batch): number => {
+    // ✅ First: Use available_quantity from database if available
+    if (
+      batch.available_quantity !== null &&
+      batch.available_quantity !== undefined
+    ) {
+      return batch.available_quantity;
+    }
+
+    // Fallback: Calculate if available_quantity not in database
+    // If inbound_qty, capacity_per_product, and usage_capacity exist, use them
+    if (
+      batch.inbound_qty !== null &&
+      batch.inbound_qty !== undefined &&
+      product.capacityPerProduct !== null &&
+      product.capacityPerProduct !== undefined &&
+      product.capacityPerProduct > 0 &&
+      product.usageCapacity !== null &&
+      product.usageCapacity !== undefined &&
+      product.usageCapacity > 0
+    ) {
+      // Jami miqdor: inbound_qty * capacity_per_product
+      const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+      // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
+      const usedCount = batch.used_count || 0;
+      // Qolgan miqdor: totalQuantity - usedCount
+      return Math.max(0, totalQuantity - usedCount);
+    }
+    // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
+    if (
+      batch.inbound_qty !== null &&
+      batch.inbound_qty !== undefined &&
+      product.capacityPerProduct !== null &&
+      product.capacityPerProduct !== undefined &&
+      product.capacityPerProduct > 0
+    ) {
+      // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
+      return batch.inbound_qty * product.capacityPerProduct;
+    }
+    return batch.qty;
+  };
+
+  // Calculate total stock (sum of all batches' available quantities)
   const totalStock =
     product.batches
       ?.filter((batch) => batch.qty > 0)
-      .reduce((sum, batch) => sum + batch.qty, 0) ?? 0;
+      .reduce((sum, batch) => sum + calculateAvailableQuantity(batch), 0) ?? 0;
 
   // Filter batches (only qty > 0) and sort (qty ascending, then FEFO)
   const availableBatches =
@@ -236,80 +284,103 @@ const ProductCard = memo(function ProductCard({
                             : ""
                         }
                       >
-                        재고: {batch.qty.toString().padStart(2, "0")}{" "}
+                        재고:{" "}
+                        {batch.inbound_qty !== null &&
+                        batch.inbound_qty !== undefined &&
+                        product.capacityPerProduct !== null &&
+                        product.capacityPerProduct !== undefined &&
+                        product.capacityPerProduct > 0 &&
+                        product.usageCapacity !== null &&
+                        product.usageCapacity !== undefined &&
+                        product.usageCapacity > 0
+                          ? `${batch.qty.toLocaleString()} [${calculateAvailableQuantity(batch).toLocaleString()}]`
+                          : batch.inbound_qty !== null &&
+                              batch.inbound_qty !== undefined &&
+                              product.capacityPerProduct !== null &&
+                              product.capacityPerProduct !== undefined &&
+                              product.capacityPerProduct > 0
+                            ? `${batch.qty.toLocaleString()} [${calculateAvailableQuantity(batch).toLocaleString()}]`
+                            : `${batch.qty.toString().padStart(2, "0")}`}{" "}
                         {displayUnit}
                       </span>
                       {batch.expiry_date && (
-                        <span>유효기간: {expiryDateStr}</span>
+                        <span>유효기한: {expiryDateStr}</span>
                       )}
-                      {batch.storage && <span>보관위치: {batch.storage}</span>}
+                      {batch.storage && <span>위치: {batch.storage}</span>}
                     </div>
                   </div>
 
                   {/* Right Section - Quantity Controls */}
                   <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-                    <button
-                      onClick={() =>
-                        onQuantityChange(
-                          product.id,
-                          batch.id,
-                          batch.batch_no,
-                          product.productName,
-                          product.brand,
-                          displayUnit,
-                          Math.max(0, quantity - 1),
-                          batch.qty
-                        )
-                      }
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      max={batch.qty}
-                      value={quantity}
-                      onChange={(e) => {
-                        const newQty = parseInt(e.target.value) || 0;
-                        onQuantityChange(
-                          product.id,
-                          batch.id,
-                          batch.batch_no,
-                          product.productName,
-                          product.brand,
-                          displayUnit,
-                          Math.min(newQty, batch.qty),
-                          batch.qty
-                        );
-                      }}
-                      className="h-10 w-16 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <button
-                      onClick={() =>
-                        onQuantityChange(
-                          product.id,
-                          batch.id,
-                          batch.batch_no,
-                          product.productName,
-                          product.brand,
-                          displayUnit,
-                          Math.min(quantity + 1, batch.qty),
-                          batch.qty
-                        )
-                      }
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      +
-                    </button>
-                    <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {(
-                        batchMinStock ??
-                        product.minStock ??
-                        0
-                      ).toLocaleString()}{" "}
-                      {displayUnit}
-                    </span>
+                    {(() => {
+                      const availableQuantity =
+                        calculateAvailableQuantity(batch);
+                      return (
+                        <>
+                          <button
+                            onClick={() =>
+                              onQuantityChange(
+                                product.id,
+                                batch.id,
+                                batch.batch_no,
+                                product.productName,
+                                product.brand,
+                                displayUnit,
+                                Math.max(0, quantity - 1),
+                                availableQuantity,
+                                product.capacityUnit || undefined
+                              )
+                            }
+                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={availableQuantity}
+                            value={quantity}
+                            onChange={(e) => {
+                              const newQty = parseInt(e.target.value) || 0;
+                              onQuantityChange(
+                                product.id,
+                                batch.id,
+                                batch.batch_no,
+                                product.productName,
+                                product.brand,
+                                displayUnit,
+                                Math.min(newQty, availableQuantity),
+                                availableQuantity,
+                                product.capacityUnit || undefined
+                              );
+                            }}
+                            className="h-10 w-20 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <button
+                            onClick={() =>
+                              onQuantityChange(
+                                product.id,
+                                batch.id,
+                                batch.batch_no,
+                                product.productName,
+                                product.brand,
+                                displayUnit,
+                                Math.min(quantity + 1, availableQuantity),
+                                availableQuantity,
+                                product.capacityUnit || undefined
+                              )
+                            }
+                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            +
+                          </button>
+                          <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
+                            {(product.usageCapacity ?? 0).toLocaleString()}{" "}
+                            {displayUnit}
+                          </span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -412,13 +483,25 @@ export default function PackageNewPage() {
     }
   }, [packageName, apiUrl]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
       // Fetch all products for package creation
       // Use getAllProducts endpoint which returns products with batches
-      const data = await apiGet<any[]>(`${apiUrl}/products`);
+      // Add cache-busting parameter when force refresh
+      const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
+      const data = await apiGet<any[]>(
+        `${apiUrl}/products${cacheBuster}`,
+        forceRefresh
+          ? {
+              headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                Pragma: "no-cache",
+              },
+            }
+          : undefined
+      );
 
       // Format products with batches
       const formattedProducts = data.map((product: any) => {
@@ -428,6 +511,9 @@ export default function PackageNewPage() {
           batch_no: batch.batch_no || batch.batchNo,
           qty: batch.qty || 0,
           inbound_qty: batch.inbound_qty || batch.inboundQty,
+          used_count: batch.used_count || batch.usedCount || null, // ✅ Add used_count
+          available_quantity:
+            batch.available_quantity || batch.availableQuantity || null, // ✅ Add available_quantity
           min_stock: batch.min_stock || batch.minStock,
           expiry_date: batch.expiry_date || batch.expiryDate,
           storage: batch.storage,
@@ -446,6 +532,9 @@ export default function PackageNewPage() {
           minStock: product.minStock || product.min_stock,
           usageCapacity: product.usageCapacity || product.usage_capacity,
           usageCapacityUnit: product.usageCapacityUnit || product.capacity_unit,
+          capacityPerProduct:
+            product.capacityPerProduct || product.capacity_per_product, // ✅ Add capacityPerProduct
+          capacityUnit: product.capacityUnit || product.capacity_unit, // ✅ Add capacityUnit
           supplierName: product.supplierName || product.supplier_name,
           batches: batches.filter((b) => b.qty > 0), // Only batches with qty > 0
         };
@@ -494,7 +583,8 @@ export default function PackageNewPage() {
     brand: string,
     unit: string,
     newQuantity: number,
-    maxQuantity?: number
+    maxQuantity?: number,
+    capacity_unit?: string // ✅ Add capacity_unit parameter
   ) => {
     // Clamp quantity to max available
     const clampedQuantity = maxQuantity
@@ -558,16 +648,43 @@ export default function PackageNewPage() {
       // Decrease quantity by 1
       const product = products.find((p) => p.id === item.productId);
       const batch = product?.batches?.find((b) => b.id === item.batchId);
-      handleQuantityChange(
-        item.productId,
-        item.batchId,
-        item.batchNo,
-        item.productName,
-        item.brand,
-        item.unit,
-        newQuantity,
-        batch?.qty
-      );
+      if (product && batch) {
+        // Calculate availableQuantity
+        let availableQuantity = batch.qty;
+        if (
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0 &&
+          product.usageCapacity !== null &&
+          product.usageCapacity !== undefined &&
+          product.usageCapacity > 0
+        ) {
+          const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+          const usedCount = batch.used_count || 0;
+          availableQuantity = Math.max(0, totalQuantity - usedCount);
+        } else if (
+          batch.inbound_qty !== null &&
+          batch.inbound_qty !== undefined &&
+          product.capacityPerProduct !== null &&
+          product.capacityPerProduct !== undefined &&
+          product.capacityPerProduct > 0
+        ) {
+          availableQuantity = batch.inbound_qty * product.capacityPerProduct;
+        }
+        handleQuantityChange(
+          item.productId,
+          item.batchId,
+          item.batchNo,
+          item.productName,
+          item.brand,
+          item.unit,
+          newQuantity,
+          availableQuantity,
+          product.capacityUnit || undefined
+        );
+      }
     }
   };
 
@@ -675,10 +792,16 @@ export default function PackageNewPage() {
         // Clear sessionStorage
         sessionStorage.removeItem("editing_package_id");
 
+        // ✅ Force refresh products to get latest data after package update
+        await fetchProducts(true);
+
         // Redirect to outbound page with package outbound tab
         router.push("/outbound?type=package");
       } else {
-        await apiPost(`${apiUrl}/packages`, payload);
+        const createdPackage = await apiPost(`${apiUrl}/packages`, payload);
+
+        // ✅ Force refresh products to get latest data after package creation
+        await fetchProducts(true);
 
         // ✅ Yangi package yaratilganda modal ko'rsatish
         setSubmitting(false); // Submitting'ni to'xtatish
@@ -686,7 +809,6 @@ export default function PackageNewPage() {
         return; // Modal ko'rsatilganda funksiyani to'xtatish
       }
     } catch (err: any) {
-      console.error("Failed to save package", err);
       const errorMessage =
         err.response?.data?.message ||
         err.message ||

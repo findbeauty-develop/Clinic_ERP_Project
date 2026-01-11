@@ -314,7 +314,8 @@ export class OutboundService {
             // Masalan: capacity_per_product = 5, outboundQty = 5, usage_capacity = 1
             // usageIncrement = 5, emptyBoxesToCreate = 1
             // batchQtyDecrement = 1 box (5 emas!)
-            batchQtyDecrement = emptyBoxesToCreate;
+            // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
+            batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
             // used_count ni yangilash
             const updatedBatch = await tx.batch.update({
@@ -515,7 +516,8 @@ export class OutboundService {
               // Masalan: capacity_per_product = 5, outboundQty = 5, usage_capacity = 1
               // usageIncrement = 5, emptyBoxesToCreate = 1
               // batchQtyDecrement = 1 box (5 emas!)
-              batchQtyDecrement = emptyBoxesToCreate;
+              // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
+              batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
               // used_count ni yangilash
               const updatedBatch = await tx.batch.update({
@@ -1118,11 +1120,11 @@ export class OutboundService {
       throw new BadRequestException("출고 수량은 0보다 커야 합니다");
     }
 
-    if (batch.qty < outboundQty) {
-      throw new BadRequestException(
-        `재고가 부족합니다. 현재 재고: ${batch.qty}, 요청 수량: ${outboundQty}`
-      );
-    }
+    // if (batch.qty < outboundQty) {
+    //   throw new BadRequestException(
+    //     `재고가 부족합니다. 현재 재고: ${batch.qty}, 요청 수량: ${outboundQty}`
+    //   );
+    // }
 
     if (batch.expiry_date && batch.expiry_date < new Date()) {
       throw new BadRequestException("유효기간이 만료된 제품입니다");
@@ -1267,7 +1269,8 @@ export class OutboundService {
               const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
 
               // ✅ Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
-              batchQtyDecrement = emptyBoxesToCreate;
+              // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
+              batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
               // used_count ni yangilash
               await tx.batch.update({
@@ -1359,6 +1362,15 @@ export class OutboundService {
         id: { in: batchIds },
         product_id: { in: productIds },
         tenant_id: tenantId,
+      },
+      select: {
+        id: true,
+        product_id: true,
+        batch_no: true,
+        qty: true,
+        inbound_qty: true,
+        used_count: true,
+        // available_quantity: true, // ✅ Will be available after migration
       },
     });
 
@@ -1547,18 +1559,96 @@ export class OutboundService {
 
               createdPackageOutbounds.push(packageOutbound);
 
-              // Har bir product uchun stock yangilash (package items bo'yicha)
+              // ✅ Validation: Check availableQuantity before processing
+
+              const validationErrors: any[] = [];
               for (const item of packageItems) {
+                if (!item.productId || !item.batchId) {
+                  continue;
+                }
+
                 const batch = batches.find(
                   (b: any) =>
                     b.id === item.batchId && b.product_id === item.productId
                 ) as any;
 
-                if (!batch) continue;
+                if (!batch) {
+                  validationErrors.push({
+                    ...item,
+                    reason: "Batch not found",
+                  });
+                  continue;
+                }
+
+                const product = productMap.get(item.productId);
+                if (
+                  product &&
+                  product.usage_capacity &&
+                  product.usage_capacity > 0 &&
+                  product.capacity_per_product &&
+                  product.capacity_per_product > 0 &&
+                  batch.inbound_qty !== null &&
+                  batch.inbound_qty !== undefined
+                ) {
+                  // Calculate availableQuantity: (inbound_qty * capacity_per_product) - used_count
+                  const availableQuantity =
+                    batch.inbound_qty * product.capacity_per_product -
+                    (batch.used_count || 0);
+
+                  if (item.outboundQty > availableQuantity) {
+                    validationErrors.push({
+                      ...item,
+                      reason: `Insufficient stock. Available: ${availableQuantity}, Requested: ${item.outboundQty}`,
+                    });
+                  }
+                }
+              }
+
+              // If validation errors, add to failedItems and skip processing
+              if (validationErrors.length > 0) {
+                failedItems.push(...validationErrors);
+                continue;
+              }
+
+              // ✅ Har bir package item uchun stock yangilash
+              // packageItems ichida har bir package item uchun alohida item bo'ladi
+              // Lekin bir xil product va batch bo'lsa, ularni yig'ish kerak
+              const itemsByProductBatch = new Map<string, number>();
+
+              for (const item of packageItems) {
+                if (!item.productId || !item.batchId) {
+                  continue;
+                }
+                // ✅ Key format: productId|batchId (| separator ishlatamiz, chunki UUID'lar - bilan ajratilgan)
+                const key = `${item.productId}|${item.batchId}`;
+                const currentQty = itemsByProductBatch.get(key) || 0;
+                // item.outboundQty allaqachon package item quantity * packageCount bo'lib kelgan
+                const newQty = currentQty + (item.outboundQty || 0);
+                itemsByProductBatch.set(key, newQty);
+              }
+
+              // Har bir unique product-batch juftligi uchun stock yangilash
+              for (const [
+                key,
+                totalOutboundQty,
+              ] of itemsByProductBatch.entries()) {
+                // ✅ Key format: productId|batchId
+                const [productId, batchId] = key.split("|");
+                const batch = batches.find(
+                  (b: any) => b.id === batchId && b.product_id === productId
+                ) as any;
+
+                if (!batch) {
+                  continue;
+                }
+
+                // ✅ totalOutboundQty allaqachon to'g'ri: barcha package item'lar uchun yig'ilgan
+                // Masalan: package item quantity = 5ta, packageCount = 2ta → totalOutboundQty = 10ta
+                const actualOutboundQty = totalOutboundQty;
 
                 // 사용 단위 mantiqi: used_count yangilash va bo'sh box aniqlash
-                const product = productMap.get(item.productId);
-                let batchQtyDecrement = item.outboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
+                const product = productMap.get(productId);
+                let batchQtyDecrement = actualOutboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
 
                 if (
                   product &&
@@ -1569,16 +1659,17 @@ export class OutboundService {
                 ) {
                   // Batch'ning hozirgi used_count'ini olish (yangilanishdan oldin)
                   const currentBatch = await tx.batch.findUnique({
-                    where: { id: item.batchId },
-                    select: { used_count: true, qty: true },
+                    where: { id: batchId },
+                    select: { used_count: true, qty: true, inbound_qty: true },
                   });
 
                   const currentUsedCount = currentBatch?.used_count || 0;
+                  const currentInboundQty = currentBatch?.inbound_qty || 0;
 
                   // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
-                  // Masalan: outboundQty = 10 (2 package * 5 product), usage_capacity = 1 → usageIncrement = 10
+                  // Masalan: actualOutboundQty = 10 (2 package * 5 product), usage_capacity = 1 → usageIncrement = 10
                   const usageIncrement =
-                    product.usage_capacity * item.outboundQty;
+                    product.usage_capacity * actualOutboundQty;
                   const newUsedCount = currentUsedCount + usageIncrement;
 
                   // Bo'sh box aniqlash: yangilanishdan oldin va keyin
@@ -1591,26 +1682,46 @@ export class OutboundService {
                   const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
 
                   // ✅ Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
-                  batchQtyDecrement = emptyBoxesToCreate;
+                  // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
+                  batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
+
+                  // Calculate availableQuantity before and after
+                  const availableQuantityBefore =
+                    currentInboundQty * product.capacity_per_product -
+                    currentUsedCount;
+                  const availableQuantityAfter =
+                    currentInboundQty * product.capacity_per_product -
+                    newUsedCount;
 
                   // used_count ni yangilash
                   await tx.batch.update({
-                    where: { id: item.batchId },
+                    where: { id: batchId },
                     data: { used_count: newUsedCount },
                   });
+                } else {
                 }
 
                 // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
+                const batchBeforeUpdate = await tx.batch.findUnique({
+                  where: { id: batch.id },
+                  select: { qty: true },
+                });
+
                 await tx.batch.update({
                   where: { id: batch.id },
                   data: { qty: { decrement: batchQtyDecrement } },
                 });
 
+                const batchAfterUpdate = await tx.batch.findUnique({
+                  where: { id: batch.id },
+                  select: { qty: true },
+                });
+
                 // Product stock yangilash uchun yig'ish (to'liq ishlatilgan box'lar yoki default)
                 const currentDecrement =
-                  productStockUpdates.get(item.productId) || 0;
+                  productStockUpdates.get(productId) || 0;
                 productStockUpdates.set(
-                  item.productId,
+                  productId,
                   currentDecrement + batchQtyDecrement
                 );
               }
@@ -1698,7 +1809,8 @@ export class OutboundService {
                 // Masalan: capacity_per_product = 5, outboundQty = 5, usage_capacity = 1
                 // usageIncrement = 5, emptyBoxesToCreate = 1
                 // batchQtyDecrement = 1 box (5 emas!)
-                batchQtyDecrement = emptyBoxesToCreate;
+                // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
+                batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
                 // used_count ni yangilash
                 const updatedBatch = await tx.batch.update({

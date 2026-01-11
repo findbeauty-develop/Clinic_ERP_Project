@@ -140,6 +140,7 @@ model Batch {
   min_stock        Int?         // Minimum stock from product (immutable)
   alert_days       String?
   used_count       Int         @default(0) // Ishlatilgan mahsulotlar soni (usageCapacity asosida)
+  available_quantity Int?      // Available quantity: (inbound_qty * capacity_per_product) - used_count (auto-calculated)
   created_at       DateTime    @default(now())
   updated_at       DateTime?
   expiry_unit      String?
