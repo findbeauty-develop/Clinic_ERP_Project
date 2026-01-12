@@ -190,7 +190,7 @@ export class ReturnService {
             },
           },
           batches: {
-            take: 1,
+            // ✅ FIX: take: 1 olib tashlandi - BARCHA batch'larning used_count'i kerak!
             orderBy: { created_at: "desc" },
             select: {
               storage: true,
@@ -233,9 +233,12 @@ export class ReturnService {
           product.capacity_per_product &&
           product.capacity_per_product > 0
         ) {
-          // Latest batch'ning used_count'ini olish
-          const latestBatch = product.batches?.[0];
-          const usedCount = latestBatch?.used_count || 0;
+          // ✅ FIX: BARCHA batch'larning used_count'ini yig'ish (faqat birinchi batch emas!)
+          // Bu yangi inbound bo'lsa ham, eski batch'larning empty boxes'i saqlanadi
+          const usedCount = (product.batches || []).reduce(
+            (sum: number, batch: any) => sum + (batch.used_count || 0),
+            0
+          );
 
           // previousEmptyBoxes = Math.floor(used_count / capacity_per_product)
           const previousEmptyBoxes = Math.floor(
