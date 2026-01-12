@@ -1039,121 +1039,91 @@ function OutboundPageContent() {
 
     setSubmitting(true);
     try {
+      // ✅ UNIFIED OUTBOUND: Barcha items'ni bitta request'ga birlashtirish
       // Product items va Package items'ni ajratish
       const productItems = scheduledItems.filter((item) => !item.isPackageItem);
 
-      // Ikkala rejim uchun ham 출고 qilish
-      const promises: Promise<any>[] = [];
+      // Package items'ni packageCount ga ko'paytirib, guruhlash
+      const itemsByPackage = packageItems.reduce(
+        (acc, item) => {
+          const key = `${item.packageId}-${item.productId}-${item.batchId}`;
+          const packageCount = packageCounts[item.packageId || ""] || 1;
 
-      // 1. Product items 출고 (agar mavjud bo'lsa)
-      if (productItems.length > 0) {
-        const productPayload = {
-          items: productItems.map((item) => ({
-            productId: item.productId,
-            batchId: item.batchId,
-            outboundQty: item.quantity,
-            managerName: managerName.trim(),
-            chartNumber: chartNumber.trim() || undefined,
-            memo: memo.trim() || undefined,
-            isDamaged: statusType === "damaged",
-            isDefective: statusType === "defective",
-          })),
-        };
-        promises.push(apiPost(`${apiUrl}/outbound/bulk`, productPayload));
-      }
+          if (!acc[key]) {
+            // Birinchi marta: packageCount ga ko'paytirish
+            const finalQuantity = item.quantity * packageCount;
 
-      // 2. Package items 출고 (agar mavjud bo'lsa)
-      if (packageItems.length > 0) {
-        // Group items by package and calculate total quantity based on packageCounts
-        // ✅ Muammo: Agar package 2 marta qo'shilgan bo'lsa, scheduledItems'da 2ta item bo'ladi
-        // Lekin itemsByPackage reduce'da bir xil key bo'lsa, ikkinchi item'ni qo'shmaslik kerak
-        // Chunki birinchi item'da allaqachon packageCount ga ko'paytirilgan
-        const itemsByPackage = packageItems.reduce(
-          (acc, item) => {
-            const key = `${item.packageId}-${item.productId}-${item.batchId}`;
-            const packageCount = packageCounts[item.packageId || ""] || 1;
+            acc[key] = {
+              ...item,
+              quantity: finalQuantity, // Multiply by package count
+              packageQty: packageCount, // Store package qty for backend
+            };
+          }
+          return acc;
+        },
+        {} as Record<
+          string,
+          ScheduledItem & { quantity: number; packageQty: number }
+        >
+      );
 
-            if (!acc[key]) {
-              // Birinchi marta: packageCount ga ko'paytirish
-              const finalQuantity = item.quantity * packageCount;
+      // ✅ Bitta unified payload yaratish (product + package items)
+      const allItems = [
+        // Product items (packageId yo'q)
+        ...productItems.map((item) => ({
+          productId: item.productId,
+          batchId: item.batchId,
+          outboundQty: item.quantity,
+          packageId: undefined, // Product item
+          packageQty: undefined,
+        })),
+        // Package items (packageId bor)
+        ...Object.values(itemsByPackage).map((item) => ({
+          productId: item.productId,
+          batchId: item.batchId,
+          outboundQty: item.quantity, // Already multiplied by packageCount
+          packageId: item.packageId,
+          packageQty: item.packageQty,
+        })),
+      ];
 
-              acc[key] = {
-                ...item,
-                quantity: finalQuantity, // Multiply by package count
-                packageQty: packageCount, // Store package qty for backend
-              };
-            } else {
-              // ✅ FIX: Agar bir xil item allaqachon mavjud bo'lsa, qo'shmaslik kerak
-              // Chunki birinchi item'da allaqachon packageCount ga ko'paytirilgan
-              // Ikkinchi item duplicate bo'lgani uchun, uni skip qilamiz
-              // Skip this item - don't add it again
-            }
-            return acc;
-          },
-          {} as Record<
-            string,
-            ScheduledItem & { quantity: number; packageQty: number }
-          >
-        );
+      // ✅ Bitta unified request yuborish
+      const unifiedPayload = {
+        outboundType: "제품", // Product type (default for unified outbound)
+        managerName: managerName.trim(),
+        chartNumber: chartNumber.trim() || undefined,
+        memo: memo.trim() || undefined,
+        isDamaged: statusType === "damaged",
+        isDefective: statusType === "defective",
+        items: allItems,
+      };
 
-        const packagePayload = {
-          outboundType: "패키지",
-          managerName: managerName.trim(),
-          chartNumber: chartNumber.trim() || undefined,
-          memo: memo.trim() || undefined,
-          isDamaged: statusType === "damaged",
-          isDefective: statusType === "defective",
-          items: Object.values(itemsByPackage).map((item) => ({
-            productId: item.productId,
-            batchId: item.batchId,
-            outboundQty: item.quantity, // This now includes packageCount multiplication
-            packageId: item.packageId,
-            packageQty: item.packageQty, // Send package qty to backend
-          })),
-        };
+      const response = await apiPost(
+        `${apiUrl}/outbound/unified`,
+        unifiedPayload
+      );
 
-        promises.push(apiPost(`${apiUrl}/outbound/unified`, packagePayload));
-      }
-
-      // Ikkala 출고'ni bir vaqtda amalga oshirish
-      const responses = await Promise.allSettled(promises);
-
+      // Response'ni handle qilish
       let allSuccess = true;
       let allFailed: ScheduledItem[] = [];
       let successCount = 0;
       let failedCount = 0;
 
-      responses.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          const response = result.value;
-          if (
-            response &&
-            response.failedItems &&
-            response.failedItems.length > 0
-          ) {
-            allSuccess = false;
-            const items = index === 0 ? productItems : packageItems;
-            const failed = items.filter((item) =>
-              response.failedItems.some(
-                (failed: any) =>
-                  failed.productId === item.productId &&
-                  failed.batchId === item.batchId
-              )
-            );
-            allFailed.push(...failed);
-            failedCount += failed.length;
-            successCount += items.length - failed.length;
-          } else {
-            const items = index === 0 ? productItems : packageItems;
-            successCount += items.length;
-          }
-        } else {
-          allSuccess = false;
-          const items = index === 0 ? productItems : packageItems;
-          allFailed.push(...items);
-          failedCount += items.length;
-        }
-      });
+      if (response && response.failedItems && response.failedItems.length > 0) {
+        allSuccess = false;
+        const failed = scheduledItems.filter((item) =>
+          response.failedItems.some(
+            (failed: any) =>
+              failed.productId === item.productId &&
+              failed.batchId === item.batchId
+          )
+        );
+        allFailed = failed;
+        failedCount = failed.length;
+        successCount = scheduledItems.length - failed.length;
+      } else {
+        successCount = scheduledItems.length;
+      }
 
       // Natijalarni ko'rsatish
       if (allSuccess) {
@@ -2372,9 +2342,9 @@ function OutboundPageContent() {
                               </span>
                             </div>
                             <div className="space-y-1">
-                              {failedItems.map((item) => (
+                              {failedItems.map((item, index) => (
                                 <div
-                                  key={`failed-${item.productId}-${item.batchId}`}
+                                  key={`failed-${item.productId}-${item.batchId}-${item.isPackageItem ? "pkg" : "prod"}-${index}`}
                                   onClick={() =>
                                     !item.packageName &&
                                     scrollToProduct(item.productId)
