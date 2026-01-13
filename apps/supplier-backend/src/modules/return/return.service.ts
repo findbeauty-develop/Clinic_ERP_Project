@@ -15,7 +15,8 @@ export class ReturnService {
     filters?: {
       status?: "PENDING" | "ACCEPTED" | "REJECTED" | "ALL";
       isRead?: boolean | null;
-      returnType?: "반품" | "교환"; // Filter by return type: "반품" (return) or "교환" (exchange)
+      returnType?: "반품" | "교환"; // DEPRECATED: For backward compatibility
+      returnCategory?: "empty_box" | "product"; // NEW: Filter by category
       page?: number;
       limit?: number;
     }
@@ -75,10 +76,50 @@ export class ReturnService {
         });
       });
 
-      // Filter by return_type if specified
+      // Filter by return_type or return_category
       let filteredRequests = returnRequests;
-      if (filters?.returnType) {
-        this.logger.log(`🔍 Filtering by returnType: ${filters.returnType}`);
+      
+      // NEW: Filter by returnCategory (empty_box or product)
+      if (filters?.returnCategory) {
+        this.logger.log(`🔍 Filtering by returnCategory: ${filters.returnCategory}`);
+        this.logger.log(
+          `Total requests before filter: ${returnRequests.length}`
+        );
+        
+        filteredRequests = returnRequests.filter((request: any) => {
+          const hasMatchingItem = request.items?.some((item: any) => {
+            if (filters.returnCategory === "empty_box") {
+              // Empty box returns: return_type does NOT contain "|"
+              // OR return_type is null/undefined (for backward compatibility)
+              const isEmptyBox = !item.return_type || !item.return_type.includes("|");
+              if (!isEmptyBox) {
+                this.logger.log(
+                  `Item return_type "${item.return_type}" is NOT empty_box (contains "|")`
+                );
+              }
+              return isEmptyBox;
+            } else if (filters.returnCategory === "product") {
+              // Product returns/exchanges: return_type contains "|" (e.g., "주문|반품", "불량|교환")
+              const isProduct = item.return_type && item.return_type.includes("|");
+              if (!isProduct) {
+                this.logger.log(
+                  `Item return_type "${item.return_type}" is NOT product (no "|")`
+                );
+              }
+              return isProduct;
+            }
+            return false;
+          });
+          return hasMatchingItem;
+        });
+        
+        this.logger.log(
+          `Total requests after returnCategory filter: ${filteredRequests.length}`
+        );
+      }
+      // DEPRECATED: Filter by returnType (for backward compatibility)
+      else if (filters?.returnType) {
+        this.logger.log(`🔍 Filtering by returnType (DEPRECATED): ${filters.returnType}`);
         this.logger.log(
           `Total requests before filter: ${returnRequests.length}`
         );
@@ -96,7 +137,7 @@ export class ReturnService {
           return hasMatchingItem;
         });
         this.logger.log(
-          `Total requests after filter: ${filteredRequests.length}`
+          `Total requests after returnType filter: ${filteredRequests.length}`
         );
       }
 
@@ -111,13 +152,26 @@ export class ReturnService {
       // Apply pagination after filtering
       const paginatedRequests = filteredRequests.slice(skip, skip + limit);
 
-      // Format response with return_type filtering
+      // Format response with return_type/return_category filtering
       const formattedNotifications = paginatedRequests
         .map((request: any) => {
-          // Filter items by return_type if specified
-          // return_type format: "주문|반품", "주문|교환", "불량|반품", "불량|교환"
+          // Filter items by return_category or return_type if specified
           let filteredItems = request.items || [];
-          if (filters?.returnType) {
+          
+          if (filters?.returnCategory) {
+            filteredItems = filteredItems.filter((item: any) => {
+              if (filters.returnCategory === "empty_box") {
+                // Empty box returns: return_type does NOT contain "|"
+                return !item.return_type || !item.return_type.includes("|");
+              } else if (filters.returnCategory === "product") {
+                // Product returns/exchanges: return_type contains "|"
+                return item.return_type && item.return_type.includes("|");
+              }
+              return false;
+            });
+          }
+          // DEPRECATED: Filter by returnType (for backward compatibility)
+          else if (filters?.returnType) {
             filteredItems = filteredItems.filter((item: any) => {
               // Check if return_type contains the filter value (e.g., "반품" or "교환")
               return item.return_type?.includes(filters.returnType);

@@ -49,7 +49,7 @@ export default function ReturnHistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const limit = 20;
+  const limit = 10;
 
   // Debounce search query to avoid excessive API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
@@ -70,6 +70,13 @@ export default function ReturnHistoryPage() {
   }, []);
 
   const fetchHistory = useCallback(async () => {
+    console.log(
+      "📡 fetchHistory called - page:",
+      page,
+      "search:",
+      debouncedSearchQuery
+    );
+
     const cacheKey = debouncedSearchQuery.trim() || "";
     // Check cache first
     if (
@@ -78,6 +85,7 @@ export default function ReturnHistoryPage() {
       historyCacheRef.current.searchQuery === cacheKey &&
       Date.now() - historyCacheRef.current.timestamp < CACHE_TTL
     ) {
+      console.log("✅ Using cached data");
       setHistoryData(historyCacheRef.current.data);
       setTotalPages(historyCacheRef.current.totalPages);
       setLoading(false);
@@ -85,6 +93,7 @@ export default function ReturnHistoryPage() {
       return;
     }
 
+    console.log("🌐 Fetching from API...");
     setLoading(true);
     setError(null);
     try {
@@ -99,12 +108,25 @@ export default function ReturnHistoryPage() {
         totalPages: number;
       }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}`);
 
+      console.log("📦 API Response:", {
+        totalItems: response.items.length,
+        totalPages: response.totalPages,
+        firstItem: response.items[0],
+      });
+
       // Format history items
       const formattedItems: ReturnHistoryItem[] = response.items.map(
         (item: any) => {
           // Get supplier notification status (latest notification)
           const latestNotification = item.supplierReturnNotifications?.[0];
           const supplierStatus = latestNotification?.status || null;
+
+          console.log("📋 Item supplier status:", {
+            id: item.id,
+            productName: item.product?.name,
+            supplierStatus,
+            notification: latestNotification,
+          });
 
           return {
             id: item.id,
@@ -220,15 +242,46 @@ export default function ReturnHistoryPage() {
                 팁 제품 반납을 처리하고 할인을 적용합니다.
               </p>
             </div>
-            <div className="text-sm text-slate-500 dark:text-slate-400">
-              마지막 업데이트:{" "}
-              {new Date().toLocaleString("ko-KR", {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+            <div className="flex items-center gap-4">
+              {/* Refresh Button */}
+              <button
+                onClick={() => {
+                  console.log("🔄 Refresh button clicked!");
+                  console.log("Cache invalidated");
+                  invalidateCache();
+                  console.log("Fetching history...");
+                  fetchHistory();
+                }}
+                disabled={loading}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 dark:bg-blue-500 dark:hover:bg-blue-600"
+                title="데이터 새로고침"
+              >
+                <svg
+                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {loading ? "새로고침 중..." : "새로고침"}
+              </button>
+
+              <div className="text-sm text-slate-500 dark:text-slate-400">
+                마지막 업데이트:{" "}
+                {new Date().toLocaleString("ko-KR", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
             </div>
           </div>
         </header>

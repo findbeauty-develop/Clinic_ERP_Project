@@ -1380,11 +1380,7 @@ export class OrderService {
     createdBy?: string,
     clinicManagerName?: string
   ): Promise<void> {
-    console.log("\n🚀 [sendOrderToSupplier] CALLED! Order:", order.order_no);
-    console.log("🚀 Supplier ID:", order.supplier_id);
-
     try {
-      console.log("📝 Step 1: Fetching ClinicSupplierManager...");
       // Get ClinicSupplierManager and linked Supplier info
       // Note: order.supplier_id now contains clinic_supplier_manager_id
       const clinicSupplierManager = await (
@@ -1410,15 +1406,8 @@ export class OrderService {
         },
       });
 
-      console.log(
-        "✅ Step 1 complete. ClinicSupplierManager:",
-        clinicSupplierManager?.id
-      );
-
       // Get platform supplier (if linked)
       const supplier = clinicSupplierManager.linkedManager?.supplier;
-      console.log("📝 Step 2: Supplier:", supplier?.id);
-      console.log("📝 Step 2.1: Processing items...");
 
       // Get ProductSupplier to find clinic_supplier_manager_id
       // IMPORTANT: Check ALL items to find the correct clinic_supplier_manager_id
@@ -1546,18 +1535,10 @@ export class OrderService {
         }
       }
 
-      console.log(
-        "📝 Step 2.2: Items processed. SupplierManager:",
-        supplierManager?.id
-      );
-      console.log("📝 Step 2.3: Checking Variant 4...");
-
       // Variant 4: Use linkedManager directly from clinicSupplierManager if available
       if (!supplierManager && clinicSupplierManager.linkedManager) {
         supplierManager = clinicSupplierManager.linkedManager;
       }
-
-      console.log("📝 Step 2.4: Checking Variant 5...");
 
       // Variant 5: Fallback - first created SupplierManager (legacy behavior)
       if (!supplierManager && supplier) {
@@ -1725,17 +1706,13 @@ export class OrderService {
 
         // ✅ MANUAL SUPPLIER: Send EMAIL notification
         try {
-          console.log("\n🔍 [MANUAL SUPPLIER EMAIL] ===== START =====");
           const supplierEmail =
             clinicSupplierManager?.company_email ||
             clinicSupplierManager?.email1 ||
             clinicSupplierManager?.email2 ||
             null;
 
-          console.log("🔍 Resolved supplierEmail:", supplierEmail);
-
           if (supplierEmail) {
-            console.log("✅ Email found! Attempting to send...");
             const products = itemsWithDetails.map((item: any) => ({
               productName: item.productName || "제품",
               brand: item.brand || "",
@@ -1758,16 +1735,17 @@ export class OrderService {
                 products
               );
 
-            console.log("📧 Email send result:", emailSent);
+            if (emailSent) {
+              this.logger.log(
+                `Email sent to manual supplier: ${supplierEmail}`
+              );
+            }
           } else {
-            console.log("❌ No email found for manual supplier!");
             this.logger.warn(
               `No email address found for manual supplier ${order.supplier_id}`
             );
           }
-          console.log("🔍 [MANUAL SUPPLIER EMAIL] ===== END =====\n");
         } catch (emailError: any) {
-          console.log("💥 [MANUAL SUPPLIER EMAIL ERROR]:", emailError);
           this.logger.error(
             `Failed to send email to manual supplier: ${emailError?.message}`
           );
@@ -1777,9 +1755,6 @@ export class OrderService {
         return;
       }
 
-      console.log(
-        "📝 Step 2.6: Preparing supplier order data (PLATFORM SUPPLIER)..."
-      );
       const supplierOrderData = {
         orderNo: order.order_no,
         supplierTenantId: supplier.tenant_id,

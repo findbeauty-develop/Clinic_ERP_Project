@@ -65,8 +65,9 @@ export default function ExchangesPage() {
         params.append("status", "ALL");
       }
       
-      // Filter by return type: only "교환" (exchange) items
-      params.append("returnType", "교환");
+      // Filter by return category: only product returns/exchanges (제품 반품/교환)
+      // Product returns/exchanges have "|" (e.g., "주문|반품", "불량|교환", "주문|교환", "불량|반품")
+      params.append("returnCategory", "product");
       
       params.append("page", page.toString());
       params.append("limit", limit.toString());

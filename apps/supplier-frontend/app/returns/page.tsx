@@ -11,7 +11,7 @@ interface ReturnNotificationItem {
   qty: number;
   unitPrice: number;
   totalPrice: number;
-  memo?: string; 
+  memo?: string;
 }
 
 interface ReturnNotification {
@@ -53,16 +53,19 @@ const tabs = [
 ];
 
 export default function ReturnsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "all">(
-    "pending"
-  );
+  const [activeTab, setActiveTab] = useState<"pending" | "all">("pending");
   const [notifications, setNotifications] = useState<ReturnNotification[]>([]);
-  const [groupedNotifications, setGroupedNotifications] = useState<GroupedNotification[]>([]);
+  const [groupedNotifications, setGroupedNotifications] = useState<
+    GroupedNotification[]
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [selectedNotification, setSelectedNotification] = useState<GroupedNotification | null>(null);
+  const [selectedNotification, setSelectedNotification] =
+    useState<GroupedNotification | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [itemAdjustments, setItemAdjustments] = useState<Record<string, ItemAdjustment>>({});
+  const [itemAdjustments, setItemAdjustments] = useState<
+    Record<string, ItemAdjustment>
+  >({});
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -74,17 +77,19 @@ export default function ReturnsPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      
+
       // Set status based on active tab
       if (activeTab === "pending") {
         params.append("status", "PENDING");
       } else {
         params.append("status", "ACCEPTED");
       }
-      
-      // Filter by return type: only "반품" (return) items
-      params.append("returnType", "반품");
-      
+
+      // Filter by return category: only empty box returns (빈 박스 반납)
+      // Empty box returns do NOT have "|" in returnType
+      // Product returns/exchanges have "|" (e.g., "주문|반품", "불량|교환")
+      params.append("returnCategory", "empty_box");
+
       params.append("page", page.toString());
       params.append("limit", limit.toString());
 
@@ -115,7 +120,8 @@ export default function ReturnsPage() {
 
     notifications.forEach((notification) => {
       // Group by return_id (same return_id means same return transaction)
-      const groupKey = notification.returnId || 
+      const groupKey =
+        notification.returnId ||
         `${notification.clinicName}-${notification.returnDate}-${notification.returnManagerName}`;
 
       if (!grouped[groupKey]) {
@@ -149,8 +155,9 @@ export default function ReturnsPage() {
     });
 
     // Convert to array and sort by date (newest first)
-    const groupedArray = Object.values(grouped).sort((a, b) => 
-      new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime()
+    const groupedArray = Object.values(grouped).sort(
+      (a, b) =>
+        new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime()
     );
 
     setGroupedNotifications(groupedArray);
@@ -183,7 +190,10 @@ export default function ReturnsPage() {
     // Validate: agar quantity kamaytirilgan bo'lsa, reason majburiy
     const invalidItems = selectedNotification.items.filter((item) => {
       const adjustment = itemAdjustments[item.id || item.productCode];
-      if (adjustment && adjustment.actualQuantity < adjustment.originalQuantity) {
+      if (
+        adjustment &&
+        adjustment.actualQuantity < adjustment.originalQuantity
+      ) {
         return !adjustment.quantityChangeReason;
       }
       return false;
@@ -215,7 +225,9 @@ export default function ReturnsPage() {
       // Accept all notifications in the group with adjustments
       const acceptPromises = selectedNotification.notifications
         .filter((n) => n.status === "PENDING")
-        .map((n) => apiPut(`/supplier/returns/${n.id}/accept`, { adjustments }));
+        .map((n) =>
+          apiPut(`/supplier/returns/${n.id}/accept`, { adjustments })
+        );
 
       await Promise.all(acceptPromises);
 
@@ -251,7 +263,9 @@ export default function ReturnsPage() {
   // Filter notifications by search query
   const filteredNotifications = groupedNotifications.filter((notification) => {
     if (searchQuery) {
-      return notification.clinicName.toLowerCase().includes(searchQuery.toLowerCase());
+      return notification.clinicName
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
     }
     return true;
   });
@@ -268,22 +282,20 @@ export default function ReturnsPage() {
 
       {/* Tabs */}
       <div className="mt-3 ml-4 flex gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() =>
-                setActiveTab(tab.key as "pending" | "all")
-              }
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                activeTab === tab.key
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-700 border border-slate-200"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as "pending" | "all")}
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${
+              activeTab === tab.key
+                ? "bg-slate-800 text-white"
+                : "bg-white text-slate-700 border border-slate-200"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* Content */}
       <div className="p-4">
@@ -326,8 +338,8 @@ export default function ReturnsPage() {
         {!loading && filteredNotifications.length === 0 && (
           <div className="text-center py-12">
             <p className="text-slate-600">
-              {activeTab === "pending" 
-                ? "대기 중인 반납이 없습니다." 
+              {activeTab === "pending"
+                ? "대기 중인 반납이 없습니다."
                 : "반납 내역이 없습니다."}
             </p>
           </div>
@@ -348,7 +360,8 @@ export default function ReturnsPage() {
                       {formatDate(notification.returnDate)}
                     </p>
                     <p className="text-lg font-semibold text-black mt-1">
-                      {notification.clinicName} {notification.returnManagerName}님
+                      {notification.clinicName} {notification.returnManagerName}
+                      님
                     </p>
                   </div>
                   {notification.status === "ACCEPTED" && (
@@ -378,7 +391,9 @@ export default function ReturnsPage() {
                               {item.productName}
                             </span>
                           </td>
-                          <td className="py-2 text-right text-black">{item.qty}개</td>
+                          <td className="py-2 text-right text-black">
+                            {item.qty}개
+                          </td>
                           {activeTab === "all" && (
                             <td className="py-2 text-black">
                               {item.memo || "-"}
@@ -397,7 +412,8 @@ export default function ReturnsPage() {
                 </div>
 
                 {/* Total Refund and Action Button */}
-                {notification.status === "PENDING" && activeTab === "pending" ? (
+                {notification.status === "PENDING" &&
+                activeTab === "pending" ? (
                   <div className="flex justify-between items-center">
                     <p className="text-lg font-bold text-black">
                       반납금 {formatCurrency(notification.totalRefund)} 원
@@ -405,7 +421,10 @@ export default function ReturnsPage() {
                     <button
                       onClick={() => {
                         // Initialize adjustments for this notification
-                        const initialAdjustments: Record<string, ItemAdjustment> = {};
+                        const initialAdjustments: Record<
+                          string,
+                          ItemAdjustment
+                        > = {};
                         notification.items.forEach((item) => {
                           const itemId = item.id || item.productCode;
                           initialAdjustments[itemId] = {
@@ -423,7 +442,8 @@ export default function ReturnsPage() {
                       반납 접수
                     </button>
                   </div>
-                ) : notification.status === "ACCEPTED" && notification.acceptedAt ? (
+                ) : notification.status === "ACCEPTED" &&
+                  notification.acceptedAt ? (
                   <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
                     <p className="text-lg font-bold text-black">
                       반납금 {formatCurrency(notification.totalRefund)} 원
@@ -469,8 +489,9 @@ export default function ReturnsPage() {
                 })
                 .map((page, index, array) => {
                   // Add ellipsis if there's a gap
-                  const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
-                  
+                  const showEllipsisBefore =
+                    index > 0 && page - array[index - 1] > 1;
+
                   return (
                     <div key={page} className="flex items-center gap-1">
                       {showEllipsisBefore && (
@@ -508,7 +529,8 @@ export default function ReturnsPage() {
         {/* Pagination Info */}
         {!loading && filteredNotifications.length > 0 && (
           <div className="mt-4 text-center text-sm text-slate-600">
-            {total}개 중 {((currentPage - 1) * limit) + 1}-{Math.min(currentPage * limit, total)}개 표시
+            {total}개 중 {(currentPage - 1) * limit + 1}-
+            {Math.min(currentPage * limit, total)}개 표시
           </div>
         )}
       </div>
@@ -531,8 +553,18 @@ export default function ReturnsPage() {
                   }}
                   className="text-slate-400 hover:text-slate-600"
                 >
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -556,7 +588,8 @@ export default function ReturnsPage() {
                   originalQuantity: item.qty,
                   actualQuantity: item.qty,
                 };
-                const qtyChanged = adjustment.actualQuantity < adjustment.originalQuantity;
+                const qtyChanged =
+                  adjustment.actualQuantity < adjustment.originalQuantity;
 
                 return (
                   <div key={itemId} className="space-y-2">
@@ -575,14 +608,23 @@ export default function ReturnsPage() {
                           max={adjustment.originalQuantity}
                           value={adjustment.actualQuantity}
                           onChange={(e) => {
-                            const val = Math.max(0, Math.min(adjustment.originalQuantity, parseInt(e.target.value) || 0));
+                            const val = Math.max(
+                              0,
+                              Math.min(
+                                adjustment.originalQuantity,
+                                parseInt(e.target.value) || 0
+                              )
+                            );
                             setItemAdjustments((prev) => ({
                               ...prev,
                               [itemId]: {
                                 ...adjustment,
                                 actualQuantity: val,
                                 // If quantity is back to original, clear reason
-                                quantityChangeReason: val >= adjustment.originalQuantity ? undefined : adjustment.quantityChangeReason,
+                                quantityChangeReason:
+                                  val >= adjustment.originalQuantity
+                                    ? undefined
+                                    : adjustment.quantityChangeReason,
                               },
                             }));
                           }}
@@ -614,7 +656,9 @@ export default function ReturnsPage() {
                           <option value="">사유를 선택</option>
                           <option value="추후반납">추후반납</option>
                           <option value="분실">분실</option>
-                          <option value="초과(전에 재고)">초과(전에 재고)</option>
+                          <option value="초과(전에 재고)">
+                            초과(전에 재고)
+                          </option>
                         </select>
                       </div>
                     )}
@@ -655,4 +699,3 @@ export default function ReturnsPage() {
     </div>
   );
 }
-
