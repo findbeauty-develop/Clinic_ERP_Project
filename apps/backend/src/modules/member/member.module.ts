@@ -19,6 +19,7 @@ import { HiraModule } from "../hira/hira.module";
 import { PhoneVerificationService } from "./services/phone-verification.service";
 import { EmailService } from "./services/email.service";
 import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
+import { MailgunProvider } from "./services/providers/mailgun.provider";
 
 @Module({
   imports: [HiraModule],
@@ -41,6 +42,7 @@ import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
     PhoneVerificationService,
     EmailService,
     AmazonSESProvider,
+    MailgunProvider,
   ],
   exports: [MessageService, EmailService],
 })
