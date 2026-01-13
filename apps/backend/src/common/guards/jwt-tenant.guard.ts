@@ -5,14 +5,24 @@ import {
   UnauthorizedException,
   ForbiddenException,
 } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { SupabaseService } from "../supabase.service";
 import { JwtPayload, verify } from "jsonwebtoken";
 
 @Injectable()
 export class JwtTenantGuard implements CanActivate {
-  constructor(private sb: SupabaseService) {}
+  constructor(private sb: SupabaseService, private reflector: Reflector) {}
 
   async canActivate(ctx: ExecutionContext) {
+    // Check if the endpoint should skip JWT authentication
+    const skipJwtGuard = this.reflector.get<boolean>(
+      "skipJwtGuard",
+      ctx.getHandler()
+    );
+    if (skipJwtGuard) {
+      return true;
+    }
+
     const req = ctx.switchToHttp().getRequest();
     const auth = req.headers.authorization as string | undefined;
     if (!auth?.startsWith("Bearer ")) throw new UnauthorizedException();
@@ -23,12 +33,12 @@ export class JwtTenantGuard implements CanActivate {
       const { data, error } = await this.sb.getUser(token);
       if (!error && data?.user) {
         let tenantId = (data.user.user_metadata as any)?.tenant_id;
-        
+
         // Fallback to X-Tenant-Id header if not in user metadata
         if (!tenantId) {
           tenantId = req.headers["x-tenant-id"] as string | undefined;
         }
-        
+
         if (!tenantId) throw new ForbiddenException("Tenant not assigned");
         req.user = {
           id: data.user.id,
@@ -40,7 +50,10 @@ export class JwtTenantGuard implements CanActivate {
       }
     } catch (supabaseError: any) {
       // If Supabase fails (network timeout, etc.), fall through to local JWT verification
-      console.warn("Supabase verification failed, falling back to local JWT:", supabaseError?.message || String(supabaseError));
+      console.warn(
+        "Supabase verification failed, falling back to local JWT:",
+        supabaseError?.message || String(supabaseError)
+      );
     }
 
     // Fallback to local JWT verification
@@ -62,12 +75,12 @@ export class JwtTenantGuard implements CanActivate {
       };
 
       let tenantId = payload.tenant_id ?? payload.tenantId;
-      
+
       // Fallback to X-Tenant-Id header if not in token
       if (!tenantId) {
         tenantId = req.headers["x-tenant-id"] as string | undefined;
       }
-      
+
       if (!tenantId) {
         throw new ForbiddenException("Tenant not assigned");
       }
@@ -88,4 +101,3 @@ export class JwtTenantGuard implements CanActivate {
     }
   }
 }
-

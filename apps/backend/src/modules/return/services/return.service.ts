@@ -1110,6 +1110,7 @@ ${footer}`;
       // Empty box returns (빈 박스) → returnType: "반품" (without "|")
       // Product returns/exchanges → returnType: "불량|반품", "주문|반품", etc. (with "|")
       let returnType = "불량|반품"; // Default for product returns/exchanges
+
       if (
         returnRecord.memo &&
         returnRecord.memo.includes("자동 반납: 빈 박스")

@@ -93,7 +93,6 @@ export default function ReturnHistoryPage() {
       return;
     }
 
-    console.log("🌐 Fetching from API...");
     setLoading(true);
     setError(null);
     try {
@@ -108,25 +107,12 @@ export default function ReturnHistoryPage() {
         totalPages: number;
       }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}`);
 
-      console.log("📦 API Response:", {
-        totalItems: response.items.length,
-        totalPages: response.totalPages,
-        firstItem: response.items[0],
-      });
-
       // Format history items
       const formattedItems: ReturnHistoryItem[] = response.items.map(
         (item: any) => {
           // Get supplier notification status (latest notification)
           const latestNotification = item.supplierReturnNotifications?.[0];
           const supplierStatus = latestNotification?.status || null;
-
-          console.log("📋 Item supplier status:", {
-            id: item.id,
-            productName: item.product?.name,
-            supplierStatus,
-            notification: latestNotification,
-          });
 
           return {
             id: item.id,
@@ -246,10 +232,7 @@ export default function ReturnHistoryPage() {
               {/* Refresh Button */}
               <button
                 onClick={() => {
-                  console.log("🔄 Refresh button clicked!");
-                  console.log("Cache invalidated");
                   invalidateCache();
-                  console.log("Fetching history...");
                   fetchHistory();
                 }}
                 disabled={loading}

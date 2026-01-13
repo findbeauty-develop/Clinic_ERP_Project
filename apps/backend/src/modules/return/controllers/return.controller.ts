@@ -7,8 +7,15 @@ import {
   UseGuards,
   ParseIntPipe,
   Header,
+  SetMetadata,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiHeader } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiHeader,
+} from "@nestjs/swagger";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -119,9 +126,15 @@ export class ReturnController {
   }
 
   @Post("webhook/accept")
+  @SetMetadata("skipJwtGuard", true)
   @UseGuards(ApiKeyGuard)
-  @ApiOperation({ summary: "Webhook: Supplier'dan return accept xabari (for /returns page)" })
-  @ApiHeader({ name: 'x-api-key', description: 'API Key for supplier-to-clinic authentication' })
+  @ApiOperation({
+    summary: "Webhook: Supplier'dan return accept xabari (for /returns page)",
+  })
+  @ApiHeader({
+    name: "x-api-key",
+    description: "API Key for supplier-to-clinic authentication",
+  })
   async handleReturnAccept(@Body() dto: { return_no: string; status: string }) {
     try {
       return await this.returnService.handleReturnAccept(dto);
@@ -131,4 +144,3 @@ export class ReturnController {
     }
   }
 }
-

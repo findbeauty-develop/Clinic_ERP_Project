@@ -78,67 +78,33 @@ export class ReturnService {
 
       // Filter by return_type or return_category
       let filteredRequests = returnRequests;
-      
+
       // NEW: Filter by returnCategory (empty_box or product)
       if (filters?.returnCategory) {
-        this.logger.log(`🔍 Filtering by returnCategory: ${filters.returnCategory}`);
-        this.logger.log(
-          `Total requests before filter: ${returnRequests.length}`
-        );
-        
         filteredRequests = returnRequests.filter((request: any) => {
           const hasMatchingItem = request.items?.some((item: any) => {
             if (filters.returnCategory === "empty_box") {
               // Empty box returns: return_type does NOT contain "|"
               // OR return_type is null/undefined (for backward compatibility)
-              const isEmptyBox = !item.return_type || !item.return_type.includes("|");
-              if (!isEmptyBox) {
-                this.logger.log(
-                  `Item return_type "${item.return_type}" is NOT empty_box (contains "|")`
-                );
-              }
-              return isEmptyBox;
+              return !item.return_type || !item.return_type.includes("|");
             } else if (filters.returnCategory === "product") {
               // Product returns/exchanges: return_type contains "|" (e.g., "주문|반품", "불량|교환")
-              const isProduct = item.return_type && item.return_type.includes("|");
-              if (!isProduct) {
-                this.logger.log(
-                  `Item return_type "${item.return_type}" is NOT product (no "|")`
-                );
-              }
-              return isProduct;
+              return item.return_type && item.return_type.includes("|");
             }
             return false;
           });
           return hasMatchingItem;
         });
-        
-        this.logger.log(
-          `Total requests after returnCategory filter: ${filteredRequests.length}`
-        );
       }
       // DEPRECATED: Filter by returnType (for backward compatibility)
       else if (filters?.returnType) {
-        this.logger.log(`🔍 Filtering by returnType (DEPRECATED): ${filters.returnType}`);
-        this.logger.log(
-          `Total requests before filter: ${returnRequests.length}`
-        );
         filteredRequests = returnRequests.filter((request: any) => {
           // Check if any item in the request matches the return_type filter
           const hasMatchingItem = request.items?.some((item: any) => {
-            const matches = item.return_type?.includes(filters.returnType);
-            if (!matches) {
-              this.logger.log(
-                `Item return_type "${item.return_type}" does not include "${filters.returnType}"`
-              );
-            }
-            return matches;
+            return item.return_type?.includes(filters.returnType);
           });
           return hasMatchingItem;
         });
-        this.logger.log(
-          `Total requests after returnType filter: ${filteredRequests.length}`
-        );
       }
 
       // Calculate total count after filtering
@@ -157,7 +123,7 @@ export class ReturnService {
         .map((request: any) => {
           // Filter items by return_category or return_type if specified
           let filteredItems = request.items || [];
-          
+
           if (filters?.returnCategory) {
             filteredItems = filteredItems.filter((item: any) => {
               if (filters.returnCategory === "empty_box") {
@@ -821,13 +787,12 @@ export class ReturnService {
 
       if (!supplierApiKey) {
         this.logger.warn(
-          `SUPPLIER_BACKEND_API_KEY not configured, skipping accept webhook`
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping accept webhook"
         );
         return;
       }
 
       // Get return request to find return_no
-      // For /returns page, SupplierReturnRequest.return_no contains the return_no
       const requestWithReturnNo = await this.prisma.executeWithRetry(
         async () => {
           return (this.prisma as any).supplierReturnRequest.findFirst({
@@ -844,21 +809,15 @@ export class ReturnService {
         return;
       }
 
-      // For /returns page, return_no format: YYYYMMDD000000XXXXXX (20 digits: date + 000000 + 6 random digits)
-      // For /order-returns page, return_no format: B + YYYYMMDD + 6 digits (starts with "B")
       const returnNo = requestWithReturnNo.return_no;
-      if (
+      const isValidFormat =
         returnNo &&
         typeof returnNo === "string" &&
-        // Check if it's /returns page format (20 digits, starts with date, contains 000000)
         returnNo.length === 20 &&
-        /^\d{8}\d{6}$/.test(returnNo)
-      ) {
-        try {
-          this.logger.log(
-            `Sending accept webhook to ${clinicBackendUrl}/returns/webhook/accept for return_no: ${returnNo}`
-          );
+        /^\d{20}$/.test(returnNo);
 
+      if (isValidFormat) {
+        try {
           const webhookResponse = await fetch(
             `${clinicBackendUrl}/returns/webhook/accept`,
             {
@@ -879,17 +838,16 @@ export class ReturnService {
             this.logger.error(
               `Accept webhook failed: ${webhookResponse.status} - ${errorText} for return_no: ${returnNo}`
             );
-          } else {
-            const responseData = await webhookResponse.json();
-            this.logger.log(
-              `Accept webhook sent successfully for return_no: ${returnNo}`
-            );
           }
         } catch (fetchError: any) {
           this.logger.error(
             `Accept webhook fetch error for return_no ${returnNo}: ${fetchError.message}`
           );
         }
+      } else {
+        this.logger.warn(
+          `returnNo format check failed. Expected: 20 digits (YYYYMMDD000000XXXXXX), got: ${returnNo} (length: ${returnNo?.length})`
+        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1091,10 +1049,6 @@ export class ReturnService {
             : item.images
             ? [item.images]
             : [];
-
-          this.logger.log(
-            `📝 Creating return item with returnType: "${item.returnType}" for product: ${item.productName}`
-          );
 
           return {
             product_name: item.productName,
