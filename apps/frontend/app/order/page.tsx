@@ -1649,7 +1649,7 @@ export default function OrderPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {/* ✅ 주문 취소 button - pending VA supplier_confirmed statuslarda */}
-                            {(isPending || isSupplierConfirmed) && (
+                            {isPending && (
                               <button
                                 onClick={async () => {
                                   const confirmMessage = isSupplierConfirmed
@@ -2287,8 +2287,10 @@ export default function OrderPage() {
                                 "Selected rejected order:",
                                 rejectedOrder
                               );
-                              // TODO: Show order form modal for rejected order
-                              alert("주문서 보기 기능은 곧 추가될 예정입니다.");
+
+                              setSelectedOrder(rejectedOrder);
+                              setOrderFormMemo(rejectedOrder.memo || "");
+                              setShowOrderFormModal(true);
                             }}
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                           >
@@ -2659,7 +2661,10 @@ export default function OrderPage() {
               <div className="flex items-center justify-between border-b border-blue-200 bg-white px-6 py-4">
                 <div className="flex items-center gap-3">
                   {(() => {
-                    const orderDate = new Date(selectedOrder.createdAt);
+                    // ✅ Use createdAt for regular orders, confirmedAt for rejected orders
+                    const orderDate = new Date(
+                      selectedOrder.createdAt || selectedOrder.confirmedAt
+                    );
                     const dateStr = orderDate.toISOString().split("T")[0];
                     const timeStr = orderDate
                       .toTimeString()
@@ -2675,6 +2680,7 @@ export default function OrderPage() {
                         </div>
                         <div className="text-base text-slate-900">
                           {selectedOrder.createdByName ||
+                            selectedOrder.memberName ||
                             orderManagerName ||
                             "담당자"}
                         </div>
@@ -2839,17 +2845,20 @@ export default function OrderPage() {
                       <div className="text-sm font-semibold text-slate-900 mb-3">
                         공급처:{" "}
                         {selectedOrder.supplierDetails?.companyName ||
+                          selectedOrder.companyName ||
                           selectedOrder.supplierName ||
                           "A사"}
                       </div>
                       <div className="text-xs text-slate-600 mb-1">
                         [회사주소]{" "}
                         {selectedOrder.supplierDetails?.companyAddress ||
+                          selectedOrder.companyAddress ||
                           "자동 작성"}
                       </div>
                       <div className="text-xs text-slate-600 mb-1">
                         [전화번호]{" "}
                         {selectedOrder.supplierDetails?.companyPhone ||
+                          selectedOrder.companyPhone ||
                           "자동 작성"}
                       </div>
 
@@ -2858,18 +2867,25 @@ export default function OrderPage() {
                         {selectedOrder.supplierDetails?.managerName ||
                           selectedOrder.managerName ||
                           "성함"}
-                        {selectedOrder.supplierDetails?.position &&
-                          ` (${selectedOrder.supplierDetails.position})`}
+                        {(selectedOrder.supplierDetails?.position ||
+                          selectedOrder.managerPosition) &&
+                          ` (${
+                            selectedOrder.supplierDetails?.position ||
+                            selectedOrder.managerPosition
+                          })`}
                       </div>
                       <div className="text-xs text-slate-600 mb-1">
                         [이메일]{" "}
                         {selectedOrder.supplierDetails?.managerEmail ||
+                          selectedOrder.managerEmail ||
                           selectedOrder.supplierDetails?.companyEmail ||
+                          selectedOrder.companyEmail ||
                           "자동 작성"}
                       </div>
                       <div className="text-xs text-slate-600">
                         [연락처]{" "}
                         {selectedOrder.supplierDetails?.managerPhone ||
+                          selectedOrder.managerPhone ||
                           "자동 작성"}
                       </div>
                       {/* Debug info - remove after testing */}
@@ -2914,7 +2930,7 @@ export default function OrderPage() {
                             (item: any, index: number) => (
                               <tr key={item.id || index} className="bg-white">
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900">
-                                  {item.brand || "-"}
+                                  {item.brand || item.productBrand || "-"}
                                 </td>
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900">
                                   {item.productName || "-"}

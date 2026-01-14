@@ -3390,42 +3390,37 @@ export class OrderService {
       });
     });
 
-    // Get unique supplier IDs
-    const supplierIds = [...new Set(Array.from(orderSupplierMap.values()))];
+    // Get unique supplier IDs (these are ClinicSupplierManager IDs)
+    const clinicSupplierIds = [
+      ...new Set(Array.from(orderSupplierMap.values())),
+    ];
 
-    // Fetch suppliers with managers to get position
-    const suppliers = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).supplier.findMany({
+    // ✅ Fetch ClinicSupplierManagers with contact details
+    const clinicSuppliers = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).clinicSupplierManager.findMany({
         where: {
-          id: { in: supplierIds },
+          id: { in: clinicSupplierIds },
+          tenant_id: tenantId,
         },
         select: {
           id: true,
-          managers: {
-            where: {
-              status: "ACTIVE",
-            },
-            take: 1,
-            orderBy: { created_at: "asc" },
-            select: {
-              id: true,
-              name: true,
-              position: true,
-            },
-          },
+          company_name: true,
+          company_address: true,
+          company_phone: true,
+          company_email: true,
+          name: true,
+          position: true,
+          phone_number: true,
+          email1: true,
+          email2: true,
         },
       });
     });
 
-    // Create a map of supplier_id -> manager position
-    const supplierPositionMap = new Map<string, string | null>();
-    suppliers.forEach((supplier: any) => {
-      if (supplier.managers && supplier.managers.length > 0) {
-        supplierPositionMap.set(
-          supplier.id,
-          supplier.managers[0].position || null
-        );
-      }
+    // Create a map of clinic_supplier_id -> full details
+    const clinicSupplierDetailsMap = new Map<string, any>();
+    clinicSuppliers.forEach((csm: any) => {
+      clinicSupplierDetailsMap.set(csm.id, csm);
     });
 
     // Group by order_no
@@ -3435,12 +3430,11 @@ export class OrderService {
       const orderNo = rejectedOrder.order_no;
 
       if (!grouped[orderNo]) {
-        // Get position from supplier
-        let managerPosition = null;
+        // ✅ Get ClinicSupplierManager details
         const supplierId = orderSupplierMap.get(rejectedOrder.order_id);
-        if (supplierId) {
-          managerPosition = supplierPositionMap.get(supplierId) || null;
-        }
+        const clinicSupplier = supplierId
+          ? clinicSupplierDetailsMap.get(supplierId)
+          : null;
 
         // ✅ Get order data (items with memos and order memo)
         const orderData = orderDataMap.get(rejectedOrder.order_id) || {
@@ -3452,8 +3446,14 @@ export class OrderService {
           orderId: rejectedOrder.order_id,
           orderNo: rejectedOrder.order_no,
           companyName: rejectedOrder.company_name,
+          companyAddress: clinicSupplier?.company_address || null, // ✅ NEW
+          companyPhone: clinicSupplier?.company_phone || null, // ✅ NEW
+          companyEmail: clinicSupplier?.company_email || null, // ✅ NEW
           managerName: rejectedOrder.manager_name,
-          managerPosition: managerPosition,
+          managerPosition: clinicSupplier?.position || null, // ✅ Use from ClinicSupplierManager
+          managerPhone: clinicSupplier?.phone_number || null, // ✅ NEW
+          managerEmail:
+            clinicSupplier?.email1 || clinicSupplier?.email2 || null, // ✅ NEW
           memberName: rejectedOrder.member_name,
           confirmedAt: rejectedOrder.created_at,
           items: orderData.items.map((item: any) => ({
