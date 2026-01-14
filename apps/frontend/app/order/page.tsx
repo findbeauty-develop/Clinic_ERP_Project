@@ -476,7 +476,7 @@ export default function OrderPage() {
       const rejectedData = await apiGet<any[]>(
         `${apiUrl}/order/rejected-orders`
       );
-      console.log("Fetched rejected orders:", rejectedData);
+
       const rejectedOrdersData = rejectedData || [];
       setRejectedOrders(rejectedOrdersData);
       // Update cache
@@ -1599,6 +1599,8 @@ export default function OrderPage() {
                         })
                         .filter((reason: any) => reason !== null) || [];
 
+                    // 🔍 DEBUG - Check isPlatformSupplier
+
                     return (
                       <div
                         key={order.id}
@@ -1612,7 +1614,7 @@ export default function OrderPage() {
                               {order.supplierDetails?.companyName ||
                                 order.supplierName ||
                                 "공급업체 없음"}{" "}
-                              {/* ✅ PHONE ICON BADGE - Faqat platform supplier uchun */}
+                              {/* ✅ PHONE ICON BADGE - Faqat platform supplier uchun
                               {order.supplierDetails?.isPlatformSupplier && (
                                 <span
                                   className="ml-1.5 inline-flex items-center text-emerald-600 dark:text-emerald-400"
@@ -1633,7 +1635,7 @@ export default function OrderPage() {
                                     />
                                   </svg>
                                 </span>
-                              )}
+                              )} */}
                               담당자:{" "}
                               {order.supplierDetails?.managerName ||
                                 order.managerName ||
@@ -1691,28 +1693,108 @@ export default function OrderPage() {
                             )}
                             {/* Badge */}
                             {isPending && (
-                              <span className="inline-flex items-center rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
                                 주문 요청
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
                               </span>
                             )}
                             {isSupplierConfirmed && (
-                              <span className="inline-flex items-center rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
                                 주문 진행
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
                               </span>
                             )}
                             {isCancelled && (
-                              <span className="inline-flex items-center rounded border border-slate-400 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:border-slate-400 dark:text-gray-400">
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:border-slate-400 dark:text-gray-400">
                                 주문 취소
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
                               </span>
                             )}
                             {isRejected && (
-                              <span className="inline-flex items-center rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                                 주문 거절
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
                               </span>
                             )}
                             {isCompleted && (
-                              <span className="inline-flex items-center rounded border border-slate-400 bg-slate-500 px-3 py-1 text-xs font-semibold text-white">
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-slate-500 px-3 py-1 text-xs font-semibold text-white">
                                 주문 완료
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
                               </span>
                             )}
                           </div>
@@ -1860,7 +1942,7 @@ export default function OrderPage() {
                               {isRejected && rejectionReasons.length > 0 ? (
                                 <>
                                   <span className="font-semibold text-red-600 dark:text-red-400">
-                                    [거절 사유]
+                                    거절 사유:
                                   </span>
                                   <br />
                                   {rejectionReasons.map(
@@ -1954,12 +2036,6 @@ export default function OrderPage() {
                           </button>
                           <button
                             onClick={async () => {
-                              console.log("Selected order:", order);
-                              console.log(
-                                "Supplier details:",
-                                order.supplierDetails
-                              );
-
                               // Ensure clinic data is loaded before opening modal
                               if (!clinicData) {
                                 try {
@@ -1972,14 +2048,9 @@ export default function OrderPage() {
                                     ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
                                     : `${apiUrl}/iam/members/clinics`;
 
-                                  console.log("Loading clinic data from:", url);
                                   const clinics = await apiGet<any[]>(url);
-                                  console.log("Loaded clinics:", clinics);
+
                                   if (clinics && clinics.length > 0) {
-                                    console.log(
-                                      "Loaded clinic data:",
-                                      clinics[0]
-                                    );
                                     setClinicData(clinics[0]);
                                   } else {
                                     console.warn(
@@ -1994,10 +2065,6 @@ export default function OrderPage() {
                                   console.error("Error details:", err.message);
                                 }
                               } else {
-                                console.log(
-                                  "Clinic data already loaded:",
-                                  clinicData
-                                );
                               }
 
                               setSelectedOrder(order);
@@ -2018,8 +2085,6 @@ export default function OrderPage() {
                   rejectedOrders.length > 0 &&
                   rejectedOrders.map((rejectedOrder) => {
                     if (!rejectedOrder || !rejectedOrder.orderNo) return null;
-
-                    console.log("Rendering rejected order:", rejectedOrder);
 
                     // Extract rejection reasons from item memos
                     const rejectionReasons =
@@ -2116,21 +2181,20 @@ export default function OrderPage() {
                         {/* Memo Field (Rejection Reasons + Order Memo) */}
                         {(rejectionReasons.length > 0 ||
                           rejectedOrder.memo) && (
-                          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-                            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                          <div className="mb-3 rounded-lg flex flex-row justify-start items-center gap-2 w-full border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="text-xxl font-semibold items-center text-slate-700 dark:text-slate-300 ">
                               메모
                             </div>
-                            <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                            <div className="text-xxl text-slate-600 dark:text-slate-800 whitespace-pre-wrap">
                               {rejectionReasons.length > 0 && (
                                 <>
-                                  <span className="font-semibold text-red-600 dark:text-red-400">
-                                    [거절 사유]
-                                  </span>
-                                  <br />
+                                  <span className="font-semibold text-red-600 dark:text-red-800">
+                                    거절 사유:
+                                  </span>{" "}
                                   {rejectionReasons.map(
                                     (reason: string, idx: number) => (
                                       <span key={idx}>
-                                        • {reason}
+                                        {reason}
                                         {idx < rejectionReasons.length - 1 && (
                                           <br />
                                         )}

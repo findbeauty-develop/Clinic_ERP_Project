@@ -1064,7 +1064,15 @@ export class OrderService {
 
     // Collect all supplier IDs (from linkedManager) for batch lookup
     const supplierManagerIds = new Set<string>();
+    // ✅ NEW: Collect clinic supplier IDs from order.supplier_id
+    const clinicSupplierIds = new Set<string>();
+
     filteredOrders.forEach((order: any) => {
+      // ✅ Add order.supplier_id (ClinicSupplierManager ID)
+      if (order.supplier_id) {
+        clinicSupplierIds.add(order.supplier_id);
+      }
+
       if (order.items && order.items.length > 0) {
         order.items.forEach((item: any) => {
           if (item.product && item.product.productSupplier) {
@@ -1078,6 +1086,40 @@ export class OrderService {
         });
       }
     });
+
+    // ✅ NEW: Batch fetch ClinicSupplierManagers
+    const clinicSupplierManagersMap = new Map<string, any>();
+    if (clinicSupplierIds.size > 0) {
+      const clinicSuppliers = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinicSupplierManager.findMany({
+          where: {
+            id: {
+              in: Array.from(clinicSupplierIds),
+            },
+            tenant_id: tenantId,
+          },
+          include: {
+            linkedManager: {
+              select: {
+                id: true,
+                name: true,
+                position: true,
+                supplier: {
+                  select: {
+                    id: true,
+                    company_name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      });
+
+      clinicSuppliers.forEach((csm: any) => {
+        clinicSupplierManagersMap.set(csm.id, csm);
+      });
+    }
 
     // Fetch all SupplierManagers by their IDs
     const supplierManagersMap = new Map<string, any>();
@@ -1136,32 +1178,29 @@ export class OrderService {
     }
 
     return filteredOrders.map((order: any) => {
-      // Supplier va manager ma'lumotlarini topish (items'dan)
+      // Supplier va manager ma'lumotlarini topish
       let supplierName = order.supplier_id || "공급업체 없음";
       let managerName = "";
       let supplierDetails: any = null;
 
-      // Get supplier ID from order or items
-      let supplierId: string | null = order.supplier_id || null;
-
-      if (!supplierId && order.items && order.items.length > 0) {
-        const firstItem = order.items[0];
-        if (firstItem.product && firstItem.product.productSupplier) {
-          const productSupplier = firstItem.product.productSupplier;
-          const clinicSupplierManager = productSupplier.clinicSupplierManager;
-          supplierId =
-            clinicSupplierManager?.linkedManager?.supplier?.id || null;
-        }
+      // ✅ Get ClinicSupplierManager from order.supplier_id (batch fetched)
+      let clinicSupplierManager: any = null;
+      if (
+        order.supplier_id &&
+        clinicSupplierManagersMap.has(order.supplier_id)
+      ) {
+        clinicSupplierManager = clinicSupplierManagersMap.get(
+          order.supplier_id
+        );
       }
 
-      // Get ProductSupplier from first item
-      let clinicSupplierManager: any = null;
-      if (order.items && order.items.length > 0) {
-        const firstItem = order.items[0];
-        if (firstItem.product && firstItem.product.productSupplier) {
-          clinicSupplierManager =
-            firstItem.product.productSupplier.clinicSupplierManager;
-        }
+      // ✅ Check if platform supplier (linkedManager bor bo'lsa platform supplier)
+      const isPlatformSupplier = !!clinicSupplierManager?.linkedManager?.id;
+
+      // Get supplier ID from ClinicSupplierManager's linkedManager
+      let supplierId: string | null = null;
+      if (clinicSupplierManager?.linkedManager?.supplier?.id) {
+        supplierId = clinicSupplierManager.linkedManager.supplier.id;
       }
 
       // Get supplier details from map
@@ -1176,7 +1215,7 @@ export class OrderService {
           companyPhone: supplier.company_phone || null,
           companyEmail: supplier.company_email || null,
           businessNumber: supplier.business_number || "",
-          isPlatformSupplier: !!clinicSupplierManager?.linkedManager, // ✅ NEW
+          isPlatformSupplier: isPlatformSupplier, // ✅ Use pre-calculated value
         };
 
         // Manager ma'lumotlarini topish - Priority: linkedManager > first manager > clinic manager
@@ -1230,7 +1269,7 @@ export class OrderService {
               companyPhone: supplier.company_phone || null,
               companyEmail: supplier.company_email || null,
               businessNumber: supplier.business_number || "",
-              isPlatformSupplier: !!clinicSupplierManager?.linkedManager, // ✅ NEW
+              isPlatformSupplier: isPlatformSupplier, // ✅ Use pre-calculated value
             };
 
             // Manager ma'lumotlarini topish - Priority: linkedManager > first manager > clinic manager
@@ -1268,7 +1307,8 @@ export class OrderService {
               supplierDetails.position = clinicSupplierManager.position || null;
             }
           } else {
-            // Last resort: use clinicSupplierManager data (manual supplier)
+            // Last resort: use clinicSupplierManager data
+            // This could be platform supplier without Supplier entry, OR manual supplier
             supplierName = clinicSupplierManager.company_name || supplierName;
             managerName = clinicSupplierManager.name || "";
 
@@ -1285,6 +1325,7 @@ export class OrderService {
                 clinicSupplierManager.email2 ||
                 null,
               position: clinicSupplierManager.position || null,
+              isPlatformSupplier: isPlatformSupplier, // ✅ Use pre-calculated value!
             };
           }
         }
@@ -1319,6 +1360,8 @@ export class OrderService {
         createdByName = member.full_name || member.member_id;
       }
 
+      // 🔍 DEBUG - Log supplierDetails
+
       return {
         id: order.id,
         orderNo: order.order_no,
@@ -1340,10 +1383,6 @@ export class OrderService {
    * Cancel order (Clinic initiates)
    */
   async cancelOrder(orderId: string, tenantId: string): Promise<any> {
-    this.logger.log(
-      `🚫 [Order Cancel] Starting cancellation for order ${orderId}`
-    );
-
     // Find order with supplier details
     const order = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findFirst({
@@ -1474,10 +1513,6 @@ export class OrderService {
         return;
       }
 
-      this.logger.log(
-        `📤 [Order Cancel] Sending cancellation webhook to supplier-backend for order ${order.order_no}`
-      );
-
       const response = await fetch(`${supplierApiUrl}/supplier/orders/cancel`, {
         method: "POST",
         headers: {
@@ -1498,9 +1533,6 @@ export class OrderService {
           `Failed to notify supplier about cancellation: ${response.status} ${errorText}`
         );
       } else {
-        this.logger.log(
-          `✅ [Order Cancel] Supplier notified successfully for order ${order.order_no}`
-        );
       }
 
       // ✅ Also send SMS and Email to platform supplier manager
@@ -1559,10 +1591,6 @@ export class OrderService {
 
       // SMS notification
       if (phoneNumber) {
-        this.logger.log(
-          `📱 [Order Cancel] Sending SMS to platform supplier ${supplierManager.name}`
-        );
-
         const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
           order.order_no
         }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
@@ -1570,17 +1598,10 @@ export class OrderService {
         )}`;
 
         await this.messageService.sendSMS(phoneNumber, message);
-        this.logger.log(
-          `✅ [Order Cancel] SMS sent to platform supplier ${phoneNumber}`
-        );
       }
 
       // Email notification
       if (email) {
-        this.logger.log(
-          `📧 [Order Cancel] Sending Email to platform supplier ${email}`
-        );
-
         const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
         const emailBody = `
           <h2>주문이 취소되었습니다</h2>
@@ -1594,9 +1615,6 @@ export class OrderService {
         `;
 
         await this.emailService.sendEmail(email, emailSubject, emailBody);
-        this.logger.log(
-          `✅ [Order Cancel] Email sent to platform supplier ${email}`
-        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1631,10 +1649,6 @@ export class OrderService {
 
       // SMS notification
       if (phoneNumber) {
-        this.logger.log(
-          `📱 [Order Cancel] Sending SMS to manual supplier ${clinicSupplierManager?.company_name}`
-        );
-
         const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
           order.order_no
         }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
@@ -1642,17 +1656,10 @@ export class OrderService {
         )}`;
 
         await this.messageService.sendSMS(phoneNumber, message);
-        this.logger.log(
-          `✅ [Order Cancel] SMS sent to manual supplier ${phoneNumber}`
-        );
       }
 
       // Email notification
       if (email) {
-        this.logger.log(
-          `📧 [Order Cancel] Sending Email to manual supplier ${email}`
-        );
-
         const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
         const emailBody = `
           <h2>주문이 취소되었습니다</h2>
@@ -1666,9 +1673,6 @@ export class OrderService {
         `;
 
         await this.emailService.sendEmail(email, emailSubject, emailBody);
-        this.logger.log(
-          `✅ [Order Cancel] Email sent to manual supplier ${email}`
-        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1709,9 +1713,6 @@ export class OrderService {
         }\n금액: ${order.total_amount?.toLocaleString()}원`;
 
         await this.messageService.sendSMS(phoneNumber, smsMessage);
-        this.logger.log(
-          `✅ [Order Create] SMS sent to manual supplier ${phoneNumber}`
-        );
       }
 
       // Email notification
@@ -1728,9 +1729,6 @@ export class OrderService {
         `;
 
         await this.emailService.sendEmail(email, emailSubject, emailBody);
-        this.logger.log(
-          `✅ [Order Create] Email sent to manual supplier ${email}`
-        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -2146,9 +2144,6 @@ export class OrderService {
             );
           }
         }
-        console.log(
-          "📝 Step 2.5: Manual supplier SMS sent, continuing to EMAIL..."
-        );
 
         // ✅ MANUAL SUPPLIER: Send EMAIL notification
         try {
@@ -2180,12 +2175,6 @@ export class OrderService {
                 finalClinicManagerName,
                 products
               );
-
-            if (emailSent) {
-              this.logger.log(
-                `Email sent to manual supplier: ${supplierEmail}`
-              );
-            }
           } else {
             this.logger.warn(
               `No email address found for manual supplier ${order.supplier_id}`
@@ -2513,11 +2502,7 @@ export class OrderService {
           }
         );
 
-        console.log("📝 Before Promise.all(smsPromises)...");
         await Promise.all(smsPromises);
-        console.log(
-          "📝 After Promise.all(smsPromises) - SMS promises completed!"
-        );
       } catch (error: any) {
         // Log error but don't fail the order creation
         console.log("💥 [SMS ERROR]:", error.message);
@@ -2528,18 +2513,11 @@ export class OrderService {
         );
       }
 
-      console.log("📝 Step 2.9: SMS section complete, moving to EMAIL...");
-      console.log("📝 Step 3: Reached EMAIL notification section");
-
       // Send Email notification to supplier manager
       // Email yuborish supplier-backend API muvaffaqiyatli bo'lgan yoki bo'lmaganidan qat'iy nazar
       // (chunki email address mavjud bo'lsa, email yuborish kerak)
       try {
         // 🔍 DEBUG: Check what data we have
-        console.log("\n🔍 [EMAIL DEBUG] ===== START =====");
-        console.log("🔍 supplierManager:", supplierManager);
-        console.log("🔍 supplierWithEmail:", supplierWithEmail);
-        console.log("🔍 clinicSupplierManager:", clinicSupplierManager);
 
         // Get supplier email (priority: supplierManager.email1 > supplierManager.email2 > supplier.company_email > clinicSupplierManager.company_email > clinicSupplierManager.email1 > clinicSupplierManager.email2)
         const supplierEmail =
@@ -2551,10 +2529,7 @@ export class OrderService {
           clinicSupplierManager?.email2 ||
           null;
 
-        console.log("🔍 Resolved supplierEmail:", supplierEmail);
-
         if (supplierEmail) {
-          console.log("✅ Email found! Attempting to send...");
           // Products ma'lumotlarini formatlash (quantity bilan)
           const products = itemsWithDetails.map((item: any) => ({
             productName: item.productName || "제품",
@@ -2594,15 +2569,13 @@ export class OrderService {
             ? "ClinicSupplierManager.email1"
             : "ClinicSupplierManager.email2";
         } else {
-          console.log("❌ No email found! Skipping email notification");
           this.logger.warn(
             `No email address found for supplier ${order.supplier_id} (checked SupplierManager.email1, SupplierManager.email2, Supplier.company_email, ClinicSupplierManager.company_email, ClinicSupplierManager.email1, ClinicSupplierManager.email2), skipping email notification`
           );
         }
-        console.log("🔍 [EMAIL DEBUG] ===== END =====\n");
       } catch (emailError: any) {
         // Log error but don't fail the order creation
-        console.log("💥 [EMAIL ERROR]:", emailError);
+
         this.logger.error(
           `Failed to send email notification to supplier: ${
             emailError?.message || "Unknown error"
@@ -2610,8 +2583,6 @@ export class OrderService {
         );
       }
     } catch (error: any) {
-      console.log("💥 [OUTER ERROR] Function failed:", error.message);
-      console.log("💥 Error stack:", error.stack);
       this.logger.error(
         `Error sending order to supplier-backend: ${error.message}`,
         error.stack
@@ -2675,10 +2646,6 @@ export class OrderService {
       updatedAt: new Date().toISOString(),
     };
 
-    this.logger.log(
-      `📝 [updateOrderFromSupplier] Updating order ${orderNo} with status: ${status}`
-    );
-
     await this.prisma.executeWithRetry(async () => {
       // Update order
       await (this.prisma as any).order.update({
@@ -2694,10 +2661,6 @@ export class OrderService {
 
       // If rejected, update item memos with rejection reasons
       if (status === "rejected" && updatedItems) {
-        this.logger.log(
-          `📝 [Rejection] Updating ${updatedItems.length} items with rejection reasons`
-        );
-
         for (const updatedItem of updatedItems) {
           // Find matching order item by productId, productName, quantity, and unitPrice
           // This ensures we match the correct item even if productId is null
@@ -2723,9 +2686,6 @@ export class OrderService {
           }
 
           if (orderItem && updatedItem.memo) {
-            this.logger.log(
-              `   ✅ Updating item ${updatedItem.productName}: memo="${updatedItem.memo}"`
-            );
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
@@ -2741,10 +2701,6 @@ export class OrderService {
         }
       }
     });
-
-    this.logger.log(
-      `✅ [updateOrderFromSupplier] Order ${orderNo} updated successfully with status: ${status}`
-    );
 
     // 🆕 Notification: Log supplier order confirmation for clinic
     try {
@@ -3195,6 +3151,7 @@ export class OrderService {
           companyName: "알 수 없음",
           managerName: "",
           managerPosition: "",
+          isPlatformSupplier: false, // ✅ NEW
         };
         if (order.supplier_id) {
           const clinicSupplierManager = supplierManagersMap.get(
@@ -3214,6 +3171,7 @@ export class OrderService {
                 clinicSupplierManager.linkedManager.position ||
                 clinicSupplierManager.position ||
                 "";
+              supplierInfo.isPlatformSupplier = true; // ✅ Platform supplier
             } else {
               // Manual supplier - use denormalized fields from ClinicSupplierManager
               supplierInfo.companyName =
@@ -3221,6 +3179,7 @@ export class OrderService {
               supplierInfo.managerName = clinicSupplierManager.name || "";
               supplierInfo.managerPosition =
                 clinicSupplierManager.position || "";
+              supplierInfo.isPlatformSupplier = false; // ✅ Manual supplier
             }
           } else {
             this.logger.warn(
@@ -3234,6 +3193,7 @@ export class OrderService {
           supplierName: supplierInfo.companyName,
           managerName: supplierInfo.managerName,
           managerPosition: supplierInfo.managerPosition,
+          isPlatformSupplier: supplierInfo.isPlatformSupplier, // ✅ NEW
           orders: [],
         };
       }
