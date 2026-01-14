@@ -76,5 +76,13 @@ export class OrderController {
   async markOrderCompleted(@Body() dto: any) {
     return this.orderService.markOrderCompleted(dto);
   }
+
+  @Post("cancel")
+  @UseGuards(ApiKeyGuard)
+  @ApiHeader({ name: "x-api-key", description: "API Key for authentication" })
+  @ApiOperation({ summary: "Receive order cancellation from clinic-backend" })
+  async handleCancellation(@Body() dto: any) {
+    return this.orderService.handleCancellation(dto);
+  }
 }
 

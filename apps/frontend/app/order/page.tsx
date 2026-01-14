@@ -1562,21 +1562,25 @@ export default function OrderPage() {
                       order.managerName ||
                       "담당자";
 
-                    // Badge logic based on order status (priority: completed > rejected > supplier_confirmed > pending)
+                    // Badge logic based on order status (priority: completed > cancelled > rejected > supplier_confirmed > pending)
                     const isCompleted =
                       order.status === "completed" ||
                       order.status === "inbound_completed";
+                    const isCancelled =
+                      !isCompleted && order.status === "cancelled";
                     const isRejected =
                       !isCompleted &&
-                      (order.status === "rejected" ||
-                        order.status === "cancelled");
+                      !isCancelled &&
+                      order.status === "rejected";
                     const isSupplierConfirmed =
                       !isCompleted &&
+                      !isCancelled &&
                       !isRejected &&
                       (order.status === "supplier_confirmed" ||
                         order.status === "confirmed");
                     const isPending =
                       !isCompleted &&
+                      !isCancelled &&
                       !isRejected &&
                       !isSupplierConfirmed &&
                       order.status === "pending";
@@ -1608,6 +1612,28 @@ export default function OrderPage() {
                               {order.supplierDetails?.companyName ||
                                 order.supplierName ||
                                 "공급업체 없음"}{" "}
+                              {/* ✅ PHONE ICON BADGE - Faqat platform supplier uchun */}
+                              {order.supplierDetails?.isPlatformSupplier && (
+                                <span
+                                  className="ml-1.5 inline-flex items-center text-emerald-600 dark:text-emerald-400"
+                                  title="플랫폼 등록 공급사"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-4 h-4"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                </span>
+                              )}
                               담당자:{" "}
                               {order.supplierDetails?.managerName ||
                                 order.managerName ||
@@ -1620,23 +1646,34 @@ export default function OrderPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {isPending && (
+                            {/* ✅ 주문 취소 button - pending VA supplier_confirmed statuslarda */}
+                            {(isPending || isSupplierConfirmed) && (
                               <button
                                 onClick={async () => {
-                                  if (!confirm("정말 주문을 취소하시겠습니까?"))
-                                    return;
+                                  const confirmMessage = isSupplierConfirmed
+                                    ? "공급사가 이미 주문을 접수했습니다. 정말 취소하시겠습니까?"
+                                    : "정말 주문을 취소하시겠습니까?";
+
+                                  if (!confirm(confirmMessage)) return;
+
                                   try {
                                     await apiPut(
                                       `/order/${order.id}/cancel`,
                                       {}
                                     );
+
                                     // Remove from local state
                                     setOrders(
                                       orders.filter(
                                         (o: any) => o.id !== order.id
                                       )
                                     );
+
                                     alert("주문이 취소되었습니다.");
+
+                                    // Refresh orders
+                                    invalidateCache("orders");
+                                    await fetchOrders();
                                   } catch (err: any) {
                                     console.error(
                                       "Failed to cancel order",
@@ -1647,7 +1684,7 @@ export default function OrderPage() {
                                     );
                                   }
                                 }}
-                                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:bg-slate-700 dark:text-red-400 dark:border-red-600 dark:hover:bg-red-900/20"
                               >
                                 주문 취소
                               </button>
@@ -1661,6 +1698,11 @@ export default function OrderPage() {
                             {isSupplierConfirmed && (
                               <span className="inline-flex items-center rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
                                 주문 진행
+                              </span>
+                            )}
+                            {isCancelled && (
+                              <span className="inline-flex items-center rounded border border-slate-400 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:border-slate-400 dark:text-gray-400">
+                                주문 취소
                               </span>
                             )}
                             {isRejected && (

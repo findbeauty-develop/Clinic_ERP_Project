@@ -764,18 +764,47 @@ export class OrderService {
       // Supplier uchun memo olish
       const supplierMemo = dto.supplierMemos?.[supplierId] || dto.memo || null;
 
-      // Order yaratish
+      // ✅ STEP 1: Check if supplier is platform or manual
+      const clinicSupplierManager = await this.prisma.executeWithRetry(
+        async () => {
+          return await (this.prisma as any).clinicSupplierManager.findFirst({
+            where: {
+              id: supplierId,
+              tenant_id: tenantId,
+            },
+            select: {
+              id: true,
+              company_name: true,
+              linked_supplier_manager_id: true, // ✅ Key field!
+              phone_number: true, // For SMS notification on cancel
+            },
+          });
+        }
+      );
+
+      const isManualSupplier =
+        !clinicSupplierManager?.linked_supplier_manager_id;
+      const initialStatus = isManualSupplier ? "supplier_confirmed" : "pending";
+
+      this.logger.log(
+        `📦 [Order Create] Supplier: ${clinicSupplierManager?.company_name}, ` +
+          `Type: ${isManualSupplier ? "MANUAL" : "PLATFORM"}, ` +
+          `Initial Status: ${initialStatus}`
+      );
+
+      // ✅ STEP 2: Create order with appropriate status
       const order = await this.prisma.$transaction(async (tx: any) => {
         const order = await (tx as any).order.create({
           data: {
             tenant_id: tenantId,
             order_no: orderNo,
-            status: "pending",
+            status: initialStatus, // ✅ Dynamic status
             supplier_id: supplierId !== "unknown" ? supplierId : null,
             total_amount: group.totalAmount,
             expected_delivery_date: dto.expectedDeliveryDate
               ? new Date(dto.expectedDeliveryDate)
               : null,
+            confirmed_at: isManualSupplier ? new Date() : null, // ✅ Auto-confirm timestamp
             created_by: createdBy ?? null,
             memo: supplierMemo,
             clinic_manager_name: dto.clinicManagerName || null,
@@ -807,14 +836,26 @@ export class OrderService {
         await this.orderRepository.findById(order.id, tenantId)
       );
 
-      // Send order to supplier-backend (SupplierOrder table)
-      await this.sendOrderToSupplier(
-        order,
-        group,
-        tenantId,
-        createdBy,
-        dto.clinicManagerName
-      );
+      // ✅ STEP 3: Send to supplier-backend ONLY if platform supplier
+      if (!isManualSupplier) {
+        await this.sendOrderToSupplier(
+          order,
+          group,
+          tenantId,
+          createdBy,
+          dto.clinicManagerName
+        );
+      } else {
+        // ✅ NEW: Send SMS and Email to manual supplier
+        this.logger.log(
+          `📝 [Order Create] Manual supplier - sending SMS and Email notification`
+        );
+        await this.sendManualSupplierNotification(
+          order,
+          clinicSupplierManager,
+          tenantId
+        );
+      }
     }
 
     // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
@@ -1135,6 +1176,7 @@ export class OrderService {
           companyPhone: supplier.company_phone || null,
           companyEmail: supplier.company_email || null,
           businessNumber: supplier.business_number || "",
+          isPlatformSupplier: !!clinicSupplierManager?.linkedManager, // ✅ NEW
         };
 
         // Manager ma'lumotlarini topish - Priority: linkedManager > first manager > clinic manager
@@ -1188,6 +1230,7 @@ export class OrderService {
               companyPhone: supplier.company_phone || null,
               companyEmail: supplier.company_email || null,
               businessNumber: supplier.business_number || "",
+              isPlatformSupplier: !!clinicSupplierManager?.linkedManager, // ✅ NEW
             };
 
             // Manager ma'lumotlarini topish - Priority: linkedManager > first manager > clinic manager
@@ -1291,6 +1334,409 @@ export class OrderService {
         items: formattedItems,
       };
     });
+  }
+
+  /**
+   * Cancel order (Clinic initiates)
+   */
+  async cancelOrder(orderId: string, tenantId: string): Promise<any> {
+    this.logger.log(
+      `🚫 [Order Cancel] Starting cancellation for order ${orderId}`
+    );
+
+    // Find order with supplier details
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findFirst({
+        where: {
+          id: orderId,
+          tenant_id: tenantId,
+        },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // Check if order can be cancelled
+    if (order.status === "completed" || order.status === "inbound_completed") {
+      throw new BadRequestException(
+        "완료된 주문은 취소할 수 없습니다. (Completed orders cannot be cancelled)"
+      );
+    }
+
+    if (order.status === "cancelled") {
+      throw new BadRequestException(
+        "이미 취소된 주문입니다. (Order is already cancelled)"
+      );
+    }
+
+    // Get supplier details for notification
+    const clinicSupplierManager = await this.prisma.executeWithRetry(
+      async () => {
+        return await (this.prisma as any).clinicSupplierManager.findFirst({
+          where: {
+            id: order.supplier_id,
+            tenant_id: tenantId,
+          },
+          select: {
+            id: true,
+            company_name: true,
+            phone_number: true,
+            linked_supplier_manager_id: true,
+            linkedManager: {
+              select: {
+                id: true,
+                supplier_tenant_id: true,
+              },
+            },
+          },
+        });
+      }
+    );
+
+    const isPlatformSupplier =
+      !!clinicSupplierManager?.linked_supplier_manager_id;
+
+    // Update order status to cancelled
+    await this.prisma.executeWithRetry(async () => {
+      await (this.prisma as any).order.update({
+        where: { id: orderId },
+        data: {
+          status: "cancelled",
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.logger.log(
+      `✅ [Order Cancel] Order ${order.order_no} cancelled in clinic-backend`
+    );
+
+    // Notify supplier
+    if (isPlatformSupplier) {
+      // Platform supplier: Send webhook to supplier-backend to delete order
+      await this.notifySupplierCancellation(order, clinicSupplierManager);
+    } else {
+      // Manual supplier: Send SMS notification
+      await this.sendCancellationSMS(order, clinicSupplierManager);
+    }
+
+    // Invalidate cache
+    this.clearPendingInboundCache(tenantId);
+
+    return {
+      success: true,
+      orderId: order.id,
+      orderNo: order.order_no,
+      status: "cancelled",
+    };
+  }
+
+  /**
+   * Notify supplier-backend about order cancellation (Platform supplier)
+   */
+  private async notifySupplierCancellation(
+    order: any,
+    clinicSupplierManager: any
+  ): Promise<void> {
+    try {
+      const supplierApiUrl =
+        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+      const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+
+      if (!apiKey) {
+        this.logger.warn(
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping supplier notification"
+        );
+        return;
+      }
+
+      const supplierTenantId =
+        clinicSupplierManager?.linkedManager?.supplier_tenant_id;
+
+      if (!supplierTenantId) {
+        this.logger.warn(
+          `No supplier tenant ID found for order ${order.order_no}`
+        );
+        return;
+      }
+
+      this.logger.log(
+        `📤 [Order Cancel] Sending cancellation webhook to supplier-backend for order ${order.order_no}`
+      );
+
+      const response = await fetch(`${supplierApiUrl}/supplier/orders/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          orderNo: order.order_no,
+          supplierTenantId: supplierTenantId,
+          cancelledAt: new Date().toISOString(),
+          reason: "클리닉에서 주문을 취소했습니다", // Clinic cancelled the order
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to notify supplier about cancellation: ${response.status} ${errorText}`
+        );
+      } else {
+        this.logger.log(
+          `✅ [Order Cancel] Supplier notified successfully for order ${order.order_no}`
+        );
+      }
+
+      // ✅ Also send SMS and Email to platform supplier manager
+      await this.sendPlatformSupplierCancelNotification(
+        order,
+        clinicSupplierManager
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Error notifying supplier about cancellation: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Send SMS and Email to platform supplier about cancellation
+   */
+  private async sendPlatformSupplierCancelNotification(
+    order: any,
+    clinicSupplierManager: any
+  ): Promise<void> {
+    try {
+      const linkedManager = clinicSupplierManager?.linkedManager;
+      if (!linkedManager) {
+        return;
+      }
+
+      // Get supplier manager details
+      const supplierManager = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).supplierManager.findFirst({
+          where: { id: linkedManager.id },
+          select: {
+            phone_number: true,
+            email1: true,
+            name: true,
+          },
+        });
+      });
+
+      if (!supplierManager) {
+        return;
+      }
+
+      const phoneNumber = supplierManager.phone_number;
+      const email = supplierManager.email1;
+
+      // Get clinic name
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: order.tenant_id },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "병원";
+
+      // SMS notification
+      if (phoneNumber) {
+        this.logger.log(
+          `📱 [Order Cancel] Sending SMS to platform supplier ${supplierManager.name}`
+        );
+
+        const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
+          order.order_no
+        }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
+          "ko-KR"
+        )}`;
+
+        await this.messageService.sendSMS(phoneNumber, message);
+        this.logger.log(
+          `✅ [Order Cancel] SMS sent to platform supplier ${phoneNumber}`
+        );
+      }
+
+      // Email notification
+      if (email) {
+        this.logger.log(
+          `📧 [Order Cancel] Sending Email to platform supplier ${email}`
+        );
+
+        const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
+        const emailBody = `
+          <h2>주문이 취소되었습니다</h2>
+          <p><strong>클리닉:</strong> ${clinicName}</p>
+          <p><strong>주문번호:</strong> ${order.order_no}</p>
+          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
+          <p><strong>취소일시:</strong> ${new Date().toLocaleString(
+            "ko-KR"
+          )}</p>
+          <p style="color: red;">※ 이 주문은 클리닉에서 취소되었습니다.</p>
+        `;
+
+        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        this.logger.log(
+          `✅ [Order Cancel] Email sent to platform supplier ${email}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send platform supplier cancel notification: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Send SMS and Email notification to manual supplier about cancellation
+   */
+  private async sendCancellationSMS(
+    order: any,
+    clinicSupplierManager: any
+  ): Promise<void> {
+    try {
+      const phoneNumber = clinicSupplierManager?.phone_number;
+      const email =
+        clinicSupplierManager?.company_email ||
+        clinicSupplierManager?.email1 ||
+        clinicSupplierManager?.email2;
+
+      // Get clinic name
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: order.tenant_id },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "병원";
+
+      // SMS notification
+      if (phoneNumber) {
+        this.logger.log(
+          `📱 [Order Cancel] Sending SMS to manual supplier ${clinicSupplierManager?.company_name}`
+        );
+
+        const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
+          order.order_no
+        }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
+          "ko-KR"
+        )}`;
+
+        await this.messageService.sendSMS(phoneNumber, message);
+        this.logger.log(
+          `✅ [Order Cancel] SMS sent to manual supplier ${phoneNumber}`
+        );
+      }
+
+      // Email notification
+      if (email) {
+        this.logger.log(
+          `📧 [Order Cancel] Sending Email to manual supplier ${email}`
+        );
+
+        const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
+        const emailBody = `
+          <h2>주문이 취소되었습니다</h2>
+          <p><strong>클리닉:</strong> ${clinicName}</p>
+          <p><strong>주문번호:</strong> ${order.order_no}</p>
+          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
+          <p><strong>취소일시:</strong> ${new Date().toLocaleString(
+            "ko-KR"
+          )}</p>
+          <p style="color: red;">※ 이 주문은 클리닉에서 취소되었습니다.</p>
+        `;
+
+        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        this.logger.log(
+          `✅ [Order Cancel] Email sent to manual supplier ${email}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send cancellation SMS/Email: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Send SMS and Email notification to manual supplier about new order
+   */
+  private async sendManualSupplierNotification(
+    order: any,
+    clinicSupplierManager: any,
+    tenantId: string
+  ): Promise<void> {
+    try {
+      const phoneNumber = clinicSupplierManager?.phone_number;
+      const email =
+        clinicSupplierManager?.company_email ||
+        clinicSupplierManager?.email1 ||
+        clinicSupplierManager?.email2;
+
+      // Get clinic name
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: tenantId },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "병원";
+
+      // SMS notification
+      if (phoneNumber) {
+        const smsMessage = `[새 주문]\n${clinicName}에서 주문이 도착했습니다.\n주문번호: ${
+          order.order_no
+        }\n금액: ${order.total_amount?.toLocaleString()}원`;
+
+        await this.messageService.sendSMS(phoneNumber, smsMessage);
+        this.logger.log(
+          `✅ [Order Create] SMS sent to manual supplier ${phoneNumber}`
+        );
+      }
+
+      // Email notification
+      if (email) {
+        const emailSubject = `[새 주문] ${clinicName} - 주문번호 ${order.order_no}`;
+        const emailBody = `
+          <h2>새로운 주문이 도착했습니다</h2>
+          <p><strong>클리닉:</strong> ${clinicName}</p>
+          <p><strong>주문번호:</strong> ${order.order_no}</p>
+          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
+          <p><strong>주문일시:</strong> ${new Date().toLocaleString(
+            "ko-KR"
+          )}</p>
+        `;
+
+        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        this.logger.log(
+          `✅ [Order Create] Email sent to manual supplier ${email}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send manual supplier notification: ${error.message}`
+      );
+    }
   }
 
   /**
@@ -2229,6 +2675,10 @@ export class OrderService {
       updatedAt: new Date().toISOString(),
     };
 
+    this.logger.log(
+      `📝 [updateOrderFromSupplier] Updating order ${orderNo} with status: ${status}`
+    );
+
     await this.prisma.executeWithRetry(async () => {
       // Update order
       await (this.prisma as any).order.update({
@@ -2280,6 +2730,10 @@ export class OrderService {
         }
       }
     });
+
+    this.logger.log(
+      `✅ [updateOrderFromSupplier] Order ${orderNo} updated successfully with status: ${status}`
+    );
 
     // 🆕 Notification: Log supplier order confirmation for clinic
     try {
@@ -3157,49 +3611,6 @@ export class OrderService {
   /**
    * Delete order
    */
-  /**
-   * Cancel order - update status to cancelled
-   */
-  async cancelOrder(orderId: string, tenantId: string) {
-    if (!orderId || !tenantId) {
-      throw new BadRequestException("Order ID and Tenant ID are required");
-    }
-
-    // Find order
-    const order = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).order.findFirst({
-        where: {
-          id: orderId,
-          tenant_id: tenantId,
-        },
-      });
-    });
-
-    if (!order) {
-      throw new NotFoundException(`Order ${orderId} not found`);
-    }
-
-    // Check if order can be cancelled (only pending orders can be cancelled)
-    if (order.status !== "pending") {
-      throw new BadRequestException(
-        `Order with status "${order.status}" cannot be cancelled. Only pending orders can be cancelled.`
-      );
-    }
-
-    // Update status to cancelled
-    await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).order.update({
-        where: { id: orderId },
-        data: {
-          status: "cancelled",
-          updated_at: new Date(),
-        },
-      });
-    });
-
-    return { success: true, message: "Order cancelled successfully" };
-  }
-
   async deleteOrder(orderId: string, tenantId: string) {
     if (!orderId || !tenantId) {
       throw new BadRequestException("Order ID and Tenant ID are required");

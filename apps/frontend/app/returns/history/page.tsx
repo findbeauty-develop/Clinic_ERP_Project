@@ -374,7 +374,7 @@ export default function ReturnHistoryPage() {
                           </span>
                         ) : group.supplierStatus === "PENDING" ? (
                           <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium dark:bg-yellow-900/30 dark:text-yellow-400">
-                            요청중
+                            반품 진행중
                           </span>
                         ) : null}
                       </div>

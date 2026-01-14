@@ -1514,6 +1514,7 @@ export class OutboundService {
         async (tx: any) => {
           const createdOutbounds: any[] = [];
           const createdPackageOutbounds: any[] = [];
+          const defectiveItems: any[] = [];
           const logs: any[] = [];
           // Product'larni bir marta yangilash uchun map
           const productStockUpdates: Map<string, number> = new Map<
@@ -1788,6 +1789,20 @@ export class OutboundService {
                 });
 
                 createdOutbounds.push(outbound);
+
+                // Collect defective items for order return creation
+                if (dto.isDefective) {
+                  defectiveItems.push({
+                    outboundId: outbound.id,
+                    batchNo: batch.batch_no,
+                    productId: item.productId,
+                    productName: batch.product?.name || "알 수 없음",
+                    brand: batch.product?.brand || null,
+                    returnQuantity: item.outboundQty,
+                    totalQuantity: item.outboundQty,
+                    unitPrice: batch.product?.sale_price || 0,
+                  });
+                }
               }
             }
           }
@@ -1815,6 +1830,7 @@ export class OutboundService {
             success: true,
             outboundIds: createdOutbounds.map((o: any) => o.id),
             packageOutboundIds: createdPackageOutbounds.map((o: any) => o.id),
+            defectiveItems,
             failedItems: failedItems.length > 0 ? failedItems : undefined,
             logs: [],
             message:
@@ -1832,7 +1848,35 @@ export class OutboundService {
           timeout: 30000, // 30 seconds timeout for transaction
         }
       )
-      .then((result: any) => {
+      .then(async (result: any) => {
+        // Process defective items after transaction
+        if (result.defectiveItems && result.defectiveItems.length > 0) {
+          for (const defectiveItem of result.defectiveItems) {
+            try {
+              await this.orderReturnService.createFromOutbound(tenantId, {
+                outboundId: defectiveItem.outboundId,
+                items: [
+                  {
+                    batchNo: defectiveItem.batchNo,
+                    productId: defectiveItem.productId,
+                    productName: defectiveItem.productName,
+                    brand: defectiveItem.brand,
+                    returnQuantity: defectiveItem.returnQuantity,
+                    totalQuantity: defectiveItem.totalQuantity,
+                    unitPrice: defectiveItem.unitPrice,
+                  },
+                ],
+              });
+            } catch (error: any) {
+              console.error(
+                `Failed to create return for defective product:`,
+                error
+              );
+              // Don't fail the outbound if return creation fails
+            }
+          }
+        }
+
         // ✅ Cache invalidation AFTER transaction
         if (result.success) {
           this.invalidateProductsCache(tenantId);

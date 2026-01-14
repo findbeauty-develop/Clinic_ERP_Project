@@ -221,11 +221,12 @@ export class OrderController {
   }
 
   /**
-   * Cancel order - update status to cancelled
+   * Cancel order - Clinic initiates cancellation
    */
   @Put(":id/cancel")
   @UseGuards(JwtTenantGuard)
-  @ApiOperation({ summary: "Cancel order (update status to cancelled)" })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "주문 취소 (Clinic initiates order cancellation)" })
   async cancelOrder(@Tenant() tenantId: string, @Param("id") id: string) {
     return this.orderService.cancelOrder(id, tenantId);
   }

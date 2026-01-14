@@ -422,6 +422,54 @@ export class OrderService {
     return { success: true, message: "Order marked as completed", order: this.formatOrder(updated) };
   }
 
+  /**
+   * Handle order cancellation from clinic
+   */
+  async handleCancellation(dto: {
+    orderNo: string;
+    supplierTenantId: string;
+    cancelledAt: string;
+    reason?: string;
+  }): Promise<any> {
+    const { orderNo, supplierTenantId, cancelledAt, reason } = dto;
+
+    this.logger.log(
+      `🚫 [Order Cancel] Received cancellation for order ${orderNo} from clinic`
+    );
+
+    // Find order
+    const order = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).supplierOrder.findFirst({
+        where: {
+          order_no: orderNo,
+          supplier_tenant_id: supplierTenantId,
+        },
+      });
+    });
+
+    if (!order) {
+      this.logger.warn(`Order ${orderNo} not found in supplier-backend`);
+      return { success: false, message: "Order not found" };
+    }
+
+    // Delete order from supplier-backend (clinic cancelled, so no history needed)
+    await this.prisma.executeWithRetry(async () => {
+      await (this.prisma as any).supplierOrder.delete({
+        where: { id: order.id },
+      });
+    });
+
+    this.logger.log(
+      `✅ [Order Cancel] Order ${orderNo} deleted from supplier-backend`
+    );
+
+    return {
+      success: true,
+      orderNo: orderNo,
+      message: "Order cancelled and removed",
+    };
+  }
+
   private formatOrder = (order: any) => ({
     id: order.id,
     orderNo: order.order_no,
