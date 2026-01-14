@@ -2133,6 +2133,18 @@ const OrderCard = memo(function OrderCard({
   const isSupplierConfirmed = order.status === "supplier_confirmed";
   const isRejected = order.status === "rejected";
 
+  // Extract rejection reasons from order items
+  const rejectionReasons =
+    order.items
+      ?.map((item: any) => {
+        if (item.memo && item.memo.includes("[거절 사유:")) {
+          const match = item.memo.match(/\[거절 사유:\s*([^\]]+)\]/);
+          return match ? match[1].trim() : null;
+        }
+        return null;
+      })
+      .filter((reason: any) => reason !== null) || [];
+
   return (
     <div className="space-y-2">
       {/* Badge - Above Card */}
@@ -2504,6 +2516,43 @@ const OrderCard = memo(function OrderCard({
             </button>
           )}
         </div>
+
+        {/* Order Memo - Show ONLY for rejected orders with reasons OR if order has memo */}
+        {(isRejected && rejectionReasons.length > 0) || order.memo ? (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              메모
+            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+              {isRejected && rejectionReasons.length > 0 ? (
+                <>
+                  <span className="font-semibold text-red-600 dark:text-red-400">
+                    [거절 사유]
+                  </span>
+                  <br />
+                  {rejectionReasons.map((reason: string, idx: number) => (
+                    <span key={idx}>
+                      • {reason}
+                      {idx < rejectionReasons.length - 1 && <br />}
+                    </span>
+                  ))}
+                  {order.memo && (
+                    <>
+                      <br /><br />
+                      <span className="font-semibold">
+                        [주문 메모]
+                      </span>
+                      <br />
+                      {order.memo}
+                    </>
+                  )}
+                </>
+              ) : (
+                order.memo
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

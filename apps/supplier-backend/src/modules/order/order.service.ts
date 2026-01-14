@@ -212,11 +212,20 @@ export class OrderService {
 
       // Update item rejection reasons if provided (for rejected orders)
       if (dto.status === "rejected" && dto.rejectionReasons) {
+        this.logger.log(
+          `📝 [Rejection] Processing rejection reasons for ${Object.keys(dto.rejectionReasons).length} items`
+        );
+
         for (const [itemId, reason] of Object.entries(dto.rejectionReasons)) {
           if (reason && reason.trim() !== "") {
             const item = order.items.find((i: any) => i.id === itemId);
             if (item) {
               const itemMemo = item.memo ? `${item.memo}\n[거절 사유: ${reason}]` : `[거절 사유: ${reason}]`;
+              
+              this.logger.log(
+                `   ✅ Item: ${item.product_name || 'Unknown'}, Reason: ${reason}`
+              );
+
               await tx.supplierOrderItem.update({
                 where: { id: itemId },
                 data: {
@@ -224,6 +233,8 @@ export class OrderService {
                   updated_at: new Date(),
                 },
               });
+            } else {
+              this.logger.warn(`   ⚠️ Item with id ${itemId} not found`);
             }
           }
         }

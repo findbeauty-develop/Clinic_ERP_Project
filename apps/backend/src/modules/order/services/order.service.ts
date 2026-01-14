@@ -2694,6 +2694,10 @@ export class OrderService {
 
       // If rejected, update item memos with rejection reasons
       if (status === "rejected" && updatedItems) {
+        this.logger.log(
+          `📝 [Rejection] Updating ${updatedItems.length} items with rejection reasons`
+        );
+
         for (const updatedItem of updatedItems) {
           // Find matching order item by productId, productName, quantity, and unitPrice
           // This ensures we match the correct item even if productId is null
@@ -2719,6 +2723,9 @@ export class OrderService {
           }
 
           if (orderItem && updatedItem.memo) {
+            this.logger.log(
+              `   ✅ Updating item ${updatedItem.productName}: memo="${updatedItem.memo}"`
+            );
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
@@ -2726,6 +2733,10 @@ export class OrderService {
                 updated_at: new Date(),
               },
             });
+          } else {
+            this.logger.warn(
+              `   ⚠️ Could not find matching order item for ${updatedItem.productName}`
+            );
           }
         }
       }
@@ -3371,7 +3382,7 @@ export class OrderService {
     // Get unique order IDs to fetch supplier details
     const orderIds = [...new Set(rejectedOrders.map((ro: any) => ro.order_id))];
 
-    // Fetch orders to get supplier information
+    // Fetch orders to get supplier information AND order items with memos
     const orders = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findMany({
         where: {
@@ -3381,16 +3392,42 @@ export class OrderService {
         select: {
           id: true,
           supplier_id: true,
+          memo: true, // Include order memo
+          items: {
+            // Include order items with memos
+            select: {
+              id: true,
+              product_id: true,
+              quantity: true,
+              unit_price: true,
+              total_price: true,
+              memo: true, // ✅ Include item memo for rejection reasons
+              product: {
+                select: {
+                  name: true,
+                  brand: true,
+                },
+              },
+            },
+          },
         },
       });
     });
 
     // Create a map of order_id -> supplier_id
     const orderSupplierMap = new Map<string, string>();
+    // ✅ Create a map of order_id -> order data (items, memo)
+    const orderDataMap = new Map<string, any>();
+
     orders.forEach((order: any) => {
       if (order.supplier_id) {
         orderSupplierMap.set(order.id, order.supplier_id);
       }
+      // Store full order data including items and memo
+      orderDataMap.set(order.id, {
+        items: order.items || [],
+        memo: order.memo || null,
+      });
     });
 
     // Get unique supplier IDs
@@ -3445,6 +3482,12 @@ export class OrderService {
           managerPosition = supplierPositionMap.get(supplierId) || null;
         }
 
+        // ✅ Get order data (items with memos and order memo)
+        const orderData = orderDataMap.get(rejectedOrder.order_id) || {
+          items: [],
+          memo: null,
+        };
+
         grouped[orderNo] = {
           orderId: rejectedOrder.order_id,
           orderNo: rejectedOrder.order_no,
@@ -3453,15 +3496,22 @@ export class OrderService {
           managerPosition: managerPosition,
           memberName: rejectedOrder.member_name,
           confirmedAt: rejectedOrder.created_at,
-          items: [],
+          items: orderData.items.map((item: any) => ({
+            id: item.id,
+            productId: item.product_id,
+            productName: item.product?.name || rejectedOrder.product_name,
+            productBrand: item.product?.brand || rejectedOrder.product_brand,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            totalPrice: item.total_price,
+            memo: item.memo || null, // ✅ Include item memo with rejection reason
+          })),
+          memo: orderData.memo, // ✅ Include order-level memo
         };
       }
 
-      grouped[orderNo].items.push({
-        productName: rejectedOrder.product_name,
-        productBrand: rejectedOrder.product_brand,
-        qty: rejectedOrder.qty,
-      });
+      // Items already mapped above from Order table
+      // No need to push from rejectedOrder table which has limited data
     }
 
     return Object.values(grouped);

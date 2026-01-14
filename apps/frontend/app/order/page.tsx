@@ -1828,11 +1828,69 @@ export default function OrderPage() {
                                     </>
                                   )}
                                 </div>
-                                {/* Memo field for rejected orders - always show */}
+
+                                {/* ✅ Show rejection reason for each item if rejected */}
+                                {isRejected && itemRejectionReason && (
+                                  <div className="px-4 pb-3">
+                                    <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 dark:bg-red-900/20 dark:border-red-800">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-xs font-semibold text-red-700 dark:text-red-400 whitespace-nowrap">
+                                          거절 사유:
+                                        </span>
+                                        <span className="text-xs text-red-600 dark:text-red-300">
+                                          {itemRejectionReason}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
                         </div>
+
+                        {/* Order Memo - Show ONLY for rejected orders with reasons OR if order has memo */}
+                        {(isRejected && rejectionReasons.length > 0) ||
+                        order.memo ? (
+                          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                              메모
+                            </div>
+                            <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                              {isRejected && rejectionReasons.length > 0 ? (
+                                <>
+                                  <span className="font-semibold text-red-600 dark:text-red-400">
+                                    [거절 사유]
+                                  </span>
+                                  <br />
+                                  {rejectionReasons.map(
+                                    (reason: string, idx: number) => (
+                                      <span key={idx}>
+                                        • {reason}
+                                        {idx < rejectionReasons.length - 1 && (
+                                          <br />
+                                        )}
+                                      </span>
+                                    )
+                                  )}
+                                  {order.memo && (
+                                    <>
+                                      <br />
+                                      <br />
+                                      <span className="font-semibold">
+                                        [주문 메모]
+                                      </span>
+                                      <br />
+                                      {order.memo}
+                                    </>
+                                  )}
+                                </>
+                              ) : (
+                                order.memo
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
 
                         {/* Total */}
                         <div className="mb-3 flex justify-end">
@@ -1963,6 +2021,20 @@ export default function OrderPage() {
 
                     console.log("Rendering rejected order:", rejectedOrder);
 
+                    // Extract rejection reasons from item memos
+                    const rejectionReasons =
+                      rejectedOrder.items
+                        ?.map((item: any) => {
+                          if (item.memo && item.memo.includes("[거절 사유:")) {
+                            const match = item.memo.match(
+                              /\[거절 사유:\s*([^\]]+)\]/
+                            );
+                            return match ? match[1].trim() : null;
+                          }
+                          return null;
+                        })
+                        .filter((reason: any) => reason !== null) || [];
+
                     return (
                       <div
                         key={rejectedOrder.orderNo}
@@ -2040,6 +2112,51 @@ export default function OrderPage() {
                             총 0
                           </div>
                         </div>
+
+                        {/* Memo Field (Rejection Reasons + Order Memo) */}
+                        {(rejectionReasons.length > 0 ||
+                          rejectedOrder.memo) && (
+                          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                              메모
+                            </div>
+                            <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                              {rejectionReasons.length > 0 && (
+                                <>
+                                  <span className="font-semibold text-red-600 dark:text-red-400">
+                                    [거절 사유]
+                                  </span>
+                                  <br />
+                                  {rejectionReasons.map(
+                                    (reason: string, idx: number) => (
+                                      <span key={idx}>
+                                        • {reason}
+                                        {idx < rejectionReasons.length - 1 && (
+                                          <br />
+                                        )}
+                                      </span>
+                                    )
+                                  )}
+                                  {rejectedOrder.memo && (
+                                    <>
+                                      <br />
+                                      <br />
+                                    </>
+                                  )}
+                                </>
+                              )}
+                              {rejectedOrder.memo && (
+                                <>
+                                  <span className="font-semibold">
+                                    [주문 메모]
+                                  </span>
+                                  <br />
+                                  {rejectedOrder.memo}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Action Buttons */}
                         <div className="flex justify-end gap-2">
