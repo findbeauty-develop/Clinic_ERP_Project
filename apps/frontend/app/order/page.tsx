@@ -43,6 +43,7 @@ type ProductWithRisk = {
   expiryDate: string | null;
   unitPrice: number | null;
   currentStock: number;
+  unit: string | null;
   minStock: number;
   isLowStock: boolean; // 재고 부족 여부
   batches: Array<{
@@ -50,6 +51,7 @@ type ProductWithRisk = {
     batchNo: string;
     expiryDate: string | null;
     qty: number;
+    unit: string | null;
     purchasePrice: number | null;
     isExpiringSoon: boolean; // 유효기한 임박 여부
     daysUntilExpiry: number | null; // 만료까지 남은 일수
@@ -113,10 +115,14 @@ export default function OrderPage() {
   const [returnChecked, setReturnChecked] = useState<Record<string, boolean>>(
     {}
   ); // Return checkbox holati
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  // const [searchQuery, setSearchQuery] = useState("");
+  // const [searchResults, setSearchResults] = useState<any[]>([]);
+  // const [isSearching, setIsSearching] = useState(false);
+  // const debouncedSearchQuery = useDebounce(searchQuery, 500);
+
+  const [productFilter, setProductFilter] = useState<"low-stock" | "all">(
+    "low-stock"
+  );
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
   const [orders, setOrders] = useState<any[]>([]);
@@ -135,6 +141,9 @@ export default function OrderPage() {
 
   // Current logged-in member name (read-only)
   const [orderManagerName, setOrderManagerName] = useState("");
+
+  // Client-side mount state (hydration error'dan qochish uchun)
+  const [isMounted, setIsMounted] = useState(false);
 
   // Cache invalidation helper
   const invalidateCache = useCallback(
@@ -187,22 +196,17 @@ export default function OrderPage() {
   } | null>(null);
   const CACHE_TTL = 30000; // 30 seconds
 
-  // Session ID'ni client-side'da initialize qilish (hydration error'dan qochish uchun)
+  // Client-side mount initialization (hydration error'dan qochish uchun)
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // Mark as mounted
+      setIsMounted(true);
+
+      // Initialize session ID
       const existingSessionId = localStorage.getItem("order_session_id");
       const newSessionId = existingSessionId || `session-${Date.now()}`;
       setSessionId(newSessionId);
       localStorage.setItem("order_session_id", newSessionId);
-    }
-  }, []);
-
-  // Initialize manager name from localStorage (current logged-in member)
-  useEffect(() => {
-    const memberData = localStorage.getItem("erp_member_data");
-    if (memberData) {
-      const member = JSON.parse(memberData);
-      setOrderManagerName(member.full_name || member.member_id || "");
     }
   }, []);
 
@@ -548,33 +552,33 @@ export default function OrderPage() {
   }, [activeTab, fetchOrders, fetchRejectedOrders, invalidateCache]);
 
   // Search products
-  useEffect(() => {
-    const searchProducts = async () => {
-      if (!debouncedSearchQuery.trim()) {
-        setSearchResults([]);
-        setIsSearching(false);
-        return;
-      }
+  // useEffect(() => {
+  //   const searchProducts = async () => {
+  //     if (!debouncedSearchQuery.trim()) {
+  //       setSearchResults([]);
+  //       setIsSearching(false);
+  //       return;
+  //     }
 
-      setIsSearching(true);
-      try {
-        const data = await apiGet<{
-          products: any[];
-          pagination: any;
-        }>(
-          `${apiUrl}/order/products/search?search=${encodeURIComponent(debouncedSearchQuery)}&page=1&limit=10`
-        );
-        setSearchResults(data.products || []);
-      } catch (err) {
-        console.error("Failed to search products", err);
-        setSearchResults([]);
-      } finally {
-        setIsSearching(false);
-      }
-    };
+  //     setIsSearching(true);
+  //     try {
+  //       const data = await apiGet<{
+  //         products: any[];
+  //         pagination: any;
+  //       }>(
+  //         `${apiUrl}/order/products/search?search=${encodeURIComponent(debouncedSearchQuery)}&page=1&limit=10`
+  //       );
+  //       setSearchResults(data.products || []);
+  //     } catch (err) {
+  //       console.error("Failed to search products", err);
+  //       setSearchResults([]);
+  //     } finally {
+  //       setIsSearching(false);
+  //     }
+  //   };
 
-    searchProducts();
-  }, [apiUrl, debouncedSearchQuery]);
+  //   searchProducts();
+  // }, [apiUrl, debouncedSearchQuery]);
 
   // Quantity o'zgartirish (Optimistic update bilan)
   const handleQuantityChange = useCallback(
@@ -617,6 +621,7 @@ export default function OrderPage() {
                 supplierId,
                 quantity: sanitizedQuantity,
                 unitPrice,
+
                 totalPrice: sanitizedQuantity * unitPrice,
                 isHighlighted: true,
               },
@@ -630,6 +635,7 @@ export default function OrderPage() {
                     id: itemId,
                     productId,
                     batchId,
+
                     supplierId,
                     quantity: sanitizedQuantity,
                     unitPrice,
@@ -750,13 +756,11 @@ export default function OrderPage() {
       };
     });
 
-    // Filter: faqat low stock productlar (currentStock <= minStock)
-    // "재고 부족 제품" section uchun
-    // IMPORTANT: Expiring batch bo'lsa ham, agar currentStock > minStock bo'lsa, ko'rinmaydi
-    const filtered = productsWithCalcs.filter((product) => {
-      // Faqat currentStock <= minStock bo'lgan productlar ko'rsatiladi
-      return product.isLowStock;
-    });
+    // Filter based on productFilter state
+    const filtered =
+      productFilter === "low-stock"
+        ? productsWithCalcs.filter((product) => product.isLowStock)
+        : productsWithCalcs; // Show all products if filter is 'all'
 
     // Sort products: 재고 부족 먼저, 그 다음 유효기한 임박
     const sorted = [...filtered].sort((a, b) => {
@@ -779,7 +783,7 @@ export default function OrderPage() {
     });
 
     return sorted;
-  }, [products]);
+  }, [products, productFilter]);
 
   return (
     <>
@@ -879,14 +883,33 @@ export default function OrderPage() {
           <div className="flex flex-1 overflow-hidden">
             {/* Left Panel - Products List */}
             <div className="flex w-2/3 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-              {/* 재고 부족 제품 Card - faqat search query bo'sh bo'lsa ko'rsatish */}
-              {!debouncedSearchQuery.trim() && (
+              {/* 재고 부족 제품 / 전체 제품 Card - faqat search query bo'sh bo'lsa ko'rsatish */}
+              {!debouncedOrderSearchQuery.trim() && (
                 <div className="flex flex-1 flex-col overflow-hidden border-b border-slate-200 dark:border-slate-800">
                   <div className="border-b border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-800 dark:bg-slate-800/50">
-                    <div className="flex items-center justify-between">
-                      <h2 className="font-semibold text-slate-900 dark:text-white">
-                        재고 부족 제품
-                      </h2>
+                    <div className="flex items-center justify-center">
+                      <div className="inline-flex w-full rounded-lg border border-slate-200 dark:border-slate-700">
+                        <button
+                          onClick={() => setProductFilter("low-stock")}
+                          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                            productFilter === "low-stock"
+                              ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
+                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                          } border-r border-slate-200 dark:border-slate-700 rounded-l-lg`}
+                        >
+                          재고 부족 제품
+                        </button>
+                        <button
+                          onClick={() => setProductFilter("all")}
+                          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                            productFilter === "all"
+                              ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
+                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                          } rounded-r-lg`}
+                        >
+                          전체 제품
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -962,6 +985,7 @@ export default function OrderPage() {
                                     placeholder="0"
                                     type="number"
                                     min="0"
+                                    value={currentQty || ""}
                                     onChange={(e) => {
                                       const val = Math.max(
                                         0,
@@ -997,7 +1021,7 @@ export default function OrderPage() {
                                     +
                                   </button>
                                   <span className="ml-1 mt-4 text-sm text-slate-600 dark:text-slate-400">
-                                    단위
+                                    {product.unit || "개"}
                                   </span>
                                 </div>
                               </div>
@@ -1027,10 +1051,12 @@ export default function OrderPage() {
                                 <span
                                   className={`font-semibold ${product.isLowStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}
                                 >
-                                  현재고: {product.currentStock || 0}개
+                                  현재고: {product.currentStock || 0}{" "}
+                                  {product.unit || "개"}
                                 </span>
                                 <span className="text-slate-600 dark:text-slate-400">
-                                  최소재고: {product.minStock || 0}개
+                                  최소재고: {product.minStock || 0}{" "}
+                                  {product.unit || "개"}
                                 </span>
                               </div>
 
@@ -1050,7 +1076,7 @@ export default function OrderPage() {
                                             total + (batch.qty || 0),
                                           0
                                         )}{" "}
-                                        개
+                                        {product.unit || "개"}
                                       </span>
                                     </div>
                                   </div>
@@ -1063,226 +1089,6 @@ export default function OrderPage() {
                   </div>
                 </div>
               )}
-
-              {/* 기타 제품 추가 Card - Search bar va search natijalari */}
-              <div
-                className={`flex flex-col border-t border-slate-200 dark:border-slate-800 ${!debouncedSearchQuery.trim() ? "mt-auto" : ""}`}
-              >
-                <div className="border-b border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-800 dark:bg-slate-800/50">
-                  <h3 className="font-semibold text-slate-900 dark:text-white">
-                    기타 제품 추가
-                  </h3>
-                </div>
-                <div className="p-4">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="시스템에 표시되지 않은 제품을 추가하려면 검색하세요..."
-                      className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 pl-10 text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                    />
-                    <svg
-                      className="absolute left-3 top-2.5 h-5 w-5 text-slate-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                  </div>
-
-                  {/* Search natijalari - faqat search query bo'lsa ko'rsatish */}
-                  {debouncedSearchQuery.trim() && (
-                    <div className="order-page-scrollbar mt-4 max-h-full overflow-y-auto">
-                      {isSearching ? (
-                        <div className="text-center text-slate-500 dark:text-slate-400 py-4">
-                          검색 중...
-                        </div>
-                      ) : searchResults.length > 0 ? (
-                        <div className="space-y-4">
-                          {searchResults.map((product: any) => {
-                            const latestBatch = product.batches?.[0];
-                            const itemId = latestBatch?.id
-                              ? `${product.id}-${latestBatch.id}`
-                              : product.id;
-                            const currentQty =
-                              quantities[itemId] || quantities[product.id] || 0;
-                            const unitPrice = product.unitPrice || 0;
-
-                            return (
-                              <div
-                                key={product.id}
-                                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
-                              >
-                                {/* 1-chi qator: Product nomi, badges, quantity input */}
-                                <div className="mb-3 flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-3">
-                                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white underline">
-                                      {product.productName}
-                                    </h3>
-                                    {/* 재고 부족 Badge */}
-                                    {product.isLowStock && (
-                                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-300">
-                                        재고부족
-                                      </span>
-                                    )}
-                                    {/* 유효기한 임박 Badge */}
-                                    {product.batches?.[0]?.isExpiringSoon && (
-                                      <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
-                                        유효기한 임박
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => {
-                                        const itemId = latestBatch?.id
-                                          ? `${product.id}-${latestBatch.id}`
-                                          : product.id;
-                                        const currentQtyValue =
-                                          quantities[itemId] ||
-                                          quantities[product.id] ||
-                                          0;
-                                        handleQuantityChange(
-                                          product.id,
-                                          latestBatch?.id,
-                                          Math.max(0, currentQtyValue - 1)
-                                        );
-                                      }}
-                                      className="flex h-8 w-8 mt-4 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                                    >
-                                      -
-                                    </button>
-                                    <input
-                                      placeholder="0"
-                                      type="number"
-                                      min="0"
-                                      onChange={(e) => {
-                                        const val = Math.max(
-                                          0,
-                                          Math.floor(
-                                            parseInt(e.target.value) || 0
-                                          )
-                                        );
-                                        handleQuantityChange(
-                                          product.id,
-                                          latestBatch?.id,
-                                          val
-                                        );
-                                      }}
-                                      className="h-8 w-20 mt-4 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                    <button
-                                      onClick={() => {
-                                        const itemId = latestBatch?.id
-                                          ? `${product.id}-${latestBatch.id}`
-                                          : product.id;
-                                        const currentQtyValue =
-                                          quantities[itemId] ||
-                                          quantities[product.id] ||
-                                          0;
-                                        handleQuantityChange(
-                                          product.id,
-                                          latestBatch?.id,
-                                          Math.max(0, currentQtyValue + 1)
-                                        );
-                                      }}
-                                      className="flex h-8 w-8 mt-4 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                                    >
-                                      +
-                                    </button>
-                                    <span className="ml-1 mt-4 text-sm text-slate-600 dark:text-slate-400">
-                                      단위
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* 2-chi qator: Brend, supplier, 담당자, 단가 */}
-                                <div className="mb-3 flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                                  <span>
-                                    <span className="font-medium">브랜드:</span>{" "}
-                                    {product.brand}
-                                  </span>
-                                  <span>
-                                    <span className="font-medium">공급처:</span>{" "}
-                                    {product.supplierName || "없음"}
-                                  </span>
-                                  <span>
-                                    <span className="font-medium">담당자:</span>{" "}
-                                    {product.managerName || "없음"}
-                                  </span>
-                                  <span>
-                                    <span className="font-medium">단가:</span>{" "}
-                                    {unitPrice.toLocaleString()}원
-                                  </span>
-                                </div>
-
-                                {/* 재고 정보 */}
-                                <div className="mb-2 flex items-center gap-3 text-sm">
-                                  <span
-                                    className={`font-semibold ${
-                                      (product.batches?.reduce(
-                                        (total: number, batch: any) =>
-                                          total + (batch.qty || 0),
-                                        0
-                                      ) || 0) <= (product.minStock || 0)
-                                        ? "text-red-600 dark:text-red-400"
-                                        : "text-slate-700 dark:text-slate-300"
-                                    }`}
-                                  >
-                                    현재고:{" "}
-                                    {product.batches?.reduce(
-                                      (total: number, batch: any) =>
-                                        total + (batch.qty || 0),
-                                      0
-                                    ) || 0}
-                                    개
-                                  </span>
-                                  <span className="text-slate-600 dark:text-slate-400">
-                                    최소재고: {product.minStock || 0}개
-                                  </span>
-                                </div>
-
-                                {/* Batch'lar ro'yxati */}
-                                {product.batches &&
-                                  product.batches.length > 0 && (
-                                    <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                          총 재고량:
-                                        </span>
-                                        <span
-                                          className={`text-sm font-semibold ${product.currentStock <= (product.minStock || 0) ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-white"}`}
-                                        >
-                                          {product.batches.reduce(
-                                            (total: number, batch: any) =>
-                                              total + (batch.qty || 0),
-                                            0
-                                          )}{" "}
-                                          개
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-center text-slate-500 dark:text-slate-400 py-4">
-                          검색 결과가 없습니다.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
             {/* Right Panel - Order Summary */}
@@ -1402,7 +1208,7 @@ export default function OrderPage() {
                                       className="h-6 w-12 rounded border border-slate-300 bg-white px-1 text-center text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
                                     <span className="text-xs text-slate-600 dark:text-slate-400">
-                                      개
+                                      {product?.unit || "개"}
                                     </span>
                                   </div>
 

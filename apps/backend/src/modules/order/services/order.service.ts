@@ -90,6 +90,7 @@ export class OrderService {
                 name: true,
                 phone_number: true,
                 business_number: true,
+                // unit: true,
               },
             },
           },
@@ -119,6 +120,7 @@ export class OrderService {
           null,
         currentStock: product.current_stock ?? 0,
         minStock: product.min_stock ?? 0,
+        unit: product.unit ?? null, // ✅ Product unit
         batches: (product.batches || []).map((batch: any) => ({
           id: batch.id,
           batchNo: batch.batch_no ?? "",
@@ -126,6 +128,7 @@ export class OrderService {
             ? batch.expiry_date.toISOString().split("T")[0]
             : null,
           qty: batch.qty ?? 0,
+          unit: product.unit ?? null,
           purchasePrice: batch.purchase_price ?? null,
         })),
       };
@@ -193,6 +196,7 @@ export class OrderService {
       batches: Array<{
         batchNo: string;
         qty: number;
+        unit: string | null;
         expiryDate: string | null;
         purchasePrice: number | null;
       }>;
@@ -251,6 +255,7 @@ export class OrderService {
           batches: {
             where: {
               qty: { gt: 0 }, // Faqat zaxirasi bor batch'lar
+              unit: { not: null },
             },
             orderBy: [
               { expiry_date: "asc" }, // FEFO
@@ -306,6 +311,7 @@ export class OrderService {
         batches: product.batches.map((batch: any) => ({
           batchNo: batch.batch_no,
           qty: batch.qty,
+          unit: batch.unit,
           expiryDate: batch.expiry_date
             ? batch.expiry_date.toISOString().split("T")[0]
             : null,
@@ -378,6 +384,7 @@ export class OrderService {
           product_id: dto.productId,
           tenant_id: tenantId,
           qty: { gt: 0 },
+          unit: { not: null },
         },
         orderBy: { created_at: "desc" },
       });
