@@ -3,7 +3,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IEmailProvider } from "./email-provider.interface";
 import { AmazonSESProvider } from "./providers/amazon-ses.provider";
-import { MailgunProvider } from "./providers/mailgun.provider";
+import { BrevoProvider } from "./providers/brevo.provider"; // ✅ Import qo'shing
 
 @Injectable()
 export class EmailService {
@@ -13,7 +13,7 @@ export class EmailService {
   constructor(
     private configService: ConfigService,
     private amazonSESProvider: AmazonSESProvider,
-    private mailgunProvider: MailgunProvider
+    private brevoProvider: BrevoProvider
   ) {
     // Config'dan provider tanlash (kelajakda boshqa provider'lar qo'shilishi mumkin)
     const providerName =
@@ -27,8 +27,10 @@ export class EmailService {
       case "amazon-ses":
       case "ses":
         return this.amazonSESProvider;
-      case "mailgun":
-        return this.mailgunProvider;
+
+      case "brevo":
+      case "sendinblue":
+        return this.brevoProvider;
       default:
         this.logger.warn(`Unknown email provider: ${name}, using Amazon SES`);
         return this.amazonSESProvider;

@@ -2313,10 +2313,12 @@ export default function OrderPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                                  <span>{quantity}개</span>
-                                  <span>X {unitPrice.toLocaleString()}원</span>
-                                  <span className="font-semibold text-slate-900 dark:text-white">
-                                    = {total.toLocaleString()}원
+                                  <span>
+                                    {quantity} {product?.unit || "개"} X{" "}
+                                    {unitPrice.toLocaleString()}원{" "}
+                                    <span className="font-semibold text-slate-900 dark:text-white">
+                                      = {total.toLocaleString()}원
+                                    </span>
                                   </span>
                                 </div>
                               </div>

@@ -19,7 +19,7 @@ import { HiraModule } from "../hira/hira.module";
 import { PhoneVerificationService } from "./services/phone-verification.service";
 import { EmailService } from "./services/email.service";
 import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
-import { MailgunProvider } from "./services/providers/mailgun.provider";
+import { BrevoProvider } from "./services/providers/brevo.provider";
 
 @Module({
   imports: [HiraModule],
@@ -37,12 +37,12 @@ import { MailgunProvider } from "./services/providers/mailgun.provider";
     TwilioProvider,
     CoolSMSProvider,
     KakaoProvider,
+    BrevoProvider,
     KTCommunisProvider,
     SolapiProvider,
     PhoneVerificationService,
     EmailService,
     AmazonSESProvider,
-    MailgunProvider,
   ],
   exports: [MessageService, EmailService],
 })
