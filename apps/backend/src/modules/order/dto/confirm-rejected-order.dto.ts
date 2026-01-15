@@ -22,13 +22,7 @@ export class ConfirmRejectedOrderDto {
   @IsNotEmpty()
   orderNo!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  companyName!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  managerName!: string;
+  // ✅ Removed: companyName and managerName - backend will fetch from database
 
   @IsString()
   @IsNotEmpty()

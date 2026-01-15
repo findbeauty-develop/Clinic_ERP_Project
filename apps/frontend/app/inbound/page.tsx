@@ -2525,8 +2525,7 @@ const OrderCard = memo(function OrderCard({
                   await apiPost(endpoint, {
                     orderId: order.orderId,
                     orderNo: order.orderNo,
-                    companyName: order.supplierName || "알 수 없음",
-                    managerName: order.managerName || "알 수 없음",
+                    // ✅ Removed: companyName and managerName - backend will fetch from database
                     memberName: memberName,
                     items: items,
                   });
@@ -2587,10 +2586,9 @@ const OrderCard = memo(function OrderCard({
                   ))}
                   {order.memo && (
                     <>
-                      <br /><br />
-                      <span className="font-semibold">
-                        [주문 메모]
-                      </span>
+                      <br />
+                      <br />
+                      <span className="font-semibold">[주문 메모]</span>
                       <br />
                       {order.memo}
                     </>

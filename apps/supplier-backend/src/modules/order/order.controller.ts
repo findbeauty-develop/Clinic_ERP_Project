@@ -114,4 +114,21 @@ export class OrderController {
     const supplierManagerId = req.user?.supplierManagerId;
     return this.orderService.partialAcceptOrder(id, supplierManagerId, dto);
   }
+
+  @Put(":id/partial-reject")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Partial order rejection - split order into rejected and remaining items",
+  })
+  async partialReject(
+    @Param("id") id: string,
+    @Req() req: any,
+    @Body()
+    dto: { selectedItemIds: string[]; rejectionReasons: Record<string, string> }
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId;
+    return this.orderService.partialRejectOrder(id, supplierManagerId, dto);
+  }
 }

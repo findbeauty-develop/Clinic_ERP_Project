@@ -765,6 +765,220 @@ export class OrderService {
   }
 
   /**
+   * Partial reject order - split order into rejected and remaining
+   */
+  async partialRejectOrder(
+    id: string,
+    supplierManagerId: string,
+    dto: { selectedItemIds: string[]; rejectionReasons: Record<string, string> }
+  ) {
+    this.logger.log(
+      `🔀 [SPLIT REJECTION START] Order: ${id}, Selected items: ${dto.selectedItemIds.length}`
+    );
+
+    // Check feature flag
+    const featureEnabled =
+      process.env.ENABLE_PARTIAL_ORDER_ACCEPTANCE === "true";
+    if (!featureEnabled) {
+      throw new BadRequestException("Partial order rejection is not enabled");
+    }
+
+    // Get original order with items
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).supplierOrder.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+    });
+
+    if (!order) {
+      throw new BadRequestException("Order not found");
+    }
+
+    if (order.status !== "pending") {
+      throw new BadRequestException(
+        "Only pending orders can be partially rejected"
+      );
+    }
+
+    // Validation: Selected items must belong to this order
+    const orderItemIds = order.items.map((i: any) => i.id);
+    const invalidItems = dto.selectedItemIds.filter(
+      (id) => !orderItemIds.includes(id)
+    );
+    if (invalidItems.length > 0) {
+      throw new BadRequestException(
+        `Invalid item IDs: ${invalidItems.join(", ")}`
+      );
+    }
+
+    // Validation: Must have at least one item remaining
+    if (dto.selectedItemIds.length >= order.items.length) {
+      throw new BadRequestException(
+        "Cannot reject all items - use full reject instead"
+      );
+    }
+
+    if (dto.selectedItemIds.length === 0) {
+      throw new BadRequestException("Must select at least one item");
+    }
+
+    // Split items
+    const rejectedItems = order.items.filter((i: any) =>
+      dto.selectedItemIds.includes(i.id)
+    );
+    const remainingItems = order.items.filter(
+      (i: any) => !dto.selectedItemIds.includes(i.id)
+    );
+
+    // Calculate amounts
+    const rejectedTotal = rejectedItems.reduce(
+      (sum: number, i: any) => sum + i.total_price,
+      0
+    );
+    const remainingTotal = remainingItems.reduce(
+      (sum: number, i: any) => sum + i.total_price,
+      0
+    );
+
+    this.logger.log(
+      `   Rejected: ${rejectedItems.length} items (${rejectedTotal}원)`
+    );
+    this.logger.log(
+      `   Remaining: ${remainingItems.length} items (${remainingTotal}원)`
+    );
+
+    // Generate new order numbers
+    const baseOrderNo = order.order_no;
+    const rejectedOrderNo = `${baseOrderNo}-R`;
+    const remainingOrderNo = `${baseOrderNo}-B`;
+
+    // Transaction: Split order
+    const result = await this.prisma.$transaction(async (tx: any) => {
+      // Create Order 1: Rejected items (rejected)
+      const rejectedOrder = await tx.supplierOrder.create({
+        data: {
+          order_no: rejectedOrderNo,
+          supplier_tenant_id: order.supplier_tenant_id,
+          supplier_manager_id: order.supplier_manager_id,
+          clinic_tenant_id: order.clinic_tenant_id,
+          clinic_name: order.clinic_name,
+          clinic_manager_name: order.clinic_manager_name,
+          status: "rejected",
+          total_amount: rejectedTotal,
+          memo: order.memo,
+          order_date: order.order_date,
+          original_order_id: order.id,
+          is_split_order: true,
+          split_sequence: 1,
+          split_reason: "Partial rejection - rejected items",
+        },
+      });
+
+      // Create Order 2: Remaining items (pending)
+      const remainingOrder = await tx.supplierOrder.create({
+        data: {
+          order_no: remainingOrderNo,
+          supplier_tenant_id: order.supplier_tenant_id,
+          supplier_manager_id: order.supplier_manager_id,
+          clinic_tenant_id: order.clinic_tenant_id,
+          clinic_name: order.clinic_name,
+          clinic_manager_name: order.clinic_manager_name,
+          status: "pending",
+          total_amount: remainingTotal,
+          memo: order.memo,
+          order_date: order.order_date,
+          original_order_id: order.id,
+          is_split_order: true,
+          split_sequence: 2,
+          split_reason: "Partial rejection - remaining items",
+        },
+      });
+
+      // Move rejected items to Order 1 with rejection reasons
+      for (const item of rejectedItems) {
+        const reason = dto.rejectionReasons[item.id] || "No reason provided";
+        await tx.supplierOrderItem.create({
+          data: {
+            order_id: rejectedOrder.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            brand: item.brand,
+            batch_no: item.batch_no,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            memo: `[거절 사유: ${reason}]`,
+          },
+        });
+      }
+
+      // Move remaining items to Order 2
+      for (const item of remainingItems) {
+        await tx.supplierOrderItem.create({
+          data: {
+            order_id: remainingOrder.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            brand: item.brand,
+            batch_no: item.batch_no,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            memo: item.memo,
+          },
+        });
+      }
+
+      // Delete original order items
+      await tx.supplierOrderItem.deleteMany({
+        where: { order_id: order.id },
+      });
+
+      // Archive original order
+      await tx.supplierOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "archived",
+          memo: `Split into ${rejectedOrderNo} and ${remainingOrderNo}`,
+          updated_at: new Date(),
+        },
+      });
+
+      // Fetch complete orders with items
+      const rejectedOrderComplete = await tx.supplierOrder.findUnique({
+        where: { id: rejectedOrder.id },
+        include: { items: true },
+      });
+
+      const remainingOrderComplete = await tx.supplierOrder.findUnique({
+        where: { id: remainingOrder.id },
+        include: { items: true },
+      });
+
+      return {
+        rejectedOrder: rejectedOrderComplete,
+        remainingOrder: remainingOrderComplete,
+      };
+    });
+
+    this.logger.log(`✅ [SPLIT REJECTION SUCCESS]`);
+
+    // Notify clinic backend about the split
+    await this.notifyClinicBackendReject(
+      result.rejectedOrder,
+      result.remainingOrder,
+      order
+    );
+
+    return {
+      success: true,
+      rejectedOrder: result.rejectedOrder,
+      remainingOrder: result.remainingOrder,
+    };
+  }
+
+  /**
    * Notify clinic backend about order split
    */
   private async notifyClinicBackendSplit(
@@ -835,6 +1049,83 @@ export class OrderService {
     } catch (error: any) {
       this.logger.error(
         `Failed to notify clinic about order split: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Notify clinic backend about partial rejection split
+   */
+  private async notifyClinicBackendReject(
+    rejectedOrder: any,
+    remainingOrder: any,
+    originalOrder: any
+  ) {
+    try {
+      const clinicApiUrl =
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const apiKey =
+        process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
+
+      if (!apiKey) {
+        this.logger.warn(
+          "API_KEY_SECRET not configured, skipping clinic notification"
+        );
+        return;
+      }
+
+      const idempotencyKey = `split-reject-${originalOrder.id}-${Date.now()}`;
+
+      const payload = {
+        type: "order_split",
+        original_order_no: originalOrder.order_no,
+        clinic_tenant_id: originalOrder.clinic_tenant_id,
+        orders: [
+          {
+            order_no: rejectedOrder.order_no,
+            status: "rejected",
+            total_amount: rejectedOrder.total_amount,
+            items: rejectedOrder.items.map((i: any) => ({
+              product_name: i.product_name,
+              quantity: i.quantity,
+              total_price: i.total_price,
+              product_id: i.product_id,
+            })),
+          },
+          {
+            order_no: remainingOrder.order_no,
+            status: "pending",
+            total_amount: remainingOrder.total_amount,
+            items: remainingOrder.items.map((i: any) => ({
+              product_name: i.product_name,
+              quantity: i.quantity,
+              total_price: i.total_price,
+              product_id: i.product_id,
+            })),
+          },
+        ],
+      };
+
+      this.logger.log(
+        `📤 [Supplier→Clinic] Notifying about partial rejection: ${originalOrder.order_no}`
+      );
+
+      await fetch(`${clinicApiUrl}/order/order-split`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "X-Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      this.logger.log(
+        `✅ [Supplier→Clinic] Partial rejection notification sent successfully`
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to notify clinic about partial rejection: ${error.message}`
       );
     }
   }

@@ -998,8 +998,24 @@ export class OrderService {
       }
     );
 
-    // Filter out rejected orders that haven't been confirmed
+    // ✅ Get list of original orders that have been split
+    const splitOriginalOrderNos = new Set<string>();
+    orders.forEach((order: any) => {
+      // Check if this is a split order (ends with -R or -B)
+      if (order.order_no && order.order_no.match(/-[RB]$/)) {
+        // Extract original order number (remove -R or -B)
+        const originalOrderNo = order.order_no.replace(/-[RB]$/, "");
+        splitOriginalOrderNos.add(originalOrderNo);
+      }
+    });
+
+    // Filter out rejected orders that haven't been confirmed AND split original orders
     const filteredOrders = orders.filter((order: any) => {
+      // ✅ If this is an original order that has been split, exclude it
+      if (splitOriginalOrderNos.has(order.order_no)) {
+        return false;
+      }
+
       // If order is rejected but not confirmed, exclude it from order history
       if (
         order.status === "rejected" &&
@@ -3049,40 +3065,13 @@ export class OrderService {
       });
     });
 
-    // Filter out rejected orders that have already been confirmed (have RejectedOrder records)
-    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
-      async () => {
-        const confirmedRejected = await (
-          this.prisma as any
-        ).rejectedOrder.findMany({
-          where: {
-            tenant_id: tenantId,
-          },
-          select: {
-            order_id: true,
-          },
-          distinct: ["order_id"],
-        });
-        return new Set(confirmedRejected.map((ro: any) => ro.order_id));
-      }
-    );
-
-    // Filter out orders that are rejected and already confirmed
-    const filteredOrders = orders.filter((order: any) => {
-      if (
-        order.status === "rejected" &&
-        confirmedRejectedOrderIds.has(order.id)
-      ) {
-        return false; // Exclude this rejected order as it's already been confirmed
-      }
-      return true;
-    });
+    // No filtering - show all orders including rejected ones
 
     // Collect all unique supplier IDs and member IDs for batch fetching
     const supplierIds = new Set<string>();
     const memberIds = new Set<string>();
 
-    filteredOrders.forEach((order: any) => {
+    orders.forEach((order: any) => {
       if (order.supplier_id) {
         supplierIds.add(order.supplier_id);
       }
@@ -3149,7 +3138,7 @@ export class OrderService {
     // Group by supplier
     const grouped: Record<string, any> = {};
 
-    for (const order of filteredOrders) {
+    for (const order of orders) {
       const supplierId = order.supplier_id || "unknown";
 
       if (!grouped[supplierId]) {
@@ -3283,24 +3272,83 @@ export class OrderService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const { orderId, orderNo, companyName, managerName, memberName, items } =
-      dto;
+    const { orderId, orderNo, memberName, items } = dto;
 
     if (
       !orderId ||
       !orderNo ||
-      !companyName ||
-      !managerName ||
       !memberName ||
       !items ||
       !Array.isArray(items)
     ) {
       throw new BadRequestException(
-        "All fields are required: orderId, orderNo, companyName, managerName, memberName, items"
+        "All fields are required: orderId, orderNo, memberName, items"
       );
     }
 
-    // Create RejectedOrder records for each item
+    if (items.length === 0) {
+      throw new BadRequestException("Items array cannot be empty");
+    }
+
+    // ✅ Fetch order to get correct supplier info
+    const order = await this.prisma.executeWithRetry(async () => {
+      return await (this.prisma as any).order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          supplier_id: true,
+          order_no: true,
+        },
+      });
+    });
+
+    if (!order) {
+      throw new BadRequestException(`Order not found: ${orderId}`);
+    }
+
+    // ✅ Fetch supplier details from ClinicSupplierManager
+    let companyName = "알 수 없음";
+    let managerName = "알 수 없음";
+
+    if (order.supplier_id) {
+      const supplierManager = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).clinicSupplierManager.findUnique({
+          where: { id: order.supplier_id },
+          include: {
+            linkedManager: {
+              include: {
+                supplier: true,
+              },
+            },
+          },
+        });
+      });
+
+      if (supplierManager) {
+        // If linked to platform supplier, use platform data
+        if (supplierManager.linkedManager?.supplier) {
+          companyName = supplierManager.linkedManager.supplier.company_name;
+          managerName =
+            supplierManager.linkedManager.name ||
+            supplierManager.name ||
+            "알 수 없음";
+        } else {
+          // Manual supplier - use ClinicSupplierManager data
+          companyName = supplierManager.company_name || "알 수 없음";
+          managerName = supplierManager.name || "알 수 없음";
+        }
+      }
+    }
+
+    // ✅ Update order status to 'confirmed_rejected' so it doesn't appear in pending inbound anymore
+    await this.prisma.executeWithRetry(async () => {
+      await (this.prisma as any).order.update({
+        where: { id: orderId },
+        data: { status: "confirmed_rejected" },
+      });
+    });
+
+    // Create RejectedOrder records for each item with CORRECT supplier info
     const rejectedOrders = await this.prisma.executeWithRetry(async () => {
       const createPromises = items.map((item: any) => {
         return (this.prisma as any).rejectedOrder.create({
@@ -3308,8 +3356,8 @@ export class OrderService {
             tenant_id: tenantId,
             order_id: orderId,
             order_no: orderNo,
-            company_name: companyName,
-            manager_name: managerName,
+            company_name: companyName, // ✅ From database, not frontend
+            manager_name: managerName, // ✅ From database, not frontend
             product_name: item.productName,
             product_brand: item.productBrand || null,
             qty: item.qty,
@@ -3320,6 +3368,9 @@ export class OrderService {
 
       return Promise.all(createPromises);
     });
+
+    // ✅ Clear cache for pending inbound orders
+    this.clearPendingInboundCache(tenantId);
 
     return {
       message: "Rejected order confirmed successfully",
@@ -3688,13 +3739,51 @@ export class OrderService {
             order_no: original_order_no,
             tenant_id: clinic_tenant_id,
           },
-          include: { items: true },
+          include: {
+            items: true,
+          },
         });
       });
 
       if (!originalOrder) {
         this.logger.warn(`Original order ${original_order_no} not found`);
         return { success: false, message: "Original order not found" };
+      }
+
+      // Fetch supplier details if supplier_id exists
+      let supplierDetails = null;
+      if (originalOrder.supplier_id) {
+        supplierDetails = await this.prisma.executeWithRetry(async () => {
+          return await (this.prisma as any).clinicSupplierManager.findUnique({
+            where: { id: originalOrder.supplier_id },
+            include: {
+              linkedManager: {
+                include: {
+                  supplier: true,
+                },
+              },
+            },
+          });
+        });
+      }
+
+      // ✅ Determine correct company_name and manager_name (same logic as confirmRejectedOrder)
+      let companyName = "Unknown";
+      let managerName = "Unknown";
+
+      if (supplierDetails) {
+        // If linked to platform supplier, use platform data
+        if (supplierDetails.linkedManager?.supplier) {
+          companyName = supplierDetails.linkedManager.supplier.company_name;
+          managerName =
+            supplierDetails.linkedManager.name ||
+            supplierDetails.name ||
+            "Unknown";
+        } else {
+          // Manual supplier - use ClinicSupplierManager data
+          companyName = supplierDetails.company_name || "Unknown";
+          managerName = supplierDetails.name || "Unknown";
+        }
       }
 
       // Create two new orders in clinic database
@@ -3713,20 +3802,27 @@ export class OrderService {
           return originalItem.product_id;
         };
 
-        // Order 1: Accepted items (supplier_confirmed status)
-        const acceptedOrderData = orders[0];
-        await tx.order.create({
+        // Order 1: Can be Accepted (supplier_confirmed) or Rejected
+        const firstOrderData = orders[0];
+        const isRejection = firstOrderData.status === "rejected";
+
+        const firstOrder = await tx.order.create({
           data: {
             tenant_id: clinic_tenant_id,
-            order_no: acceptedOrderData.order_no,
+            order_no: firstOrderData.order_no,
             supplier_id: originalOrder.supplier_id,
-            status: "supplier_confirmed",
-            confirmed_at: new Date(),
-            total_amount: acceptedOrderData.total_amount,
-            memo: `Split from ${original_order_no} - Accepted items`,
+            order_date: originalOrder.order_date, // ✅ Copy from original order
+            status: isRejection ? "rejected" : "supplier_confirmed",
+            confirmed_at: isRejection ? null : new Date(),
+            total_amount: firstOrderData.total_amount,
+            // memo: `Split from ${original_order_no} - ${
+            //   isRejection ? "Rejected" : "Accepted"
+            // } items`,
             member_id: originalOrder.member_id,
+            created_by: originalOrder.created_by, // ✅ Copy from original order
+            clinic_manager_name: originalOrder.clinic_manager_name, // ✅ Copy from original order
             items: {
-              create: acceptedOrderData.items.map((item: any) => ({
+              create: firstOrderData.items.map((item: any) => ({
                 tenant_id: clinic_tenant_id,
                 product_id: findProductId(item.product_name),
                 quantity: item.quantity,
@@ -3744,10 +3840,13 @@ export class OrderService {
             tenant_id: clinic_tenant_id,
             order_no: remainingOrderData.order_no,
             supplier_id: originalOrder.supplier_id,
+            order_date: originalOrder.order_date, // ✅ Copy from original order
             status: "pending",
             total_amount: remainingOrderData.total_amount,
-            memo: `Split from ${original_order_no} - Remaining items`,
+            // memo: `Split from ${original_order_no} - Remaining items`,
             member_id: originalOrder.member_id,
+            created_by: originalOrder.created_by, // ✅ Copy from original order
+            clinic_manager_name: originalOrder.clinic_manager_name, // ✅ Copy from original order
             items: {
               create: remainingOrderData.items.map((item: any) => ({
                 tenant_id: clinic_tenant_id,
@@ -3765,10 +3864,38 @@ export class OrderService {
           where: { id: originalOrder.id },
           data: {
             status: "archived",
-            memo: `Split into ${acceptedOrderData.order_no} and ${remainingOrderData.order_no}`,
+            memo: `Split into ${firstOrderData.order_no} and ${remainingOrderData.order_no}`,
             updated_at: new Date(),
           },
         });
+
+        // If first order is rejected, create RejectedOrder records for each item
+        if (isRejection) {
+          for (const item of firstOrderData.items) {
+            // Extract rejection reason from memo
+            const rejectionMemo = item.memo || "";
+            const reasonMatch = rejectionMemo.match(
+              /\[거절 사유:\s*([^\]]+)\]/
+            );
+            const rejectionReason = reasonMatch
+              ? reasonMatch[1]
+              : rejectionMemo;
+
+            await tx.rejectedOrder.create({
+              data: {
+                tenant_id: clinic_tenant_id,
+                order_id: firstOrder.id,
+                order_no: firstOrderData.order_no,
+                company_name: companyName, // ✅ From database with proper logic
+                manager_name: managerName, // ✅ From database with proper logic
+                product_name: item.product_name,
+                product_brand: null, // Not available in split data
+                qty: item.quantity,
+                member_name: "System", // Automated rejection via split
+              },
+            });
+          }
+        }
       });
 
       this.logger.log(

@@ -1124,17 +1124,15 @@ export default function OrdersPage() {
                         rejectionItemIds.length < rejectOrder.items.length;
 
                       if (isPartialRejection) {
-                        // Partial rejection - use partial-reject API (TODO: implement backend)
-                        alert("⚠️ 일부 제품 거절은 아직 구현되지 않았습니다.\n전체 주문을 거절하시겠습니까?");
-                        // For now, fallback to full rejection
+                        // Partial rejection - use partial-reject API
                         await apiPut(
-                          `/supplier/orders/${rejectOrder.id}/status`,
+                          `/supplier/orders/${rejectOrder.id}/partial-reject`,
                           {
-                            status: "rejected",
+                            selectedItemIds: rejectionItemIds,
                             rejectionReasons: rejectionReasons,
                           }
                         );
-                        alert("주문이 거절되었습니다.");
+                        alert("✅ 일부 제품이 거절되었습니다!\n나머지 제품은 대기 상태로 유지됩니다.");
                       } else {
                         // Full order rejection
                         await apiPut(
