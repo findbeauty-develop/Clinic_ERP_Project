@@ -3656,4 +3656,138 @@ export class OrderService {
 
     return { success: true, message: "Order deleted successfully" };
   }
+
+  /**
+   * Handle order split notification from supplier-backend
+   */
+  async handleOrderSplit(dto: any) {
+    try {
+      const { type, original_order_no, clinic_tenant_id, orders } = dto;
+
+      this.logger.log(
+        `🔀 [ORDER SPLIT WEBHOOK] Received for order: ${original_order_no}`
+      );
+
+      if (type !== "order_split") {
+        throw new BadRequestException("Invalid webhook type");
+      }
+
+      if (
+        !original_order_no ||
+        !clinic_tenant_id ||
+        !orders ||
+        orders.length !== 2
+      ) {
+        throw new BadRequestException("Invalid split order data");
+      }
+
+      // Find original order
+      const originalOrder = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).order.findFirst({
+          where: {
+            order_no: original_order_no,
+            tenant_id: clinic_tenant_id,
+          },
+          include: { items: true },
+        });
+      });
+
+      if (!originalOrder) {
+        this.logger.warn(`Original order ${original_order_no} not found`);
+        return { success: false, message: "Original order not found" };
+      }
+
+      // Create two new orders in clinic database
+      await this.prisma.$transaction(async (tx: any) => {
+        // Helper function to find product_id from original order items
+        const findProductId = (productName: string): string => {
+          const originalItem = originalOrder.items.find(
+            (item: any) => item.product_name === productName
+          );
+          if (!originalItem) {
+            this.logger.warn(
+              `Product ${productName} not found in original order, using first item's product_id`
+            );
+            return originalOrder.items[0]?.product_id || null;
+          }
+          return originalItem.product_id;
+        };
+
+        // Order 1: Accepted items (supplier_confirmed status)
+        const acceptedOrderData = orders[0];
+        await tx.order.create({
+          data: {
+            tenant_id: clinic_tenant_id,
+            order_no: acceptedOrderData.order_no,
+            supplier_id: originalOrder.supplier_id,
+            status: "supplier_confirmed",
+            confirmed_at: new Date(),
+            total_amount: acceptedOrderData.total_amount,
+            memo: `Split from ${original_order_no} - Accepted items`,
+            member_id: originalOrder.member_id,
+            items: {
+              create: acceptedOrderData.items.map((item: any) => ({
+                tenant_id: clinic_tenant_id,
+                product_id: findProductId(item.product_name),
+                quantity: item.quantity,
+                unit_price: item.total_price / item.quantity,
+                total_price: item.total_price,
+              })),
+            },
+          },
+        });
+
+        // Order 2: Remaining items (pending status)
+        const remainingOrderData = orders[1];
+        await tx.order.create({
+          data: {
+            tenant_id: clinic_tenant_id,
+            order_no: remainingOrderData.order_no,
+            supplier_id: originalOrder.supplier_id,
+            status: "pending",
+            total_amount: remainingOrderData.total_amount,
+            memo: `Split from ${original_order_no} - Remaining items`,
+            member_id: originalOrder.member_id,
+            items: {
+              create: remainingOrderData.items.map((item: any) => ({
+                tenant_id: clinic_tenant_id,
+                product_id: findProductId(item.product_name),
+                quantity: item.quantity,
+                unit_price: item.total_price / item.quantity,
+                total_price: item.total_price,
+              })),
+            },
+          },
+        });
+
+        // Update original order status to 'archived'
+        await tx.order.update({
+          where: { id: originalOrder.id },
+          data: {
+            status: "archived",
+            memo: `Split into ${acceptedOrderData.order_no} and ${remainingOrderData.order_no}`,
+            updated_at: new Date(),
+          },
+        });
+      });
+
+      this.logger.log(
+        `✅ [ORDER SPLIT] Successfully processed split for ${original_order_no}`
+      );
+
+      // Clear cache
+      await this.clearPendingInboundCache(clinic_tenant_id);
+
+      return {
+        success: true,
+        message: "Order split processed successfully",
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to process order split: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }
 }

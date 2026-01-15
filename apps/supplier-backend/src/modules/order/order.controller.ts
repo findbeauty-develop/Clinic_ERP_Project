@@ -9,12 +9,18 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { ApiKeyGuard } from "../../common/guards/api-key.guard";
 import { OrderService } from "./order.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-status.dto";
+import { PartialAcceptDto } from "./dto/partial-accept.dto";
 
 @ApiTags("supplier-orders")
 @Controller("supplier/orders")
@@ -24,7 +30,10 @@ export class OrderController {
   @Post()
   @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: "Clinic → Supplier order yaratish (API Key auth)" })
-  @ApiHeader({ name: 'x-api-key', description: 'API Key for clinic-to-supplier authentication' })
+  @ApiHeader({
+    name: "x-api-key",
+    description: "API Key for clinic-to-supplier authentication",
+  })
   async create(@Body() dto: CreateOrderDto) {
     return this.orderService.createOrder(dto);
   }
@@ -71,8 +80,13 @@ export class OrderController {
 
   @Post("complete")
   @UseGuards(ApiKeyGuard)
-  @ApiOperation({ summary: "Receive order completion notification from clinic-backend" })
-  @ApiHeader({ name: 'x-api-key', description: 'API Key for clinic-to-supplier authentication' })
+  @ApiOperation({
+    summary: "Receive order completion notification from clinic-backend",
+  })
+  @ApiHeader({
+    name: "x-api-key",
+    description: "API Key for clinic-to-supplier authentication",
+  })
   async markOrderCompleted(@Body() dto: any) {
     return this.orderService.markOrderCompleted(dto);
   }
@@ -84,5 +98,20 @@ export class OrderController {
   async handleCancellation(@Body() dto: any) {
     return this.orderService.handleCancellation(dto);
   }
-}
 
+  @Put(":id/partial-accept")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Partial order acceptance - split order into accepted and remaining items",
+  })
+  async partialAccept(
+    @Param("id") id: string,
+    @Req() req: any,
+    @Body() dto: PartialAcceptDto
+  ) {
+    const supplierManagerId = req.user?.supplierManagerId;
+    return this.orderService.partialAcceptOrder(id, supplierManagerId, dto);
+  }
+}

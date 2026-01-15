@@ -72,7 +72,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Item ID'lar
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Item ID'lar (partial selection)
   const [detailOrder, setDetailOrder] = useState<SupplierOrder | null>(null);
   const [updating, setUpdating] = useState(false);
   const [confirmOrder, setConfirmOrder] = useState<SupplierOrder | null>(null);
@@ -110,6 +110,7 @@ export default function OrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
+  // Toggle item selection
   const toggleSelectItem = (itemId: string) => {
     setSelectedItems((prev) => {
       const next = new Set(prev);
@@ -119,13 +120,12 @@ export default function OrdersPage() {
     });
   };
 
+  // Select all items in an order
   const selectAllItemsInOrder = (order: SupplierOrder) => {
     setSelectedItems((prev) => {
       const next = new Set(prev);
-
-      // Check if all items in this order are already selected
       const allSelected = order.items.every((item) => prev.has(item.id));
-
+      
       if (allSelected) {
         // Deselect all items in this order
         order.items.forEach((item) => next.delete(item.id));
@@ -133,14 +133,17 @@ export default function OrdersPage() {
         // Select all items in this order
         order.items.forEach((item) => next.add(item.id));
       }
-
+      
       return next;
     });
   };
 
+  // Select all items in all pending orders
   const selectAll = () => {
     if (orders.length === 0) return;
-    const allItemIds = orders.flatMap((o) => o.items.map((item) => item.id));
+    const allItemIds = orders
+      .filter((o) => o.status === "pending")
+      .flatMap((o) => o.items.map((item) => item.id));
     setSelectedItems(new Set(allItemIds));
   };
 
@@ -165,28 +168,58 @@ export default function OrdersPage() {
       return;
     }
 
-    // Otherwise, find orders that have selected items
-    const orderIdsToUpdate = new Set<string>();
+    // Partial selection warning
+    if (selectedItems.size === 0) {
+      alert("선택된 제품이 없습니다.");
+      return;
+    }
+
+    // Find orders that have selected items
+    const affectedOrders: { order: SupplierOrder; selectedCount: number; totalCount: number }[] = [];
+    
     orders.forEach((order) => {
-      // If any item in this order is selected, update the entire order
-      if (order.items.some((item) => selectedItems.has(item.id))) {
-        orderIdsToUpdate.add(order.id);
+      const selectedInOrder = order.items.filter((item) => selectedItems.has(item.id));
+      if (selectedInOrder.length > 0) {
+        affectedOrders.push({
+          order,
+          selectedCount: selectedInOrder.length,
+          totalCount: order.items.length,
+        });
       }
     });
 
-    if (orderIdsToUpdate.size === 0) {
-      alert("선택된 항목이 없습니다.");
+    if (affectedOrders.length === 0) {
+      alert("선택된 제품이 없습니다.");
       return;
+    }
+
+    // Warning for partial selection
+    const partialSelections = affectedOrders.filter(
+      (a) => a.selectedCount < a.totalCount
+    );
+    
+    if (partialSelections.length > 0) {
+      const statusText = status === "confirmed" ? "접수" : "거절";
+      const orderNames = partialSelections
+        .map((a) => `${a.order.clinic?.name || "클리닉"} (${a.selectedCount}/${a.totalCount}개 선택)`)
+        .join("\n");
+      
+      const confirmed = confirm(
+        `⚠️ 일부 제품만 선택되었습니다:\n\n${orderNames}\n\n주의: 현재 시스템은 전체 주문 단위로 ${statusText} 처리됩니다.\n선택하지 않은 제품도 함께 ${statusText} 됩니다.\n\n계속하시겠습니까?`
+      );
+      
+      if (!confirmed) return;
     }
 
     setUpdating(true);
     try {
       await Promise.all(
-        Array.from(orderIdsToUpdate).map((id) =>
-          apiPut(`/supplier/orders/${id}/status`, { status })
+        affectedOrders.map((a) =>
+          apiPut(`/supplier/orders/${a.order.id}/status`, { status })
         )
       );
       await fetchOrders();
+      setSelectedItems(new Set()); // Clear selection after update
     } catch (err: any) {
       alert(err?.message || "상태 변경에 실패했습니다.");
     } finally {
@@ -288,11 +321,7 @@ export default function OrdersPage() {
                   isRejected ? "grid-cols-4" : "grid-cols-5"
                 }`}
               >
-                <div
-                  className={`flex items-center gap-2 ${
-                    isRejected ? "col-span-1" : "col-span-1"
-                  }`}
-                >
+                <div className="flex items-center gap-2">
                   {!isRejected && activeTab === "pending" && (
                     <input
                       type="checkbox"
@@ -331,7 +360,7 @@ export default function OrdersPage() {
         )}
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          {activeTab === "pending" && (
+          {activeTab === "pending" && order.status === "pending" && (
             <button
               onClick={() => selectAllItemsInOrder(order)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -346,9 +375,21 @@ export default function OrdersPage() {
               <button
                 disabled={updating}
                 onClick={() => {
-                  // Initialize rejection reasons for all items
+                  // Check feature flag
+                  const partialAcceptEnabled = process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE === 'true';
+                  
+                  // Check if any items are selected for this order
+                  const selectedInOrder = order.items.filter((item) =>
+                    selectedItems.has(item.id)
+                  );
+
+                  // If no items selected, select all items automatically
+                  const itemsToProcess =
+                    selectedInOrder.length > 0 ? selectedInOrder : order.items;
+
+                  // Initialize rejection reasons for selected items only
                   const initialReasons: Record<string, string> = {};
-                  order.items.forEach((item) => {
+                  itemsToProcess.forEach((item) => {
                     initialReasons[item.id] = "";
                   });
                   setRejectionReasons(initialReasons);
@@ -360,10 +401,23 @@ export default function OrdersPage() {
               </button>
               <button
                 disabled={updating}
-                onClick={() => {
-                  // Initialize adjustments for this order
+                onClick={async () => {
+                  // Check feature flag
+                  const partialAcceptEnabled = process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE === 'true';
+                  
+                  // Check if any items are selected for this order
+                  const selectedInOrder = order.items.filter((item) =>
+                    selectedItems.has(item.id)
+                  );
+
+                  // If no items selected, select all items automatically
+                  const itemsToProcess =
+                    selectedInOrder.length > 0 ? selectedInOrder : order.items;
+
+                  // Full order acceptance flow (existing logic)
+                  // If partial selection, only show adjustment modal for selected items
                   const initialAdjustments: Record<string, ItemAdjustment> = {};
-                  order.items.forEach((item) => {
+                  itemsToProcess.forEach((item) => {
                     initialAdjustments[item.id] = {
                       itemId: item.id,
                       actualQuantity: item.quantity,
@@ -655,14 +709,15 @@ export default function OrdersPage() {
             </div>
 
             <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-2">
-              {confirmOrder.items.map((item) => {
-                const adjustment = itemAdjustments[item.id] || {
-                  itemId: item.id,
-                  actualQuantity: item.quantity,
-                  actualPrice: item.unitPrice,
-                };
-                const qtyChanged = adjustment.actualQuantity !== item.quantity;
-                const priceChanged = adjustment.actualPrice !== item.unitPrice;
+              {/* Only show items that are in itemAdjustments (selected items) */}
+              {confirmOrder.items
+                .filter((item) => itemAdjustments[item.id])
+                .map((item) => {
+                  const adjustment = itemAdjustments[item.id];
+                  const qtyChanged =
+                    adjustment.actualQuantity !== item.quantity;
+                  const priceChanged =
+                    adjustment.actualPrice !== item.unitPrice;
 
                 return (
                   <div key={item.id} className="space-y-2">
@@ -848,47 +903,70 @@ export default function OrdersPage() {
                   onClick={async () => {
                     setUpdating(true);
                     try {
-                      // Prepare adjustments array
-                      // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
-                      let adjustments = Object.values(itemAdjustments).map(
-                        (adj) => ({
-                          itemId: adj.itemId,
-                          actualQuantity: adj.actualQuantity,
-                          actualPrice: adj.actualPrice,
-                          quantityChangeReason:
-                            adj.quantityChangeReason || null,
-                          quantityChangeNote: adj.quantityChangeNote || null,
-                          priceChangeReason: adj.priceChangeReason || null,
-                          priceChangeNote: adj.priceChangeNote || null,
-                        })
-                      );
+                      const partialAcceptEnabled = process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE === 'true';
+                      
+                      // Check if this is a partial selection
+                      const adjustmentItemIds = Object.keys(itemAdjustments);
+                      const isPartialSelection = partialAcceptEnabled && 
+                        adjustmentItemIds.length > 0 && 
+                        adjustmentItemIds.length < confirmOrder.items.length;
 
-                      // If no adjustments were made, create default adjustments (all items confirmed as ordered)
-                      if (adjustments.length === 0 && confirmOrder?.items) {
-                        adjustments = confirmOrder.items.map((item: any) => ({
-                          itemId: item.id,
-                          actualQuantity: item.quantity,
-                          actualPrice: item.unitPrice,
-                          quantityChangeReason: null,
-                          quantityChangeNote: null,
-                          priceChangeReason: null,
-                          priceChangeNote: null,
-                        }));
-                      }
+                      if (isPartialSelection) {
+                        // Partial acceptance - use partial-accept API
+                        await apiPut(
+                          `/supplier/orders/${confirmOrder.id}/partial-accept`,
+                          {
+                            selectedItemIds: adjustmentItemIds,
+                          }
+                        );
+                        
+                        alert('✅ 일부 제품이 접수되었습니다!\n나머지 제품은 대기 상태로 유지됩니다.');
+                      } else {
+                        // Full order acceptance - use existing API
+                        // Prepare adjustments array
+                        // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
+                        let adjustments = Object.values(itemAdjustments).map(
+                          (adj) => ({
+                            itemId: adj.itemId,
+                            actualQuantity: adj.actualQuantity,
+                            actualPrice: adj.actualPrice,
+                            quantityChangeReason:
+                              adj.quantityChangeReason || null,
+                            quantityChangeNote: adj.quantityChangeNote || null,
+                            priceChangeReason: adj.priceChangeReason || null,
+                            priceChangeNote: adj.priceChangeNote || null,
+                          })
+                        );
 
-                      // Call API to update status with adjustments
-                      await apiPut(
-                        `/supplier/orders/${confirmOrder.id}/status`,
-                        {
-                          status: "confirmed",
-                          adjustments,
+                        // If no adjustments were made, create default adjustments (all items confirmed as ordered)
+                        if (adjustments.length === 0 && confirmOrder?.items) {
+                          adjustments = confirmOrder.items.map((item: any) => ({
+                            itemId: item.id,
+                            actualQuantity: item.quantity,
+                            actualPrice: item.unitPrice,
+                            quantityChangeReason: null,
+                            quantityChangeNote: null,
+                            priceChangeReason: null,
+                            priceChangeNote: null,
+                          }));
                         }
-                      );
 
-                      alert("주문이 접수되었습니다.");
+                        // Call API to update status with adjustments
+                        await apiPut(
+                          `/supplier/orders/${confirmOrder.id}/status`,
+                          {
+                            status: "confirmed",
+                            adjustments,
+                          }
+                        );
+
+                        alert("주문이 접수되었습니다.");
+                      }
+                      
                       setConfirmOrder(null);
                       setItemAdjustments({});
                       await fetchOrders();
+                      setSelectedItems(new Set());
                     } catch (err: any) {
                       alert(err?.message || "주문 접수에 실패했습니다.");
                     } finally {
@@ -965,7 +1043,9 @@ export default function OrdersPage() {
             </div>
 
             <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
-              {rejectOrder.items.map((item) => (
+              {rejectOrder.items
+                .filter((item) => item.id in rejectionReasons)
+                .map((item) => (
                 <div
                   key={item.id}
                   className="space-y-2 border-b border-slate-100 pb-4 last:border-b-0"
@@ -1035,19 +1115,42 @@ export default function OrdersPage() {
 
                     setUpdating(true);
                     try {
-                      // Call API to update status to rejected with reasons
-                      await apiPut(
-                        `/supplier/orders/${rejectOrder.id}/status`,
-                        {
-                          status: "rejected",
-                          rejectionReasons: rejectionReasons,
-                        }
-                      );
+                      const partialAcceptEnabled = process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE === 'true';
+                      
+                      // Check if this is a partial rejection
+                      const rejectionItemIds = Object.keys(rejectionReasons);
+                      const isPartialRejection = partialAcceptEnabled && 
+                        rejectionItemIds.length > 0 && 
+                        rejectionItemIds.length < rejectOrder.items.length;
 
-                      alert("주문이 거절되었습니다.");
+                      if (isPartialRejection) {
+                        // Partial rejection - use partial-reject API (TODO: implement backend)
+                        alert("⚠️ 일부 제품 거절은 아직 구현되지 않았습니다.\n전체 주문을 거절하시겠습니까?");
+                        // For now, fallback to full rejection
+                        await apiPut(
+                          `/supplier/orders/${rejectOrder.id}/status`,
+                          {
+                            status: "rejected",
+                            rejectionReasons: rejectionReasons,
+                          }
+                        );
+                        alert("주문이 거절되었습니다.");
+                      } else {
+                        // Full order rejection
+                        await apiPut(
+                          `/supplier/orders/${rejectOrder.id}/status`,
+                          {
+                            status: "rejected",
+                            rejectionReasons: rejectionReasons,
+                          }
+                        );
+                        alert("주문이 거절되었습니다.");
+                      }
+
                       setRejectOrder(null);
                       setRejectionReasons({});
                       await fetchOrders();
+                      setSelectedItems(new Set());
                     } catch (err: any) {
                       alert(err?.message || "주문 거절에 실패했습니다.");
                     } finally {

@@ -8,10 +8,16 @@ import {
   Query,
   Param,
   UseGuards,
+  SetMetadata,
   Req,
   Header,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiHeader,
+} from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
 import { CreateOrderDto } from "../dto/create-order.dto";
 import {
@@ -249,5 +255,19 @@ export class OrderController {
   @ApiOperation({ summary: "Delete order" })
   async deleteOrder(@Tenant() tenantId: string, @Param("id") id: string) {
     return this.orderService.deleteOrder(id, tenantId);
+  }
+
+  /**
+   * Webhook: Order split notification from supplier-backend
+   */
+  @Post("order-split")
+  @UseGuards(ApiKeyGuard)
+  @SetMetadata("skipJwtGuard", true)
+  @ApiOperation({
+    summary: "Receive order split notification from supplier-backend",
+  })
+  @ApiHeader({ name: "x-api-key", description: "API Key for authentication" })
+  async handleOrderSplit(@Body() dto: any) {
+    return this.orderService.handleOrderSplit(dto);
   }
 }
