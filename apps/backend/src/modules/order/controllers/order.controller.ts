@@ -27,6 +27,7 @@ import {
 } from "../dto/update-order-draft.dto";
 import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { ConfirmRejectedOrderDto } from "../dto/confirm-rejected-order.dto";
+import { PartialInboundDto } from "../dto/partial-inbound.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -245,6 +246,20 @@ export class OrderController {
   @ApiOperation({ summary: "Mark order as completed after inbound processing" })
   async completeOrder(@Tenant() tenantId: string, @Param("id") id: string) {
     return this.orderService.completeOrder(id, tenantId);
+  }
+
+  /**
+   * Partial inbound processing - split order into completed and remaining
+   */
+  @Post(":id/partial-inbound")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Process partial inbound and split order" })
+  async partialInbound(
+    @Tenant() tenantId: string,
+    @Param("id") id: string,
+    @Body() dto: PartialInboundDto
+  ) {
+    return this.orderService.partialInbound(id, tenantId, dto);
   }
 
   /**

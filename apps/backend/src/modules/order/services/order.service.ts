@@ -41,7 +41,7 @@ export class OrderService {
 
     this.pendingInboundCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 5 seconds - for real-time updates
       cleanupInterval: 60000,
       name: "OrderService:PendingInbound",
     });
@@ -953,7 +953,12 @@ export class OrderService {
       }
 
       return (this.prisma as any).order.findMany({
-        where,
+        where: {
+          ...where,
+          status: {
+            not: "archived", // Exclude archived orders
+          },
+        },
         include: {
           items: {
             include: {
@@ -3062,7 +3067,7 @@ export class OrderService {
             },
           },
         },
-        orderBy: [{ confirmed_at: "desc" }, { order_date: "desc" }],
+        orderBy: [{ created_at: "desc" }, { order_date: "desc" }],
       });
     });
 
@@ -3913,6 +3918,179 @@ export class OrderService {
     } catch (error: any) {
       this.logger.error(
         `Failed to process order split: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Partial inbound processing - split order into completed and remaining items
+   */
+  async partialInbound(orderId: string, tenantId: string, dto: any) {
+    this.logger.log(
+      `🔄 [PARTIAL INBOUND] Starting for order ${orderId} with ${dto.inboundedItems.length} items`
+    );
+
+    try {
+      return await this.prisma.$transaction(async (tx: any) => {
+        // Get original order with items
+        const originalOrder = await tx.order.findUnique({
+          where: { id: orderId, tenant_id: tenantId },
+          include: {
+            items: true,
+          },
+        });
+
+        if (!originalOrder) {
+          throw new Error(`Order ${orderId} not found`);
+        }
+
+        this.logger.log(
+          `📦 [PARTIAL INBOUND] Found order ${originalOrder.order_no} with ${originalOrder.items.length} items`
+        );
+
+        // Map inbounded items by item ID for quick lookup
+        const inboundedItemsMap = new Map(
+          dto.inboundedItems.map((item: any) => [item.itemId, item])
+        );
+
+        // Separate items into inbounded and remaining
+        const inboundedItems = [];
+        const remainingItems = [];
+
+        for (const item of originalOrder.items) {
+          if (inboundedItemsMap.has(item.id)) {
+            inboundedItems.push(item);
+          } else {
+            remainingItems.push(item);
+          }
+        }
+
+        this.logger.log(
+          `📊 [PARTIAL INBOUND] Split: ${inboundedItems.length} inbounded, ${remainingItems.length} remaining`
+        );
+
+        if (inboundedItems.length === 0) {
+          throw new Error("No items to inbound");
+        }
+
+        // Generate new order numbers
+        const timestamp = Date.now().toString().slice(-12);
+        const completedOrderNo = `${originalOrder.order_no}-C`; // Completed
+        const remainingOrderNo =
+          remainingItems.length > 0 ? `${originalOrder.order_no}-P` : null; // Pending
+
+        // Create completed order (inbounded items)
+        const completedOrder = await tx.order.create({
+          data: {
+            tenant_id: tenantId,
+            order_no: completedOrderNo,
+            supplier_id: originalOrder.supplier_id,
+            status: "completed",
+            total_amount: inboundedItems.reduce(
+              (sum, item) => sum + item.total_price,
+              0
+            ),
+            order_date: originalOrder.order_date,
+            created_by: originalOrder.created_by,
+            clinic_manager_name: originalOrder.clinic_manager_name,
+            created_at: new Date(),
+            updated_at: new Date(),
+            items: {
+              create: inboundedItems.map((item) => ({
+                tenant_id: tenantId,
+                product_id: item.product_id,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+                unit: item.unit,
+              })),
+            },
+          },
+        });
+
+        this.logger.log(
+          `✅ [PARTIAL INBOUND] Created completed order: ${completedOrderNo}`
+        );
+
+        // Create remaining order if there are remaining items
+        let remainingOrder = null;
+        if (remainingItems.length > 0) {
+          remainingOrder = await tx.order.create({
+            data: {
+              tenant_id: tenantId,
+              order_no: remainingOrderNo!,
+              supplier_id: originalOrder.supplier_id,
+              status: "supplier_confirmed",
+              total_amount: remainingItems.reduce(
+                (sum, item) => sum + item.total_price,
+                0
+              ),
+              order_date: originalOrder.order_date,
+              created_by: originalOrder.created_by,
+              clinic_manager_name: originalOrder.clinic_manager_name,
+              created_at: new Date(),
+              updated_at: new Date(),
+              items: {
+                create: remainingItems.map((item) => ({
+                  tenant_id: tenantId,
+                  product_id: item.product_id,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  total_price: item.total_price,
+                  unit: item.unit,
+                })),
+              },
+            },
+          });
+
+          this.logger.log(
+            `⏳ [PARTIAL INBOUND] Created remaining order: ${remainingOrderNo}`
+          );
+        }
+
+        // Archive original order
+        await tx.order.update({
+          where: { id: originalOrder.id },
+          data: {
+            status: "archived",
+            memo: remainingOrder
+              ? `Split into ${completedOrderNo} (completed) and ${remainingOrderNo} (pending)`
+              : `Completed as ${completedOrderNo}`,
+            updated_at: new Date(),
+          },
+        });
+
+        this.logger.log(
+          `🗄️ [PARTIAL INBOUND] Archived original order: ${originalOrder.order_no}`
+        );
+
+        // Clear cache
+        await this.clearPendingInboundCache(tenantId);
+
+        return {
+          success: true,
+          completedOrder: {
+            id: completedOrder.id,
+            orderNo: completedOrderNo,
+            itemCount: inboundedItems.length,
+          },
+          remainingOrder: remainingOrder
+            ? {
+                id: remainingOrder.id,
+                orderNo: remainingOrderNo,
+                itemCount: remainingItems.length,
+              }
+            : null,
+          message: remainingOrder
+            ? `${inboundedItems.length}개 제품 입고 완료. ${remainingItems.length}개 제품은 재입고 대기 중입니다.`
+            : `${inboundedItems.length}개 제품 입고 완료.`,
+        };
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `❌ [PARTIAL INBOUND] Failed: ${error.message}`,
         error.stack
       );
       throw error;

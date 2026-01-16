@@ -100,7 +100,7 @@ export default function InboundPage() {
     data: any[];
     timestamp: number;
   } | null>(null);
-  const PENDING_ORDERS_CACHE_TTL = 30000; // 30 seconds
+  const PENDING_ORDERS_CACHE_TTL = 10000; // 10 seconds for faster updates
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -376,8 +376,15 @@ export default function InboundPage() {
     setError(null);
     try {
       const { apiGet } = await import("../../lib/api");
+      // Add cache-busting parameter for real-time updates
       const groupedData = await apiGet<any[]>(
-        `${apiUrl}/order/pending-inbound`
+        `${apiUrl}/order/pending-inbound?_t=${Date.now()}`,
+        {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        }
       );
 
       // Flatten grouped data: each supplier group has an array of orders
@@ -2134,19 +2141,97 @@ const PendingOrdersList = memo(function PendingOrdersList({
     }
 
     setShowInboundModal(false);
+    setProcessing(order.orderId);
 
-    // Process only valid items (partial inbound)
-    await processInboundOrder(order, validItems, true);
+    try {
+      const { apiPost } = await import("../../lib/api");
 
-    const processedCount = validItems.length;
-    const remainingCount = order.items.length - validItems.length;
+      // Get current member info for inbound_manager
+      const memberData = localStorage.getItem("erp_member_data");
+      const memberInfo = memberData ? JSON.parse(memberData) : {};
+      const inboundManager =
+        memberInfo.member_id || memberInfo.full_name || "자동입고";
 
-    if (remainingCount > 0) {
-      alert(
-        `${processedCount}개 제품이 입고되었습니다.\n${remainingCount}개 제품은 재입고 대기 중입니다.`
+      // Create batches for valid items
+      for (const item of validItems) {
+        const editedItem = editedItems[item.id];
+        const inboundQty = editedItem?.quantity || 0;
+
+        if (inboundQty <= 0) continue;
+
+        // Get expiry info from product
+        const expiryMonths = item.expiryMonths;
+        const expiryUnit = item.expiryUnit || "months";
+        const alertDays = item.alertDays;
+
+        // Calculate manufacture date
+        let manufactureDate = null;
+        if (editedItem?.expiryDate && expiryMonths) {
+          const expiryDateObj = new Date(editedItem.expiryDate);
+          if (expiryUnit === "days") {
+            expiryDateObj.setDate(expiryDateObj.getDate() - expiryMonths);
+          } else {
+            expiryDateObj.setMonth(expiryDateObj.getMonth() - expiryMonths);
+          }
+          manufactureDate = expiryDateObj.toISOString().split("T")[0];
+        }
+
+        const batchPayload: any = {
+          qty: inboundQty,
+          purchase_price: editedItem?.purchasePrice || 0,
+          expiry_date: editedItem?.expiryDate,
+          inbound_manager: inboundManager,
+        };
+
+        if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
+        if (expiryMonths) batchPayload.expiry_months = expiryMonths;
+        if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
+        if (alertDays) batchPayload.alert_days = alertDays;
+        if (editedItem?.storageLocation)
+          batchPayload.storage = editedItem.storageLocation;
+
+        // Create batch
+        await apiPost<any>(
+          `${apiUrl}/products/${item.productId}/batches`,
+          batchPayload
+        );
+      }
+
+      // Call partial inbound API to split the order
+      const inboundedItems = validItems.map((item: any) => ({
+        itemId: item.id,
+        productId: item.productId,
+        inboundQty: editedItems[item.id]?.quantity || 0,
+      }));
+
+      const result = await apiPost(
+        `${apiUrl}/order/${order.orderId}/partial-inbound`,
+        {
+          orderId: order.orderId,
+          inboundedItems,
+          inboundManager,
+        }
       );
-    } else {
-      alert(`${processedCount}개 제품이 입고되었습니다.`);
+
+      const processedCount = validItems.length;
+      const remainingCount = order.items.length - validItems.length;
+
+      if (remainingCount > 0) {
+        alert(
+          `${processedCount}개 제품이 입고되었습니다.\n${remainingCount}개 제품은 재입고 대기 중입니다.`
+        );
+      } else {
+        alert(`${processedCount}개 제품이 입고되었습니다.`);
+      }
+
+      onRefresh();
+    } catch (err: any) {
+      console.error("Failed to process partial inbound:", err);
+      alert(
+        `입고 처리 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`
+      );
+    } finally {
+      setProcessing(null);
     }
   };
 
