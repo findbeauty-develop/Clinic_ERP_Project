@@ -1776,6 +1776,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // Modal states for quantity mismatch
+  const [showInboundModal, setShowInboundModal] = useState(false);
+  const [modalData, setModalData] = useState<any>(null);
+
   // Extract member data once with useMemo
   const memberInfo = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -1836,10 +1840,84 @@ const PendingOrdersList = memo(function PendingOrdersList({
   };
 
   const handleProcessOrder = async (order: any) => {
+    // Debug log
+
+    // Validation checks first
+    const token =
+      localStorage.getItem("erp_access_token") || localStorage.getItem("token");
+    const tenantId =
+      localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+
+    if (!token || !tenantId) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
+
+    // Validate all items have required data
+    for (const item of order.items) {
+      const edited = editedItems[item.id];
+      if (!edited?.expiryDate) {
+        alert(`${item.productName}의 유통기한을 입력해주세요.`);
+        return;
+      }
+      if (!edited?.quantity || edited.quantity <= 0) {
+        alert(`${item.productName}의 수량을 입력해주세요.`);
+        return;
+      }
+      if (!edited?.purchasePrice || edited.purchasePrice <= 0) {
+        alert(`${item.productName}의 구매가를 입력해주세요.`);
+        return;
+      }
+    }
+
+    // Check for quantity discrepancies
+    const insufficientItems = [];
+    for (const item of order.items) {
+      const edited = editedItems[item.id];
+      const confirmedQty = item.confirmedQuantity || item.orderedQuantity;
+      const inboundQty = edited?.quantity || 0;
+
+      if (inboundQty !== confirmedQty) {
+        insufficientItems.push({
+          id: item.id,
+          productId: item.productId,
+          productName: item.productName,
+          brand: item.brand,
+          ordered: confirmedQty,
+          inbound: inboundQty,
+          shortage: confirmedQty - inboundQty,
+          expiryMonths: item.expiryMonths,
+          expiryUnit: item.expiryUnit,
+          alertDays: item.alertDays,
+        });
+      }
+    }
+
+    // If there are quantity discrepancies, show modal
+    if (insufficientItems.length > 0) {
+      setModalData({
+        order,
+        items: insufficientItems,
+      });
+      setShowInboundModal(true);
+      return;
+    }
+
+    // If no discrepancies, proceed with confirmation
     if (!confirm(`주문번호 ${order.orderNo}를 입고 처리하시겠습니까?`)) {
       return;
     }
 
+    // Process the order (existing logic)
+    await processInboundOrder(order, order.items, false);
+  };
+
+  // Separate function for actual inbound processing
+  const processInboundOrder = async (
+    order: any,
+    itemsToProcess: any[],
+    isPartial: boolean = false
+  ) => {
     setProcessing(order.orderId);
     try {
       const token =
@@ -1854,6 +1932,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
         return;
       }
 
+      // Validate orderId
+      if (!order.orderId) {
+        console.error("Order ID is missing:", order);
+        alert("주문 정보가 올바르지 않습니다. 페이지를 새로고침해주세요.");
+        return;
+      }
+
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../lib/api");
 
@@ -1865,28 +1950,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
-      order.items?.forEach((item: any) => {
+      itemsToProcess.forEach((item: any) => {
         const existing = itemsByProduct.get(item.productId) || [];
         existing.push(item);
         itemsByProduct.set(item.productId, existing);
       });
-
-      // Validate all items have expiry date
-      for (const item of order.items) {
-        const edited = editedItems[item.id];
-        if (!edited?.expiryDate) {
-          alert(`${item.productName}의 유통기한을 입력해주세요.`);
-          return;
-        }
-        if (!edited?.quantity || edited.quantity <= 0) {
-          alert(`${item.productName}의 수량을 입력해주세요.`);
-          return;
-        }
-        if (!edited?.purchasePrice || edited.purchasePrice <= 0) {
-          alert(`${item.productName}의 구매가를 입력해주세요.`);
-          return;
-        }
-      }
 
       // Create batches and returns for each product
       const returnItems: any[] = [];
@@ -1982,18 +2050,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
         }
       }
 
-      // Update order status to completed
-      try {
-        await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
-      } catch (completeError: any) {
-        console.error(`Failed to complete order:`, completeError);
-        throw new Error(
-          `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
-        );
+      // Update order status to completed only if not partial
+      if (!isPartial) {
+        try {
+          console.log("Completing order:", order.orderId); // Debug log
+          await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+        } catch (completeError: any) {
+          console.error(`Failed to complete order:`, completeError);
+          throw new Error(
+            `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
+          );
+        }
       }
 
       // Show success message and optionally redirect to order-returns if returns were created
-      if (returnItems.length > 0) {
+      if (!isPartial && returnItems.length > 0) {
         if (
           confirm(
             `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`
@@ -2002,7 +2073,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
           window.location.href = "/order-returns";
           return; // Exit early to prevent onRefresh() call
         }
-      } else {
+      } else if (!isPartial) {
         alert("입고 처리가 완료되었습니다.");
       }
 
@@ -2024,6 +2095,209 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
     } finally {
       setProcessing(null);
+    }
+  };
+
+  // Handler for partial inbound (재입고 예정)
+  const handlePartialInbound = async () => {
+    if (!modalData) return;
+
+    const { order, items } = modalData;
+
+    console.log("handlePartialInbound called:", {
+      orderId: order.orderId,
+      orderNo: order.orderNo,
+      totalItems: order.items?.length,
+    });
+
+    // Filter items that have sufficient quantity
+    const validItems = order.items.filter((item: any) => {
+      const edited = editedItems[item.id];
+      const confirmedQty = item.confirmedQuantity || item.orderedQuantity;
+      const inboundQty = edited?.quantity || 0;
+      return inboundQty >= confirmedQty;
+    });
+
+    console.log("Valid items filtered:", {
+      validItemsCount: validItems.length,
+      validItems: validItems.map((i: any) => ({
+        id: i.id,
+        productName: i.productName,
+        confirmedQty: i.confirmedQuantity || i.orderedQuantity,
+        inboundQty: editedItems[i.id]?.quantity,
+      })),
+    });
+
+    if (validItems.length === 0) {
+      alert("입고 가능한 제품이 없습니다.");
+      return;
+    }
+
+    setShowInboundModal(false);
+
+    // Process only valid items (partial inbound)
+    await processInboundOrder(order, validItems, true);
+
+    const processedCount = validItems.length;
+    const remainingCount = order.items.length - validItems.length;
+
+    if (remainingCount > 0) {
+      alert(
+        `${processedCount}개 제품이 입고되었습니다.\n${remainingCount}개 제품은 재입고 대기 중입니다.`
+      );
+    } else {
+      alert(`${processedCount}개 제품이 입고되었습니다.`);
+    }
+  };
+
+  // Handler for navigating to returns page (반품 및 교환 진행)
+  const navigateToReturns = async () => {
+    if (!modalData) return;
+
+    const { order } = modalData;
+
+    setShowInboundModal(false);
+    setProcessing(order.orderId);
+
+    try {
+      const { apiPost } = await import("../../lib/api");
+
+      // Get current member info for inbound_manager
+      const memberData = localStorage.getItem("erp_member_data");
+      const memberInfo = memberData ? JSON.parse(memberData) : {};
+      const inboundManager =
+        memberInfo.member_id || memberInfo.full_name || "자동입고";
+
+      // Process all items and create returns for shortages
+      const returnItems: any[] = [];
+
+      // Group items by productId
+      const itemsByProduct = new Map<string, any[]>();
+      order.items.forEach((item: any) => {
+        const existing = itemsByProduct.get(item.productId) || [];
+        existing.push(item);
+        itemsByProduct.set(item.productId, existing);
+      });
+
+      for (const [productId, items] of itemsByProduct.entries()) {
+        // Use edited quantity from form
+        const inboundQty = items.reduce((sum: number, item: any) => {
+          const edited = editedItems[item.id];
+          return sum + (edited?.quantity || 0);
+        }, 0);
+
+        // Use edited values from first item
+        const firstItem = items[0];
+        const editedFirstItem = editedItems[firstItem.id];
+
+        // Get confirmed quantity from supplier
+        const confirmedQty =
+          firstItem.confirmedQuantity || firstItem.orderedQuantity;
+
+        // Calculate shortage (kam kelgan)
+        const shortageQty = confirmedQty - inboundQty;
+
+        // Create batch for inbounded quantity
+        if (inboundQty > 0) {
+          // Get expiry info from product
+          const expiryMonths = firstItem.expiryMonths;
+          const expiryUnit = firstItem.expiryUnit || "months";
+          const alertDays = firstItem.alertDays;
+
+          // Calculate manufacture date
+          let manufactureDate = null;
+          if (editedFirstItem?.expiryDate && expiryMonths) {
+            const expiryDateObj = new Date(editedFirstItem.expiryDate);
+            if (expiryUnit === "days") {
+              expiryDateObj.setDate(expiryDateObj.getDate() - expiryMonths);
+            } else {
+              expiryDateObj.setMonth(expiryDateObj.getMonth() - expiryMonths);
+            }
+            manufactureDate = expiryDateObj.toISOString().split("T")[0];
+          }
+
+          const batchPayload: any = {
+            qty: inboundQty,
+            purchase_price: editedFirstItem?.purchasePrice || 0,
+            expiry_date: editedFirstItem?.expiryDate,
+            inbound_manager: inboundManager,
+          };
+
+          if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
+          if (expiryMonths) batchPayload.expiry_months = expiryMonths;
+          if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
+          if (alertDays) batchPayload.alert_days = alertDays;
+          if (editedFirstItem?.storageLocation)
+            batchPayload.storage = editedFirstItem.storageLocation;
+
+          // Create batch
+          const createdBatch = await apiPost<any>(
+            `${apiUrl}/products/${productId}/batches`,
+            batchPayload
+          );
+
+          // Get batch_no from the created batch
+          const batchNo = createdBatch.batch_no || "";
+
+          // If shortage, prepare return item
+          if (shortageQty > 0) {
+            returnItems.push({
+              productId: firstItem.productId,
+              productName: firstItem.productName,
+              brand: firstItem.brand || "",
+              batchNo: batchNo,
+              returnQuantity: shortageQty,
+              totalQuantity: confirmedQty,
+              unitPrice: editedFirstItem?.purchasePrice || 0,
+            });
+          }
+        } else if (shortageQty > 0) {
+          // No inbound, but shortage exists - create return without batch
+          returnItems.push({
+            productId: firstItem.productId,
+            productName: firstItem.productName,
+            brand: firstItem.brand || "",
+            batchNo: "",
+            returnQuantity: shortageQty,
+            totalQuantity: confirmedQty,
+            unitPrice: editedFirstItem?.purchasePrice || 0,
+          });
+        }
+      }
+
+      // Create returns if any shortage
+      if (returnItems.length > 0) {
+        try {
+          await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
+            orderId: order.orderId,
+            orderNo: order.orderNo,
+            items: returnItems,
+            inboundManager: inboundManager,
+          });
+
+          // Mark order as completed
+          await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+
+          // Navigate to order-returns page
+          alert(
+            `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.`
+          );
+          window.location.href = "/order-returns";
+        } catch (error: any) {
+          console.error("Failed to create returns:", error);
+          alert(
+            `반품 생성 중 오류가 발생했습니다: ${error.message || "알 수 없는 오류"}`
+          );
+        }
+      } else {
+        alert("반품할 제품이 없습니다.");
+      }
+    } catch (err: any) {
+      console.error("Failed to process returns:", err);
+      alert(`처리 중 오류가 발생했습니다: ${err.message || "알 수 없는 오류"}`);
+    } finally {
+      setProcessing(null);
+      onRefresh();
     }
   };
 
@@ -2104,6 +2378,130 @@ const PendingOrdersList = memo(function PendingOrdersList({
           totalPages={totalPages}
           onPageChange={handlePageChange}
         />
+      )}
+
+      {/* Quantity Mismatch Modal */}
+      {showInboundModal && modalData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowInboundModal(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-slate-800 rounded-xl max-w-2xl w-full mx-4 p-6 max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                일부 상품의 입고 수량이 부족합니다
+              </h2>
+              <button
+                onClick={() => setShowInboundModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body - Description */}
+            <div className="mb-6">
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                부족한 수량은 추후 재입고 예정인가요?
+                <br />
+                재입고가 어려운 경우, 반품 절차를 통해 처리됩니다.
+              </p>
+
+              {/* Product Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-700">
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        제품명
+                      </th>
+                      <th className="px-3 py-2 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        주문수량
+                      </th>
+                      <th className="px-3 py-2 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        입고수량
+                      </th>
+                      <th className="px-3 py-2 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        차이
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modalData.items.map((item: any) => (
+                      <tr
+                        key={item.id}
+                        className="border-b border-slate-100 dark:border-slate-700/50"
+                      >
+                        <td className="px-3 py-3 text-sm text-slate-800 dark:text-slate-200">
+                          {item.productName}
+                          {item.brand && (
+                            <span className="text-slate-500 dark:text-slate-400 ml-1">
+                              ({item.brand})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300">
+                          {item.ordered}개
+                        </td>
+                        <td className="px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300">
+                          {item.inbound}개
+                        </td>
+                        <td
+                          className={`px-3 py-3 text-center text-sm font-semibold ${
+                            item.shortage > 0
+                              ? "text-red-600 dark:text-red-400"
+                              : item.shortage < 0
+                                ? "text-blue-600 dark:text-blue-400"
+                                : "text-green-600 dark:text-green-400"
+                          }`}
+                        >
+                          {item.shortage > 0
+                            ? `-${item.shortage}개`
+                            : item.shortage < 0
+                              ? `+${Math.abs(item.shortage)}개`
+                              : "✓"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer - Action Buttons */}
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors"
+                onClick={handlePartialInbound}
+              >
+                재입고 예정
+              </button>
+              <button
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                onClick={navigateToReturns}
+              >
+                반품 및 교환 진행
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
