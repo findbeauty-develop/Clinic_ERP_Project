@@ -143,4 +143,31 @@ export class ReturnController {
       throw error;
     }
   }
+
+  @Post("webhooks/return-partial-acceptance")
+  @SetMetadata("skipJwtGuard", true)
+  @UseGuards(ApiKeyGuard)
+  @SetMetadata("requireApiKey", true)
+  @ApiOperation({
+    summary: "Webhook: Supplier'dan partial return acceptance (추후반납)",
+  })
+  @ApiHeader({
+    name: "x-api-key",
+    description: "API Key for supplier-to-clinic authentication",
+  })
+  async handlePartialReturnAcceptance(
+    @Body()
+    dto: {
+      returnId: string;
+      clinicTenantId: string;
+      unreturnedItems: Array<{
+        productId: string;
+        batchNo: string;
+        unreturnedQty: number;
+        reason: string;
+      }>;
+    }
+  ) {
+    return this.returnService.handlePartialReturnAcceptance(dto);
+  }
 }

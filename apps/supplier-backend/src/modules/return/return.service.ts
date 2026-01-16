@@ -433,11 +433,34 @@ export class ReturnService {
             });
           });
 
+          // Prepare webhook payload for unreturned items (추후반납)
+          const webhookPayload: {
+            returnId: string;
+            clinicTenantId: string;
+            unreturnedItems: Array<{
+              productId: string;
+              batchNo: string;
+              unreturnedQty: number;
+              reason: string;
+            }>;
+          } = {
+            returnId: returnRequest.id,
+            clinicTenantId: returnRequest.clinic_tenant_id,
+            unreturnedItems: [],
+          };
+
           // Update each item with its adjustment
           for (const adj of adjustments) {
             const existingItem = allItems.find(
               (item: any) => item.id === adj.itemId
             );
+            
+            if (!existingItem) continue;
+
+            const originalQty = existingItem.quantity;
+            const acceptedQty = adj.actualQuantity;
+            const unreturnedQty = originalQty - acceptedQty;
+
             const updateData: any = {
               status: "processing",
               quantity: adj.actualQuantity, // Update quantity to actual
@@ -450,6 +473,17 @@ export class ReturnService {
               updateData.memo = existingMemo
                 ? `${adj.quantityChangeReason} - ${existingMemo}`
                 : adj.quantityChangeReason;
+            }
+
+            // Track unreturned quantity for webhook
+            // Only send back to clinic if reason is "추후반납" (Later Return)
+            if (unreturnedQty > 0 && adj.quantityChangeReason === "추후반납") {
+              webhookPayload.unreturnedItems.push({
+                productId: existingItem.product_id,
+                batchNo: existingItem.batch_no || "",
+                unreturnedQty: unreturnedQty,
+                reason: "추후반납",
+              });
             }
 
             await this.prisma.executeWithRetry(async () => {
@@ -481,6 +515,17 @@ export class ReturnService {
               },
             });
           });
+
+          // Send partial return webhook to clinic if there are unreturned items
+          if (webhookPayload.unreturnedItems.length > 0) {
+            this.sendPartialReturnWebhookToClinic(webhookPayload).catch(
+              (error) => {
+                this.logger.error(
+                  `Failed to send partial return webhook to clinic: ${error.message}`
+                );
+              }
+            );
+          }
         } else {
           // No adjustments, update all items normally
           await this.prisma.executeWithRetry(async () => {
@@ -852,6 +897,69 @@ export class ReturnService {
     } catch (error: any) {
       this.logger.error(
         `Failed to send accept webhook to clinic: ${error.message}`,
+        error.stack
+      );
+      // Don't throw - webhook failure shouldn't break return acceptance
+    }
+  }
+
+  /**
+   * Send partial return webhook to clinic for unreturned items (추후반납)
+   */
+  private async sendPartialReturnWebhookToClinic(payload: {
+    returnId: string;
+    clinicTenantId: string;
+    unreturnedItems: Array<{
+      productId: string;
+      batchNo: string;
+      unreturnedQty: number;
+      reason: string;
+    }>;
+  }): Promise<void> {
+    try {
+      const clinicBackendUrl =
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const supplierApiKey =
+        process.env.SUPPLIER_BACKEND_API_KEY ||
+        process.env.API_KEY_SECRET ||
+        "";
+
+      if (!supplierApiKey) {
+        this.logger.warn(
+          "SUPPLIER_BACKEND_API_KEY not configured, skipping partial return webhook"
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Sending partial return webhook for returnId: ${payload.returnId}, unreturned items: ${payload.unreturnedItems.length}`
+      );
+
+      const webhookResponse = await fetch(
+        `${clinicBackendUrl}/returns/webhooks/return-partial-acceptance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": supplierApiKey,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!webhookResponse.ok) {
+        const errorText = await webhookResponse.text();
+        this.logger.error(
+          `Partial return webhook failed: ${webhookResponse.status} - ${errorText}`
+        );
+      } else {
+        this.logger.log(
+          `Partial return webhook sent successfully for returnId: ${payload.returnId}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send partial return webhook to clinic: ${error.message}`,
         error.stack
       );
       // Don't throw - webhook failure shouldn't break return acceptance

@@ -643,6 +643,9 @@ model SupplierReturnNotification {
   updated_at             DateTime?
   accepted_at            DateTime?
   rejected_at            DateTime?
+  accepted_quantity      Int?
+  unreturned_quantity    Int?
+  quantity_change_reason String?
   supplierManager        SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
 
   @@index([supplier_manager_id])

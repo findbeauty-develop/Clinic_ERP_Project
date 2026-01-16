@@ -1390,4 +1390,107 @@ ${footer}`;
       // Don't throw - notification failure shouldn't break return process
     }
   }
+
+  /**
+   * Handle partial return acceptance webhook from supplier
+   * When supplier accepts less than requested (e.g., 11 out of 12) with reason "추후반납",
+   * the unreturned quantity (1) is added back to clinic's available return pool
+   */
+  async handlePartialReturnAcceptance(dto: {
+    returnId: string;
+    clinicTenantId: string;
+    unreturnedItems: Array<{
+      productId: string;
+      batchNo: string;
+      unreturnedQty: number;
+      reason: string;
+    }>;
+  }) {
+    try {
+      this.logger.log(
+        `Processing partial return acceptance for returnId: ${dto.returnId}, unreturned items: ${dto.unreturnedItems.length}`
+      );
+
+      // Process each unreturned item
+      for (const item of dto.unreturnedItems) {
+        // Find the Return record(s) that match this product and batch
+        // We need to reduce the return_qty by the unreturned amount
+        const returns = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).return.findMany({
+            where: {
+              tenant_id: dto.clinicTenantId,
+              product_id: item.productId,
+              batch_no: item.batchNo,
+            },
+            orderBy: {
+              return_date: "desc", // Most recent first
+            },
+          });
+        });
+
+        if (returns && returns.length > 0) {
+          // Find the most recent return that has enough quantity
+          let remainingUnreturned = item.unreturnedQty;
+
+          for (const returnRecord of returns) {
+            if (remainingUnreturned <= 0) break;
+
+            const currentReturnQty = returnRecord.return_qty;
+            const qtyToReduce = Math.min(remainingUnreturned, currentReturnQty);
+
+            if (qtyToReduce > 0) {
+              // Reduce the return_qty in the Return record
+              const newReturnQty = currentReturnQty - qtyToReduce;
+
+              await this.prisma.executeWithRetry(async () => {
+                return (this.prisma as any).return.update({
+                  where: { id: returnRecord.id },
+                  data: {
+                    return_qty: newReturnQty,
+                    memo: `${returnRecord.memo || ""}\n[추후반납: -${qtyToReduce} (${new Date().toLocaleDateString()})]`.trim(),
+                    updated_at: new Date(),
+                  },
+                });
+              });
+
+              this.logger.log(
+                `Reduced return_qty by ${qtyToReduce} for Return ID: ${returnRecord.id} (product: ${item.productId}, batch: ${item.batchNo}). New qty: ${newReturnQty}`
+              );
+
+              remainingUnreturned -= qtyToReduce;
+            }
+          }
+
+          if (remainingUnreturned > 0) {
+            this.logger.warn(
+              `Could not fully restore ${remainingUnreturned} unreturned units for product ${item.productId}, batch ${item.batchNo}`
+            );
+          }
+        } else {
+          this.logger.warn(
+            `No Return records found for product ${item.productId}, batch ${item.batchNo} in tenant ${dto.clinicTenantId}`
+          );
+        }
+      }
+
+      // Clear the available products cache so the UI shows updated data
+      this.availableProductsCache.delete(dto.clinicTenantId);
+      this.logger.log(
+        `Cleared available products cache for tenant ${dto.clinicTenantId}`
+      );
+
+      return {
+        success: true,
+        message: `Successfully processed ${dto.unreturnedItems.length} unreturned items`,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Error handling partial return acceptance: ${error.message}`,
+        error.stack
+      );
+      throw new BadRequestException(
+        `Failed to handle partial return acceptance: ${error.message}`
+      );
+    }
+  }
 }
