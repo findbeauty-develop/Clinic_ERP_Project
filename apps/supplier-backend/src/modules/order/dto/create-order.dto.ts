@@ -24,6 +24,10 @@ class CreateOrderItemDto {
 
   @IsOptional()
   @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
   batchNo?: string;
 
   @IsInt()

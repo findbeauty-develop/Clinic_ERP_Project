@@ -1,7 +1,7 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -174,6 +174,7 @@ model SupplierOrderItem {
   product_id   String?
   product_name String
   brand        String?
+  unit         String? 
   batch_no     String?
   quantity     Int
   unit_price   Int

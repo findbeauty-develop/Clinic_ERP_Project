@@ -2078,7 +2078,7 @@ export class OrderService {
         group.items.map(async (item: any) => {
           const product = await this.prisma.product.findUnique({
             where: { id: item.productId },
-            select: { name: true, brand: true },
+            select: { name: true, brand: true, unit: true },
           });
 
           let batchNo = null;
@@ -2119,6 +2119,7 @@ export class OrderService {
             productId: item.productId,
             productName: product?.name || "제품",
             brand: product?.brand || "",
+            unit: product?.unit || null,
             batchNo: batchNo,
             quantity: item.quantity,
             unitPrice: item.unitPrice,

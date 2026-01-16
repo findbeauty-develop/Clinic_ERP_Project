@@ -212,13 +212,17 @@ export default function DashboardPage() {
       setLoadingWeather(true);
       try {
         // Fetch all weather data in parallel
-        const [currentWeatherResult, forecastResult, hourlyResult, airQualityResult] =
-          await Promise.allSettled([
-            apiGet(`/api/weather/current/${selectedCity}`),
-            apiGet(`/api/weather/forecast/${selectedCity}?days=7`),
-            apiGet(`/api/weather/hourly/${selectedCity}`),
-            apiGet(`/api/weather/air-quality/${selectedCity}`),
-          ]);
+        const [
+          currentWeatherResult,
+          forecastResult,
+          hourlyResult,
+          airQualityResult,
+        ] = await Promise.allSettled([
+          apiGet(`/api/weather/current/${selectedCity}`),
+          apiGet(`/api/weather/forecast/${selectedCity}?days=7`),
+          apiGet(`/api/weather/hourly/${selectedCity}`),
+          apiGet(`/api/weather/air-quality/${selectedCity}`),
+        ]);
 
         // Process current weather
         if (currentWeatherResult.status === "fulfilled") {
@@ -234,7 +238,11 @@ export default function DashboardPage() {
         // Process forecast
         if (forecastResult.status === "fulfilled") {
           const forecast = forecastResult.value;
-          if (forecast && forecast.forecast && Array.isArray(forecast.forecast)) {
+          if (
+            forecast &&
+            forecast.forecast &&
+            Array.isArray(forecast.forecast)
+          ) {
             setForecastData(forecast.forecast);
           } else if (forecast && Array.isArray(forecast)) {
             setForecastData(forecast);
@@ -822,7 +830,7 @@ export default function DashboardPage() {
                           <img
                             src={article.image}
                             alt={article.title}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 brightness-[1.15] contrast-105 saturate-110"
                             onError={(e) => {
                               // Hide failed image and show fallback
                               const target = e.target as HTMLImageElement;
@@ -862,8 +870,8 @@ export default function DashboardPage() {
                             </svg>
                           </div>
                         )}
-                        {/* Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+                        {/* Very Light Gradient Overlay - Maximum Image Visibility */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent"></div>
 
                         {/* Category Badge */}
                         <div className="absolute top-3 left-3">

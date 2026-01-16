@@ -38,6 +38,7 @@ export class OrderService {
       product_name: item.productName,
       brand: item.brand || null,
       batch_no: item.batchNo || null,
+      unit: item.unit || null,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       total_price: item.totalPrice,
@@ -89,7 +90,11 @@ export class OrderService {
     const limit = query?.limit && query.limit > 0 ? query.limit : 20;
     const skip = (page - 1) * limit;
 
-    const where: any = { supplier_manager_id: supplierManagerId };
+    const where: any = {
+      supplier_manager_id: supplierManagerId,
+      status: { not: "archived" }, // ✅ Always exclude archived orders
+    };
+
     if (status && status !== "all") {
       where.status = status;
     }
@@ -301,12 +306,6 @@ export class OrderService {
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
-      this.logger.log(
-        `📤 [Supplier→Clinic] Attempting to notify clinic about order ${order.order_no}`
-      );
-      this.logger.log(`   Clinic API: ${clinicApiUrl}`);
-      this.logger.log(`   API Key configured: ${apiKey ? "YES" : "NO"}`);
-
       if (!apiKey) {
         this.logger.warn(
           "⚠️  API_KEY_SECRET not configured, skipping clinic notification"
@@ -334,6 +333,7 @@ export class OrderService {
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
+          unit: item.unit,
           quantity: item.quantity,
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
@@ -341,13 +341,6 @@ export class OrderService {
         })),
         totalAmount: order.total_amount,
       };
-
-      this.logger.log(
-        `   Sending to: POST ${clinicApiUrl}/order/supplier-confirmed`
-      );
-      this.logger.log(
-        `   Payload: orderNo=${payload.orderNo}, tenantId=${payload.clinicTenantId}, adjustments=${adjustmentsWithProductId.length}`
-      );
 
       const response = await fetch(`${clinicApiUrl}/order/supplier-confirmed`, {
         method: "POST",
@@ -367,9 +360,6 @@ export class OrderService {
           `   Response status: ${response.status} ${response.statusText}`
         );
       } else {
-        this.logger.log(
-          `✅ Successfully notified clinic-backend about order ${order.order_no}`
-        );
       }
     } catch (error: any) {
       this.logger.error(`❌ Error notifying clinic-backend: ${error.message}`);
@@ -1151,6 +1141,7 @@ export class OrderService {
       productId: item.product_id,
       productName: item.product_name,
       brand: item.brand,
+      unit: item.unit,
       batchNo: item.batch_no,
       quantity: item.quantity,
       unitPrice: item.unit_price,
