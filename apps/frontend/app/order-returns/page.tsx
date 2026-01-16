@@ -253,9 +253,7 @@ const ReturnCard = memo(function ReturnCard({
   const [confirming, setConfirming] = useState(false);
   const [memo, setMemo] = useState(returnItem.memo || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
-  const [returnType, setReturnType] = useState(
-    returnItem.return_type || "주문|반품"
-  );
+  const [returnType, setReturnType] = useState(returnItem.return_type || "");
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
 
@@ -328,22 +326,12 @@ const ReturnCard = memo(function ReturnCard({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // IMPORTANT: /order-returns page'dan yuborilgan barcha product'lar /exchanges page'ga kelishi kerak
-      // - Order returns: "주문|교환" (always exchange for exchanges page)
-      // - Defective returns: "불량|교환" (convert to exchange for exchanges page)
-      let finalReturnType: string;
-      if (returnType?.includes("불량")) {
-        // Defective product - convert to exchange type for exchanges page
-        finalReturnType = "불량|교환";
-      } else if (returnType?.includes("주문")) {
-        // Order return - use exchange type if not already
-        finalReturnType = returnType.includes("교환")
-          ? returnType
-          : "주문|교환";
-      } else {
-        // Default to "주문|교환" for order returns
-        finalReturnType = "주문|교환";
-      }
+      // Keep the original return type that user selected
+      // - 주문|교환 → 주문|교환
+      // - 주문|반품 → 주문|반품
+      // - 불량|교환 → 불량|교환
+      // - 불량|반품 → 불량|반품
+      const finalReturnType = returnType || "주문|교환";
 
       const response = await apiPost(
         `${apiUrl}/order-returns/${returnItem.id}/process`,
@@ -497,11 +485,20 @@ const ReturnCard = memo(function ReturnCard({
           <div className="flex items-center gap-3">
             {isProcessingTabWithInputs && showReturnTypeDropdown ? (
               <div className="relative">
+                사유 선택:{" "}
                 <select
                   value={returnType}
                   onChange={(e) => handleReturnTypeChange(e.target.value)}
                   className="rounded border border-slate-300 bg-white px-3 py-1 pr-8 text-sm text-slate-700 appearance-none cursor-pointer hover:border-sky-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                  style={{
+                    color: returnType === "" ? "#94a3b8" : "#334155",
+                  }}
                 >
+                  {returnType === "" && (
+                    <option value="" disabled>
+                      사유 선택*
+                    </option>
+                  )}
                   {isOrderReturn ? (
                     <>
                       <option value="주문|교환">주문 | 교환</option>
@@ -707,16 +704,18 @@ const ReturnCard = memo(function ReturnCard({
                   />
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
+                  {/* <button
                     onClick={() => setShowDetailModal(true)}
                     className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                   >
-                    상세보기
-                  </button>
+                    상세보기1
+                  </button> */}
                   <button
                     onClick={handleProcessReturn}
-                    disabled={processing}
-                    className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-600"
+                    disabled={
+                      processing || !returnManagerName.trim() || !memo.trim()
+                    }
+                    className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-rose-500 dark:hover:bg-rose-600"
                   >
                     {processing
                       ? "처리 중..."
