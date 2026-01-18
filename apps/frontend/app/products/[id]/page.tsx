@@ -135,9 +135,9 @@ export default function ProductDetailPage() {
 
           category: data.category,
           status: data.status,
-          currentStock: data.currentStock || data.current_stock,
-          inboundQty: data.inboundQty || data.inbound_qty || null,
-          minStock: data.minStock || data.min_stock,
+          currentStock: data.currentStock !== undefined ? data.currentStock : data.current_stock,
+          inboundQty: data.inboundQty !== undefined ? data.inboundQty : (data.inbound_qty || null),
+          minStock: data.minStock !== undefined ? data.minStock : data.min_stock,
           unit: data.unit,
           purchasePrice: data.purchasePrice || data.purchase_price,
           salePrice: data.salePrice || data.sale_price,
@@ -1225,23 +1225,27 @@ function ProductEditForm({
           ? Number(formData.purchasePrice)
           : undefined,
         salePrice: formData.salePrice ? Number(formData.salePrice) : undefined,
-        currentStock:
-          formData.currentStock !== "" && formData.currentStock !== undefined
-            ? Number(formData.currentStock)
-            : 0,
-        minStock:
-          formData.minStock !== "" && formData.minStock !== undefined
-            ? Number(formData.minStock)
-            : 0,
       };
 
+      // currentStock faqat o'zgartirilgan bo'lsa yuborilamiz (0 ga tushmasligi uchun)
+      if (formData.currentStock !== "" && formData.currentStock !== undefined) {
+        const newStock = Number(formData.currentStock);
+        if (newStock !== product.currentStock) {
+          payload.currentStock = newStock;
+        }
+      }
+
+      // minStock faqat o'zgartirilgan bo'lsa yuborilamiz
+      if (formData.minStock !== "" && formData.minStock !== undefined) {
+        const newMinStock = Number(formData.minStock);
+        if (newMinStock !== product.minStock) {
+          payload.minStock = newMinStock;
+        }
+      }
+
       console.log("🔍 formData.currentStock:", formData.currentStock);
-      console.log(
-        "🔍 Converted currentStock:",
-        formData.currentStock !== "" && formData.currentStock !== undefined
-          ? Number(formData.currentStock)
-          : 0
-      );
+      console.log("🔍 product.currentStock:", product.currentStock);
+      console.log("🔍 Will send currentStock:", payload.currentStock);
 
       // Capacity fields
       if (formData.capacityPerProduct) {
@@ -1254,12 +1258,15 @@ function ProductEditForm({
         payload.usageCapacity = Number(formData.usageCapacity);
       }
 
-      // Image handling
+      // Image handling - faqat o'zgargan bo'lsa yuborish
       if (formData.imageFile) {
+        // Base64'ni yuborish - backend file sifatida saqlaydi va URL qaytaradi
         payload.image = formData.image;
       } else if (formData.image === "" || formData.image === null) {
+        // Image o'chirilmoqda
         payload.image = null;
       }
+      // Agar imageFile yo'q va image o'zgarmagan bo'lsa, hech narsa yubormaydi (backend eski image'ni saqlaydi)
 
       // Return policy - always include if isReturnable is true or refundAmount/returnStorage exists
       if (
@@ -1401,20 +1408,19 @@ function ProductEditForm({
       );
       console.log("Update response:", updatedProductResponse);
 
-      // Refresh product data
+      // Refresh product data after update (especially for images)
       let finalProductResponse = updatedProductResponse;
-      if (formData.imageFile) {
-        try {
-          const { apiGet } = await import("../../../lib/api");
-          finalProductResponse = await apiGet<any>(
-            `${apiUrl}/products/${product.id}`
-          );
-        } catch (refreshErr) {
-          console.error(
-            "Failed to refresh product after image upload",
-            refreshErr
-          );
-        }
+      try {
+        const { apiGet } = await import("../../../lib/api");
+        finalProductResponse = await apiGet<any>(
+          `${apiUrl}/products/${product.id}`
+        );
+        console.log("🔍 Refreshed product data:", finalProductResponse);
+      } catch (refreshErr) {
+        console.error(
+          "Failed to refresh product after update",
+          refreshErr
+        );
       }
 
       // Format image URL
@@ -1456,6 +1462,12 @@ function ProductEditForm({
             : finalProductResponse.current_stock !== undefined
               ? finalProductResponse.current_stock
               : product.currentStock,
+        inboundQty:
+          finalProductResponse.inboundQty !== undefined
+            ? finalProductResponse.inboundQty
+            : finalProductResponse.inbound_qty !== undefined
+              ? finalProductResponse.inbound_qty
+              : product.inboundQty,
         minStock:
           finalProductResponse.minStock !== undefined
             ? finalProductResponse.minStock
@@ -1482,6 +1494,26 @@ function ProductEditForm({
           finalProductResponse.contactEmail ||
           finalProductResponse.contact_email ||
           product.contactEmail,
+        supplierCompanyAddress:
+          finalProductResponse.supplierCompanyAddress ||
+          product.supplierCompanyAddress,
+        supplierBusinessNumber:
+          finalProductResponse.supplierBusinessNumber ||
+          product.supplierBusinessNumber,
+        supplierCompanyPhone:
+          finalProductResponse.supplierCompanyPhone ||
+          product.supplierCompanyPhone,
+        supplierCompanyEmail:
+          finalProductResponse.supplierCompanyEmail ||
+          product.supplierCompanyEmail,
+        supplierPosition:
+          finalProductResponse.supplierPosition || product.supplierPosition,
+        supplierEmail2:
+          finalProductResponse.supplierEmail2 || product.supplierEmail2,
+        supplierResponsibleProducts:
+          finalProductResponse.supplierResponsibleProducts ||
+          product.supplierResponsibleProducts,
+        supplierMemo: finalProductResponse.supplierMemo || product.supplierMemo,
         expiryDate:
           finalProductResponse.expiryDate ||
           finalProductResponse.expiry_date ||
