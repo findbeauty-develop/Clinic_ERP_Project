@@ -2219,6 +2219,8 @@ export class ProductsService {
                     storage: row.storage.trim(),
                     alert_days: row.alert_days.toString(), // Convert to string for database
                     current_stock: row.inbound_qty,
+                    inbound_qty: row.inbound_qty, // ✅ Added: CSV inbound quantity
+                    inbound_manager: inboundManager.trim(), // ✅ Added: CSV import manager
                     status: "active",
                   },
                 });
@@ -2241,10 +2243,14 @@ export class ProductsService {
 
                 // STEP 4: Create initial batch
                 const batchId = this.generateBatchId();
-                
+
                 // Generate batch_no using the same logic as inbound new (9-digit random + sequence)
-                const batchNo = await this.generateBatchNo(productId, tenantId, tx);
-                
+                const batchNo = await this.generateBatchNo(
+                  productId,
+                  tenantId,
+                  tx
+                );
+
                 await (tx.batch.create as any)({
                   data: {
                     id: batchId,
@@ -2256,6 +2262,8 @@ export class ProductsService {
                     used_count: 0,
                     unit: row.unit.trim(),
                     min_stock: row.min_stock,
+                    purchase_price: row.purchase_price ?? null, // ✅ Added: CSV purchase price
+                    sale_price: row.sale_price ?? null, // ✅ Added: CSV sale price
                     expiry_date: this.parseExpiryDate(row.expiry_date),
                     storage: row.storage.trim(),
                     alert_days: row.alert_days.toString(), // Convert to string for database
