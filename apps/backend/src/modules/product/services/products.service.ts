@@ -2241,14 +2241,16 @@ export class ProductsService {
 
                 // STEP 4: Create initial batch
                 const batchId = this.generateBatchId();
+                
+                // Generate batch_no using the same logic as inbound new (9-digit random + sequence)
+                const batchNo = await this.generateBatchNo(productId, tenantId, tx);
+                
                 await (tx.batch.create as any)({
                   data: {
                     id: batchId,
                     tenant_id: tenantId,
                     product_id: productId,
-                    batch_no:
-                      row.barcode?.trim() ||
-                      `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    batch_no: batchNo, // Format: 123456789-001
                     qty: row.inbound_qty,
                     inbound_qty: row.inbound_qty,
                     used_count: 0,
