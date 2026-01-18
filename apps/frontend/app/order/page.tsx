@@ -145,6 +145,16 @@ export default function OrderPage() {
   // Client-side mount state (hydration error'dan qochish uchun)
   const [isMounted, setIsMounted] = useState(false);
 
+  // Price modal state (for products without prices)
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductWithRisk | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | undefined>(undefined);
+  const [pendingQuantity, setPendingQuantity] = useState<number>(0);
+  const [modalPrices, setModalPrices] = useState({
+    purchasePrice: "",
+    salePrice: "",
+  });
+
   // Cache invalidation helper
   const invalidateCache = useCallback(
     (
@@ -591,6 +601,30 @@ export default function OrderPage() {
       const product = products.find((p) => p.id === productId);
       if (!product) return;
 
+      // ✅ CHECK: If quantity > 0 and prices are missing, show modal
+      if (sanitizedQuantity > 0) {
+        // Get batch if exists
+        const batch = batchId 
+          ? product.batches?.find((b) => b.id === batchId)
+          : null;
+        
+        const purchasePrice = batch?.purchasePrice || product.unitPrice;
+        
+        // Check if prices are missing (either purchase or sale price)
+        if (!purchasePrice || purchasePrice === 0) {
+          // Show modal to enter prices
+          setSelectedProduct(product);
+          setSelectedBatchId(batchId);
+          setPendingQuantity(sanitizedQuantity);
+          setModalPrices({
+            purchasePrice: "",
+            salePrice: "",
+          });
+          setShowPriceModal(true);
+          return; // Don't proceed with adding to order
+        }
+      }
+
       const itemId = batchId ? `${productId}-${batchId}` : productId;
       const unitPrice = product.unitPrice || 0;
       const supplierId = product.supplierId || "unknown";
@@ -717,6 +751,60 @@ export default function OrderPage() {
     },
     [products]
   );
+
+  // Save prices to Product table and add to order
+  const handleSavePrices = useCallback(async () => {
+    if (!selectedProduct || !modalPrices.purchasePrice || !modalPrices.salePrice) {
+      alert("구매가와 판매가를 모두 입력하세요");
+      return;
+    }
+
+    const purchasePrice = Number(modalPrices.purchasePrice);
+    const salePrice = Number(modalPrices.salePrice);
+
+    if (purchasePrice <= 0 || salePrice <= 0) {
+      alert("가격은 0보다 커야 합니다");
+      return;
+    }
+
+    try {
+      // Save to Product table (global)
+      await apiPut(`${apiUrl}/products/${selectedProduct.id}`, {
+        purchasePrice,
+        salePrice,
+      });
+
+      // Update local products state
+      setProducts((prevProducts) =>
+        prevProducts.map((p) =>
+          p.id === selectedProduct.id
+            ? { ...p, unitPrice: purchasePrice }
+            : p
+        )
+      );
+
+      // Close modal
+      setShowPriceModal(false);
+
+      // Now add the product to order with the saved prices
+      handleQuantityChange(
+        selectedProduct.id,
+        selectedBatchId,
+        pendingQuantity
+      );
+
+      // Reset modal state
+      setSelectedProduct(null);
+      setSelectedBatchId(undefined);
+      setPendingQuantity(0);
+      setModalPrices({ purchasePrice: "", salePrice: "" });
+
+      alert("가격이 저장되었습니다");
+    } catch (error: any) {
+      console.error("Failed to save prices:", error);
+      alert(error?.message || "가격 저장 실패");
+    }
+  }, [selectedProduct, selectedBatchId, pendingQuantity, modalPrices, apiUrl, handleQuantityChange]);
 
   // Sort and filter products with client-side calculations
   const filteredProducts = useMemo(() => {
@@ -2825,6 +2913,139 @@ export default function OrderPage() {
           </div>
         )}
       </div>
+
+      {/* Price Entry Modal */}
+      {showPriceModal && selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-md shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                가격 설정
+              </h3>
+              <button
+                onClick={() => {
+                  setShowPriceModal(false);
+                  setSelectedProduct(null);
+                  setModalPrices({ purchasePrice: "", salePrice: "" });
+                }}
+                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {/* Product Info */}
+              <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <div className="font-medium text-slate-900 dark:text-white">
+                  {selectedProduct.productName}
+                </div>
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  {selectedProduct.brand}
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="mb-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex gap-2 text-sm text-yellow-800 dark:text-yellow-300">
+                  <span className="flex-shrink-0">⚠️</span>
+                  <div>
+                    이 제품의 가격 정보가 없습니다.
+                    <br />
+                    가격을 설정하면 제품 정보에 저장되며, 이후 주문에도 적용됩니다.
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Inputs */}
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    구매가 (원) *
+                  </label>
+                  <input
+                    type="number"
+                    value={modalPrices.purchasePrice}
+                    onChange={(e) =>
+                      setModalPrices((prev) => ({
+                        ...prev,
+                        purchasePrice: e.target.value,
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        // Focus on sale price input
+                        const salePriceInput = document.getElementById("sale-price-input");
+                        if (salePriceInput) {
+                          salePriceInput.focus();
+                        }
+                      }
+                    }}
+                    placeholder="예: 5000"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    판매가 (원) *
+                  </label>
+                  <input
+                    id="sale-price-input"
+                    type="number"
+                    value={modalPrices.salePrice}
+                    onChange={(e) =>
+                      setModalPrices((prev) => ({
+                        ...prev,
+                        salePrice: e.target.value,
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleSavePrices();
+                      } else if (e.key === "Escape") {
+                        setShowPriceModal(false);
+                        setSelectedProduct(null);
+                        setModalPrices({ purchasePrice: "", salePrice: "" });
+                      }
+                    }}
+                    placeholder="예: 8000"
+                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPriceModal(false);
+                    setSelectedProduct(null);
+                    setModalPrices({ purchasePrice: "", salePrice: "" });
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleSavePrices}
+                  disabled={
+                    !modalPrices.purchasePrice || !modalPrices.salePrice
+                  }
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition"
+                >
+                  저장 후 주문 추가
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
