@@ -146,8 +146,8 @@ const navItems = [
     ),
   },
   {
-    href: "/suppliers",
-    label: "협력업체 관리",
+    label: "CSV 입고",
+    isDropdown: true,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -160,10 +160,52 @@ const navItems = [
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
-          d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
+          d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
         />
       </svg>
     ),
+    children: [
+      {
+        href: "/inventory/products/pricing",
+        label: "제품 가격 관리",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/suppliers",
+        label: "협력업체 관리",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
+            />
+          </svg>
+        ),
+      },
+    ],
   },
 ];
 
@@ -175,6 +217,7 @@ export function Sidebar() {
   const [userName, setUserName] = useState<string>("");
   const [clinicName, setClinicName] = useState<string>("");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
 
   const loadUserInfo = useCallback(() => {
     const memberData = localStorage.getItem("erp_member_data");
@@ -217,6 +260,18 @@ export function Sidebar() {
     router.push("/login");
   };
 
+  const toggleDropdown = (label: string) => {
+    setOpenDropdowns((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(label)) {
+        newSet.delete(label);
+      } else {
+        newSet.add(label);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <aside className="sticky top-0 z-40 flex h-screen w-64 flex-col bg-slate-900 px-6 py-8 text-white">
       <div>
@@ -225,7 +280,74 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-10 flex-1 space-y-1 overflow-y-auto pr-2">
-        {navItems.map((item) => {
+        {navItems.map((item, index) => {
+          if (item.isDropdown && item.children) {
+            const isOpen = openDropdowns.has(item.label);
+            const isAnyChildActive = item.children.some(
+              (child) => pathname === child.href
+            );
+
+            return (
+              <div key={item.label}>
+                <button
+                  onClick={() => toggleDropdown(item.label)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 transition-all ${
+                    isAnyChildActive
+                      ? "bg-indigo-600 text-white shadow-lg"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  }`}
+                >
+                  <span
+                    className={`flex-shrink-0 ${isAnyChildActive ? "text-white" : "text-slate-400"}`}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="flex-1 text-left font-medium">
+                    {item.label}
+                  </span>
+                  <svg
+                    className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+                {isOpen && (
+                  <div className="mt-1 space-y-1">
+                    {item.children.map((child) => {
+                      const isChildActive = pathname === child.href;
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={`flex items-center gap-3 rounded-lg py-2.5 pl-12 pr-4 text-sm transition-all ${
+                            isChildActive
+                              ? "bg-indigo-700 text-white"
+                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          }`}
+                        >
+                          <span
+                            className={`flex-shrink-0 ${isChildActive ? "text-white" : "text-slate-400"}`}
+                          >
+                            {child.icon}
+                          </span>
+                          <span className="font-medium">{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           const isActive = pathname === item.href;
           return (
             <Link
