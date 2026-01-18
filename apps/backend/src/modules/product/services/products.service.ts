@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  Logger,
 } from "@nestjs/common";
 import { Prisma } from "../../../../node_modules/.prisma/client-backend";
 import { PrismaService } from "../../../core/prisma.service";
@@ -16,6 +17,7 @@ import { CacheManager } from "../../../common/cache";
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   // ✅ Replaced Map with CacheManager - automatic cleanup, size limits, LRU eviction
   private productsCache: CacheManager<any>;
 
@@ -2169,7 +2171,31 @@ export class ProductsService {
                 // Generate unique ID
                 const productId = this.generateProductId();
 
-                // Create product
+                // STEP 1: Find supplier if contact_phone provided
+                let supplierId: string | null = null;
+                let supplierName: string | null = null;
+
+                if (row.contact_phone?.trim()) {
+                  const supplier = await this.findSupplierByPhone(
+                    tenantId,
+                    row.contact_phone,
+                    tx
+                  );
+
+                  if (supplier) {
+                    supplierId = supplier.id;
+                    supplierName = supplier.company_name;
+                    this.logger.log(
+                      `📞 Supplier matched: ${supplierName} (${row.contact_phone})`
+                    );
+                  } else {
+                    this.logger.warn(
+                      `📞 No supplier found for phone: ${row.contact_phone}`
+                    );
+                  }
+                }
+
+                // STEP 2: Create product
                 const product = await (tx.product.create as any)({
                   data: {
                     id: productId,
@@ -2192,14 +2218,30 @@ export class ProductsService {
                   },
                 });
 
-                // Create initial batch
+                // STEP 3: Create ProductSupplier link if supplier found
+                if (supplierId) {
+                  await (tx.productSupplier.create as any)({
+                    data: {
+                      tenant_id: tenantId,
+                      product_id: productId,
+                      clinic_supplier_manager_id: supplierId,
+                      purchase_price: row.purchase_price ?? null,
+                    },
+                  });
+
+                  this.logger.log(
+                    `✅ ProductSupplier created: ${product.name} → ${supplierName}`
+                  );
+                }
+
+                // STEP 4: Create initial batch
                 const batchId = this.generateBatchId();
                 await (tx.batch.create as any)({
                   data: {
                     id: batchId,
                     tenant_id: tenantId,
                     product_id: productId,
-                    batch_no: row.barcode?.trim() || `BATCH-${Date.now()}`,
+                    batch_no: row.barcode?.trim() || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                     qty: row.inbound_qty,
                     inbound_qty: row.inbound_qty,
                     used_count: 0,
@@ -2214,8 +2256,14 @@ export class ProductsService {
                 results.push({
                   success: true,
                   product,
+                  supplierLinked: !!supplierId,
+                  supplierName: supplierName,
                 });
               } catch (error: any) {
+                this.logger.error(
+                  `Failed to import row: ${JSON.stringify(row)}`,
+                  error.stack
+                );
                 results.push({
                   success: false,
                   row,
@@ -2313,5 +2361,56 @@ export class ProductsService {
 
     // Fallback to default parsing
     return new Date(dateString);
+  }
+
+  /**
+   * Normalize phone number for matching
+   * Removes all non-digit characters: 010-1234-5678 → 01012345678
+   * @param phone - Raw phone number
+   * @returns Normalized phone number (digits only)
+   */
+  private normalizePhoneNumber(phone: string): string {
+    if (!phone) return "";
+    return phone.replace(/\D/g, ""); // Remove all non-digits
+  }
+
+  /**
+   * Find ClinicSupplierManager by normalized phone number
+   * Supports various formats: 010-1234-5678, 01012345678, +82-10-1234-5678
+   * @param tenantId - Tenant ID
+   * @param contactPhone - Contact phone from CSV
+   * @param tx - Optional transaction client
+   * @returns ClinicSupplierManager or null
+   */
+  private async findSupplierByPhone(
+    tenantId: string,
+    contactPhone: string,
+    tx?: any
+  ): Promise<any | null> {
+    if (!contactPhone?.trim()) return null;
+
+    const normalizedInput = this.normalizePhoneNumber(contactPhone);
+    if (!normalizedInput) return null;
+
+    const client = tx ?? this.prisma;
+
+    // Get all suppliers for tenant
+    const suppliers = await (client.clinicSupplierManager.findMany as any)({
+      where: { tenant_id: tenantId },
+      select: {
+        id: true,
+        phone_number: true,
+        company_name: true,
+        name: true,
+      },
+    });
+
+    // Match by normalized phone
+    return (
+      suppliers.find(
+        (s: any) =>
+          this.normalizePhoneNumber(s.phone_number) === normalizedInput
+      ) || null
+    );
   }
 }

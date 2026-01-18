@@ -84,6 +84,12 @@ export class ImportProductRowDto {
   @Min(0)
   @Type(() => Number)
   sale_price?: number | null;
+
+  // Supplier Linking (Optional)
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  contact_phone?: string; // Optional: Auto-links to ClinicSupplierManager
 }
 
 export class PreviewImportDto {

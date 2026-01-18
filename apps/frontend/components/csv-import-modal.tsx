@@ -188,9 +188,9 @@ export default function CSVImportModal({
 
   const handleDownloadTemplate = () => {
     const csvContent = [
-      "name,brand,category,inbound_qty,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,expiry_date,alert_days,storage,barcode,purchase_price,sale_price",
-      "시럽A,브랜드A,의약품,100,EA,10,50,ml,5,2026-12-31,30,냉장,1234567890,5000,8000",
-      "주사기B,브랜드B,의료기기,200,BOX,20,100,개,10,12/31/2027,60,상온,0987654321,7000,12000",
+      "name,brand,category,inbound_qty,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,expiry_date,alert_days,storage,barcode,purchase_price,sale_price,contact_phone",
+      "시럽A,브랜드A,의약품,100,EA,10,50,ml,5,2026-12-31,30,냉장,1234567890,5000,8000,010-1234-5678",
+      "주사기B,브랜드B,의료기기,200,BOX,20,100,개,10,12/31/2027,60,상온,0987654321,7000,12000,",
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], {
