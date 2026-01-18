@@ -156,12 +156,12 @@ export default function SupplierFormModal({
       alert("회사명을 입력하세요");
       return;
     }
-    if (!formData.name.trim()) {
-      alert("담당자 이름을 입력하세요");
+    if (!formData.business_number.trim()) {
+      alert("사업자번호를 입력하세요 (형식: 123-45-67890)");
       return;
     }
     if (!formData.phone_number.trim()) {
-      alert("연락처를 입력하세요");
+      alert("담당자 연락처를 입력하세요");
       return;
     }
 
@@ -176,45 +176,36 @@ export default function SupplierFormModal({
         throw new Error("Authentication token not found");
       }
 
-      const endpoint = supplier
-        ? `${apiUrl}/supplier/manager/${supplier.id}`
-        : `${apiUrl}/supplier/manager`;
-
-      const method = supplier ? "PUT" : "POST";
+      // Use create-manual endpoint for creating new suppliers
+      const endpoint = `${apiUrl}/supplier/create-manual`;
 
       const response = await fetch(endpoint, {
-        method,
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           companyName: formData.company_name,
-          businessNumber: formData.business_number || undefined,
+          businessNumber: formData.business_number,
           companyPhone: formData.company_phone || undefined,
           companyEmail: formData.company_email || undefined,
           companyAddress: formData.company_address || undefined,
-          managerName: formData.name,
+          managerName: formData.name || undefined,
           phoneNumber: formData.phone_number,
-          email1: formData.email1 || undefined,
-          email2: formData.email2 || undefined,
+          managerEmail: formData.email1 || undefined,
           position: formData.position || undefined,
-          responsibleProducts: formData.responsible_products,
-          responsibleRegions: formData.responsible_regions,
-          memo: formData.memo || undefined,
-          certificateImageUrl: formData.certificate_image_url || undefined,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to save supplier");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || `Failed to save supplier (${response.status})`
+        );
       }
 
-      alert(
-        supplier
-          ? "협력업체 정보가 수정되었습니다"
-          : "협력업체가 등록되었습니다"
-      );
+      alert("협력업체가 등록되었습니다");
       onSuccess();
     } catch (err: any) {
       console.error("Error saving supplier:", err);
@@ -296,10 +287,11 @@ export default function SupplierFormModal({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    사업자번호
+                    사업자번호 *
                   </label>
                   <input
                     type="text"
+                    required
                     value={formData.business_number}
                     onChange={(e) =>
                       setFormData({
@@ -310,6 +302,9 @@ export default function SupplierFormModal({
                     placeholder="123-45-67890"
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
                   />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    형식: 123-45-67890
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
