@@ -226,6 +226,9 @@ export default function SuppliersPage() {
                       이메일
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      담당 제품
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                       사업자번호
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -237,7 +240,7 @@ export default function SuppliersPage() {
                   {filteredSuppliers.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
                       >
                         {searchQuery
@@ -269,6 +272,30 @@ export default function SuppliersPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-gray-900 dark:text-white">
                           {supplier.email1 || "-"}
+                        </td>
+                        <td className="px-6 py-4 text-gray-900 dark:text-white">
+                          {supplier.responsible_products &&
+                          supplier.responsible_products.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {supplier.responsible_products
+                                .slice(0, 3)
+                                .map((product: string, idx: number) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                  >
+                                    {product}
+                                  </span>
+                                ))}
+                              {supplier.responsible_products.length > 3 && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  +{supplier.responsible_products.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-gray-900 dark:text-white">
                           {supplier.business_number || "-"}

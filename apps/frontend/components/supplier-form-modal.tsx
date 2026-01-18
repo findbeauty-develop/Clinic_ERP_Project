@@ -35,6 +35,8 @@ export default function SupplierFormModal({
     phone_number: "",
     email1: "",
     position: "",
+    responsible_products: "",
+    memo: "",
   });
 
   const [certificatePreview, setCertificatePreview] = useState<string>("");
@@ -62,6 +64,8 @@ export default function SupplierFormModal({
         phone_number: supplier.phone_number || "",
         email1: supplier.email1 || "",
         position: supplier.position || "",
+        responsible_products: supplier.responsible_products?.join(", ") || "",
+        memo: supplier.memo || "",
       });
       if (supplier.certificate_image_url) {
         setCertificatePreview(supplier.certificate_image_url);
@@ -156,6 +160,10 @@ export default function SupplierFormModal({
       alert("담당자 연락처를 입력하세요");
       return;
     }
+    if (!formData.responsible_products.trim()) {
+      alert("담당 제품을 입력하세요");
+      return;
+    }
 
     setSaving(true);
 
@@ -187,6 +195,8 @@ export default function SupplierFormModal({
           phoneNumber: formData.phone_number,
           managerEmail: formData.email1 || undefined,
           position: formData.position || undefined,
+          responsibleProducts: formData.responsible_products || undefined,
+          memo: formData.memo || undefined,
         }),
       });
 
@@ -380,43 +390,12 @@ export default function SupplierFormModal({
                             ⚠️ 사업자 정보 확인 실패
                           </span>
                         </div>
-                        <p className="mt-1 text-xs">수동으로 정보를 입력해주세요</p>
+                        <p className="mt-1 text-xs">
+                          수동으로 정보를 입력해주세요
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* 담당자 전화번호 */}
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    담당자 전화번호*
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone_number}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone_number: e.target.value })
-                    }
-                    placeholder="010-1234-5678"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                  />
-                </div>
-
-                {/* 담당자 이메일 */}
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    담당자 이메일
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email1}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email1: e.target.value })
-                    }
-                    placeholder="manager@company.com"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                  />
                 </div>
               </div>
 
@@ -490,7 +469,10 @@ export default function SupplierFormModal({
                     type="tel"
                     value={formData.company_phone}
                     onChange={(e) =>
-                      setFormData({ ...formData, company_phone: e.target.value })
+                      setFormData({
+                        ...formData,
+                        company_phone: e.target.value,
+                      })
                     }
                     placeholder="02-1234-5678"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
@@ -506,14 +488,88 @@ export default function SupplierFormModal({
                     type="email"
                     value={formData.company_email}
                     onChange={(e) =>
-                      setFormData({ ...formData, company_email: e.target.value })
+                      setFormData({
+                        ...formData,
+                        company_email: e.target.value,
+                      })
                     }
                     placeholder="company@example.com"
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
-              </div>
-            </div>
+                {/* 담당자 전화번호 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당자 전화번호*
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone_number}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone_number: e.target.value })
+                    }
+                    placeholder="010-1234-5678"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
+
+                 {/* 담당자 이메일 */}
+                 <div>
+                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                     담당자 이메일
+                   </label>
+                   <input
+                     type="email"
+                     value={formData.email1}
+                     onChange={(e) =>
+                       setFormData({ ...formData, email1: e.target.value })
+                     }
+                     placeholder="manager@company.com"
+                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                   />
+                 </div>
+
+                 {/* 담당 제품 */}
+                 <div>
+                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                     담당 제품*
+                   </label>
+                   <input
+                     type="text"
+                     required
+                     value={formData.responsible_products}
+                     onChange={(e) =>
+                       setFormData({
+                         ...formData,
+                         responsible_products: e.target.value,
+                       })
+                     }
+                     placeholder="예: 시럽, 주사기, 마스크"
+                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                   />
+                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                     쉼표(,)로 구분하여 여러 제품을 입력할 수 있습니다
+                   </p>
+                 </div>
+
+                 {/* 메모 */}
+                 <div>
+                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                     메모
+                   </label>
+                   <textarea
+                     value={formData.memo}
+                     onChange={(e) =>
+                       setFormData({ ...formData, memo: e.target.value })
+                     }
+                     placeholder="추가 메모를 입력하세요"
+                     rows={3}
+                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 resize-none"
+                   />
+                 </div>
+               </div>
+             </div>
 
             {/* Actions */}
             <div className="flex gap-3 justify-end mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">

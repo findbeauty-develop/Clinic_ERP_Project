@@ -351,6 +351,10 @@ export class SupplierService {
                 email1: dto.managerEmail || null,
                 email2: null,
                 position: dto.position || null,
+                responsible_products: dto.responsibleProducts
+                  ? dto.responsibleProducts.split(",").map((p) => p.trim())
+                  : [],
+                memo: dto.memo || null,
                 updated_at: new Date(),
               },
             });
@@ -371,7 +375,10 @@ export class SupplierService {
                 position: dto.position || null,
                 certificate_image_url: null,
                 responsible_regions: [],
-                responsible_products: [],
+                responsible_products: dto.responsibleProducts
+                  ? dto.responsibleProducts.split(",").map((p) => p.trim())
+                  : [],
+                memo: dto.memo || null,
               },
             });
           }

@@ -92,6 +92,24 @@ export class CreateSupplierManualDto {
   })
   position?: string;
 
+  @ApiProperty({
+    description: "담당 제품 (Responsible products - comma separated)",
+    example: "시럽, 주사기, 마스크",
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  responsibleProducts?: string;
+
+  @ApiProperty({
+    description: "메모 (Memo)",
+    example: "주요 거래처",
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  memo?: string;
+
 }
 
 
