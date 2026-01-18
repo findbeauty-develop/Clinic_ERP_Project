@@ -144,6 +144,20 @@ export class SupplierController {
     return this.supplierService.approveTradeLink(tenantId, supplierId, managerId, supplierManagerId);
   }
 
+  @Get("clinic-managers")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({
+    summary: "Get all clinic supplier managers",
+    description: "Returns all ClinicSupplierManager records for the current tenant",
+  })
+  async getClinicManagers(@Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    return this.supplierService.getAllClinicManagers(tenantId);
+  }
+
   @Delete("manager/:managerId")
   @UseGuards(JwtTenantGuard)
   @ApiOperation({

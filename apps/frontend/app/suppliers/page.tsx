@@ -43,7 +43,8 @@ export default function SuppliersPage() {
         throw new Error("Authentication token not found");
       }
 
-      const response = await fetch(`${apiUrl}/supplier/list`, {
+      // Use clinic-managers endpoint to get ClinicSupplierManager records
+      const response = await fetch(`${apiUrl}/supplier/clinic-managers`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

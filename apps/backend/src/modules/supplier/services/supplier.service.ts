@@ -544,6 +544,39 @@ export class SupplierService {
   }
 
   /**
+   * Get all ClinicSupplierManager records for a tenant
+   * Used by supplier management page
+   */
+  async getAllClinicManagers(tenantId: string) {
+    const managers = await this.prisma.clinicSupplierManager.findMany({
+      where: {
+        tenant_id: tenantId,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+
+    return managers.map((m) => ({
+      id: m.id,
+      company_name: m.company_name,
+      business_number: m.business_number,
+      company_phone: m.company_phone,
+      company_email: m.company_email,
+      company_address: m.company_address,
+      name: m.name,
+      phone_number: m.phone_number,
+      email1: m.email1,
+      email2: m.email2,
+      position: m.position,
+      responsible_products: m.responsible_products,
+      responsible_regions: m.responsible_regions,
+      memo: m.memo,
+      certificate_image_url: m.certificate_image_url,
+    }));
+  }
+
+  /**
    * Supplier manager'ga bog'langan clinic'larni olish
    * Supplier-frontend uchun
    */

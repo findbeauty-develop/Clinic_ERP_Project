@@ -2241,7 +2241,9 @@ export class ProductsService {
                     id: batchId,
                     tenant_id: tenantId,
                     product_id: productId,
-                    batch_no: row.barcode?.trim() || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    batch_no:
+                      row.barcode?.trim() ||
+                      `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                     qty: row.inbound_qty,
                     inbound_qty: row.inbound_qty,
                     used_count: 0,
