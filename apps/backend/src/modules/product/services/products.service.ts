@@ -635,7 +635,7 @@ export class ProductsService {
     const purchasePrice =
       productSupplier?.purchase_price ?? product.purchase_price; // Source of truth
 
-    return {
+    const result = {
       id: product.id,
       productName: product.name,
       brand: product.brand,
@@ -676,6 +676,16 @@ export class ProductsService {
       returnStorage: product.returnPolicy?.return_storage ?? null,
       alertDays: product.alert_days ?? null,
     };
+
+    console.log("📤 [Backend] Returning to frontend:", {
+      id: result.id,
+      productName: result.productName,
+      currentStock: result.currentStock,
+      inboundQty: result.inboundQty,
+      minStock: result.minStock,
+    });
+
+    return result;
   }
 
   async getAllProducts(tenantId: string) {

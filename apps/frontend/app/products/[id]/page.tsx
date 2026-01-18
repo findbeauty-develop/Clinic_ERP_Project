@@ -476,7 +476,7 @@ export default function ProductDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <ReadOnlyField
                     label="제품 재고 수량"
-                    value={`${(product.inboundQty || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
+                    value={`${(product.currentStock || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
                   />
                   <ReadOnlyField
                     label="최소 제품 재고"
