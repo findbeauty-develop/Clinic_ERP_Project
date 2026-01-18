@@ -55,7 +55,9 @@ export default function BulkPricingPage() {
       filtered = filtered.filter((p) => {
         const purchasePrice = p.purchasePrice || p.unitPrice || 0;
         const salePrice = p.salePrice || 0;
-        return !purchasePrice || !salePrice || purchasePrice === 0 || salePrice === 0;
+        return (
+          !purchasePrice || !salePrice || purchasePrice === 0 || salePrice === 0
+        );
       });
     }
 
@@ -151,7 +153,8 @@ export default function BulkPricingPage() {
   // Format number with Korean locale
   const formatNumber = (value: string | number | undefined): string => {
     if (!value) return "";
-    const numValue = typeof value === "string" ? value.replace(/,/g, "") : value;
+    const numValue =
+      typeof value === "string" ? value.replace(/,/g, "") : value;
     return Number(numValue).toLocaleString("ko-KR");
   };
 
@@ -252,7 +255,8 @@ export default function BulkPricingPage() {
               const currentSalePrice = product.salePrice || 0;
               const edited = editedPrices[product.id];
               const isSaving = savingIds.has(product.id);
-              const hasChanges = edited && (edited.purchasePrice || edited.salePrice);
+              const hasChanges =
+                edited && (edited.purchasePrice || edited.salePrice);
 
               return (
                 <div
@@ -291,7 +295,11 @@ export default function BulkPricingPage() {
                         onChange={(e) => {
                           const value = e.target.value.replace(/,/g, "");
                           if (value === "" || /^\d+$/.test(value)) {
-                            handlePriceChange(product.id, "purchasePrice", value);
+                            handlePriceChange(
+                              product.id,
+                              "purchasePrice",
+                              value
+                            );
                           }
                         }}
                         placeholder="구매가 입력"
@@ -354,4 +362,3 @@ export default function BulkPricingPage() {
     </div>
   );
 }
-
