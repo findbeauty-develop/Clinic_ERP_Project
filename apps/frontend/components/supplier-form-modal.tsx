@@ -34,12 +34,7 @@ export default function SupplierFormModal({
     name: "",
     phone_number: "",
     email1: "",
-    email2: "",
     position: "",
-    responsible_products: [] as string[],
-    responsible_regions: [] as string[],
-    memo: "",
-    certificate_image_url: "",
   });
 
   const [certificatePreview, setCertificatePreview] = useState<string>("");
@@ -49,6 +44,7 @@ export default function SupplierFormModal({
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [ocrProcessing, setOcrProcessing] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
   const supplierApiUrl =
@@ -65,12 +61,7 @@ export default function SupplierFormModal({
         name: supplier.name || "",
         phone_number: supplier.phone_number || "",
         email1: supplier.email1 || "",
-        email2: supplier.email2 || "",
         position: supplier.position || "",
-        responsible_products: supplier.responsible_products || [],
-        responsible_regions: supplier.responsible_regions || [],
-        memo: supplier.memo || "",
-        certificate_image_url: supplier.certificate_image_url || "",
       });
       if (supplier.certificate_image_url) {
         setCertificatePreview(supplier.certificate_image_url);
@@ -93,6 +84,7 @@ export default function SupplierFormModal({
 
     // Upload to server with OCR and verification
     setUploading(true);
+    setOcrProcessing(true);
     setOcrResult(null);
     setVerificationResult(null);
     setIsBusinessValid(null);
@@ -125,7 +117,6 @@ export default function SupplierFormModal({
           business_number: fields.businessNumber || prev.business_number,
           company_address: fields.address || prev.company_address,
           name: fields.representativeName || prev.name,
-          certificate_image_url: data.fileUrl || prev.certificate_image_url,
         }));
       }
 
@@ -145,6 +136,7 @@ export default function SupplierFormModal({
       setIsBusinessValid(false);
     } finally {
       setUploading(false);
+      setOcrProcessing(false);
     }
   };
 
@@ -220,60 +212,220 @@ export default function SupplierFormModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-        <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-800 shadow-2xl">
+        <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-4">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
               {supplier ? "협력업체 수정" : "협력업체 추가"}
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl"
+              className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-3xl font-light leading-none"
             >
               ×
             </button>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* OCR Certificate Upload */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                📄 사업자등록증 업로드 (OCR 자동 입력)
-              </h3>
-              <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
-                사업자등록증을 업로드하면 자동으로 정보가 입력됩니다
-              </p>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleCertificateUpload}
-                disabled={uploading}
-                className="block w-full text-sm text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-700"
-              />
-              {certificatePreview && (
-                <img
-                  src={certificatePreview}
-                  alt="Certificate"
-                  className="mt-3 w-full h-48 object-contain rounded border border-gray-300 dark:border-gray-600"
-                />
-              )}
-              {uploading && (
-                <div className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-                  업로드 중...
-                </div>
-              )}
-            </div>
-
-            {/* Company Information */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                회사 정보
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="p-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Left Column */}
+              <div className="space-y-4">
+                {/* 담당자 이름 + 직함 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    회사명 *
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당자 이름*
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      placeholder="성함"
+                      className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                    />
+                    <select
+                      value={formData.position}
+                      onChange={(e) =>
+                        setFormData({ ...formData, position: e.target.value })
+                      }
+                      className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    >
+                      {positionOptions.map((option) => (
+                        <option
+                          key={option}
+                          value={option === "직함 선택" ? "" : option}
+                        >
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 사업자등록증 업로드 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    사업자등록증
+                  </label>
+                  <div className="space-y-2">
+                    {certificatePreview ? (
+                      <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                        <img
+                          src={certificatePreview}
+                          alt="Certificate preview"
+                          className="h-62 w-full object-contain rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCertificatePreview("");
+                            setOcrResult(null);
+                            setVerificationResult(null);
+                            setIsBusinessValid(null);
+                          }}
+                          className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                        {ocrProcessing && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+                            <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+                              <svg
+                                className="animate-spin h-5 w-5 text-sky-600"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                ></circle>
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                ></path>
+                              </svg>
+                              <span className="text-sm font-medium text-slate-700">
+                                OCR 처리 중...
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
+                        <div className="text-center">
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            이미지를 업로드하세요
+                          </p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                            업로드 시 자동으로 정보를 추출합니다
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                      {uploading || ocrProcessing
+                        ? "업로드 및 OCR 처리 중..."
+                        : certificatePreview
+                          ? "사업자등록증 변경"
+                          : "사업자등록증 업로드"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCertificateUpload}
+                        disabled={uploading || ocrProcessing}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {isBusinessValid === false && (
+                      <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                          <span className="font-medium">
+                            ⚠️ 사업자 정보 확인 실패
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs">수동으로 정보를 입력해주세요</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 담당자 전화번호 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당자 전화번호*
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone_number}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone_number: e.target.value })
+                    }
+                    placeholder="010-1234-5678"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
+
+                {/* 담당자 이메일 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당자 이메일
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email1}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email1: e.target.value })
+                    }
+                    placeholder="manager@company.com"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-4">
+                {/* 회사명 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    회사명*
                   </label>
                   <input
                     type="text"
@@ -282,12 +434,15 @@ export default function SupplierFormModal({
                     onChange={(e) =>
                       setFormData({ ...formData, company_name: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
+                    placeholder="회사명"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
+
+                {/* 사업자번호 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    사업자번호 *
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    사업자번호*
                   </label>
                   <input
                     type="text"
@@ -300,42 +455,16 @@ export default function SupplierFormModal({
                       })
                     }
                     placeholder="123-45-67890"
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     형식: 123-45-67890
                   </p>
                 </div>
+
+                {/* 회사 주소 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    회사 전화번호
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.company_phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, company_phone: e.target.value })
-                    }
-                    placeholder="02-1234-5678"
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    회사 이메일
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.company_email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, company_email: e.target.value })
-                    }
-                    placeholder="company@example.com"
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     회사 주소
                   </label>
                   <input
@@ -347,123 +476,59 @@ export default function SupplierFormModal({
                         company_address: e.target.value,
                       })
                     }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
+                    placeholder="주소"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
-              </div>
-            </div>
 
-            {/* Contact Person */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                담당자 정보
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
+                {/* 회사 전화번호 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    담당자 이름 *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    연락처 *
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    회사 전화번호
                   </label>
                   <input
                     type="tel"
-                    required
-                    value={formData.phone_number}
+                    value={formData.company_phone}
                     onChange={(e) =>
-                      setFormData({ ...formData, phone_number: e.target.value })
+                      setFormData({ ...formData, company_phone: e.target.value })
                     }
-                    placeholder="010-1234-5678"
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
+                    placeholder="02-1234-5678"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
+
+                {/* 회사 이메일 */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    이메일 1
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    회사 이메일
                   </label>
                   <input
                     type="email"
-                    value={formData.email1}
+                    value={formData.company_email}
                     onChange={(e) =>
-                      setFormData({ ...formData, email1: e.target.value })
+                      setFormData({ ...formData, company_email: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
+                    placeholder="company@example.com"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    이메일 2
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email2}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email2: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    직함
-                  </label>
-                  <select
-                    value={formData.position}
-                    onChange={(e) =>
-                      setFormData({ ...formData, position: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-                  >
-                    {positionOptions.map((pos) => (
-                      <option key={pos} value={pos === "직함 선택" ? "" : pos}>
-                        {pos}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
             </div>
 
-            {/* Memo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                메모
-              </label>
-              <textarea
-                value={formData.memo}
-                onChange={(e) =>
-                  setFormData({ ...formData, memo: e.target.value })
-                }
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-white"
-              ></textarea>
-            </div>
-
             {/* Actions */}
-            <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-3 justify-end mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={saving}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? "저장 중..." : supplier ? "수정" : "등록"}
               </button>
@@ -475,8 +540,8 @@ export default function SupplierFormModal({
       {/* Verification Modal */}
       {showVerificationModal && verificationResult && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-800 p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
               사업자 정보 확인
             </h3>
             {isBusinessValid ? (
@@ -490,7 +555,7 @@ export default function SupplierFormModal({
             )}
             <button
               onClick={() => setShowVerificationModal(false)}
-              className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition"
             >
               확인
             </button>
@@ -500,4 +565,3 @@ export default function SupplierFormModal({
     </>
   );
 }
-
