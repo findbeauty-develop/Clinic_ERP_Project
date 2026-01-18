@@ -774,24 +774,92 @@ export default function OrderPage() {
         salePrice,
       });
 
-      // Update local products state
+      // Update local products state with new price
       setProducts((prevProducts) =>
         prevProducts.map((p) =>
           p.id === selectedProduct.id
-            ? { ...p, unitPrice: purchasePrice }
+            ? { 
+                ...p, 
+                unitPrice: purchasePrice,
+                // Update batches if they exist
+                batches: p.batches?.map(b => ({
+                  ...b,
+                  purchasePrice: purchasePrice
+                })) || []
+              }
             : p
         )
       );
 
-      // Close modal
+      // Close modal first
       setShowPriceModal(false);
 
-      // Now add the product to order with the saved prices
-      handleQuantityChange(
-        selectedProduct.id,
-        selectedBatchId,
-        pendingQuantity
-      );
+      // Add to order immediately with updated product
+      const itemId = selectedBatchId ? `${selectedProduct.id}-${selectedBatchId}` : selectedProduct.id;
+      const supplierId = selectedProduct.supplierId || "unknown";
+
+      // Update quantities state
+      setQuantities((prev) => ({
+        ...prev,
+        [selectedProduct.id]: pendingQuantity,
+        [itemId]: pendingQuantity,
+      }));
+
+      // Update draft state directly
+      setDraft((prevDraft) => {
+        const items = [...(prevDraft?.items || [])];
+        const existingItemIndex = items.findIndex((item) => item.id === itemId);
+
+        const newItem = {
+          id: itemId,
+          productId: selectedProduct.id,
+          batchId: selectedBatchId,
+          supplierId,
+          quantity: pendingQuantity,
+          unitPrice: purchasePrice,
+          totalPrice: pendingQuantity * purchasePrice,
+          isHighlighted: true,
+        };
+
+        if (existingItemIndex >= 0) {
+          items[existingItemIndex] = {
+            ...items[existingItemIndex],
+            ...newItem,
+          };
+        } else {
+          items.push(newItem);
+        }
+
+        // Total amount hisoblash
+        const totalAmount = items.reduce(
+          (sum, item) => sum + item.totalPrice,
+          0
+        );
+
+        // Supplier bo'yicha grouping
+        const groupedBySupplier: Record<string, any> = {};
+        items.forEach((item) => {
+          const supId = item.supplierId || "unknown";
+          if (!groupedBySupplier[supId]) {
+            groupedBySupplier[supId] = {
+              supplierId: supId,
+              items: [],
+              totalAmount: 0,
+            };
+          }
+          groupedBySupplier[supId].items.push(item);
+          groupedBySupplier[supId].totalAmount += item.totalPrice;
+        });
+
+        return {
+          id: prevDraft?.id || "local-draft",
+          sessionId: prevDraft?.sessionId || "local",
+          items,
+          totalAmount,
+          groupedBySupplier: Object.values(groupedBySupplier),
+          itemIdMap: prevDraft?.itemIdMap || {},
+        };
+      });
 
       // Reset modal state
       setSelectedProduct(null);
@@ -799,12 +867,12 @@ export default function OrderPage() {
       setPendingQuantity(0);
       setModalPrices({ purchasePrice: "", salePrice: "" });
 
-      alert("가격이 저장되었습니다");
+      alert("가격이 저장되고 주문에 추가되었습니다");
     } catch (error: any) {
       console.error("Failed to save prices:", error);
       alert(error?.message || "가격 저장 실패");
     }
-  }, [selectedProduct, selectedBatchId, pendingQuantity, modalPrices, apiUrl, handleQuantityChange]);
+  }, [selectedProduct, selectedBatchId, pendingQuantity, modalPrices, apiUrl]);
 
   // Sort and filter products with client-side calculations
   const filteredProducts = useMemo(() => {
@@ -2917,7 +2985,7 @@ export default function OrderPage() {
       {/* Price Entry Modal */}
       {showPriceModal && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-md shadow-xl">
+          <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-2xl shadow-xl">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -2935,100 +3003,99 @@ export default function OrderPage() {
               </button>
             </div>
 
-            {/* Content */}
+            {/* Content - All in One Row */}
             <div className="p-6">
-              {/* Product Info */}
-              <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                <div className="font-medium text-slate-900 dark:text-white">
-                  {selectedProduct.productName}
+              <div className="flex items-start gap-4">
+                {/* Product Info */}
+                <div className="flex-shrink-0 w-48 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                  <div className="font-medium text-slate-900 dark:text-white text-sm">
+                    {selectedProduct.productName}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {selectedProduct.brand}
+                  </div>
                 </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400">
-                  {selectedProduct.brand}
-                </div>
-              </div>
 
-              {/* Warning */}
-              <div className="mb-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <div className="flex gap-2 text-sm text-yellow-800 dark:text-yellow-300">
-                  <span className="flex-shrink-0">⚠️</span>
-                  <div>
-                    이 제품의 가격 정보가 없습니다.
-                    <br />
-                    가격을 설정하면 제품 정보에 저장되며, 이후 주문에도 적용됩니다.
+                {/* Warning */}
+                <div className="flex-1 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <div className="flex gap-2 text-xs text-yellow-800 dark:text-yellow-300">
+                    <span className="flex-shrink-0">⚠️</span>
+                    <div>
+                      가격 정보가 없습니다. 설정 시 제품에 저장되며 이후 주문에도 적용됩니다.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Price Inputs - Horizontal */}
+                <div className="flex gap-3">
+                  <div className="w-32">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      구매가*
+                    </label>
+                    <input
+                      type="number"
+                      value={modalPrices.purchasePrice}
+                      onChange={(e) =>
+                        setModalPrices((prev) => ({
+                          ...prev,
+                          purchasePrice: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const salePriceInput = document.getElementById("sale-price-input");
+                          if (salePriceInput) {
+                            salePriceInput.focus();
+                          }
+                        }
+                      }}
+                      placeholder="5000"
+                      className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="w-32">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      판매가*
+                    </label>
+                    <input
+                      id="sale-price-input"
+                      type="number"
+                      value={modalPrices.salePrice}
+                      onChange={(e) =>
+                        setModalPrices((prev) => ({
+                          ...prev,
+                          salePrice: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSavePrices();
+                        } else if (e.key === "Escape") {
+                          setShowPriceModal(false);
+                          setSelectedProduct(null);
+                          setModalPrices({ purchasePrice: "", salePrice: "" });
+                        }
+                      }}
+                      placeholder="8000"
+                      className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Price Inputs */}
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    구매가 (원) *
-                  </label>
-                  <input
-                    type="number"
-                    value={modalPrices.purchasePrice}
-                    onChange={(e) =>
-                      setModalPrices((prev) => ({
-                        ...prev,
-                        purchasePrice: e.target.value,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        // Focus on sale price input
-                        const salePriceInput = document.getElementById("sale-price-input");
-                        if (salePriceInput) {
-                          salePriceInput.focus();
-                        }
-                      }
-                    }}
-                    placeholder="예: 5000"
-                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
-                    autoFocus
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    판매가 (원) *
-                  </label>
-                  <input
-                    id="sale-price-input"
-                    type="number"
-                    value={modalPrices.salePrice}
-                    onChange={(e) =>
-                      setModalPrices((prev) => ({
-                        ...prev,
-                        salePrice: e.target.value,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleSavePrices();
-                      } else if (e.key === "Escape") {
-                        setShowPriceModal(false);
-                        setSelectedProduct(null);
-                        setModalPrices({ purchasePrice: "", salePrice: "" });
-                      }
-                    }}
-                    placeholder="예: 8000"
-                    className="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
-                  />
-                </div>
-              </div>
-
               {/* Action Buttons */}
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-4 justify-end">
                 <button
                   onClick={() => {
                     setShowPriceModal(false);
                     setSelectedProduct(null);
                     setModalPrices({ purchasePrice: "", salePrice: "" });
                   }}
-                  className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium transition"
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium transition"
                 >
                   취소
                 </button>
@@ -3037,7 +3104,7 @@ export default function OrderPage() {
                   disabled={
                     !modalPrices.purchasePrice || !modalPrices.salePrice
                   }
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition"
                 >
                   저장 후 주문 추가
                 </button>
