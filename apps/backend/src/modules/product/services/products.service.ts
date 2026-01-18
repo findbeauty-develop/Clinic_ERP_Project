@@ -10,6 +10,7 @@ import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
 import { CreateBatchDto, CreateProductDto } from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
+import { ImportProductRowDto } from "../dto/import-products.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
 import { CacheManager } from "../../../common/cache";
 
@@ -517,8 +518,8 @@ export class ProductsService {
                   batch.alert_days && batch.alert_days.trim() !== ""
                     ? batch.alert_days
                     : product.alert_days && product.alert_days.trim() !== ""
-                    ? product.alert_days
-                    : null,
+                      ? product.alert_days
+                      : null,
               } as any,
             });
           }
@@ -1474,8 +1475,8 @@ export class ProductsService {
       유효기간: batch.expiry_date
         ? batch.expiry_date.toISOString().split("T")[0]
         : batch.expiry_months && batch.expiry_unit
-        ? `${batch.expiry_months} ${batch.expiry_unit}`
-        : null,
+          ? `${batch.expiry_months} ${batch.expiry_unit}`
+          : null,
       보관위치: batch.storage ?? null,
       "입고 수량": batch.qty, // ✅ Current stock (for display in inbound page)
       inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
@@ -1561,11 +1562,11 @@ export class ProductsService {
             expiry_months:
               dto.expiry_months !== undefined
                 ? dto.expiry_months
-                : (product as any)?.expiry_months ?? null,
+                : ((product as any)?.expiry_months ?? null),
             expiry_unit:
               dto.expiry_unit !== undefined
                 ? dto.expiry_unit
-                : (product as any)?.expiry_unit ?? null,
+                : ((product as any)?.expiry_unit ?? null),
             manufacture_date: dto.manufacture_date
               ? new Date(dto.manufacture_date)
               : null,
@@ -1944,5 +1945,373 @@ export class ProductsService {
         updatedAt: warehouse.updated_at,
       },
     };
+  }
+
+  /**
+   * Preview CSV Import - Validate data before actual import
+   * @param tenantId - Tenant ID
+   * @param rows - Parsed CSV rows
+   * @returns Validation results with errors
+   */
+  async previewImport(tenantId: string, rows: ImportProductRowDto[]) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    if (!rows || rows.length === 0) {
+      throw new BadRequestException("No data to import");
+    }
+
+    // Safety limit - max 10,000 rows
+    if (rows.length > 10000) {
+      throw new BadRequestException(
+        `Maximum 10,000 rows allowed. You have ${rows.length} rows.`
+      );
+    }
+
+    const validationResults = [];
+    const barcodes = new Set<string>();
+    const duplicateBarcodes = new Set<string>();
+
+    // Fetch existing barcodes from database in one query
+    const existingProducts = await this.prisma.product.findMany({
+      where: {
+        tenant_id: tenantId,
+        barcode: { not: null },
+      },
+      select: {
+        barcode: true,
+      },
+    });
+
+    const existingBarcodes = new Set(
+      existingProducts.map((p: any) => p.barcode?.trim()).filter(Boolean)
+    );
+
+    for (const [index, row] of rows.entries()) {
+      const errors: string[] = [];
+
+      // Validate required fields
+      if (!row.name?.trim()) errors.push("Name is required");
+      if (!row.brand?.trim()) errors.push("Brand is required");
+      if (!row.category?.trim()) errors.push("Category is required");
+      if (!row.unit?.trim()) errors.push("Unit is required");
+      if (row.inbound_qty === undefined || row.inbound_qty === null)
+        errors.push("Inbound quantity is required");
+      if (row.min_stock === undefined || row.min_stock === null)
+        errors.push("Min stock is required");
+      if (
+        row.capacity_per_product === undefined ||
+        row.capacity_per_product === null
+      )
+        errors.push("Capacity per product is required");
+      if (!row.capacity_unit?.trim()) errors.push("Capacity unit is required");
+      if (row.usage_capacity === undefined || row.usage_capacity === null)
+        errors.push("Usage capacity is required");
+      if (!row.expiry_date?.trim()) errors.push("Expiry date is required");
+      if (row.alert_days === undefined || row.alert_days === null)
+        errors.push("Alert days is required");
+      if (!row.storage?.trim()) errors.push("Storage location is required");
+
+      // Validate expiry date format
+      if (row.expiry_date) {
+        const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD
+        const usDatePattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/; // MM/DD/YYYY
+
+        if (
+          !isoDatePattern.test(row.expiry_date) &&
+          !usDatePattern.test(row.expiry_date)
+        ) {
+          errors.push("Expiry date must be in YYYY-MM-DD or MM/DD/YYYY format");
+        } else {
+          // Validate if it's a valid date
+          let date: Date;
+          if (isoDatePattern.test(row.expiry_date)) {
+            date = new Date(row.expiry_date);
+          } else {
+            // Convert MM/DD/YYYY to YYYY-MM-DD
+            const parts = row.expiry_date.split("/");
+            const month = parts[0].padStart(2, "0");
+            const day = parts[1].padStart(2, "0");
+            const year = parts[2];
+            date = new Date(`${year}-${month}-${day}`);
+          }
+
+          if (isNaN(date.getTime())) {
+            errors.push("Invalid expiry date");
+          }
+        }
+      }
+
+      // Validate numeric fields
+      if (row.inbound_qty < 0)
+        errors.push("Inbound quantity cannot be negative");
+      if (row.min_stock < 0) errors.push("Min stock cannot be negative");
+      if (row.capacity_per_product < 0)
+        errors.push("Capacity per product cannot be negative");
+      if (row.usage_capacity < 0)
+        errors.push("Usage capacity cannot be negative");
+      if (row.alert_days < 0) errors.push("Alert days cannot be negative");
+
+      // Validate optional prices
+      if (
+        row.purchase_price !== undefined &&
+        row.purchase_price !== null &&
+        row.purchase_price < 0
+      ) {
+        errors.push("Purchase price cannot be negative");
+      }
+      if (
+        row.sale_price !== undefined &&
+        row.sale_price !== null &&
+        row.sale_price < 0
+      ) {
+        errors.push("Sale price cannot be negative");
+      }
+
+      // Check duplicate barcode (optional field)
+      if (row.barcode?.trim()) {
+        const trimmedBarcode = row.barcode.trim();
+
+        // Check against existing database
+        if (existingBarcodes.has(trimmedBarcode)) {
+          errors.push(`Barcode "${trimmedBarcode}" already exists in database`);
+        }
+
+        // Check duplicates within CSV
+        if (barcodes.has(trimmedBarcode)) {
+          duplicateBarcodes.add(trimmedBarcode);
+          errors.push(
+            `Barcode "${trimmedBarcode}" appears multiple times in CSV`
+          );
+        } else {
+          barcodes.add(trimmedBarcode);
+        }
+      }
+
+      validationResults.push({
+        row: index + 1,
+        data: row,
+        valid: errors.length === 0,
+        errors,
+      });
+    }
+
+    const validCount = validationResults.filter((r) => r.valid).length;
+    const errorCount = validationResults.filter((r) => !r.valid).length;
+
+    return {
+      total: rows.length,
+      valid: validCount,
+      errors: errorCount,
+      results: validationResults,
+    };
+  }
+
+  /**
+   * Confirm CSV Import - Actually import validated data
+   * Strict Mode: All or nothing (transaction)
+   * Flexible Mode: Import valid rows only
+   * @param tenantId - Tenant ID
+   * @param rows - Validated CSV rows
+   * @param mode - 'strict' (all or nothing) or 'flexible' (import valid only)
+   * @returns Import results
+   */
+  async confirmImport(
+    tenantId: string,
+    rows: ImportProductRowDto[],
+    mode: "strict" | "flexible" = "strict"
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    if (!rows || rows.length === 0) {
+      throw new BadRequestException("No data to import");
+    }
+
+    // Re-validate before import
+    const preview = await this.previewImport(tenantId, rows);
+
+    if (mode === "strict" && preview.errors > 0) {
+      throw new BadRequestException(
+        `Cannot import in strict mode with ${preview.errors} validation errors. Use flexible mode or fix errors.`
+      );
+    }
+
+    // Filter valid rows for flexible mode
+    const validRows =
+      mode === "flexible"
+        ? preview.results.filter((r) => r.valid).map((r) => r.data)
+        : rows;
+
+    if (validRows.length === 0) {
+      throw new BadRequestException("No valid rows to import");
+    }
+
+    const imported: any[] = [];
+    const failed: any[] = [];
+    const BATCH_SIZE = 100; // Process 100 rows at a time
+    const BATCH_DELAY = 100; // 100ms delay between batches
+
+    // Process in batches with transaction per batch
+    for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+      const batch = validRows.slice(i, i + BATCH_SIZE);
+
+      try {
+        // Use transaction for each batch
+        const batchResults = await this.prisma.$transaction(
+          async (tx: any) => {
+            const results: any[] = [];
+
+            for (const row of batch) {
+              try {
+                // Generate unique ID
+                const productId = this.generateProductId();
+
+                // Create product
+                const product = await (tx.product.create as any)({
+                  data: {
+                    id: productId,
+                    tenant_id: tenantId,
+                    name: row.name.trim(),
+                    brand: row.brand.trim(),
+                    barcode: row.barcode?.trim() || null,
+                    category: row.category.trim(),
+                    unit: row.unit.trim(),
+                    min_stock: row.min_stock,
+                    purchase_price: row.purchase_price ?? null,
+                    sale_price: row.sale_price ?? null,
+                    usage_capacity: row.usage_capacity,
+                    capacity_unit: row.capacity_unit.trim(),
+                    capacity_per_product: row.capacity_per_product,
+                    storage: row.storage.trim(),
+                    alert_days: row.alert_days.toString(), // Convert to string for database
+                    current_stock: row.inbound_qty,
+                    status: "active",
+                  },
+                });
+
+                // Create initial batch
+                const batchId = this.generateBatchId();
+                await (tx.batch.create as any)({
+                  data: {
+                    id: batchId,
+                    tenant_id: tenantId,
+                    product_id: productId,
+                    batch_no: row.barcode?.trim() || `BATCH-${Date.now()}`,
+                    qty: row.inbound_qty,
+                    inbound_qty: row.inbound_qty,
+                    used_count: 0,
+                    unit: row.unit.trim(),
+                    min_stock: row.min_stock,
+                    expiry_date: this.parseExpiryDate(row.expiry_date),
+                    storage: row.storage.trim(),
+                    alert_days: row.alert_days.toString(), // Convert to string for database
+                  },
+                });
+
+                results.push({
+                  success: true,
+                  product,
+                });
+              } catch (error: any) {
+                results.push({
+                  success: false,
+                  row,
+                  error: error.message || "Unknown error",
+                });
+              }
+            }
+
+            return results;
+          },
+          {
+            maxWait: 10000, // 10 seconds max wait
+            timeout: 300000, // 5 minutes timeout
+          }
+        );
+
+        // Separate successful and failed imports
+        for (const result of batchResults) {
+          if (result.success) {
+            imported.push(result.product);
+          } else {
+            failed.push({
+              row: result.row,
+              error: result.error,
+            });
+          }
+        }
+
+        // Delay between batches to avoid overwhelming database
+        if (i + BATCH_SIZE < validRows.length) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+        }
+      } catch (error: any) {
+        // If batch transaction fails, mark all batch rows as failed
+        for (const row of batch) {
+          failed.push({
+            row,
+            error: error.message || "Batch transaction failed",
+          });
+        }
+      }
+    }
+
+    // Clear cache after import
+    this.productsCache.clear();
+
+    return {
+      success: true,
+      total: rows.length,
+      imported: imported.length,
+      failed: failed.length,
+      failures: failed.length > 0 ? failed : undefined,
+    };
+  }
+
+  /**
+   * Generate unique product ID
+   */
+  private generateProductId(): string {
+    const timestamp = Date.now().toString().slice(-10);
+    const random = Math.floor(Math.random() * 1000000)
+      .toString()
+      .padStart(6, "0");
+    return `P${timestamp}${random}`;
+  }
+
+  /**
+   * Generate unique batch ID
+   */
+  private generateBatchId(): string {
+    const timestamp = Date.now().toString().slice(-10);
+    const random = Math.floor(Math.random() * 1000000)
+      .toString()
+      .padStart(6, "0");
+    return `B${timestamp}${random}`;
+  }
+
+  /**
+   * Convert expiry date from MM/DD/YYYY or YYYY-MM-DD to Date object
+   */
+  private parseExpiryDate(dateString: string): Date {
+    const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD
+    const usDatePattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/; // MM/DD/YYYY
+
+    if (isoDatePattern.test(dateString)) {
+      return new Date(dateString);
+    } else if (usDatePattern.test(dateString)) {
+      // Convert MM/DD/YYYY to YYYY-MM-DD
+      const parts = dateString.split("/");
+      const month = parts[0].padStart(2, "0");
+      const day = parts[1].padStart(2, "0");
+      const year = parts[2];
+      return new Date(`${year}-${month}-${day}`);
+    }
+
+    // Fallback to default parsing
+    return new Date(dateString);
   }
 }

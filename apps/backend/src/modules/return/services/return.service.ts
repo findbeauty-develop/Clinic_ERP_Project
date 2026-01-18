@@ -1447,7 +1447,9 @@ ${footer}`;
                   where: { id: returnRecord.id },
                   data: {
                     return_qty: newReturnQty,
-                    memo: `${returnRecord.memo || ""}\n[추후반납: -${qtyToReduce} (${new Date().toLocaleDateString()})]`.trim(),
+                    memo: `${
+                      returnRecord.memo || ""
+                    }\n[추후반납: -${qtyToReduce} (${new Date().toLocaleDateString()})]`.trim(),
                     updated_at: new Date(),
                   },
                 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, ChangeEvent, useCallback } from "react";
 import Link from "next/link";
+import CSVImportModal from "../../../components/csv-import-modal";
 
 const inboundFilters = [
   { label: "최근 업데이트순", value: "recent" },
@@ -84,6 +85,7 @@ export default function InboundPage() {
   const [selectedCategory, setSelectedCategory] = useState("전체 카테고리");
   const [selectedStatus, setSelectedStatus] = useState("전체 상태");
   const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
+  const [showCSVImportModal, setShowCSVImportModal] = useState(false);
 
   // Fetch products for "빠른 입고" tab
   useEffect(() => {
@@ -270,6 +272,15 @@ export default function InboundPage() {
               전체 제품
             </h1>
           </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowCSVImportModal(true)}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-blue-700 hover:to-blue-800 hover:shadow-xl dark:from-blue-500 dark:to-blue-600 dark:hover:from-blue-600 dark:hover:to-blue-700"
+            >
+              <span className="text-xl">📦</span>
+              CSV Import
+            </button>
+          </div>
         </header>
 
         <>
@@ -373,6 +384,25 @@ export default function InboundPage() {
           />
         </section>
       </section>
+
+      {/* CSV Import Modal */}
+      <CSVImportModal
+        isOpen={showCSVImportModal}
+        onClose={() => setShowCSVImportModal(false)}
+        onImport={() => {
+          // Refresh products after import
+          const refreshProducts = async () => {
+            try {
+              const { apiGet } = await import("../../../lib/api");
+              const data = await apiGet<any[]>(`${apiUrl}/products`);
+              setProducts(data);
+            } catch (err) {
+              console.error("Failed to refresh products", err);
+            }
+          };
+          refreshProducts();
+        }}
+      />
     </main>
   );
 }

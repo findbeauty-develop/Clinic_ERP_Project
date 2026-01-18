@@ -14,6 +14,7 @@ import {
 import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { CreateProductDto, CreateBatchDto } from "../dto/create-product.dto";
+import { PreviewImportDto, ConfirmImportDto } from "../dto/import-products.dto";
 import { ProductsService } from "../services/products.service";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
@@ -179,5 +180,78 @@ export class ProductsController {
       throw new BadRequestException("Tenant ID is required");
     }
     return this.productsService.createBatchForProduct(productId, dto, tenantId);
+  }
+
+  @Post("import/preview")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "CSV Import Preview - Validate data before importing",
+    description:
+      "Validates CSV data and returns preview with errors. Does not modify database.",
+  })
+  async previewImport(
+    @Tenant() tenantId: string,
+    @Body() dto: PreviewImportDto
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    // Transform string values to numbers for numeric fields
+    const transformedRows = dto.rows.map((row: any) => ({
+      ...row,
+      inbound_qty: row.inbound_qty ? Number(row.inbound_qty) : 0,
+      min_stock: row.min_stock ? Number(row.min_stock) : 0,
+      capacity_per_product: row.capacity_per_product
+        ? Number(row.capacity_per_product)
+        : 0,
+      usage_capacity: row.usage_capacity ? Number(row.usage_capacity) : 0,
+      alert_days: row.alert_days ? Number(row.alert_days) : 0,
+      purchase_price: row.purchase_price ? Number(row.purchase_price) : null,
+      sale_price: row.sale_price ? Number(row.sale_price) : null,
+    }));
+
+    return this.productsService.previewImport(tenantId, transformedRows);
+  }
+
+  @Post("import/confirm")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Confirm CSV Import - Import validated products",
+    description:
+      "Imports products from CSV. Supports strict (all or nothing) and flexible (valid only) modes.",
+  })
+  async confirmImport(
+    @Tenant() tenantId: string,
+    @Body()
+    dto: ConfirmImportDto & {
+      mode?: "strict" | "flexible";
+    }
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    // Transform string values to numbers for numeric fields
+    const transformedRows = dto.rows.map((row: any) => ({
+      ...row,
+      inbound_qty: row.inbound_qty ? Number(row.inbound_qty) : 0,
+      min_stock: row.min_stock ? Number(row.min_stock) : 0,
+      capacity_per_product: row.capacity_per_product
+        ? Number(row.capacity_per_product)
+        : 0,
+      usage_capacity: row.usage_capacity ? Number(row.usage_capacity) : 0,
+      alert_days: row.alert_days ? Number(row.alert_days) : 0,
+      purchase_price: row.purchase_price ? Number(row.purchase_price) : null,
+      sale_price: row.sale_price ? Number(row.sale_price) : null,
+    }));
+
+    return this.productsService.confirmImport(
+      tenantId,
+      transformedRows,
+      dto.mode || "strict"
+    );
   }
 }
