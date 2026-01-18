@@ -280,7 +280,7 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-10 flex-1 space-y-1 overflow-y-auto pr-2">
-        {navItems.map((item, index) => {
+        {navItems.map((item) => {
           if (item.isDropdown && item.children) {
             const isOpen = openDropdowns.has(item.label);
             const isAnyChildActive = item.children.some(
@@ -351,8 +351,8 @@ export function Sidebar() {
           const isActive = pathname === item.href;
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={item.href || item.label}
+              href={item.href || "#"}
               className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-all ${
                 isActive
                   ? "bg-indigo-600 text-white shadow-lg"

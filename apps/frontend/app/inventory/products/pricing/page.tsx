@@ -32,7 +32,7 @@ export default function BulkPricingPage() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const { apiGet } = await import("../../../../../lib/api");
+      const { apiGet } = await import("../../../../lib/api");
       const data = await apiGet(`${apiUrl}/products`);
       setProducts(data || []);
     } catch (error) {
@@ -101,7 +101,7 @@ export default function BulkPricingPage() {
     setSavingIds((prev) => new Set(prev).add(productId));
 
     try {
-      const { apiPut } = await import("../../../../../lib/api");
+      const { apiPut } = await import("../../../../lib/api");
       await apiPut(`${apiUrl}/products/${productId}`, {
         purchasePrice: prices.purchasePrice
           ? Number(prices.purchasePrice.replace(/,/g, ""))
