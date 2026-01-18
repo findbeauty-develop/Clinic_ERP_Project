@@ -2122,10 +2122,15 @@ export class ProductsService {
   async confirmImport(
     tenantId: string,
     rows: ImportProductRowDto[],
-    mode: "strict" | "flexible" = "strict"
+    mode: "strict" | "flexible" = "strict",
+    inboundManager: string
   ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
+    }
+
+    if (!inboundManager?.trim()) {
+      throw new BadRequestException("입고 담당자는 필수입니다");
     }
 
     if (!rows || rows.length === 0) {
@@ -2252,6 +2257,7 @@ export class ProductsService {
                     expiry_date: this.parseExpiryDate(row.expiry_date),
                     storage: row.storage.trim(),
                     alert_days: row.alert_days.toString(), // Convert to string for database
+                    inbound_manager: inboundManager.trim(), // CSV Import manager
                   },
                 });
 

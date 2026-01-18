@@ -98,4 +98,8 @@ export class PreviewImportDto {
 
 export class ConfirmImportDto {
   rows!: ImportProductRowDto[];
+
+  @IsString()
+  @MaxLength(100)
+  inboundManager!: string; // 입고 담당자 (Required)
 }

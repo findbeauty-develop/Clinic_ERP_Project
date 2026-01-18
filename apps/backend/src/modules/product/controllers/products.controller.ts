@@ -234,6 +234,10 @@ export class ProductsController {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    if (!dto.inboundManager?.trim()) {
+      throw new BadRequestException("입고 담당자는 필수입니다");
+    }
+
     // Transform string values to numbers for numeric fields
     const transformedRows = dto.rows.map((row: any) => ({
       ...row,
@@ -251,7 +255,8 @@ export class ProductsController {
     return this.productsService.confirmImport(
       tenantId,
       transformedRows,
-      dto.mode || "strict"
+      dto.mode || "strict",
+      dto.inboundManager.trim()
     );
   }
 }

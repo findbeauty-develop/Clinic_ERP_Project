@@ -34,6 +34,7 @@ export default function CSVImportModal({
   const [importing, setImporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [importMode, setImportMode] = useState<"strict" | "flexible">("strict");
+  const [inboundManager, setInboundManager] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (selectedFile: File) => {
@@ -108,6 +109,11 @@ export default function CSVImportModal({
   const handleConfirm = async () => {
     if (!preview || !file) return;
 
+    if (!inboundManager.trim()) {
+      alert("입고 담당자를 입력하세요.");
+      return;
+    }
+
     setImporting(true);
 
     try {
@@ -133,6 +139,7 @@ export default function CSVImportModal({
           body: JSON.stringify({
             rows: preview.results.map((r) => r.data),
             mode: importMode,
+            inboundManager: inboundManager.trim(),
           }),
         }
       );
@@ -155,6 +162,7 @@ export default function CSVImportModal({
       setFile(null);
       setPreview(null);
       setImportMode("strict");
+      setInboundManager(""); // Reset inbound manager
       onImport();
       onClose();
     } catch (error: any) {
@@ -426,27 +434,53 @@ export default function CSVImportModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 border-t border-gray-200 dark:border-gray-700 px-6 py-4">
-          <button
-            onClick={onClose}
-            disabled={importing}
-            className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium disabled:opacity-50"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={
-              !preview ||
-              importing ||
-              (importMode === "strict" && preview.errors > 0)
-            }
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {importing
-              ? "Import 중..."
-              : `Import (${preview?.valid || 0}개 제품)`}
-          </button>
+        <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
+          {/* Inbound Manager Input */}
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              입고 담당자*
+            </label>
+            <input
+              type="text"
+              value={inboundManager}
+              onChange={(e) => setInboundManager(e.target.value)}
+              placeholder="입고 담당자 이름을 입력하세요"
+              disabled={importing}
+              className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
+              required
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-3">
+            <button
+              onClick={() => {
+                setFile(null);
+                setPreview(null);
+                setInboundManager("");
+                setImportMode("strict");
+                onClose();
+              }}
+              disabled={importing}
+              className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium disabled:opacity-50"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={
+                !preview ||
+                !inboundManager.trim() ||
+                importing ||
+                (importMode === "strict" && preview.errors > 0)
+              }
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {importing
+                ? "Import 중..."
+                : `Import (${preview?.valid || 0}개 제품)`}
+            </button>
+          </div>
         </div>
       </div>
     </div>

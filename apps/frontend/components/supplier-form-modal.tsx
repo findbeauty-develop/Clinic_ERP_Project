@@ -514,62 +514,62 @@ export default function SupplierFormModal({
                   />
                 </div>
 
-                 {/* 담당자 이메일 */}
-                 <div>
-                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                     담당자 이메일
-                   </label>
-                   <input
-                     type="email"
-                     value={formData.email1}
-                     onChange={(e) =>
-                       setFormData({ ...formData, email1: e.target.value })
-                     }
-                     placeholder="manager@company.com"
-                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                   />
-                 </div>
+                {/* 담당자 이메일 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당자 이메일
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email1}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email1: e.target.value })
+                    }
+                    placeholder="manager@company.com"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                </div>
 
-                 {/* 담당 제품 */}
-                 <div>
-                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                     담당 제품*
-                   </label>
-                   <input
-                     type="text"
-                     required
-                     value={formData.responsible_products}
-                     onChange={(e) =>
-                       setFormData({
-                         ...formData,
-                         responsible_products: e.target.value,
-                       })
-                     }
-                     placeholder="예: 시럽, 주사기, 마스크"
-                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                   />
-                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                     쉼표(,)로 구분하여 여러 제품을 입력할 수 있습니다
-                   </p>
-                 </div>
+                {/* 담당 제품 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    담당 제품*
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.responsible_products}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        responsible_products: e.target.value,
+                      })
+                    }
+                    placeholder="예: 시럽, 주사기, 마스크"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    쉼표(,)로 구분하여 여러 제품을 입력할 수 있습니다
+                  </p>
+                </div>
 
-                 {/* 메모 */}
-                 <div>
-                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                     메모
-                   </label>
-                   <textarea
-                     value={formData.memo}
-                     onChange={(e) =>
-                       setFormData({ ...formData, memo: e.target.value })
-                     }
-                     placeholder="추가 메모를 입력하세요"
-                     rows={3}
-                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 resize-none"
-                   />
-                 </div>
-               </div>
-             </div>
+                {/* 메모 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    메모
+                  </label>
+                  <textarea
+                    value={formData.memo}
+                    onChange={(e) =>
+                      setFormData({ ...formData, memo: e.target.value })
+                    }
+                    placeholder="추가 메모를 입력하세요"
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* Actions */}
             <div className="flex gap-3 justify-end mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
