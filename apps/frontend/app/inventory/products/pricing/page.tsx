@@ -11,6 +11,13 @@ interface Product {
   salePrice?: number;
   unitPrice?: number;
   unit?: string;
+  batchNo?: string;
+  qty?: number;
+  batches?: Array<{
+    batch_no: string;
+    qty: number;
+    inbound_qty: number;
+  }>;
 }
 
 export default function BulkPricingPage() {
@@ -34,7 +41,15 @@ export default function BulkPricingPage() {
     try {
       const { apiGet } = await import("../../../../lib/api");
       const data = await apiGet(`${apiUrl}/products`);
-      setProducts(data || []);
+      
+      // Map products and add first batch info
+      const mappedProducts = (data || []).map((product: any) => ({
+        ...product,
+        batchNo: product.batches?.[0]?.batch_no || null,
+        qty: product.batches?.[0]?.qty || 0,
+      }));
+      
+      setProducts(mappedProducts);
     } catch (error) {
       console.error("Failed to fetch products:", error);
       alert("제품 목록을 불러오지 못했습니다");
@@ -67,7 +82,8 @@ export default function BulkPricingPage() {
         (p) =>
           p.productName?.toLowerCase().includes(query) ||
           p.brand?.toLowerCase().includes(query) ||
-          p.barcode?.toLowerCase().includes(query)
+          p.barcode?.toLowerCase().includes(query) ||
+          p.batchNo?.toLowerCase().includes(query)
       );
     }
 
@@ -264,17 +280,23 @@ export default function BulkPricingPage() {
                   className="grid grid-cols-1 gap-4 rounded-lg bg-white p-6 shadow transition hover:shadow-md dark:bg-slate-800 md:grid-cols-12 md:items-center"
                 >
                   {/* Product Info */}
-                  <div className="col-span-1 md:col-span-4">
+                  <div className="col-span-1 md:col-span-4 flex flex-col gap-1">
                     <div className="font-medium text-slate-900 dark:text-white">
                       {product.productName}
                     </div>
-                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
                       {product.brand}
                       {product.unit && ` • ${product.unit}`}
+                      {product.qty !== undefined && product.qty > 0 && ` • 재고: ${product.qty}개`}
                     </div>
+                    {product.batchNo && (
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        배치: {product.batchNo}
+                      </div>
+                    )}
                     {product.barcode && (
-                      <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                        {product.barcode}
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        바코드: {product.barcode}
                       </div>
                     )}
                   </div>

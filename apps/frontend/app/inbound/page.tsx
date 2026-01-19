@@ -523,10 +523,10 @@ export default function InboundPage() {
             <div className="flex gap-3">
             <button
               onClick={() => setShowCSVImportModal(true)}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-blue-700 hover:to-blue-800 hover:shadow-xl dark:from-blue-500 dark:to-blue-600 dark:hover:from-blue-600 dark:hover:to-blue-700"
-            >
-              <span className="text-xl">📦</span>
-              CSV Import
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            > 
+              <span className="text-xm">📦</span>
+              CSV 입고
             </button>
           </div>
             <Link
@@ -1448,7 +1448,7 @@ function CSVImportModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            📦 CSV Import
+            📦 CSV 입고
           </h2>
           <button
             onClick={onClose}
