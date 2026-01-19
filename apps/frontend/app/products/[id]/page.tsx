@@ -135,9 +135,16 @@ export default function ProductDetailPage() {
 
           category: data.category,
           status: data.status,
-          currentStock: data.currentStock !== undefined ? data.currentStock : data.current_stock,
-          inboundQty: data.inboundQty !== undefined ? data.inboundQty : (data.inbound_qty || null),
-          minStock: data.minStock !== undefined ? data.minStock : data.min_stock,
+          currentStock:
+            data.currentStock !== undefined
+              ? data.currentStock
+              : data.current_stock,
+          inboundQty:
+            data.inboundQty !== undefined
+              ? data.inboundQty
+              : data.inbound_qty || null,
+          minStock:
+            data.minStock !== undefined ? data.minStock : data.min_stock,
           unit: data.unit,
           purchasePrice: data.purchasePrice || data.purchase_price,
           salePrice: data.salePrice || data.sale_price,
@@ -999,7 +1006,6 @@ function ProductEditForm({
   const handleSupplierSearchByPhone = async () => {
     if (!supplierSearchPhoneNumber) return;
 
-    console.log("🔍 Searching supplier by phone:", supplierSearchPhoneNumber);
     setSupplierSearchLoading(true);
     try {
       // searchSuppliers funksiyasini chaqirish va natijani kutish
@@ -1020,11 +1026,7 @@ function ProductEditForm({
         setPhoneSearchNoResults(false);
       } else {
         // Supplier topilmadi - oddiy modal ochish (imagdagiday)
-        console.log("⚠️ Supplier not found, opening confirm modal");
-        console.log(
-          "🔍 Setting pendingSupplierPhone to:",
-          supplierSearchPhoneNumber
-        );
+
         setPhoneSearchNoResults(true);
         setPendingSupplierPhone(supplierSearchPhoneNumber);
         setShowNewSupplierConfirmModal(true);
@@ -1171,20 +1173,9 @@ function ProductEditForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted", formData);
-    console.log("🔍 showNewSupplierModal:", showNewSupplierModal);
-    console.log("🔍 selectedSupplierDetails:", selectedSupplierDetails);
 
     // ✅ Validate manual supplier form if active
     if (showNewSupplierModal) {
-      console.log("🔍 Manual supplier form validation starting...");
-      console.log("🔍 supplierSearchManagerName:", supplierSearchManagerName);
-      console.log("🔍 pendingSupplierPhone:", pendingSupplierPhone);
-      console.log(
-        "🔍 newSupplierForm.companyName:",
-        newSupplierForm.companyName
-      );
-
       if (
         !supplierSearchManagerName ||
         !pendingSupplierPhone ||
@@ -1206,8 +1197,6 @@ function ProductEditForm({
         setLoading(false);
         return;
       }
-
-      console.log("✅ Manual supplier form validation passed!");
     }
 
     setLoading(true);
@@ -1242,10 +1231,6 @@ function ProductEditForm({
           payload.minStock = newMinStock;
         }
       }
-
-      console.log("🔍 formData.currentStock:", formData.currentStock);
-      console.log("🔍 product.currentStock:", product.currentStock);
-      console.log("🔍 Will send currentStock:", payload.currentStock);
 
       // Capacity fields
       if (formData.capacityPerProduct) {
@@ -1303,28 +1288,8 @@ function ProductEditForm({
         payload.inboundManager = formData.inboundManager || null;
       }
 
-      console.log(
-        "📦 Payload being sent to backend:",
-        JSON.stringify(payload, null, 2)
-      );
-
-      console.log(
-        "🔍 showNewSupplierModal BEFORE supplier logic:",
-        showNewSupplierModal
-      );
-      console.log(
-        "🔍 selectedSupplierDetails BEFORE supplier logic:",
-        selectedSupplierDetails
-      );
-      console.log("🔍 newSupplierForm BEFORE supplier logic:", newSupplierForm);
-
       // ✅ Manual Supplier Information (from newSupplierForm)
       if (showNewSupplierModal && newSupplierForm.companyName) {
-        console.log("🔍 Manual supplier form detected!");
-        console.log("🔍 supplierSearchManagerName:", supplierSearchManagerName);
-        console.log("🔍 pendingSupplierPhone:", pendingSupplierPhone);
-        console.log("🔍 newSupplierForm:", newSupplierForm);
-
         payload.suppliers = [
           {
             supplier_id: null, // Will trigger CREATE in backend
@@ -1344,11 +1309,9 @@ function ProductEditForm({
             note: newSupplierForm.memo || undefined,
           },
         ];
-        console.log("✅ Supplier payload created:", payload.suppliers);
       }
       // ✅ Supplier information (ProductSupplier table uchun)
       else if (selectedSupplierDetails && selectedSupplierDetails.companyName) {
-        console.log("🔍 Existing supplier selected:", selectedSupplierDetails);
         payload.suppliers = [
           {
             supplier_id:
@@ -1371,31 +1334,9 @@ function ProductEditForm({
             note: undefined, // Note edit qilish mumkin emas
           },
         ];
-        console.log("✅ Existing supplier payload created:", payload.suppliers);
       } else {
-        console.log("⚠️ No supplier data to update (skipping suppliers field)");
-        console.log("🔍 Reason: showNewSupplierModal =", showNewSupplierModal);
-        console.log(
-          "🔍 Reason: selectedSupplierDetails =",
-          selectedSupplierDetails
-        );
-        console.log(
-          "🔍 Reason: selectedSupplierDetails?.companyName =",
-          selectedSupplierDetails?.companyName
-        );
         // Don't send empty suppliers array - but check if payload.suppliers already exists
-        if (payload.suppliers) {
-          console.log(
-            "⚠️ WARNING: payload.suppliers already exists but conditions not met!"
-          );
-          console.log("⚠️ Current payload.suppliers:", payload.suppliers);
-        }
       }
-
-      console.log("🚀 FINAL CHECK before sending:");
-      console.log("🚀 payload.suppliers:", payload.suppliers);
-      console.log("Sending payload:", payload);
-      console.log("API URL:", `${apiUrl}/products/${product.id}`);
 
       // Clear cache before update
       const { clearCache } = await import("../../../lib/api");
@@ -1406,7 +1347,6 @@ function ProductEditForm({
         `${apiUrl}/products/${product.id}`,
         payload
       );
-      console.log("Update response:", updatedProductResponse);
 
       // Refresh product data after update (especially for images)
       let finalProductResponse = updatedProductResponse;
@@ -1415,12 +1355,8 @@ function ProductEditForm({
         finalProductResponse = await apiGet<any>(
           `${apiUrl}/products/${product.id}`
         );
-        console.log("🔍 Refreshed product data:", finalProductResponse);
       } catch (refreshErr) {
-        console.error(
-          "Failed to refresh product after update",
-          refreshErr
-        );
+        console.error("Failed to refresh product after update", refreshErr);
       }
 
       // Format image URL
@@ -3182,7 +3118,6 @@ function ProductEditForm({
                     );
                     setShowNewSupplierConfirmModal(false);
                     setShowNewSupplierModal(true);
-                    console.log("✅ showNewSupplierModal set to TRUE");
                   }}
                   className="rounded-lg bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
                 >

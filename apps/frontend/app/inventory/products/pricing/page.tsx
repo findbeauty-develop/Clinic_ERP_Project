@@ -41,14 +41,14 @@ export default function BulkPricingPage() {
     try {
       const { apiGet } = await import("../../../../lib/api");
       const data = await apiGet(`${apiUrl}/products`);
-      
+
       // Map products and add first batch info
       const mappedProducts = (data || []).map((product: any) => ({
         ...product,
         batchNo: product.batches?.[0]?.batch_no || null,
         qty: product.batches?.[0]?.qty || 0,
       }));
-      
+
       setProducts(mappedProducts);
     } catch (error) {
       console.error("Failed to fetch products:", error);
@@ -285,18 +285,15 @@ export default function BulkPricingPage() {
                       {product.productName}
                     </div>
                     <div className="text-sm text-slate-500 dark:text-slate-400">
-                      {product.brand}
-                      {product.unit && ` • ${product.unit}`}
-                      {product.qty !== undefined && product.qty > 0 && ` • 재고: ${product.qty}개`}
+                      제조사: {product.brand}
+                      {product.qty !== undefined &&
+                        product.qty > 0 &&
+                        `  재고: ${product.qty}`}
+                      {product.unit}
                     </div>
                     {product.batchNo && (
                       <div className="text-xs text-slate-400 dark:text-slate-500">
                         배치: {product.batchNo}
-                      </div>
-                    )}
-                    {product.barcode && (
-                      <div className="text-xs text-slate-400 dark:text-slate-500">
-                        바코드: {product.barcode}
                       </div>
                     )}
                   </div>

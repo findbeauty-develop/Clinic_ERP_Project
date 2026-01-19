@@ -128,9 +128,6 @@ export class OutboundService {
     const deleted = this.productsForOutboundCache.deletePattern(
       `^${tenantId}:`
     );
-    console.log(
-      `[OutboundService] Invalidated ${deleted} outbound cache entries for tenant: ${tenantId}`
-    );
 
     // ✅ CRITICAL: Also clear ProductsService cache since getProductsForOutbound uses getAllProducts
     // This ensures fresh data from database after outbound creation
@@ -386,15 +383,6 @@ export class OutboundService {
    * Bir nechta 출고 bir vaqtda yaratish (Bulk)
    */
   async createBulkOutbound(dto: BulkOutboundDto, tenantId: string) {
-    console.log(`\n🚀 [Bulk Outbound] Started:`, {
-      totalItems: dto.items.length,
-      items: dto.items.map((item) => ({
-        productId: item.productId,
-        batchId: item.batchId,
-        outboundQty: item.outboundQty,
-      })),
-    });
-
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
@@ -552,19 +540,11 @@ export class OutboundService {
                 data: { used_count: newUsedCount },
               });
 
-              console.log(`✅ [Bulk Outbound] Batch updated:`, {
-                batchId: updatedBatch.id,
-                used_count: updatedBatch.used_count,
-              });
-
               // Empty box'lar avtomatik Return jadvaliga yozilmaydi
               // Ular faqat Return page'da ko'rsatiladi va user xohlagan paytda return qiladi
             }
 
             // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
-            console.log(
-              `🔽 [Bulk Outbound] Decrementing qty by ${batchQtyDecrement} for batch ${item.batchId}`
-            );
 
             const batchBeforeUpdate = await tx.batch.findUnique({
               where: { id: item.batchId },
@@ -1231,7 +1211,6 @@ export class OutboundService {
 
     // Agar barcha itemlar failed bo'lsa
     if (validItems.length === 0) {
-      console.log(`❌ [Unified Outbound] All items failed validation`);
       return {
         success: false,
         message: "All items failed validation",
@@ -1241,9 +1220,7 @@ export class OutboundService {
     }
 
     // 🔍 DEBUG: Valid items
-    console.log(
-      `✅ [Unified Outbound] Valid items count: ${validItems.length}`
-    );
+
     validItems.forEach((item, index) => {
       console.log(`  Item ${index + 1}:`, {
         productId: item.productId?.substring(0, 8),
@@ -1574,9 +1551,6 @@ export class OutboundService {
 
           // ✅ UNIFIED APPROACH: Barcha items'ni (product + package) batchId bo'yicha guruhlash
           // Bu race condition'ni oldini oladi
-          console.log(
-            `🔄 [Unified Outbound] Processing ${validItems.length} items (${dto.outboundType})`
-          );
 
           // Step 1: Barcha items'ni productId|batchId bo'yicha guruhlash
           const itemsByBatch = new Map<
@@ -1596,10 +1570,6 @@ export class OutboundService {
             batchData.totalOutboundQty += item.outboundQty;
             batchData.items.push(item);
           }
-
-          console.log(
-            `📊 [Unified Outbound] Grouped into ${itemsByBatch.size} unique batches`
-          );
 
           // Step 2: Har bir unique batch uchun used_count va qty yangilash (FAQAT 1 MARTA)
           for (const [key, batchData] of itemsByBatch.entries()) {
@@ -1673,10 +1643,6 @@ export class OutboundService {
                 where: { id: batchId },
                 data: { used_count: newUsedCount },
               });
-
-              console.log(
-                `✅ [Unified Batch Update] used_count updated to ${newUsedCount}`
-              );
             }
 
             // Batch qty ni kamaytirish
@@ -1684,10 +1650,6 @@ export class OutboundService {
               where: { id: batchId },
               data: { qty: { decrement: batchQtyDecrement } },
             });
-
-            console.log(
-              `✅ [Unified Batch Update] qty decremented by ${batchQtyDecrement}`
-            );
 
             // Product stock yangilash uchun yig'ish
             const currentDecrement = productStockUpdates.get(productId) || 0;
@@ -1701,10 +1663,6 @@ export class OutboundService {
           // 3a. Package outbound records (packageId bor bo'lgan items uchun)
           const packageItems = validItems.filter((item) => item.packageId);
           if (packageItems.length > 0) {
-            console.log(
-              `📦 [Unified Outbound] Creating ${packageItems.length} package records`
-            );
-
             // Package bo'yicha guruhlash
             const packageGroups = new Map<
               string,

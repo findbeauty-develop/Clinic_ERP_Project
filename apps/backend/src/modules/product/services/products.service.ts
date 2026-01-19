@@ -836,21 +836,6 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    console.log(
-      "📥 Received DTO for product update:",
-      JSON.stringify(dto, null, 2)
-    );
-    console.log("🔍 dto.currentStock:", dto.currentStock);
-    console.log("🔍 typeof dto.currentStock:", typeof dto.currentStock);
-    console.log("🔍 dto.suppliers:", dto.suppliers);
-    console.log("🔍 dto.suppliers?.length:", dto.suppliers?.length);
-    if (dto.suppliers && dto.suppliers.length > 0) {
-      console.log(
-        "🔍 First supplier:",
-        JSON.stringify(dto.suppliers[0], null, 2)
-      );
-    }
-
     const existing = await this.prisma.product.findFirst({
       where: { id, tenant_id: tenantId },
       include: { returnPolicy: true },
@@ -979,11 +964,6 @@ export class ProductsService {
         if (dto.suppliers && dto.suppliers.length > 0) {
           const supplier = dto.suppliers[0];
 
-          console.log(
-            "🔍 Backend: Received supplier data:",
-            JSON.stringify(supplier, null, 2)
-          );
-
           // ✅ Check if supplier has meaningful data (not empty object)
           const hasSupplierData =
             supplier.contact_name ||
@@ -1004,7 +984,6 @@ export class ProductsService {
               let existingClinicSupplierManager = null;
 
               if (supplier.contact_phone) {
-                console.log("🔍 Searching by phone:", supplier.contact_phone);
                 existingClinicSupplierManager =
                   await tx.clinicSupplierManager.findFirst({
                     where: {
@@ -1012,10 +991,6 @@ export class ProductsService {
                       phone_number: supplier.contact_phone,
                     },
                   });
-                console.log(
-                  "🔍 Found by phone?",
-                  existingClinicSupplierManager ? "YES" : "NO"
-                );
               }
 
               // ❌ REMOVED: Business number search
@@ -1024,10 +999,6 @@ export class ProductsService {
 
               // 2. Agar topilsa, yangilash (UPDATE)
               if (existingClinicSupplierManager) {
-                console.log(
-                  "✅ Updating existing supplier:",
-                  existingClinicSupplierManager.id
-                );
                 await tx.clinicSupplierManager.update({
                   where: { id: existingClinicSupplierManager.id },
                   data: {
@@ -1060,15 +1031,11 @@ export class ProductsService {
                 clinicSupplierManagerId = existingClinicSupplierManager.id;
               } else {
                 // 3. Agar topilmasa, yangi yaratish (CREATE)
-                console.log("🆕 Creating NEW supplier manager...");
+
                 // ✅ Validation: Check uniqueness before creating
 
                 // Check if phone number already exists (phone is unique per manager)
                 if (supplier.contact_phone) {
-                  console.log(
-                    "🔍 Validating phone uniqueness:",
-                    supplier.contact_phone
-                  );
                   const phoneExists = await tx.clinicSupplierManager.findFirst({
                     where: {
                       tenant_id: tenantId,
@@ -1077,35 +1044,14 @@ export class ProductsService {
                   });
 
                   if (phoneExists) {
-                    console.log("❌ Phone already exists!");
-                    throw new BadRequestException(
-                      `이 전화번호(${supplier.contact_phone})는 이미 등록되어 있습니다.`
-                    );
                   }
-                  console.log("✅ Phone is unique");
                 }
 
                 // ❌ REMOVED: Business number uniqueness check
                 // Business number is company identifier, not manager identifier
                 // Multiple managers can have the same business_number (same company)
-                console.log(
-                  "ℹ️ Business number:",
-                  supplier.business_number,
-                  "(multiple managers can share same business_number)"
-                );
 
                 // Proceed with CREATE
-                console.log("📝 Creating with data:", {
-                  tenant_id: tenantId,
-                  company_name: supplier.company_name,
-                  business_number: supplier.business_number,
-                  company_phone: supplier.company_phone,
-                  company_email: supplier.company_email,
-                  company_address: supplier.company_address,
-                  name: supplier.contact_name,
-                  phone_number: supplier.contact_phone,
-                  email1: supplier.contact_email,
-                });
 
                 const newClinicSupplierManager =
                   await tx.clinicSupplierManager.create({
@@ -1129,15 +1075,12 @@ export class ProductsService {
                           : null,
                     },
                   });
-                console.log(
-                  "✅ NEW Supplier created! ID:",
-                  newClinicSupplierManager.id
-                );
+
                 clinicSupplierManagerId = newClinicSupplierManager.id;
               }
 
               // 4. ProductSupplier'ni upsert qilish (mapping table)
-              console.log("🔗 Upserting ProductSupplier link...");
+
               await tx.productSupplier.upsert({
                 where: {
                   tenant_id_product_id: {
@@ -1164,9 +1107,6 @@ export class ProductsService {
                   note: supplier.note ?? null,
                 },
               });
-              console.log(
-                "✅ ProductSupplier link created/updated successfully!"
-              );
             }
           }
         }
@@ -1184,56 +1124,26 @@ export class ProductsService {
           // ✅ Update inbound_qty ONLY if user explicitly changed stock on edit page
           if (stockWasChanged) {
             batchUpdateData.inbound_qty = dto.currentStock;
-            console.log(
-              "🔍 Updating first batch inbound_qty from",
-              firstBatch.inbound_qty,
-              "to",
-              dto.currentStock
-            );
           }
 
           // Update purchase_price if price changed
           if (dto.purchasePrice !== undefined) {
             batchUpdateData.purchase_price = dto.purchasePrice;
-            console.log(
-              "🔍 Updating first batch purchase_price from",
-              firstBatch.purchase_price,
-              "to",
-              dto.purchasePrice
-            );
           }
 
           // Update storage if changed
           if (dto.storage !== undefined) {
             batchUpdateData.storage = dto.storage;
-            console.log(
-              "🔍 Updating first batch storage from",
-              firstBatch.storage,
-              "to",
-              dto.storage
-            );
           }
 
           // Update inbound_manager if changed
           if (dto.inboundManager !== undefined) {
             batchUpdateData.inbound_manager = dto.inboundManager;
-            console.log(
-              "🔍 Updating first batch inbound_manager from",
-              firstBatch.inbound_manager,
-              "to",
-              dto.inboundManager
-            );
           }
 
           // Update unit if changed
           if (dto.unit !== undefined) {
             batchUpdateData.unit = dto.unit;
-            console.log(
-              "🔍 Updating first batch unit from",
-              firstBatch.unit,
-              "to",
-              dto.unit
-            );
           }
 
           // Update expiry_date if changed
@@ -1241,12 +1151,6 @@ export class ProductsService {
             batchUpdateData.expiry_date = dto.expiryDate
               ? new Date(dto.expiryDate)
               : null;
-            console.log(
-              "🔍 Updating first batch expiry_date from",
-              firstBatch.expiry_date,
-              "to",
-              dto.expiryDate
-            );
           }
 
           // Only update if there are changes
@@ -1269,12 +1173,6 @@ export class ProductsService {
               where: { id: existingProductSupplier.id },
               data: { purchase_price: dto.purchasePrice },
             });
-            console.log(
-              "🔍 Updated ProductSupplier purchase_price from",
-              existingProductSupplier.purchase_price,
-              "to",
-              dto.purchasePrice
-            );
           }
         }
 
@@ -1547,9 +1445,7 @@ export class ProductsService {
         const productMinStock = product.min_stock;
 
         // Debug: Product'ning min_stock'ini log qilish
-        console.log(
-          `[createBatchForProduct] Product ID: ${productId}, Product min_stock: ${productMinStock}, type: ${typeof productMinStock}`
-        );
+
         const batch = await tx.batch.create({
           data: {
             tenant_id: tenantId,
@@ -1585,9 +1481,6 @@ export class ProductsService {
         });
 
         // Debug: Yaratilgan batch'ning min_stock'ini log qilish
-        console.log(
-          `[createBatchForProduct] Created batch ID: ${batch.id}, batch min_stock: ${batch.min_stock}, Product min_stock was: ${productMinStock}`
-        );
 
         // ✅ Check if this is the FIRST batch for this product
         const existingBatches = await tx.batch.count({
@@ -2235,10 +2128,6 @@ export class ProductsService {
                       purchase_price: row.purchase_price ?? null,
                     },
                   });
-
-                  this.logger.log(
-                    `✅ ProductSupplier created: ${product.name} → ${supplierName}`
-                  );
                 }
 
                 // STEP 4: Create initial batch
