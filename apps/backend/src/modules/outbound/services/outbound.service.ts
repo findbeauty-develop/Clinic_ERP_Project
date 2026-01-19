@@ -1716,10 +1716,6 @@ export class OutboundService {
           // 3b. Product outbound records (packageId yo'q bo'lgan items uchun)
           const productItems = validItems.filter((item) => !item.packageId);
           if (productItems.length > 0) {
-            console.log(
-              `📝 [Unified Outbound] Creating ${productItems.length} product records`
-            );
-
             for (const item of productItems) {
               const batch = batches.find(
                 (b: any) =>
@@ -1781,8 +1777,6 @@ export class OutboundService {
               data: { current_stock: totalStock._sum.qty ?? 0 },
             });
           }
-
-          console.log(`✅ [Unified Outbound] Completed successfully`);
 
           return {
             success: true,

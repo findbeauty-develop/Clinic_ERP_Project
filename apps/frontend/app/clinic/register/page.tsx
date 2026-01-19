@@ -873,11 +873,7 @@ export default function ClinicRegisterPage() {
             </div>
 
             <div className="md:col-span-2 flex flex-col items-end gap-2">
-              {!isCertificateVerified && !clinicId && (
-                <p className="text-sm text-red-600 font-medium">
-                  의료기관개설신고증을 data.go.kr에서 인증해주세요.
-                </p>
-              )}
+              
               <button
                 type="submit"
                 disabled={loading || (!isCertificateVerified && !clinicId)}
