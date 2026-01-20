@@ -858,7 +858,7 @@ export default function InboundNewPage() {
 
       // Use supplier-backend API for certificate upload with OCR and verification
       const supplierApiUrl =
-        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://13.209.40.48:3002";
       const response = await fetch(
         `${supplierApiUrl}/supplier/manager/upload-certificate`,
         {

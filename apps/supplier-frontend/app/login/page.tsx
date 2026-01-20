@@ -55,9 +55,9 @@ export default function LoginPage() {
       }
       
       // Use window.location.href for full page reload to update sidebar state
-      if (typeof window !== "undefined") {
-        window.location.href = "/";
-      }
+     if (typeof window !== "undefined") {
+  window.location.href = "/dashboard";
+}
     } catch (err: any) {
       setError(err.message || "로그인에 실패했습니다.");
       setLoading(false);
