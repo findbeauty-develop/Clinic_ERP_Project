@@ -48,9 +48,9 @@ export default function SupplierFormModal({
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [ocrProcessing, setOcrProcessing] = useState(false);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://13.209.40.48:3000";
   const supplierApiUrl =
-    process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://localhost:3002";
+    process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://13.209.40.48:3002";
 
   useEffect(() => {
     if (supplier) {

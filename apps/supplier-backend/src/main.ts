@@ -37,8 +37,7 @@ async function bootstrap() {
     allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
   });
 
-  console.log("✅ CORS enabled for origins:", allowedOrigins);
-
+  
   app.use(
     bodyParser.json({
       limit: "10mb",

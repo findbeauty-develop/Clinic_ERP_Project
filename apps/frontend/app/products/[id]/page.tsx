@@ -83,7 +83,7 @@ export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "http://13.209.40.48:3000",
     []
   );
   const [product, setProduct] = useState<ProductDetail | null>(null);

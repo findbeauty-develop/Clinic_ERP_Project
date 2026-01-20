@@ -19,6 +19,18 @@ async function bootstrap() {
   );
   app.enableCors({ origin: true });
 
+  // ✅ CORS configuration from environment variable
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+    : ["http://localhost:3001", "http://localhost:3003"];
+
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+  });
+
   // Compression middleware (gzip) - response'ni siqish
   app.use(compression.default());
 
