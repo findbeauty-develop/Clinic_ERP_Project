@@ -2671,8 +2671,8 @@ function ProductEditForm({
                 <span className="font-medium">
                   공급업체 정보를 입력한 후, 페이지 하단의{" "}
                   <span className="text-green-600 dark:text-green-400 font-bold">
-                    "저장"
-                  </span>{" "}
+  &quot;저장&quot;
+</span>{" "}
                   버튼을 클릭하세요
                 </span>
               </div>

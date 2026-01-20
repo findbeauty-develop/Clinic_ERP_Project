@@ -19,7 +19,7 @@ async function bootstrap() {
     );
     if (existsSync(credentialsPath)) {
       process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
-      console.log(`Set GOOGLE_APPLICATION_CREDENTIALS to: ${credentialsPath}`);
+      
     }
   }
   const app = await NestFactory.create(AppModule);

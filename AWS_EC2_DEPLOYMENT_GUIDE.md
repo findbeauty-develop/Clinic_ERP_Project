@@ -588,7 +588,7 @@ docker buildx create --use --name multiarch-builder 2>/dev/null || docker buildx
 docker buildx inspect --bootstrap
 
 # EC2 IP'ni o'zgartiring
-export VPS_IP="54.237.247.19"  # ✅ O'z EC2 IP'ingizga o'zgartiring
+export VPS_IP="13.209.40.48"  # ✅ O'z EC2 IP'ingizga o'zgartiring
 export BACKEND_URL="http://${VPS_IP}:3000"
 export SUPPLIER_BACKEND_URL="http://${VPS_IP}:3002"
 

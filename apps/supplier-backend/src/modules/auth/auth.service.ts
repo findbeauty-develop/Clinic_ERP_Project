@@ -9,20 +9,20 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   async login(loginDto: LoginDto) {
-    const { email, managerId, password } = loginDto;
+    const {phoneNumber,managerId, password } = loginDto;
 
     // Validate that either email or managerId is provided
-    if (!email && !managerId) {
-      throw new UnauthorizedException("이메일 또는 담당자 ID를 입력하세요");
+    if (!phoneNumber && !managerId) {
+      throw new UnauthorizedException("핸드폰 번호 또는 담당자 ID를 입력하세요");
     }
 
     return await this.prisma.executeWithRetry(async () => {
       let manager;
       
       // Find manager by email or managerId
-      if (email) {
+      if (phoneNumber) {
         manager = await this.prisma.supplierManager.findFirst({
-          where: { email1: email },
+          where: { phone_number: phoneNumber },
           include: { supplier: true },
         });
       } else if (managerId) {
@@ -33,7 +33,7 @@ export class AuthService {
       }
 
       if (!manager) {
-        throw new UnauthorizedException("이메일 또는 담당자 ID가 올바르지 않습니다");
+        throw new UnauthorizedException("핸드폰 번호 또는 담당자 ID가 올바르지 않습니다");
       }
 
       // Check if manager is approved
@@ -60,7 +60,7 @@ export class AuthService {
         {
           sub: manager.id,
           managerId: manager.manager_id,
-          email: manager.email1,
+          phoneNumber: manager.phone_number,
           supplierTenantId: manager.supplier_tenant_id, // Supplier'ning tenant_id'si
           type: "supplier",
         },
@@ -76,7 +76,7 @@ export class AuthService {
           companyName: manager.supplier.company_name,
           managerId: manager.manager_id,
           name: manager.name,
-          email: manager.email1,
+          phoneNumber: manager.phone_number,
         },
       };
     });

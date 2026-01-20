@@ -21,9 +21,9 @@ export default function LoginPage() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
       
       // Detect if identifier is email or managerId
-      const isEmail = identifier.includes("@");
-      const loginData = isEmail
-        ? { email: identifier, password }
+      const isPhoneNumber = /^010[0-9]{8}$/.test(identifier);
+      const loginData = isPhoneNumber
+        ? { phoneNumber: identifier, password }
         : { managerId: identifier, password };
 
       const response = await fetch(`${apiUrl}/supplier/login`, {
@@ -50,7 +50,7 @@ export default function LoginPage() {
           manager_id: data.supplier.managerId,
           name: data.supplier.name,
           company_name: data.supplier.companyName,
-          email: data.supplier.email,
+          phone_number: data.supplier.phoneNumber,
         }));
       }
       
@@ -121,7 +121,7 @@ export default function LoginPage() {
                   htmlFor="identifier"
                   className="mb-2 block text-sm font-medium text-slate-700"
                 >
-                  이메일 또는 담당자 ID
+                  핸드폰 번호 또는 담당자 ID
                 </label>
                 <div className="relative">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -144,7 +144,7 @@ export default function LoginPage() {
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="이메일 또는 담당자 ID (예: supplier@example.com 또는 회사명1234)"
+                    placeholder="핸드번 번호 또는 담당자 ID (예: 01012345678 또는 회사명1234)"
                     className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:text-base"
                     required
                     autoComplete="username"

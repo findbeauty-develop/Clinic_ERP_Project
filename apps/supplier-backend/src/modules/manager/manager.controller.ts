@@ -235,13 +235,9 @@ export class ManagerController {
   @ApiOperation({ summary: "Complete registration with all data (final step)" })
   async registerComplete(@Body() dto: RegisterCompleteDto) {
     try {
-      console.log("🔵 [Controller] register-complete endpoint called");
-      console.log(
-        "📦 [Controller] Received DTO:",
-        JSON.stringify(dto, null, 2)
-      );
+     
       const result = await this.managerService.registerComplete(dto);
-      console.log("✅ [Controller] Registration completed successfully");
+     
       return result;
     } catch (error: any) {
       console.error("❌ [Controller] register-complete failed:");

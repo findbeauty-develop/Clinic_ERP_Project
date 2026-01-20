@@ -179,9 +179,7 @@ export class ManagerService {
 
   async registerComplete(dto: RegisterCompleteDto) {
     try {
-      this.logger.log(
-        `📝 registerComplete called for: ${dto.manager.name} (${dto.manager.phoneNumber})`
-      );
+      
 
       // Use transaction to ensure all-or-nothing: if validation fails, nothing is saved
       // Wrap in executeWithRetry for connection error handling
@@ -222,9 +220,7 @@ export class ManagerService {
               this.certificateParser.formatForDataGoKr(parsedFields);
 
             // Log extracted data
-            this.logger.log(
-              `✅ OCR extracted - Business: ${parsedFields.businessNumber}, Representative: ${parsedFields.representativeName}, Opening Date: ${parsedFields.openingDate}`
-            );
+           
           } catch (error) {
             this.logger.error(
               "Failed to extract OCR data from certificate:",
@@ -277,11 +273,7 @@ export class ManagerService {
             }
 
             // Verification successful
-            this.logger.log(
-              `✅ Business verification successful - Status: ${
-                verification.businessStatus || "N/A"
-              }`
-            );
+           
           } catch (error: any) {
             // If it's already a BadRequestException, re-throw it
             if (error instanceof BadRequestException) {
@@ -573,9 +565,7 @@ export class ManagerService {
 
           // Auto-link barcha matching managers
           if (matchingManagers.length > 0) {
-            this.logger.log(
-              `✅ Found ${matchingManagers.length} matching ClinicSupplierManager(s) - Auto-linking...`
-            );
+           
 
             for (const clinicManager of matchingManagers) {
               await tx.clinicSupplierManager.update({
@@ -585,9 +575,7 @@ export class ManagerService {
                 },
               });
 
-              this.logger.log(
-                `✅ Auto-linked: ClinicSupplierManager ${clinicManager.id} (${clinicManager.company_name}) → SupplierManager ${manager.id} (${manager.name})`
-              );
+            
             }
 
             // 12a. Trade link creation removed
@@ -597,14 +585,8 @@ export class ManagerService {
             // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
             // This ensures that only clinics that have actually done business with the supplier
             // will see the supplier in primary search results
-            this.logger.log(
-              "Skipping auto-approval of trade links. Trade links will be created when clinic creates products or manually approves."
-            );
-          } else {
-            this.logger.log(
-              "No matching ClinicSupplierManager found - skipping auto-link"
-            );
-          }
+            
+          } 
 
           // 13. Create region tags
           // TODO: Create SupplierRegionTag model in Prisma schema
