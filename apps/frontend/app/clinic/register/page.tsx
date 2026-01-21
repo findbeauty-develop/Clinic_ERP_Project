@@ -740,7 +740,7 @@ export default function ClinicRegisterPage() {
 
               <div className="md:col-span-1">
                 <label className="mb-2 block text-sm font-medium text-slate-600">
-                  영어이름
+                  영어이름 *
                 </label>
                 <input
                   type="text"
@@ -750,6 +750,7 @@ export default function ClinicRegisterPage() {
                   }
                   className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   placeholder="수동 입력 필요."
+                  required
                 />
               </div>
 
@@ -820,6 +821,7 @@ export default function ClinicRegisterPage() {
                   }
                   className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   placeholder="법인명 또는 추가 설명을 입력하세요."
+                  required
                 />
               </div>
 

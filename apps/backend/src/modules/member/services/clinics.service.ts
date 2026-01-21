@@ -41,6 +41,9 @@ export class ClinicsService {
         `이미 등록된 클리닉입니다.`
       );
     }
+    if (!recognized.englishName?.trim()) {
+  throw new BadRequestException("영어이름 입력부탁드립니다");
+}
 
     const documentUrls = recognized.documentImageUrls ?? [];
     const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
