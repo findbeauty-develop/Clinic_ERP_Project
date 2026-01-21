@@ -541,9 +541,9 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
-      <div className="bg-white px-4 py-4 shadow-sm">
-        <h1 className="text-xl font-bold text-slate-900">설정</h1>
-        <p className="mt-1 text-sm text-slate-600">
+      <div className="sticky top-0 z-30 bg-white px-4 py-4 shadow-sm">
+        <h1 className="text-xl ml-14 mt-2 font-bold text-slate-900">설정</h1>
+        <p className="mt-4 text-sm text-slate-600">
           사용 환경 설정 및 문제 해결 지원
         </p>
       </div>

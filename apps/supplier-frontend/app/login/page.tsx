@@ -68,7 +68,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Header */}
       <div className="flex items-center justify-between p-4 sm:p-6">
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white sm:h-12 sm:w-12">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -88,7 +88,7 @@ export default function LoginPage() {
           <h1 className="text-lg font-bold text-slate-900 sm:text-xl">
             Supplier ERP
           </h1>
-        </div>
+        </div> */}
       </div>
 
       {/* Main Content */}

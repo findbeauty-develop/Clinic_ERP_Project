@@ -71,6 +71,7 @@ export default function ReturnsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(10); // Items per page
+   const [notificationCount, setNotificationCount] = useState(4);
 
   // Fetch notifications
   const fetchNotifications = async (page: number = currentPage) => {
@@ -273,12 +274,56 @@ export default function ReturnsPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
-      <div className="bg-white p-4 shadow-sm">
+      
+      <div className="bg-white p-4 shadow-sm flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900  ml-14 mt-2">반납</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          팁 제품 반납을 처리하고 할인을 적용합니다
-        </p>
+       
+        
+       <div className="flex items-center justify-center mt-2"><button
+          
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+              />
+            </svg>
+            새로고침
+          </button>
+            <button className="relative flex ml-2  items-center justify-center">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className="h-6 w-6 text-gray-700"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+    />
+  </svg>
+
+  {notificationCount > 0 && (
+    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+      {notificationCount}
+    </span>
+  )}
+</button></div>
       </div>
+      
 
       {/* Tabs */}
       <div className="mt-3 ml-4 flex gap-2">

@@ -84,6 +84,7 @@ export default function OrdersPage() {
   const [rejectionReasons, setRejectionReasons] = useState<
     Record<string, string>
   >({});
+   const [notificationCount, setNotificationCount] = useState(4);
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -471,11 +472,9 @@ export default function OrdersPage() {
             <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-3">
               주문
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              재고 부족 및 유효기한 임박 제품을 주문하고 관리하세요
-            </p>
+            
           </div>
-          <button
+          <div className="flex items-center justify-center mt-2"><button
             onClick={() => fetchOrders()}
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -496,9 +495,36 @@ export default function OrdersPage() {
             </svg>
             새로고침
           </button>
-        </div>
+            <button className="relative flex ml-2  items-center justify-center">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className="h-6 w-6 text-gray-700"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+    />
+  </svg>
 
-        <div className="mt-3 flex gap-2">
+  {notificationCount > 0 && (
+    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+      {notificationCount}
+    </span>
+  )}
+</button></div>
+          
+
+        </div>
+        
+       
+       
+      </div>
+       <div className="mt-4 ml-4 flex gap-2">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -515,7 +541,6 @@ export default function OrdersPage() {
             </button>
           ))}
         </div>
-      </div>
 
       <div className="px-4 pt-4">
         {loading ? (

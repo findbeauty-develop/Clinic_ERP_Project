@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [returnExchanges, setReturnExchanges] = useState<ReturnExchange[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
+   const [notificationCount, setNotificationCount] = useState(4);
   const [stats, setStats] = useState<DashboardStats>({
     totalCompanies: 40,
     totalReceivables: 217800000,
@@ -291,26 +292,32 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-100">
       {/* Top Navigation Bar */}
       <div
-        className="sticky top-0 z-30 flex items-center justify-between bg-white px-4 py-3 shadow-sm"
+  className="sticky top-0 z-30 flex items-center justify-between bg-white px-4 py-4 shadow-sm"
         style={{ backgroundColor: "#ffffff" }}
       >
-        <h1 className="text-lg font-bold text-gray-900">대시보드</h1>
-        <button className="flex items-center justify-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-            className="h-6 w-6 text-gray-700"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-            />
-          </svg>
-        </button>
+        <h1 className="text-lg font-bold ml-14 mt-2 text-gray-900">대시보드</h1>
+        <button className="relative flex ml-2 mt-2 items-center justify-center">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className="h-6 w-6 text-gray-700"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+    />
+  </svg>
+
+  {notificationCount > 0 && (
+    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+      {notificationCount}
+    </span>
+  )}
+</button>
       </div>
 
       {/* Dashboard Content */}
