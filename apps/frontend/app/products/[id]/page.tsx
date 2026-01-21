@@ -293,10 +293,7 @@ export default function ProductDetailPage() {
                               detail: { productId: params.id },
                             })
                           );
-                          console.log(
-                            "[ProductDetail] Product deleted event dispatched:",
-                            params.id
-                          );
+                         
                         }
 
                         alert("제품이 성공적으로 삭제되었습니다.");
@@ -1015,13 +1012,12 @@ function ProductEditForm({
         supplierSearchPhoneNumber
       );
 
-      console.log("🔍 Search results:", results);
-      console.log("🔍 Results count:", results?.length);
+      
 
       // Natijalarni tekshirish
       if (results && results.length > 0) {
         // Supplier topildi - malumotlarni ko'rsatish
-        console.log("✅ Supplier found, showing results");
+       
         setSupplierViewMode("results");
         setPhoneSearchNoResults(false);
       } else {
@@ -2110,10 +2106,7 @@ function ProductEditForm({
                 type="button"
                 onClick={() => {
                   // Table'dan search form'ga o'tish (2-rasm)
-                  console.log(
-                    "Table 수정 button clicked",
-                    selectedSupplierDetails
-                  );
+                  
                   if (selectedSupplierDetails) {
                     // Input'larni to'ldirish
                     setSupplierSearchCompanyName(
@@ -2126,11 +2119,9 @@ function ProductEditForm({
                       selectedSupplierDetails.phoneNumber
                     );
                     // Search form'ni ko'rsatish
-                    console.log("Setting supplierViewMode to search");
+                   
                     setSupplierViewMode("search");
-                    console.log(
-                      "After setting, supplierViewMode should be search"
-                    );
+                   
                   }
                 }}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -2628,7 +2619,7 @@ function ProductEditForm({
               <button
                 type="button"
                 onClick={() => {
-                  console.log("❌ Cancel button clicked - Closing manual form");
+                  
                   setShowNewSupplierModal(false);
                   setPendingSupplierPhone("");
                   setPhoneSearchNoResults(false);
@@ -3109,13 +3100,7 @@ function ProductEditForm({
                   type="button"
                   onClick={() => {
                     // "직접 입력" button bosilganda, to'liq form modal'ni ochish
-                    console.log(
-                      "🆕 '직접 입력' button clicked - Opening manual supplier form"
-                    );
-                    console.log(
-                      "🔍 pendingSupplierPhone:",
-                      pendingSupplierPhone
-                    );
+                   
                     setShowNewSupplierConfirmModal(false);
                     setShowNewSupplierModal(true);
                   }}
@@ -3167,7 +3152,7 @@ function ProductEditForm({
         <button
           type="submit"
           onClick={(e) => {
-            console.log("Submit button clicked");
+           
           }}
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={loading}

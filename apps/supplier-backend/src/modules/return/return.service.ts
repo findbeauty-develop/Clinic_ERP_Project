@@ -739,11 +739,7 @@ export class ReturnService {
           this.logger.error(
             `SUPPLIER_BACKEND_API_KEY not configured! Check environment variables.`
           );
-        } else {
-          this.logger.log(
-            `Using API key for webhook (length: ${supplierApiKey.length})`
-          );
-        }
+        } 
 
         // Get return items to send to clinic
         const returnItems = itemId
@@ -759,9 +755,7 @@ export class ReturnService {
               continue;
             }
 
-            this.logger.log(
-              `Sending webhook to ${clinicBackendUrl}/order-returns/webhook/complete for return_no: ${request.return_no}`
-            );
+           
 
             const webhookResponse = await fetch(
               `${clinicBackendUrl}/order-returns/webhook/complete`,

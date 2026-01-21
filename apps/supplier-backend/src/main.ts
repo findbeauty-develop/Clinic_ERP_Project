@@ -67,6 +67,6 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT) || 3002;
   await app.listen(port);
-  console.log(`Supplier Backend is running on port ${port}`);
+  
 }
 bootstrap();

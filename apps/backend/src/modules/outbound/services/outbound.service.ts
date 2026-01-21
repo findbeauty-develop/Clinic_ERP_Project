@@ -141,9 +141,7 @@ export class OutboundService {
           // ProductsService uses cache key format: "products:${tenantId}"
           const productsCacheKey = `products:${tenantId}`;
           productsCache.delete(productsCacheKey);
-          console.log(
-            `[OutboundService] ProductsService cache invalidated: ${productsCacheKey}`
-          );
+         
         }
       } catch (error) {
         // If cache doesn't exist or method doesn't exist, log warning but continue
@@ -500,16 +498,7 @@ export class OutboundService {
               const usageIncrement = product.usage_capacity * item.outboundQty;
               const newUsedCount = currentUsedCount + usageIncrement;
 
-              console.log(`🔍 [Bulk Outbound] Batch ${item.batchId}:`, {
-                productId: item.productId,
-                currentUsedCount,
-                outboundQty: item.outboundQty,
-                usageCapacity: product.usage_capacity,
-                capacityPerProduct: product.capacity_per_product,
-                usageIncrement,
-                newUsedCount,
-                currentBatchQty,
-              });
+              
 
               // Bo'sh box aniqlash: yangilanishdan oldin va keyin
               const previousEmptyBoxes = Math.floor(
@@ -527,12 +516,7 @@ export class OutboundService {
               // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
               batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
-              console.log(`🔍 [Bulk Outbound] Empty boxes calculation:`, {
-                previousEmptyBoxes,
-                newEmptyBoxes,
-                emptyBoxesToCreate,
-                batchQtyDecrement,
-              });
+              
 
               // used_count ni yangilash
               const updatedBatch = await tx.batch.update({
@@ -561,11 +545,7 @@ export class OutboundService {
               select: { qty: true, used_count: true },
             });
 
-            console.log(`📊 [Bulk Outbound] Qty update result:`, {
-              before: batchBeforeUpdate,
-              after: batchAfterUpdate,
-              decrement: batchQtyDecrement,
-            });
+            
 
             // Product stock yangilash uchun yig'ish (to'liq ishlatilgan box'lar yoki default)
             const currentDecrement =
@@ -1221,15 +1201,7 @@ export class OutboundService {
 
     // 🔍 DEBUG: Valid items
 
-    validItems.forEach((item, index) => {
-      console.log(`  Item ${index + 1}:`, {
-        productId: item.productId?.substring(0, 8),
-        batchId: item.batchId?.substring(0, 8),
-        outboundQty: item.outboundQty,
-        packageId: (item as any).packageId?.substring(0, 8) || "null",
-        packageQty: (item as any).packageQty || "null",
-      });
-    });
+   
 
     // Product ma'lumotlarini olish (capacity_per_product va usage_capacity uchun)
     const products = await this.prisma.product.findMany({
@@ -1399,17 +1371,7 @@ export class OutboundService {
     }
 
     // 🔍 DEBUG: Request ma'lumotlari
-    console.log(`\n🚀 [Unified Outbound] Started:`, {
-      outboundType: dto.outboundType,
-      totalItems: dto.items.length,
-      items: dto.items.map((item) => ({
-        productId: item.productId,
-        batchId: item.batchId,
-        outboundQty: item.outboundQty,
-        packageId: item.packageId,
-        packageQty: item.packageQty,
-      })),
-    });
+ 
 
     // Barcha batch'larni va product'larni bir vaqtda tekshirish
     const batchIds = dto.items.map((item) => item.batchId);
@@ -1623,20 +1585,7 @@ export class OutboundService {
               const availableQuantityAfter =
                 currentInboundQty * product.capacity_per_product - newUsedCount;
 
-              console.log(`🔍 [Unified Batch Update] Batch ${batchId}:`, {
-                productId,
-                currentUsedCount,
-                totalOutboundQty: batchData.totalOutboundQty,
-                usageIncrement,
-                newUsedCount,
-                previousEmptyBoxes,
-                newEmptyBoxes,
-                emptyBoxesToCreate,
-                batchQtyDecrement,
-                currentBatchQty,
-                availableQuantityBefore,
-                availableQuantityAfter,
-              });
+             
 
               // used_count ni yangilash
               await tx.batch.update({

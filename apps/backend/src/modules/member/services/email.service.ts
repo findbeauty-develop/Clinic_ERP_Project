@@ -19,7 +19,7 @@ export class EmailService {
     const providerName =
       this.configService.get<string>("EMAIL_PROVIDER") || "amazon-ses";
     this.provider = this.getProvider(providerName);
-    this.logger.log(`Email provider initialized: ${providerName}`);
+   
   }
 
   private getProvider(name: string): IEmailProvider {
@@ -54,7 +54,7 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-        this.logger.log(`Email sent successfully to ${to}`);
+      
       } else {
         this.logger.warn(`Failed to send email to ${to}`);
       }
@@ -101,9 +101,7 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-        this.logger.log(
-          `Order notification email sent to ${email} for order ${orderNo}`
-        );
+       
       } else {
         this.logger.warn(`Failed to send order notification email to ${email}`);
       }
@@ -393,9 +391,7 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-        this.logger.log(
-          `Return notification email sent to ${email} for return ${returnNo}`
-        );
+      
       } else {
         this.logger.warn(
           `Failed to send return notification email to ${email}`

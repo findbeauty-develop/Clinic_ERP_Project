@@ -62,9 +62,7 @@ export class BrevoProvider implements IEmailProvider {
       const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
 
       if (result.response.statusCode === 201) {
-        this.logger.log(
-          `Brevo email sent to ${to} (MessageId: ${result.body.messageId})`
-        );
+        
         return true;
       } else {
         this.logger.warn(

@@ -244,11 +244,7 @@ export class OrderService {
                 ? `${item.memo}\n[거절 사유: ${reason}]`
                 : `[거절 사유: ${reason}]`;
 
-              this.logger.log(
-                `   ✅ Item: ${
-                  item.product_name || "Unknown"
-                }, Reason: ${reason}`
-              );
+             
 
               await tx.supplierOrderItem.update({
                 where: { id: itemId },
@@ -270,26 +266,19 @@ export class OrderService {
       });
     });
 
-    this.logger.log(
-      `📋 [Order Status Update] Order ${order.order_no} status changed to: ${dto.status}`
-    );
-    this.logger.log(`   Adjustments count: ${dto.adjustments?.length || 0}`);
+   
 
     // If status is "confirmed", notify clinic-backend
     // ✅ FIX: Notify even if adjustments is empty/undefined (no adjustments = all items confirmed as ordered)
     if (dto.status === "confirmed") {
       const adjustments = dto.adjustments || [];
-      this.logger.log(
-        `🔔 [Order Confirmed] Notifying clinic-backend about order ${order.order_no} (adjustments: ${adjustments.length})`
-      );
+      
       await this.notifyClinicBackend(updated, adjustments);
     }
 
     // If status is "rejected", notify clinic-backend
     if (dto.status === "rejected") {
-      this.logger.log(
-        `❌ [Order Rejected] Notifying clinic-backend about order ${order.order_no}`
-      );
+     
       await this.notifyClinicBackendRejection(updated, dto.rejectionReasons);
     }
 

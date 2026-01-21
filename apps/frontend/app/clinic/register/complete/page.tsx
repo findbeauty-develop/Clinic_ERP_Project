@@ -77,7 +77,7 @@ export default function ClinicRegisterCompletePage() {
 
         // Get tenant_id from sessionStorage (saved during registration)
         const tenantId = sessionStorage.getItem("erp_tenant_id");
-        console.log("📋 Using tenant_id for fetching clinics:", tenantId);
+      
 
         // Build URL with tenantId query parameter
         const url = tenantId

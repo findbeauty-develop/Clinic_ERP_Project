@@ -76,7 +76,7 @@ export class PhoneVerificationService {
       throw new BadRequestException('인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
 
-    this.logger.log(`Verification code sent to ${cleanPhone}`);
+
     return {
       success: true,
       message: '인증번호가 전송되었습니다.',
@@ -121,7 +121,7 @@ export class PhoneVerificationService {
       data: { verified: true },
     });
 
-    this.logger.log(`Phone ${cleanPhone} verified successfully`);
+    
     return { verified: true, success: true };
   }
 }

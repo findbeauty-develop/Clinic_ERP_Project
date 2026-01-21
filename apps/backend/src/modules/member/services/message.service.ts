@@ -24,7 +24,7 @@ export class MessageService {
     const providerName =
       this.configService.get<string>("MESSAGE_PROVIDER") || "solapi";
     this.provider = this.getProvider(providerName);
-    this.logger.log(`Message provider initialized: ${providerName}`);
+   
   }
 
   private getProvider(name: string): IMessageProvider {
@@ -52,7 +52,7 @@ export class MessageService {
     try {
       const smsSent = await this.provider.sendSMS(phoneNumber, message);
       if (smsSent) {
-        this.logger.log(`SMS sent successfully to ${phoneNumber}`);
+      
       } else {
         this.logger.warn(`Failed to send SMS to ${phoneNumber}`);
       }
@@ -168,9 +168,7 @@ export class MessageService {
     try {
       const smsSent = await this.provider.sendSMS(phoneNumber, message);
       if (smsSent) {
-        this.logger.log(
-          `Order notification SMS sent to ${phoneNumber} for order ${orderNo}`
-        );
+       
       } else {
         this.logger.warn(
           `Failed to send order notification SMS to ${phoneNumber}`

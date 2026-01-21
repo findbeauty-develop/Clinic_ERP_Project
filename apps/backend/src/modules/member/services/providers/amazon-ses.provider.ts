@@ -78,9 +78,7 @@ export class AmazonSESProvider implements IEmailProvider {
       const result = await this.ses.sendEmail(params).promise();
 
       if (result.MessageId) {
-        this.logger.log(
-          `Amazon SES email sent to ${to} (MessageId: ${result.MessageId})`
-        );
+       
         return true;
       } else {
         this.logger.warn(`Amazon SES email failed: ${JSON.stringify(result)}`);

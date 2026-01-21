@@ -21,9 +21,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (enablePeriodicLogging) {
-      this.logger.log(
-        `Periodic metrics logging enabled (every ${intervalMinutes} minutes)`
-      );
+     
       this.metricsInterval = setInterval(() => {
         this.logSystemMetrics();
       }, intervalMinutes * 60 * 1000);
@@ -57,7 +55,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       uptime: (process.uptime() / 60).toFixed(2) + " minutes",
     };
 
-    this.logger.log("System Metrics:", JSON.stringify(metrics, null, 2));
+   
     return metrics;
   }
 

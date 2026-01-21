@@ -2255,10 +2255,7 @@ export default function OrderPage() {
                           </button>
                           <button
                             onClick={() => {
-                              console.log(
-                                "Selected rejected order:",
-                                rejectedOrder
-                              );
+                             
 
                               setSelectedOrder(rejectedOrder);
                               setOrderFormMemo(rejectedOrder.memo || "");

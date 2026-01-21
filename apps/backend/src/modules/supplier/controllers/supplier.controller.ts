@@ -97,15 +97,14 @@ export class SupplierController {
     @Body() dto: CreateSupplierManualDto,
     @Tenant() tenantId: string
   ) {
-    console.log("Received create-manual request:", { dto, tenantId });
+
     
     if (!dto.companyName || !dto.businessNumber) {
       throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
     }
 
     const result = await this.supplierService.createOrUpdateSupplierManual(dto, tenantId);
-    console.log("Supplier created/updated successfully:", result);
-    
+  
     return result;
   }
 

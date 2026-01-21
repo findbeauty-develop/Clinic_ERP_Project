@@ -351,12 +351,12 @@ export default function DashboardPage() {
         const response = await apiGet(
           `/api/calendar/holidays/${year}/${month}`
         );
-        console.log("Holidays response:", response); // Debug
+        
         if (response && response.holidays) {
-          console.log("Holidays array:", response.holidays); // Debug
+         
           setHolidays(response.holidays);
         } else {
-          console.log("No holidays in response"); // Debug
+         
         }
       } catch (error) {
         setHolidays([]);

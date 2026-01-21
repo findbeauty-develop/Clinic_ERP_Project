@@ -1090,9 +1090,7 @@ export class ManagerService {
       );
     }
 
-    this.logger.log(
-      `Customer service inquiry sent from ${managerName} (${managerPhone}) to ${customerServicePhone}`
-    );
+   
 
     return {
       message: "문의가 성공적으로 전송되었습니다.",

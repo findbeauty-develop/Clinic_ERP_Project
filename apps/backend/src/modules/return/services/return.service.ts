@@ -1407,9 +1407,7 @@ ${footer}`;
     }>;
   }) {
     try {
-      this.logger.log(
-        `Processing partial return acceptance for returnId: ${dto.returnId}, unreturned items: ${dto.unreturnedItems.length}`
-      );
+     
 
       // Process each unreturned item
       for (const item of dto.unreturnedItems) {
@@ -1455,9 +1453,7 @@ ${footer}`;
                 });
               });
 
-              this.logger.log(
-                `Reduced return_qty by ${qtyToReduce} for Return ID: ${returnRecord.id} (product: ${item.productId}, batch: ${item.batchNo}). New qty: ${newReturnQty}`
-              );
+           
 
               remainingUnreturned -= qtyToReduce;
             }

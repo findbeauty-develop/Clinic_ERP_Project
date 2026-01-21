@@ -52,9 +52,7 @@ export class HiraService {
     if (!this.apiKey) {
       this.logger.warn('HIRA_API_KEY is not configured in .env file');
       this.logger.warn('HIRA verification will be skipped. Please add HIRA_API_KEY to apps/backend/.env');
-    } else {
-      this.logger.log(`HIRA service initialized with URL: ${this.apiUrl}`);
-    }
+    } 
   }
 
   /**

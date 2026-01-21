@@ -66,9 +66,7 @@ export class CacheManager<T> {
     // Start automatic cleanup
     this.startCleanup();
 
-    this.logger.log(
-      `Initialized: maxSize=${this.maxSize}, ttl=${this.ttl}ms, cleanupInterval=${this.cleanupInterval}ms`
-    );
+   
   }
 
   /**
@@ -282,7 +280,7 @@ export class CacheManager<T> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
-      this.logger.log("Cleanup stopped");
+     
     }
   }
 
@@ -308,6 +306,6 @@ export class CacheManager<T> {
   destroy(): void {
     this.stopCleanup();
     this.clear();
-    this.logger.log("Destroyed");
+   
   }
 }

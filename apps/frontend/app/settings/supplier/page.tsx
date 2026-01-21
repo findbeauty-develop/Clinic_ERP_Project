@@ -54,12 +54,12 @@ export default function SupplierManagementPage() {
     setError(null);
     try {
       const tenantId = getTenantId();
-      console.log("Fetching suppliers, tenantId:", tenantId);
+      
 
       // Fetch all approved suppliers
       const data = await apiGet<Supplier[]>(`${apiUrl}/supplier/list`);
 
-      console.log("Suppliers data:", data);
+      
       setSuppliers(data || []);
     } catch (err: any) {
       console.error("Failed to load suppliers", err);

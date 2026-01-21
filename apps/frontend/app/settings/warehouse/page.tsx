@@ -40,7 +40,7 @@ export default function WarehouseManagementPage() {
       const warehouseLocations = await apiGet<any[]>(
         `${apiUrl}/products/warehouses/list`
       ).catch(() => []);
-      console.log("Warehouse locations from API:", warehouseLocations);
+     
 
       // Also fetch storage locations from Batch table (for backward compatibility)
       const storages = await apiGet<string[]>(
@@ -58,7 +58,7 @@ export default function WarehouseManagementPage() {
         storages,
         inventoryByLocation
       );
-      console.log("Organized warehouses:", organized);
+     
       setWarehouses(organized);
     } catch (err: any) {
       console.error("Failed to load warehouses", err);
@@ -111,7 +111,7 @@ export default function WarehouseManagementPage() {
 
     // Process warehouse locations from WarehouseLocation table
     warehouseLocations.forEach((warehouse) => {
-      console.log("Processing warehouse:", warehouse);
+     
       const category = warehouse.category || "기타";
       const categoryKey = category in categories ? category : "기타";
 
@@ -121,7 +121,7 @@ export default function WarehouseManagementPage() {
         : warehouse.items
           ? [warehouse.items]
           : [];
-      console.log("Warehouse items:", items);
+      
 
       categories[categoryKey].push({
         name: warehouse.name,
@@ -190,7 +190,7 @@ export default function WarehouseManagementPage() {
         .map((item) => item.trim())
         .filter((item) => item.length > 0);
 
-      console.log("Adding warehouse with items:", items);
+     
 
       const result = await apiPost(`${apiUrl}/products/warehouse`, {
         name: newWarehouseName.trim(),
@@ -198,7 +198,7 @@ export default function WarehouseManagementPage() {
         items: items,
       });
 
-      console.log("Warehouse added result:", result);
+      
 
       alert("창고가 추가되었습니다.");
       setShowAddModal(false);
@@ -282,19 +282,14 @@ export default function WarehouseManagementPage() {
                   <div className="space-y-4">
                     {category.locations.map((location, idx) => {
                       // Use items from database
-                      console.log(
-                        "Location:",
-                        location.name,
-                        "Items:",
-                        location.items
-                      );
+                      
                       const displayItems =
                         location.items &&
                         Array.isArray(location.items) &&
                         location.items.length > 0
                           ? location.items
                           : [];
-                      console.log("Display items:", displayItems);
+                    
 
                       return (
                         <div

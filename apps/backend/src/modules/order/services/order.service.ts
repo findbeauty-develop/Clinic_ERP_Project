@@ -1488,9 +1488,7 @@ export class OrderService {
       });
     });
 
-    this.logger.log(
-      `✅ [Order Cancel] Order ${order.order_no} cancelled in clinic-backend`
-    );
+   
 
     // Notify supplier
     if (isPlatformSupplier) {
@@ -2534,12 +2532,7 @@ export class OrderService {
         await Promise.all(smsPromises);
       } catch (error: any) {
         // Log error but don't fail the order creation
-        console.log("💥 [SMS ERROR]:", error.message);
-        this.logger.error(
-          `Error sending SMS notifications: ${
-            error?.message || "Unknown error"
-          }`
-        );
+        
       }
 
       // Send Email notification to supplier manager
@@ -2584,7 +2577,7 @@ export class OrderService {
             products
           );
 
-          console.log("📧 Email send result:", emailSent);
+         
 
           const emailSource = supplierManager?.email1
             ? "SupplierManager.email1"
@@ -3721,9 +3714,7 @@ export class OrderService {
     try {
       const { type, original_order_no, clinic_tenant_id, orders } = dto;
 
-      this.logger.log(
-        `🔀 [ORDER SPLIT WEBHOOK] Received for order: ${original_order_no}`
-      );
+    
 
       if (type !== "order_split") {
         throw new BadRequestException("Invalid webhook type");
@@ -3904,9 +3895,7 @@ export class OrderService {
         }
       });
 
-      this.logger.log(
-        `✅ [ORDER SPLIT] Successfully processed split for ${original_order_no}`
-      );
+      
 
       // Clear cache
       await this.clearPendingInboundCache(clinic_tenant_id);
@@ -3928,9 +3917,7 @@ export class OrderService {
    * Partial inbound processing - split order into completed and remaining items
    */
   async partialInbound(orderId: string, tenantId: string, dto: any) {
-    this.logger.log(
-      `🔄 [PARTIAL INBOUND] Starting for order ${orderId} with ${dto.inboundedItems.length} items`
-    );
+    
 
     try {
       return await this.prisma.$transaction(async (tx: any) => {
@@ -3946,9 +3933,7 @@ export class OrderService {
           throw new Error(`Order ${orderId} not found`);
         }
 
-        this.logger.log(
-          `📦 [PARTIAL INBOUND] Found order ${originalOrder.order_no} with ${originalOrder.items.length} items`
-        );
+        
 
         // Map inbounded items by item ID for quick lookup
         const inboundedItemsMap = new Map(
@@ -3967,9 +3952,7 @@ export class OrderService {
           }
         }
 
-        this.logger.log(
-          `📊 [PARTIAL INBOUND] Split: ${inboundedItems.length} inbounded, ${remainingItems.length} remaining`
-        );
+        
 
         if (inboundedItems.length === 0) {
           throw new Error("No items to inbound");
@@ -4010,9 +3993,7 @@ export class OrderService {
           },
         });
 
-        this.logger.log(
-          `✅ [PARTIAL INBOUND] Created completed order: ${completedOrderNo}`
-        );
+       
 
         // Create remaining order if there are remaining items
         let remainingOrder = null;
@@ -4045,9 +4026,7 @@ export class OrderService {
             },
           });
 
-          this.logger.log(
-            `⏳ [PARTIAL INBOUND] Created remaining order: ${remainingOrderNo}`
-          );
+          
         }
 
         // Archive original order
@@ -4062,9 +4041,7 @@ export class OrderService {
           },
         });
 
-        this.logger.log(
-          `🗄️ [PARTIAL INBOUND] Archived original order: ${originalOrder.order_no}`
-        );
+        
 
         // Clear cache
         await this.clearPendingInboundCache(tenantId);

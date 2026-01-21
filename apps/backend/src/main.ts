@@ -17,7 +17,7 @@ async function bootstrap() {
       // Note: Security is maintained through individual @IsOptional, @IsString, etc. decorators
     })
   );
-  app.enableCors({ origin: true });
+  // app.enableCors({ origin: true });
 
   // ✅ CORS configuration from environment variable
   const allowedOrigins = process.env.CORS_ORIGINS

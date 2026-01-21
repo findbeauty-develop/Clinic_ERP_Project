@@ -55,20 +55,16 @@ export class DataGoKrService {
       if (searchKeyword) {
         params.searchKeyword = searchKeyword;
       }
-      console.log("Request URL:", this.baseUrl);
-      console.log("Request params:", params);
+      
 
       const response = await firstValueFrom(
         this.httpService.get(this.baseUrl, { params })
       );
 
-      console.log("Response status:", response.status);
-      console.log("Response data type:", typeof response.data);
-
+    
       // Handle XML response if JSON fails
       if (typeof response.data === "string") {
-        console.log("Received XML response, parsing...");
-        console.log("XML sample:", response.data.substring(0, 500));
+       
         return this.parseXmlResponse(
           response.data,
           validPageNo,
@@ -76,8 +72,7 @@ export class DataGoKrService {
         );
       }
 
-      console.log("Received JSON response, formatting...");
-      console.log("JSON data:", JSON.stringify(response.data, null, 2));
+     
       return this.formatResponse(response.data, validPageNo, validNumOfRows);
     } catch (error) {
       const errorMessage =
@@ -95,8 +90,7 @@ export class DataGoKrService {
   ): Promise<PressReleaseResponse> {
     try {
       const result = await parseStringPromise(xml);
-      console.log("Parsed XML structure:", JSON.stringify(result, null, 2));
-
+      
       const response = result.response;
 
       if (!response || !response.header || !response.header[0]) {
@@ -116,15 +110,13 @@ export class DataGoKrService {
       const itemsArray = body.items?.[0];
       const items = itemsArray?.item || [];
 
-      this.logger.log(`Found ${items.length} items in XML response`);
-      this.logger.debug(
-        `Items type: ${Array.isArray(items) ? "array" : typeof items}`
-      );
+      
+      
 
       // If items is not an array, make it an array
       const itemsList = Array.isArray(items) ? items : items ? [items] : [];
 
-      this.logger.log(`Processing ${itemsList.length} news items`);
+      
 
       const pressReleases: PressRelease[] = itemsList.map(
         (item: any, index: number) => {
@@ -172,12 +164,7 @@ export class DataGoKrService {
             : item.pressDt || "";
 
           // Debug log to check if detailUrl is unique for each item
-          this.logger.log(
-            `News item ${index}: title="${title.substring(
-              0,
-              30
-            )}", detailUrl="${detailUrl}"`
-          );
+          
 
           // 🆕 Extract attachments and find image
           const attachments = this.parseAttachments(item);
@@ -371,9 +358,7 @@ export class DataGoKrService {
     }
 
     try {
-      this.logger.log(
-        `Fetching detail page for image extraction: ${detailUrl}`
-      );
+     
 
       const response = await firstValueFrom(
         this.httpService.get(detailUrl, {

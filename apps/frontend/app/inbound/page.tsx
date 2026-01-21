@@ -202,12 +202,7 @@ export default function InboundPage() {
 
       // Use ref to get current activeTab value (avoid closure issues)
       const currentActiveTab = activeTabRef.current;
-      console.log(
-        "[Inbound] Product deleted event received:",
-        productId,
-        "activeTab:",
-        currentActiveTab
-      );
+      
 
       if (!productId) {
         console.warn("[Inbound] No productId in event detail");
@@ -218,14 +213,7 @@ export default function InboundPage() {
       // Don't check activeTab - we want to update state regardless of tab
       setProducts((prevProducts) => {
         const filtered = prevProducts.filter((p) => p.id !== productId);
-        console.log(
-          "[Inbound] Products before:",
-          prevProducts.length,
-          "after:",
-          filtered.length,
-          "removed productId:",
-          productId
-        );
+        
         return filtered;
       });
 
@@ -239,7 +227,7 @@ export default function InboundPage() {
       if (currentActiveTab === "quick") {
         try {
           const { apiGet } = await import("../../lib/api");
-          console.log("[Inbound] Fetching fresh products from API...");
+          
           const freshData = await apiGet<any[]>(
             `${apiUrl}/products?_t=${Date.now()}`,
             {
@@ -250,7 +238,7 @@ export default function InboundPage() {
             }
           );
 
-          console.log("[Inbound] Fresh products received:", freshData.length);
+          
 
           // Update state with fresh data from API
           const formatImageUrl = (
@@ -282,7 +270,7 @@ export default function InboundPage() {
           );
 
           setProducts(formattedProducts);
-          console.log("[Inbound] Products updated:", formattedProducts.length);
+         
         } catch (err) {
           console.error(
             "[Inbound] Failed to refresh products after deletion",
@@ -2565,7 +2553,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Update order status to completed only if not partial
       if (!isPartial) {
         try {
-          console.log("Completing order:", order.orderId); // Debug log
+          
           await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
         } catch (completeError: any) {
           console.error(`Failed to complete order:`, completeError);
@@ -2616,11 +2604,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     const { order, items } = modalData;
 
-    console.log("handlePartialInbound called:", {
-      orderId: order.orderId,
-      orderNo: order.orderNo,
-      totalItems: order.items?.length,
-    });
+    
 
     // Filter items that have sufficient quantity
     const validItems = order.items.filter((item: any) => {
@@ -2630,15 +2614,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return inboundQty >= confirmedQty;
     });
 
-    console.log("Valid items filtered:", {
-      validItemsCount: validItems.length,
-      validItems: validItems.map((i: any) => ({
-        id: i.id,
-        productName: i.productName,
-        confirmedQty: i.confirmedQuantity || i.orderedQuantity,
-        inboundQty: editedItems[i.id]?.quantity,
-      })),
-    });
+   
 
     if (validItems.length === 0) {
       alert("입고 가능한 제품이 없습니다.");

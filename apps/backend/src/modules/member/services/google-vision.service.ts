@@ -10,7 +10,7 @@ export class GoogleVisionService {
     try {
       // Google Cloud Vision client will use GOOGLE_APPLICATION_CREDENTIALS env var
       this.client = new ImageAnnotatorClient();
-      this.logger.log("Google Cloud Vision client initialized successfully");
+  
     } catch (error) {
       this.logger.error("Failed to initialize Google Cloud Vision client", error);
       // Client will be null, methods will handle this gracefully
@@ -43,7 +43,7 @@ export class GoogleVisionService {
       const fullTextAnnotation = detections[0];
       const extractedText = fullTextAnnotation.description || "";
 
-      this.logger.log(`Successfully extracted ${extractedText.length} characters from image`);
+     
       return extractedText;
     } catch (error) {
       this.logger.error("Error during OCR text extraction", error);

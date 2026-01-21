@@ -61,7 +61,7 @@ export class CoolSMSProvider implements IMessageProvider {
         throw new Error(`CoolSMS API error: ${response.statusText} - ${errorText}`);
       }
 
-      this.logger.log(`CoolSMS sent to ${phoneNumber}`);
+     
       return true;
     } catch (error) {
       this.logger.error(`CoolSMS failed: ${error}`);
@@ -107,7 +107,7 @@ export class CoolSMSProvider implements IMessageProvider {
         throw new Error(`CoolSMS KakaoTalk error: ${response.statusText} - ${errorText}`);
       }
 
-      this.logger.log(`CoolSMS KakaoTalk sent to ${phoneNumber}`);
+     
       return true;
     } catch (error) {
       this.logger.error(`CoolSMS KakaoTalk failed: ${error}`);

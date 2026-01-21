@@ -56,7 +56,7 @@ const getCacheKey = (endpoint: string, options: RequestInit = {}): string => {
  * Clear the request cache (useful for cache invalidation)
  */
 export const clearCache = (endpoint?: string) => {
-  console.log(`[API] Clearing cache for:`, endpoint || "ALL");
+ 
   if (endpoint) {
     const apiUrl = getApiUrl();
     // Normalize endpoint - remove leading slash if present

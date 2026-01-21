@@ -10,19 +10,19 @@ async function createTables() {
     const sql = fs.readFileSync(migrationPath, "utf-8");
     
     // Execute the entire SQL file as one transaction
-    console.log("Executing migration SQL...");
+    
     
     try {
       await prisma.$executeRawUnsafe(sql);
-      console.log("✅ All tables created successfully!");
+      
     } catch (error: any) {
       // If tables already exist, that's okay
       if (error.message?.includes("already exists") || error.code === "42P07" || error.code === "23505") {
-        console.log("⚠ Some tables/indexes already exist, but continuing...");
+        
       } else {
         console.error("✗ Error:", error.message);
         // Try executing statement by statement as fallback
-        console.log("Trying to execute statements individually...");
+       
         await executeStatementsIndividually(sql);
       }
     }
@@ -69,7 +69,7 @@ async function executeStatementsIndividually(sql: string) {
     if (statement.trim()) {
       try {
         await prisma.$executeRawUnsafe(statement);
-        console.log("✓ Executed statement");
+        
       } catch (error: any) {
         if (
           error.message?.includes("already exists") ||
@@ -77,7 +77,7 @@ async function executeStatementsIndividually(sql: string) {
           error.code === "23505" ||
           error.message?.includes("duplicate")
         ) {
-          console.log("⚠ Already exists, skipping...");
+          
         } else {
           console.error("✗ Error:", error.message?.substring(0, 100));
           // Don't throw, continue with other statements
