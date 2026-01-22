@@ -1519,7 +1519,7 @@ export class OrderService {
   ): Promise<void> {
     try {
       const supplierApiUrl =
-        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+        process.env.SUPPLIER_BACKEND_URL || "https://api-supplier.jaclit.com";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
 
       if (!apiKey) {
@@ -2239,7 +2239,7 @@ export class OrderService {
 
       // Call supplier-backend API
       const supplierApiUrl =
-        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+        process.env.SUPPLIER_BACKEND_URL || "https://api-supplier.jaclit.com";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
 
       let supplierBackendSuccess = false;
@@ -3632,7 +3632,7 @@ export class OrderService {
   ) {
     try {
       const supplierApiUrl =
-        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+        process.env.SUPPLIER_BACKEND_URL || "https://api-supplier.jaclit.com";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
 
       if (!apiKey) {

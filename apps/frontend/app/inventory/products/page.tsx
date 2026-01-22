@@ -70,7 +70,7 @@ type ProductListItem = {
 
 export default function InboundPage() {
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
 
@@ -446,7 +446,7 @@ function ProductCard({
   }, [batchForm.inboundManager]);
 
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
   const isLowStock = product.currentStock <= product.minStock;

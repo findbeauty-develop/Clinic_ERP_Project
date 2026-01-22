@@ -43,7 +43,7 @@ export default function SettlementPage() {
     try {
       setLoading(true);
       
-      const supplierApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+      const supplierApiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
       const token = localStorage.getItem("supplier_access_token");
       
       if (!token) {

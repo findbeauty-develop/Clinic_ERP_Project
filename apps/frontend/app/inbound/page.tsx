@@ -80,7 +80,7 @@ type ProductListItem = {
 
 export default function InboundPage() {
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
   const [activeTab, setActiveTab] = useState<"quick" | "pending">("quick");
@@ -733,7 +733,7 @@ const ProductCard = memo(function ProductCard({
   // }, []); // Empty dependency array
 
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
   const isLowStock = product.currentStock <= product.minStock;

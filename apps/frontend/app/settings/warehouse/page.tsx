@@ -15,7 +15,7 @@ type WarehouseCategory = {
 
 export default function WarehouseManagementPage() {
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
   const [warehouses, setWarehouses] = useState<WarehouseCategory[]>([]);

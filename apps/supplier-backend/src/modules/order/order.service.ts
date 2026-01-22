@@ -291,7 +291,7 @@ export class OrderService {
   private async notifyClinicBackend(order: any, adjustments: any[]) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -366,7 +366,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
       const apiKey =
         process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -967,7 +967,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -1042,7 +1042,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 

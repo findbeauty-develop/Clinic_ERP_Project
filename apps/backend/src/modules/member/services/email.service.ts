@@ -316,7 +316,7 @@ export class EmailService {
             <div style="text-align: center;">
               <a href="${
                 this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
-                "http://localhost:3003"
+                "https://supplier.jaclit.com"
               }/orders" class="button">
                 주문 확인하기
               </a>
@@ -349,7 +349,7 @@ export class EmailService {
     textBody += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n`;
     textBody += `${
       this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
-      "http://localhost:3003"
+      "https://supplier.jaclit.com"
     }/orders`;
 
     return { subject, htmlBody, textBody };
@@ -609,7 +609,7 @@ export class EmailService {
             <div style="text-align: center;">
               <a href="${
                 this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
-                "http://localhost:3003"
+                "https://supplier.jaclit.com"
               }/returns" class="button">
                 ${returnTypeText} 확인하기
               </a>
@@ -642,7 +642,7 @@ export class EmailService {
     textBody += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n`;
     textBody += `${
       this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
-      "http://localhost:3003"
+      "https://supplier.jaclit.com"
     }/returns`;
 
     return { subject, htmlBody, textBody };

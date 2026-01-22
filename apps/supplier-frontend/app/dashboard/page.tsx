@@ -93,7 +93,7 @@ export default function DashboardPage() {
       // Supplier-backend proxies this request to clinic-backend
       try {
         const supplierApiUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+          process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
         const token = localStorage.getItem("supplier_access_token");
 
         // Use supplier-backend endpoint which proxies to clinic-backend
@@ -167,7 +167,7 @@ export default function DashboardPage() {
       // Fetch orders from API
       try {
         const supplierApiUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+          process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
         const token = localStorage.getItem("supplier_access_token");
 
         // Fetch latest orders (pending and confirmed status)

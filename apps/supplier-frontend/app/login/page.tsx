@@ -18,7 +18,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
       
       // Detect if identifier is email or managerId
       const isPhoneNumber = /^010[0-9]{8}$/.test(identifier);

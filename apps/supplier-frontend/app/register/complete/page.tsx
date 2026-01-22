@@ -34,7 +34,7 @@ export default function CompletePage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
 
   useEffect(() => {
     // Load all registration data from localStorage

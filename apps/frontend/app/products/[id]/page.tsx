@@ -84,7 +84,7 @@ export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://13.209.40.48:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
   const [product, setProduct] = useState<ProductDetail | null>(null);
@@ -1111,7 +1111,7 @@ function ProductEditForm({
       formData.append("file", file);
 
       const supplierApiUrl =
-        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "http://13.209.40.48:3002";
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "https://api-supplier.jaclit.com";
       const response = await fetch(
         `${supplierApiUrl}/supplier/manager/upload-certificate`,
         {

@@ -124,7 +124,7 @@ export class MessageService {
         "FRONTEND_URL is not set in .env, using default localhost URL"
       );
     }
-    const baseUrl = frontendUrl || "http://localhost:3001";
+    const baseUrl = frontendUrl || "https://clinic.jaclit.com";
     // Trailing slash'ni olib tashlash
     const cleanBaseUrl = baseUrl.replace(/\/$/, "");
     message += `로그인: ${cleanBaseUrl}/login\n\n`;
@@ -236,7 +236,7 @@ export class MessageService {
         "SUPPLIER_FRONTEND_URL is not set in .env, using default localhost URL"
       );
     }
-    const baseUrl = supplierFrontendUrl || "http://localhost:3003";
+    const baseUrl = supplierFrontendUrl || "https://supplier.jaclit.com";
     // Trailing slash'ni olib tashlash
     const cleanBaseUrl = baseUrl.replace(/\/$/, "");
     message += `${cleanBaseUrl}/orders`;

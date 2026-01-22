@@ -449,7 +449,7 @@ export default function SettingsPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002"}/supplier/manager/upload-certificate`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com"}/supplier/manager/upload-certificate`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("supplier_access_token")}`,

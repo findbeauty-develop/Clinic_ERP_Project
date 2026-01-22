@@ -19,7 +19,7 @@ export default function ContactInfoPage() {
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [newProduct, setNewProduct] = useState("");
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
 
   useEffect(() => {
     // Previous step data'ni localStorage'dan olish

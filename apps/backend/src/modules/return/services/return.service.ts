@@ -1164,7 +1164,7 @@ ${footer}`;
 
       // Call supplier-backend API
       const supplierApiUrl =
-        process.env.SUPPLIER_BACKEND_URL || "http://localhost:3002";
+        process.env.SUPPLIER_BACKEND_URL || "https://api-supplier.jaclit.com";
       const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
 
       if (!apiKey) {

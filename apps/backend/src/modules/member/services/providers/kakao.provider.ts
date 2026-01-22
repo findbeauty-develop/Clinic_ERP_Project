@@ -24,7 +24,7 @@ export class KakaoProvider implements IMessageProvider {
         return false;
       }
 
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3001';
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://clinic.jaclit.com';
 
       const response = await fetch('https://kapi.kakao.com/v2/api/talk/message/default/send', {
         method: 'POST',

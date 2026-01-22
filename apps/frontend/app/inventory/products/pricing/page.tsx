@@ -32,8 +32,8 @@ export default function BulkPricingPage() {
 
   const apiUrl =
     typeof window !== "undefined"
-      ? localStorage.getItem("api_url") || "http://localhost:3000"
-      : "http://localhost:3000";
+      ? localStorage.getItem("api_url") || "https://api.jaclit.com"
+      : "https://api.jaclit.com";
 
   // Fetch products from API
   const fetchProducts = async () => {

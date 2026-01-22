@@ -49,7 +49,7 @@ export default function ExchangesPage() {
    const [notificationCount, setNotificationCount] = useState(4);
 
   // Clinic backend URL for images
-  const clinicBackendUrl = process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "http://localhost:3000";
+  const clinicBackendUrl = process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "https://api.jaclit.com";
 
   // Fetch return requests
   const fetchRequests = async (page: number = currentPage) => {

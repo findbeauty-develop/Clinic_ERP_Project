@@ -24,7 +24,7 @@ export default function RegisterPage() {
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
 
   // Phone number validation
   const validatePhoneNumber = (phone: string): boolean => {

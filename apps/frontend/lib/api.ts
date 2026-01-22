@@ -24,10 +24,10 @@ const REQUEST_TIMEOUT = 10000; // 10 seconds
 
 const getApiUrl = () => {
   if (typeof window !== "undefined") {
-    // Browser'da: environment variable yoki window.location'dan olish
+    // Browser'da: environment variable yoki window.location'dan HTTPS olish
     return (
       process.env.NEXT_PUBLIC_API_URL ||
-      `${window.location.protocol}//${window.location.hostname.replace('clinic.', 'api.')}`
+      `https://${window.location.hostname.replace('clinic.', 'api.')}`
     );
   }
   // Server-side: environment variable yoki default HTTPS
