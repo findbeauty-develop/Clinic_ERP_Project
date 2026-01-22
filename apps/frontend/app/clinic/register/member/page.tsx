@@ -73,7 +73,8 @@ export default function ClinicMemberSetupPage() {
 
         // Get token from localStorage if available
         // ✅ getAccessToken() ishlatish (localStorage emas)
-        const token = await getAccessToken() || "";
+        // ✅ skipLogout: true - register page'da token yo'q bo'lsa logout qilmaslik
+        const token = await getAccessToken(true) || "";
 
         const headers: Record<string, string> = {
           "Content-Type": "application/json",

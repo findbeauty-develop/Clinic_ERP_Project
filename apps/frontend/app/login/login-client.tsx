@@ -109,7 +109,8 @@ export default function LoginPage() {
         localStorage.removeItem(key);
       });
 
-      router.push("/clinic/register");
+      // ✅ window.location.href ishlatish - to'liq page reload (root page redirect'ini oldini olish uchun)
+      window.location.href = "/clinic/register";
     }
   };
 

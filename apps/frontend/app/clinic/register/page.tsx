@@ -69,7 +69,8 @@ export default function ClinicRegisterPage() {
   useEffect(() => {
     const loadToken = async () => {
       // ✅ getAccessToken() ishlatish (localStorage emas)
-      const token = await getAccessToken();
+      // ✅ skipLogout: true - register page'da token yo'q bo'lsa logout qilmaslik
+      const token = await getAccessToken(true);
       setToken(token || "");
     };
     loadToken();
@@ -145,9 +146,30 @@ export default function ClinicRegisterPage() {
           return;
         }
 
-        // Fetch clinics from API
-        const response = await fetch(`${apiUrl}/iam/members/clinics`);
+        // ✅ Token'ni tekshirish - agar yo'q bo'lsa, API so'rovini yubormaslik
+        // Register page'da authentication ixtiyoriy (yangi registration uchun token yo'q bo'lishi mumkin)
+        // ✅ skipLogout: true - register page'da token yo'q bo'lsa logout qilmaslik
+        const token = await getAccessToken(true);
+        
+        if (!token) {
+          // Token yo'q - bu normal (yangi registration)
+          // Edit mode'da ham token bo'lmasligi mumkin, shuning uchun faqat sessionStorage'dan ma'lumotlarni ishlatamiz
+          setIsLoadingClinic(false);
+          return;
+        }
+
+        // Token mavjud - API so'rovini yuborish (edit mode uchun)
+        const response = await fetch(`${apiUrl}/iam/members/clinics`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          credentials: "include", // Cookie'ni yuborish
+        });
+
         if (!response.ok) {
+          // 401 yoki boshqa xatolik - edit mode'da ham davom etish mumkin
           setIsLoadingClinic(false);
           return;
         }

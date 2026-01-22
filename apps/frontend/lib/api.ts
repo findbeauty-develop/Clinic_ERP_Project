@@ -194,8 +194,9 @@ const isTokenExpired = (expiry: number | null): boolean => {
 
 /**
  * Get access token (with automatic refresh)
+ * @param skipLogout - Agar true bo'lsa, token yo'q bo'lganda logout qilmaslik (register page'lar uchun)
  */
-export const getAccessToken = async (): Promise<string | null> => {
+export const getAccessToken = async (skipLogout: boolean = false): Promise<string | null> => {
   // ✅ Agar access token mavjud va valid bo'lsa, qaytarish
   if (accessToken && !isTokenExpired(accessTokenExpiry)) {
     return accessToken;
@@ -224,8 +225,10 @@ export const getAccessToken = async (): Promise<string | null> => {
         
         if (!data.access_token) {
           console.error("[getAccessToken] Refresh response missing access_token:", data);
-          // Token yo'q bo'lsa, logout qilish
-          handleLogout();
+          // Token yo'q bo'lsa, logout qilish (faqat skipLogout false bo'lsa)
+          if (!skipLogout) {
+            handleLogout();
+          }
           return null;
         }
         
@@ -255,9 +258,9 @@ export const getAccessToken = async (): Promise<string | null> => {
         const errorData = await response.json().catch(() => ({}));
         console.error("[getAccessToken] Token refresh failed:", response.status, errorData);
         
-        // Faqat 401 (Unauthorized) bo'lsa logout qilish
+        // Faqat 401 (Unauthorized) bo'lsa logout qilish (faqat skipLogout false bo'lsa)
         // 429 (Too Many Requests) yoki boshqa error'lar uchun null qaytarish (retry mumkin)
-        if (response.status === 401) {
+        if (response.status === 401 && !skipLogout) {
           handleLogout();
         }
         return null;
