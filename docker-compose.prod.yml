@@ -11,7 +11,7 @@ services:
     env_file:
       - ./apps/backend/.env.production
     environment:
-      # ✅ Docker network ichida container nomi ishlatiladi
+      - NODE_ENV=production 
       - SUPPLIER_BACKEND_URL=http://supplier-erp-backend-prod:3002
       - SUPPLIER_BACKEND_API_KEY=your_secret_api_key_here_34534sdffsd69ds8f8e9sdf89sd4e9e8w9f
     networks:
@@ -58,6 +58,7 @@ services:
     env_file:
       - ./apps/supplier-backend/.env.production
     environment:
+      - NODE_ENV=production 
       # ✅ Docker network ichida container nomi ishlatiladi
       - CLINIC_BACKEND_URL=http://clinic-erp-backend-prod:3000
       - SUPPLIER_BACKEND_API_KEY=your_secret_api_key_here_34534sdffsd69ds8f8e9sdf89sd4e9e8w9f

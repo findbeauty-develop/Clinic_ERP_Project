@@ -10,6 +10,15 @@ import { join } from "path";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // ✅ Environment tekshirish log
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const dbUrl = process.env.DATABASE_URL;
+  const dbHost = dbUrl ? new URL(dbUrl).hostname : 'not set';
+
+ console.log(`🚀 Environment: ${nodeEnv}`);
+  console.log(`📊 Database Host: ${dbHost}`);
+  console.log(`📁 Env File: ${nodeEnv === 'production' ? '.env.production' : '.env.local/.env'}`);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: false, // ✅ PERMANENT: Allow nested objects (suppliers array works correctly)

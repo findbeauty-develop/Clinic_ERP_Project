@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import { getAccessToken } from "../../../lib/api";
+import { getAccessToken } from "../../../../lib/api";
 
 type Clinic = {
   id: string;

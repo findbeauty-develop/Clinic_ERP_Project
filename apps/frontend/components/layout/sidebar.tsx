@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
+import { apiRequest, getTenantId, getMemberData } from "../../lib/api";
 import { Settings } from "lucide-react";
 
 const navItems = [
@@ -226,6 +227,7 @@ export function Sidebar() {
     if (!memberData) {
       setUserName("");
       setClinicName("");
+      setRole("");
       return;
     }
 
@@ -233,29 +235,82 @@ export function Sidebar() {
       const member = JSON.parse(memberData);
       setUserName(member.full_name || member.member_id || "Foydalanuvchi");
       setClinicName(member.clinic_name || "");
+      // ✅ Role'ni member data'dan olish
+      if (member.role) {
+        setRole(member.role);
+      }
     } catch (error) {
       console.error("Error parsing member data:", error);
       setUserName("");
       setClinicName("");
+      setRole("");
     }
   }, []);
+
+   const loadClinicAndRole = useCallback(async () => {
+    try {
+      const tenantId = getTenantId();
+      if (!tenantId) {
+        return;
+      }
+
+      // Clinic name'ni API'dan olish
+      try {
+        const clinicsResponse = await apiRequest(
+          `/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
+        );
+        
+        if (clinicsResponse.ok) {
+          const clinics = await clinicsResponse.json();
+          if (clinics && clinics.length > 0) {
+            // Birinchi clinic'ni olish (tenant_id bo'yicha faqat bitta clinic bo'lishi kerak)
+            setClinicName(clinics[0].name || "");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching clinic name:", error);
+      }
+
+      // Member role'ni localStorage'dan yoki member data'dan olish
+      const memberData = getMemberData();
+      if (memberData) {
+        // Role'ni member data'dan olish
+        if (memberData.role) {
+          setRole(memberData.role);
+        }
+        
+        // User name'ni ham olish
+        setUserName(memberData.full_name || memberData.member_id || "Foydalanuvchi");
+      }
+    } catch (error) {
+      console.error("Error loading clinic and role:", error);
+    }
+  }, []);
+
 
   useEffect(() => {
     setMounted(true);
     loadUserInfo();
+    
+    // ✅ Clinic name va role'ni API'dan yuklash
+    loadClinicAndRole();
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "erp_member_data") loadUserInfo();
+      if (e.key === "erp_member_data") {
+        loadUserInfo();
+        loadClinicAndRole(); // ✅ Storage o'zgarganda qayta yuklash
+      }
     };
 
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, [loadUserInfo]);
+  }, [loadUserInfo, loadClinicAndRole]);
 
   const handleLogout = () => {
     // client-only
     setUserName("");
     setClinicName("");
+    setRole("");
     localStorage.removeItem("erp_access_token");
     localStorage.removeItem("erp_member_data");
     localStorage.removeItem("erp_tenant_id");

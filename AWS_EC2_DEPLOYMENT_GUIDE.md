@@ -690,6 +690,9 @@ docker build --build-arg NEXT_PUBLIC_API_URL=http://YOUR_EC2_IP:3000 -f apps/fro
 
 # Supplier Backend
 docker build -f apps/supplier-backend/Dockerfile -t supplier-backend:latest .
+docker build -f apps/supplier-frontend/Dockerfile -t supplier-frontend:latest .
+docker build -f apps/supplier-backend/Dockerfile -t supplier-backend:latest .
+docker build -f apps/supplier-backend/Dockerfile -t supplier-backend:latest .
 
 # Supplier Frontend
 docker build --build-arg NEXT_PUBLIC_API_URL=http://YOUR_EC2_IP:3002 -f apps/supplier-frontend/Dockerfile -t supplier-frontend:latest .
@@ -744,7 +747,7 @@ services:
 
 ```bash
 # Eski container'lar bo'lsa, to'xtatib o'chirish
-docker-compose -f docker-compose.prod.yml down
+  docker compose -f docker-compose.prod.yml down
 
 # yoki
 docker stop $(docker ps -aq) 2>/dev/null || true
@@ -755,7 +758,7 @@ docker rm $(docker ps -aq) 2>/dev/null || true
 
 ```bash
 # Container'larni ishga tushirish
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Container'lar holatini tekshirish
 docker ps
@@ -810,10 +813,10 @@ docker-compose -f docker-compose.prod.yml up -d --force-recreate backend
 docker-compose -f docker-compose.prod.yml logs -f
 
 # Yoki alohida log'lar
-docker logs -f clinic-erp-backend-prod
-docker logs -f clinic-erp-frontend-prod
-docker logs -f supplier-erp-backend-prod
-docker logs -f supplier-erp-frontend-prod
+  docker logs -f clinic-erp-backend-prod
+  docker logs -f clinic-erp-frontend-prod
+  docker logs -f supplier-erp-backend-prod
+  docker logs -f supplier-erp-frontend-prod
 ```
 
 **Ctrl+C** bilan chiqish.

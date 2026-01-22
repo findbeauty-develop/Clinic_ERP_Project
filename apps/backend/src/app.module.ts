@@ -27,11 +27,19 @@ import { PerformanceLoggerMiddleware } from "./common/middleware/performance-log
     ConfigModule.forRoot({
       isGlobal: true,
       // Try multiple paths for .env file (local dev and Docker)
-      envFilePath: [
-        ".env",
+      envFilePath: process.env.NODE_ENV === 'production' 
+    ? [
+        ".env.production",
+        "apps/backend/.env.production",
+        "../../apps/backend/.env.production",
+      ]
+    : [
+        ".env.local",        // ✅ Development uchun .env.local (priority)
+        ".env",              // ✅ Development uchun .env
+        "apps/backend/.env.local",
         "apps/backend/.env",
+        "../../apps/backend/.env.local",
         "../../apps/backend/.env",
-        "/app/apps/backend/.env",
       ],
       ignoreEnvFile: false,
       ignoreEnvVars: false, // Always read from process.env

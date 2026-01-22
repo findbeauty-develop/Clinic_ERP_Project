@@ -101,7 +101,7 @@ docker-compose -f docker-compose.prod.yml build
 - [ ] CSRF Protection (keyinchalik)
 - [ ] Server Security (Firewall) (production'da)
 - [ ] Nginx Reverse Proxy & SSL (production'da)
-- [ ] Supabase RLS (production'da)
+- [x] Supabase RLS (production'da)
 
 **Batafsil:** `PROJECT_SECURITY_TODO_LIST.md` faylini ko'ring
 
