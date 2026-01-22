@@ -24,12 +24,14 @@ const REQUEST_TIMEOUT = 10000; // 10 seconds
 
 const getApiUrl = () => {
   if (typeof window !== "undefined") {
+    // Browser'da: environment variable yoki window.location'dan olish
     return (
       process.env.NEXT_PUBLIC_API_URL ||
-      `${window.location.protocol}//${window.location.hostname}:3000`
+      `${window.location.protocol}//${window.location.hostname.replace('clinic.', 'api.')}`
     );
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://13.209.40.48:3000";
+  // Server-side: environment variable yoki default HTTPS
+  return process.env.NEXT_PUBLIC_API_URL || "https://api.jaclit.com";
 };
 
 /**

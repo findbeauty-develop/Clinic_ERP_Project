@@ -47,7 +47,7 @@ const positionOptions = [
 export default function InboundNewPage() {
   const router = useRouter();
   const apiUrl = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL ?? "http://13.209.40.48:3000",
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
 

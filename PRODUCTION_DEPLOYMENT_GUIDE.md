@@ -197,6 +197,9 @@ NEXT_PUBLIC_API_URL=http://72.60.108.46:3002
 
 ### 3.1 Multi-platform Build Setup (Mac M1/M2 uchun)
 
+#Deploy shellni ishga tushurish
+./deploy-production.sh
+
 ```bash
 # 1. Project root directory'ga o'ting
 cd /Users/Development/Desktop/Clinic_ERP_Project
