@@ -22,11 +22,16 @@ async function bootstrap() {
 
   // ✅ CORS configuration from environment variable
   // Production'da CORS_ORIGINS majburiy, development'da localhost fallback
-  const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production";
+  
+  // Development'da localhost'da ishlayotgan bo'lsa, production'ga o'xshamaslik
+  const isLocalhost = process.env.PORT === "3000" || 
+                      process.env.PORT === undefined ||
+                      !process.env.CORS_ORIGINS;
   
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
-    : isProduction
+    : (isProduction && !isLocalhost)
     ? (() => {
         throw new Error(
           "CORS_ORIGINS environment variable must be set in production mode"

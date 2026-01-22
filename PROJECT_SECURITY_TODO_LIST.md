@@ -119,29 +119,6 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 
 ---
 
-## ❌ QILISH KERAK BO'LGAN ISHLAR (TODO)
-
-### 🔴 CRITICAL (Production'ga chiqishdan oldin majburiy)
-
-#### 1. Token Storage Security
-**Muammo:** Token localStorage'da saqlanadi - XSS hujumida o'g'irlanadi
-
-**Qilish kerak:**
-- [ ] HttpOnly Cookie'ga o'tkazish
-- [ ] Refresh Token pattern implement qilish
-- [ ] Access token'ni memory'da saqlash (localStorage emas)
-- [ ] Refresh token endpoint yaratish (`/member/refresh`)
-- [ ] Logout endpoint'da token invalid qilish
-- [ ] Database'da refresh token blacklist
-
-**Fayllar:**
-- `apps/backend/src/modules/member/services/members.service.ts`
-- `apps/backend/src/modules/member/controllers/members.controller.ts`
-- `apps/frontend/lib/api.ts`
-- `apps/frontend/app/login/login-client.tsx`
-
----
-
 #### 2. CORS Production Safety
 **Muammo:** Production'da localhost fallback mavjud
 
@@ -157,7 +134,18 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 
 ---
 
-#
+#### 10. Supabase RLS (Row Level Security)
+**Qilish kerak:**
+- ✅ RLS yoqilganligini tekshirish
+- ✅ Tenant-based policy'lar yaratish
+- ✅ Service role policy'lar
+- ✅ RLS test qilish
+
+## ❌ QILISH KERAK BO'LGAN ISHLAR (TODO)
+
+### 🔴 CRITICAL (Production'ga chiqishdan oldin majburiy)
+
+
 
 #### 4. XSS Protection
 **Muammo:** Input sanitization yo'q
@@ -228,12 +216,7 @@ sudo ufw default deny incoming
 
 ---
 
-#### 10. Supabase RLS (Row Level Security)
-**Qilish kerak:**
-- [ ] RLS yoqilganligini tekshirish
-- [ ] Tenant-based policy'lar yaratish
-- [ ] Service role policy'lar
-- [ ] RLS test qilish
+
 
 **SQL Commands:**
 ```sql
