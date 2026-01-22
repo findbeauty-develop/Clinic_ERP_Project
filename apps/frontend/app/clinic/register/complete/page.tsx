@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getAccessToken } from "../../../../lib/api";
 
 type Clinic = {
   id: string;
@@ -25,13 +26,12 @@ export default function ClinicRegisterCompletePage() {
   const [token, setToken] = useState<string>("");
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedToken =
-        window.localStorage.getItem("erp_access_token") ??
-        window.localStorage.getItem("access_token") ??
-        "";
-      setToken(storedToken);
-    }
+    const loadToken = async () => {
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      setToken(token || "");
+    };
+    loadToken();
   }, []);
 
   useEffect(() => {

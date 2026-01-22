@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import SupplierFormModal from "../../components/supplier-form-modal";
+import { getAccessToken } from "../../lib/api";
 
 interface Supplier {
   id: string;
@@ -35,9 +36,8 @@ export default function SuppliersPage() {
       setLoading(true);
       setError(null);
 
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       if (!token) {
         throw new Error("Authentication token not found");
@@ -88,15 +88,15 @@ export default function SuppliersPage() {
     }
 
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       const response = await fetch(`${apiUrl}/supplier/manager/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        credentials: "include", // ✅ Cookie'ni yuborish
       });
 
       if (!response.ok) {

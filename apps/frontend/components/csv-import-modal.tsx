@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import Papa from "papaparse";
+import { getAccessToken } from "../lib/api";
 
 interface ValidationError {
   row: number;
@@ -59,10 +60,8 @@ export default function CSVImportModal({
       dynamicTyping: false, // Keep all fields as strings
       complete: async (results) => {
         try {
-          // Get auth token
-          const token =
-            localStorage.getItem("erp_access_token") ||
-            localStorage.getItem("token");
+          // ✅ getAccessToken() ishlatish (localStorage emas)
+          const token = await getAccessToken();
           if (!token) {
             alert("로그인이 필요합니다.");
             setLoading(false);
@@ -117,10 +116,8 @@ export default function CSVImportModal({
     setImporting(true);
 
     try {
-      // Get auth token
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
       if (!token) {
         alert("로그인이 필요합니다.");
         setImporting(false);

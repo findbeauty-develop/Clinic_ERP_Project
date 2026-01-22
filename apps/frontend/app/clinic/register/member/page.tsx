@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { getAccessToken } from "../../../lib/api";
 
 type Clinic = {
   id: string;
@@ -71,12 +72,8 @@ export default function ClinicMemberSetupPage() {
           : `${apiUrl}/iam/members/clinics`;
 
         // Get token from localStorage if available
-        const token =
-          typeof window !== "undefined"
-            ? (localStorage.getItem("erp_access_token") ??
-              localStorage.getItem("access_token") ??
-              "")
-            : "";
+        // ✅ getAccessToken() ishlatish (localStorage emas)
+        const token = await getAccessToken() || "";
 
         const headers: Record<string, string> = {
           "Content-Type": "application/json",

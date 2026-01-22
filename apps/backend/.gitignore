@@ -4,5 +4,5 @@ keys/
 !package.json
 !package-lock.json
 !tsconfig.json
-
+.env
 

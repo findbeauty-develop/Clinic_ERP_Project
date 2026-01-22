@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getAccessToken, getTenantId } from "../../../lib/api";
 
 const barcodeMethods = [
   {
@@ -459,13 +460,9 @@ export default function InboundNewPage() {
     setSupplierSearchLoading(true);
     setSupplierSearchFallback(false);
     try {
-      // Use correct localStorage keys (same as login page)
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       const params = new URLSearchParams();
       if (companyName) params.append("companyName", companyName);
@@ -542,13 +539,9 @@ export default function InboundNewPage() {
     setSupplierSearchLoading(true);
     setSupplierSearchFallback(false);
     try {
-      // Use correct localStorage keys (same as login page)
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       const response = await fetch(
         `${apiUrl}/supplier/search-by-phone?phoneNumber=${encodeURIComponent(cleanPhoneNumber)}`,
@@ -689,13 +682,9 @@ export default function InboundNewPage() {
     // If supplier is registered on platform, approve trade link
     if (pendingSupplier.isRegisteredOnPlatform && pendingSupplier.supplierId) {
       try {
-        // Use correct localStorage keys (same as login page)
-        const token =
-          localStorage.getItem("erp_access_token") ||
-          localStorage.getItem("token");
-        const tenantId =
-          localStorage.getItem("erp_tenant_id") ||
-          localStorage.getItem("tenantId");
+        // ✅ getAccessToken() ishlatish (localStorage emas)
+        const token = await getAccessToken();
+        const tenantId = getTenantId();
 
         // Check if token and tenantId exist
         if (!token) {
@@ -943,11 +932,8 @@ export default function InboundNewPage() {
 
     setSavingManualEntry(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("erp_access_token") ||
-            localStorage.getItem("token")
-          : null;
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       // Validate business number format if provided
       let businessNumber = manualEntryForm.businessNumber.trim();

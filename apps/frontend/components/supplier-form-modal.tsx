@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getAccessToken } from "../lib/api";
 
 interface SupplierFormModalProps {
   isOpen: boolean;
@@ -168,9 +169,8 @@ export default function SupplierFormModal({
     setSaving(true);
 
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       if (!token) {
         throw new Error("Authentication token not found");

@@ -11,6 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
+import { getAccessToken, getTenantId } from "../../lib/api";
 
 const inboundFilters = [
   { label: "최근 업데이트순", value: "recent" },
@@ -844,12 +845,9 @@ const ProductCard = memo(function ProductCard({
 
     setSubmittingBatch(true);
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다. 다시 로그인해주세요.");
@@ -1277,10 +1275,8 @@ function CSVImportModal({
       dynamicTyping: false, // Keep all fields as strings
       complete: async (results) => {
         try {
-          // Get auth token
-          const token =
-            localStorage.getItem("erp_access_token") ||
-            localStorage.getItem("token");
+          // ✅ getAccessToken() ishlatish (localStorage emas)
+          const token = await getAccessToken();
           if (!token) {
             alert("로그인이 필요합니다.");
             setLoading(false);
@@ -1335,10 +1331,8 @@ function CSVImportModal({
     setImporting(true);
 
     try {
-      // Get auth token
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
       if (!token) {
         alert("로그인이 필요합니다.");
         setImporting(false);
@@ -2343,10 +2337,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     // Debug log
 
     // Validation checks first
-    const token =
-      localStorage.getItem("erp_access_token") || localStorage.getItem("token");
-    const tenantId =
-      localStorage.getItem("erp_tenant_id") || localStorage.getItem("tenantId");
+    // ✅ getAccessToken() ishlatish (localStorage emas)
+    const token = await getAccessToken();
+    const tenantId = getTenantId();
 
     if (!token || !tenantId) {
       alert("로그인이 필요합니다.");
@@ -2420,12 +2413,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
   ) => {
     setProcessing(order.orderId);
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다.");

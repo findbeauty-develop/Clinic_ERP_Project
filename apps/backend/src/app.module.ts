@@ -1,6 +1,9 @@
 import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { APP_GUARD, APP_FILTER } from "@nestjs/core";
 import { PrismaModule } from "./core/prisma.module";
+import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { IamModule } from "./modules/iam/iam.module";
 import { MemberModule } from "./modules/member/member.module";
 import { ProductModule } from "./modules/product/product.module";
@@ -18,8 +21,6 @@ import { CalendarModule } from "./modules/calendar/calendar.module";
 import { WeatherModule } from "./modules/weather/weather.module";
 import { SupportModule } from "./modules/support/support.module";
 import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
-import { MonitoringMiddleware } from "./common/middleware/monitoring.middleware";
-import { MonitoringModule } from "./common/monitoring.module";
 
 @Module({
   imports: [
@@ -36,8 +37,14 @@ import { MonitoringModule } from "./common/monitoring.module";
       ignoreEnvVars: false, // Always read from process.env
       expandVariables: true,
     }),
+    // ✅ Rate Limiting - Global throttler configuration
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute (milliseconds)
+        limit: 100, // 100 requests per minute (global default)
+      },
+    ]),
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
-    MonitoringModule, // System and database monitoring
     IamModule,
     ProductModule,
     MemberModule,
@@ -55,12 +62,24 @@ import { MonitoringModule } from "./common/monitoring.module";
     WeatherModule,
     SupportModule,
   ],
+  providers: [
+    // ✅ Global throttler guard (barcha endpoint'lar uchun)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    // ✅ Global exception filter (error handling uchun)
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // Apply both middleware - PerformanceLoggerMiddleware first, then MonitoringMiddleware
+    // Apply PerformanceLoggerMiddleware
     consumer
-      .apply(PerformanceLoggerMiddleware, MonitoringMiddleware)
+      .apply(PerformanceLoggerMiddleware)
       .forRoutes("*");
   }
 }

@@ -34,7 +34,15 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-API-Key",
+      "X-Tenant-Id", // ✅ Tenant ID header
+      "x-session-id", // ✅ Session ID header
+      "Cache-Control", // ✅ Cache control header
+      "Pragma", // ✅ Pragma header (cache-busting uchun)
+    ],
   });
 
   

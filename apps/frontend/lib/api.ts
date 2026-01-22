@@ -131,51 +131,206 @@ export const getCacheStats = () => {
 };
 
 /**
- * Clear authentication data and redirect to login
+ * Logout handler
  */
-const clearAuthAndRedirect = () => {
+export const handleLogout = async () => {
+  // ✅ Memory'dan tozalash
+  accessToken = null;
+  accessTokenExpiry = null;
+  memberData = null;
+  tenantId = null;
+
+  // ✅ Backend'ga logout request
+  try {
+    await fetch(`${getApiUrl()}/iam/members/logout`, {
+      method: "POST",
+      credentials: "include", // ✅ Cookie'ni yuborish
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+  }
+
+  // ✅ localStorage'dan tozalash
   if (typeof window !== "undefined") {
-    // Clear all auth-related data
     localStorage.removeItem("erp_access_token");
     localStorage.removeItem("erp_token");
     localStorage.removeItem("access_token");
     localStorage.removeItem("erp_member_data");
     localStorage.removeItem("erp_tenant_id");
     localStorage.removeItem("tenantId");
+  }
 
-    // Redirect to login page
-    // Use window.location.href for full page reload
+  // ✅ Redirect to login page
+  if (typeof window !== "undefined") {
     window.location.href = "/login";
   }
 };
 
 /**
- * Get authentication token from localStorage
+ * Clear authentication data and redirect to login
+ */
+const clearAuthAndRedirect = () => {
+  handleLogout();
+};
+
+// ✅ Access token'ni memory'da saqlash (localStorage emas - XSS himoyasi)
+let accessToken: string | null = null;
+let accessTokenExpiry: number | null = null;
+let memberData: any | null = null;
+let tenantId: string | null = null;
+
+/**
+ * Check if token is expired
+ */
+const isTokenExpired = (expiry: number | null): boolean => {
+  if (!expiry) return true;
+  return Date.now() >= expiry;
+};
+
+/**
+ * Get access token (with automatic refresh)
+ */
+export const getAccessToken = async (): Promise<string | null> => {
+  // ✅ Agar access token mavjud va valid bo'lsa, qaytarish
+  if (accessToken && !isTokenExpired(accessTokenExpiry)) {
+    return accessToken;
+  }
+
+  // ✅ Refresh token bilan yangi access token olish
+  try {
+    const refreshUrl = `${getApiUrl()}/iam/members/refresh`;
+    
+    
+    const response = await fetch(refreshUrl, {
+      method: "POST",
+      credentials: "include", // ✅ Cookie'ni yuborish
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+   
+    if (response.ok) {
+      const data = await response.json();
+     
+      
+      if (!data.access_token) {
+        console.error("[getAccessToken] Refresh response missing access_token:", data);
+        // Token yo'q bo'lsa, logout qilish
+        handleLogout();
+        return null;
+      }
+      
+      accessToken = data.access_token;
+      
+      // ✅ Token expiry'ni hisoblash (15 minut default)
+      const expiresIn = 15 * 60 * 1000; // 15 minutes in milliseconds
+      accessTokenExpiry = Date.now() + expiresIn;
+
+      // ✅ Member data'ni yangilash
+      if (data.member) {
+        memberData = data.member;
+        tenantId = data.member.tenant_id;
+        
+        // ✅ Backward compatibility: localStorage'ga ham saqlash (faqat member data)
+        if (typeof window !== "undefined") {
+          localStorage.setItem("erp_member_data", JSON.stringify(data.member));
+          localStorage.setItem("erp_tenant_id", data.member.tenant_id);
+        }
+      }
+
+     
+      return accessToken;
+    } else {
+      // Refresh token invalid yoki yo'q - faqat 401 bo'lsa logout qilish
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[getAccessToken] Token refresh failed:", response.status, errorData);
+      
+      // Faqat 401 (Unauthorized) bo'lsa logout qilish
+      // 500 (Server error) yoki boshqa error'lar uchun null qaytarish (retry mumkin)
+      if (response.status === 401) {
+       
+        handleLogout();
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error("[getAccessToken] Token refresh error:", error);
+    // Network error bo'lsa, logout qilmaslik (retry mumkin)
+    // Faqat clear error bo'lsa logout qilish
+    return null;
+  }
+};
+
+/**
+ * Set access token (login'dan keyin)
+ */
+export const setAccessToken = (token: string, expiresIn?: number) => {
+  accessToken = token;
+  accessTokenExpiry = expiresIn
+    ? Date.now() + expiresIn * 1000
+    : Date.now() + 15 * 60 * 1000; // Default 15 minutes
+};
+
+/**
+ * Set member data (login'dan keyin)
+ */
+export const setMemberData = (data: any) => {
+  memberData = data;
+  tenantId = data?.tenant_id || null;
+  
+  // ✅ Backward compatibility: localStorage'ga ham saqlash
+  if (typeof window !== "undefined") {
+    localStorage.setItem("erp_member_data", JSON.stringify(data));
+    if (data?.tenant_id) {
+      localStorage.setItem("erp_tenant_id", data.tenant_id);
+    }
+  }
+};
+
+/**
+ * Get authentication token (backward compatibility)
+ * @deprecated Use getAccessToken() instead
  */
 export const getAuthToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return (
-    window.localStorage.getItem("erp_access_token") ??
-    window.localStorage.getItem("access_token") ??
-    null
-  );
+  // ✅ Memory'dan qaytarish (localStorage emas)
+  return accessToken;
 };
 
 /**
- * Get tenant ID from localStorage (stored after member login)
+ * Get tenant ID
  */
 export const getTenantId = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("erp_tenant_id");
+  // ✅ Memory'dan qaytarish, agar yo'q bo'lsa localStorage'dan
+  if (tenantId) return tenantId;
+  
+  if (typeof window !== "undefined") {
+    tenantId = localStorage.getItem("erp_tenant_id");
+  }
+  
+  return tenantId;
 };
 
 /**
- * Get member data from localStorage
+ * Get member data
  */
 export const getMemberData = (): any | null => {
-  if (typeof window === "undefined") return null;
-  const memberData = localStorage.getItem("erp_member_data");
-  return memberData ? JSON.parse(memberData) : null;
+  // ✅ Memory'dan qaytarish, agar yo'q bo'lsa localStorage'dan
+  if (memberData) return memberData;
+  
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("erp_member_data");
+    if (stored) {
+      try {
+        memberData = JSON.parse(stored);
+        return memberData;
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  
+  return null;
 };
 
 /**
@@ -186,8 +341,10 @@ export const apiRequest = async (
   options: RequestInit = {}
 ): Promise<Response> => {
   const apiUrl = getApiUrl();
-  const token = getAuthToken();
-  const tenantId = getTenantId();
+  const token = await getAccessToken(); // ✅ Async token olish
+  const tenantIdValue = getTenantId();
+
+  
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -199,14 +356,23 @@ export const apiRequest = async (
 
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  } else {
+    console.warn("[apiRequest] No token available for request to:", endpoint);
   }
 
-  if (tenantId) {
-    (headers as Record<string, string>)["X-Tenant-Id"] = tenantId;
+  if (tenantIdValue) {
+    (headers as Record<string, string>)["X-Tenant-Id"] = tenantIdValue;
   }
 
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
   const requestKey = getCacheKey(endpoint, { ...options, headers });
+
+  // ✅ Credentials: include - Cookie'ni yuborish (refresh token)
+  const requestOptions: RequestInit = {
+    ...options,
+    headers,
+    credentials: options.credentials || "include",
+  };
 
   // Check for pending request (deduplication)
   if (pendingRequests.has(requestKey)) {
@@ -219,8 +385,7 @@ export const apiRequest = async (
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
   const fetchPromise = fetch(url, {
-    ...options,
-    headers,
+    ...requestOptions, // ✅ requestOptions ishlatish
     signal: controller.signal,
   })
     .then((response) => {

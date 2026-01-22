@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import * as bodyParser from "body-parser";
 import * as express from "express";
 import * as compression from "compression";
+import * as cookieParser from "cookie-parser";
 import { join } from "path";
 
 async function bootstrap() {
@@ -28,11 +29,22 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-API-Key",
+      "X-Tenant-Id", // ✅ Tenant ID header
+      "x-session-id", // ✅ Session ID header (order draft uchun)
+      "Cache-Control", // ✅ Cache control header
+      "Pragma", // ✅ Pragma header (cache-busting uchun)
+    ],
   });
 
   // Compression middleware (gzip) - response'ni siqish
   app.use(compression.default());
+
+  // Cookie parser middleware - HttpOnly cookie'lar uchun
+  app.use(cookieParser.default());
 
   app.use(
     bodyParser.json({

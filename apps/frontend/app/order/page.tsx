@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
-import { apiGet, apiPost, apiPut, apiDelete } from "../../lib/api";
+import { apiGet, apiPost, apiPut, apiDelete, getAccessToken } from "../../lib/api";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -346,16 +346,15 @@ export default function OrderPage() {
 
     setDraftLoading(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("erp_access_token")
-          : null;
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       const response = await fetch(`${apiUrl}/order/draft`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "x-session-id": sessionId,
         },
+        credentials: "include", // ✅ Cookie'ni yuborish
       });
 
       if (!response.ok) throw new Error("Failed to fetch draft");
@@ -392,16 +391,15 @@ export default function OrderPage() {
     if (!sessionId) return null; // SessionId tayyor bo'lmaguncha kutish
 
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("erp_access_token")
-          : null;
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       const response = await fetch(`${apiUrl}/order/draft`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "x-session-id": sessionId,
         },
+        credentials: "include", // ✅ Cookie'ni yuborish
       });
 
       if (!response.ok) throw new Error("Failed to fetch draft");
@@ -439,10 +437,8 @@ export default function OrderPage() {
 
     setOrdersLoading(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("erp_access_token")
-          : null;
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
 
       const queryParams = new URLSearchParams();
       if (debouncedOrderSearchQuery.trim()) {
@@ -1450,10 +1446,8 @@ export default function OrderPage() {
                   <button
                     onClick={async () => {
                       try {
-                        const token =
-                          typeof window !== "undefined"
-                            ? localStorage.getItem("erp_access_token")
-                            : null;
+                        // ✅ getAccessToken() ishlatish (localStorage emas)
+                        const token = await getAccessToken();
 
                         await fetch(`${apiUrl}/order/draft`, {
                           method: "DELETE",
@@ -1461,6 +1455,7 @@ export default function OrderPage() {
                             Authorization: `Bearer ${token}`,
                             "x-session-id": sessionId,
                           },
+                          credentials: "include", // ✅ Cookie'ni yuborish
                         });
                         await fetchDraft();
                         setQuantities({});
@@ -2566,10 +2561,8 @@ export default function OrderPage() {
                     <button
                       onClick={async () => {
                         try {
-                          const token =
-                            typeof window !== "undefined"
-                              ? localStorage.getItem("erp_access_token")
-                              : null;
+                          // ✅ getAccessToken() ishlatish (localStorage emas)
+                          const token = await getAccessToken();
 
                           // Local draft'dan order yaratish
                           const response = await fetch(`${apiUrl}/order`, {
@@ -2579,6 +2572,7 @@ export default function OrderPage() {
                               "x-session-id": sessionId,
                               "Content-Type": "application/json",
                             },
+                            credentials: "include", // ✅ Cookie'ni yuborish
                             body: JSON.stringify({
                               supplierMemos: orderMemos, // Supplier ID bo'yicha memo'lar
                               items: draft?.items || [], // Local draft items

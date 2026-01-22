@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { getAccessToken } from "../../../lib/api";
 
 type Clinic = {
   id: string;
@@ -65,13 +66,12 @@ export default function ClinicRegisterPage() {
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedToken =
-        window.localStorage.getItem("erp_access_token") ??
-        window.localStorage.getItem("access_token") ??
-        "";
-      setToken(storedToken);
-    }
+    const loadToken = async () => {
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      setToken(token || "");
+    };
+    loadToken();
   }, []);
 
   // Load form data from sessionStorage (only persists for current tab session)

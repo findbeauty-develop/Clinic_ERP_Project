@@ -89,13 +89,13 @@ model Clinic {
 }
 
 model Member {
-  id                   String    @id @default(uuid())
+  id                   String         @id @default(uuid())
   tenant_id            String
-  member_id            String    @unique
+  member_id            String         @unique
   role                 String
   password_hash        String
   clinic_name          String
-  created_at           DateTime  @default(now())
+  created_at           DateTime       @default(now())
   created_by           String?
   updated_at           DateTime?
   updated_by           String?
@@ -103,9 +103,25 @@ model Member {
   phone_number         String?
   id_card_number       String?
   address              String?
-  must_change_password Boolean   @default(false)
+  must_change_password Boolean        @default(false)
+  refreshTokens        RefreshToken[]
 
   @@index([tenant_id])
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  member_id String
+  token      String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+  revoked    Boolean  @default(false)
+  revoked_at DateTime?
+  member     Member   @relation(fields: [member_id], references: [id], onDelete: Cascade)
+
+  @@index([member_id])
+  @@index([token])
+  @@index([expires_at])
 }
 
 model ReturnPolicy {

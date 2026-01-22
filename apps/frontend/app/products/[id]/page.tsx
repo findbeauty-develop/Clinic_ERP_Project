@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { getAccessToken, getTenantId } from "../../../lib/api";
 
 const positionOptions = [
   "직함 선택",
@@ -920,12 +921,9 @@ function ProductEditForm({
 
     setSupplierSearchLoading(true);
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       const params = new URLSearchParams();
       if (companyName) params.append("companyName", companyName);

@@ -119,4 +119,69 @@ export class MembersRepository {
       data,
     });
   }
+
+  // Refresh Token methods
+  async saveRefreshToken(memberId: string, token: string, expiresAt: Date) {
+    return this.prisma.refreshToken.create({
+      data: {
+        member_id: memberId,
+        token,
+        expires_at: expiresAt,
+      },
+    });
+  }
+
+  async findRefreshToken(token: string) {
+    return this.prisma.refreshToken.findUnique({
+      where: { token },
+      include: { member: true },
+    });
+  }
+
+  async isRefreshTokenValid(memberId: string, token: string): Promise<boolean> {
+    const refreshToken = await this.prisma.refreshToken.findFirst({
+      where: {
+        token,
+        member_id: memberId,
+        revoked: false,
+        expires_at: {
+          gt: new Date(),
+        },
+      },
+    });
+    return !!refreshToken;
+  }
+
+  async revokeRefreshToken(token: string) {
+    return this.prisma.refreshToken.update({
+      where: { token },
+      data: {
+        revoked: true,
+        revoked_at: new Date(),
+      },
+    });
+  }
+
+  async revokeAllMemberTokens(memberId: string) {
+    return this.prisma.refreshToken.updateMany({
+      where: {
+        member_id: memberId,
+        revoked: false,
+      },
+      data: {
+        revoked: true,
+        revoked_at: new Date(),
+      },
+    });
+  }
+
+  async deleteExpiredTokens() {
+    return this.prisma.refreshToken.deleteMany({
+      where: {
+        expires_at: {
+          lt: new Date(),
+        },
+      },
+    });
+  }
 }

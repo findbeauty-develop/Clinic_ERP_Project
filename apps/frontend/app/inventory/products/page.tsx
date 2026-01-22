@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, ChangeEvent, useCallback } from "react";
 import Link from "next/link";
 import CSVImportModal from "../../../components/csv-import-modal";
+import { getAccessToken, getTenantId } from "../../../lib/api";
 
 const inboundFilters = [
   { label: "최근 업데이트순", value: "recent" },
@@ -537,12 +538,9 @@ function ProductCard({
 
     setSubmittingBatch(true);
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다. 다시 로그인해주세요.");
@@ -1383,12 +1381,9 @@ function PendingOrdersList({
 
     setProcessing(order.orderId);
     try {
-      const token =
-        localStorage.getItem("erp_access_token") ||
-        localStorage.getItem("token");
-      const tenantId =
-        localStorage.getItem("erp_tenant_id") ||
-        localStorage.getItem("tenantId");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다.");

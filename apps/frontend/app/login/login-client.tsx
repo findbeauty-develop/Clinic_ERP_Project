@@ -36,6 +36,7 @@ export default function LoginPage() {
       const response = await fetch(`${apiUrl}/iam/members/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // ✅ Cookie'ni yuborish (refresh token)
         body: JSON.stringify({ memberId, password }),
       });
 
@@ -50,16 +51,19 @@ export default function LoginPage() {
 
       const result = await response.json();
 
+      // ✅ Token'ni memory'da saqlash (localStorage emas)
       if (typeof window !== "undefined") {
-        if (result.token) {
-          localStorage.setItem("erp_access_token", result.token);
+        // Import setAccessToken va setMemberData
+        const { setAccessToken, setMemberData } = await import("../../lib/api");
+        
+        if (result.access_token) {
+          // ✅ Access token'ni memory'da saqlash
+          setAccessToken(result.access_token);
         }
+        
         if (result.member) {
-          localStorage.setItem(
-            "erp_member_data",
-            JSON.stringify(result.member)
-          );
-          localStorage.setItem("erp_tenant_id", result.member.tenant_id);
+          // ✅ Member data'ni memory'da saqlash
+          setMemberData(result.member);
         }
       }
 
@@ -129,7 +133,9 @@ export default function LoginPage() {
 
     setChangingPassword(true);
     try {
-      const token = localStorage.getItem("erp_access_token");
+      // ✅ getAccessToken() ishlatish (localStorage emas)
+      const { getAccessToken } = await import("../../lib/api");
+      const token = await getAccessToken();
       if (!token) {
         throw new Error("인증 토큰이 없습니다.");
       }
@@ -140,6 +146,7 @@ export default function LoginPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        credentials: "include", // ✅ Cookie'ni yuborish
         body: JSON.stringify({
           currentPassword,
           newPassword,

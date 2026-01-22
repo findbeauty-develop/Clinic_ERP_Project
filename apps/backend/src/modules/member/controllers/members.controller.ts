@@ -1,5 +1,7 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
+import { Request, Response } from "express";
 import { MembersService } from "../services/members.service";
 import { CreateMembersDto } from "../dto/create-members.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
@@ -47,9 +49,103 @@ export class MembersController {
   }
 
   @Post("login")
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // ✅ 5 requests per minute (brute force himoya)
   @ApiOperation({ summary: "Login member by member_id and password" })
-  async login(@Body() dto: MemberLoginDto) {
-    return this.service.login(dto.memberId, dto.password);
+  async login(@Body() dto: MemberLoginDto, @Res() res: Response) {
+    const result = await this.service.login(dto.memberId, dto.password, undefined, res);
+    return res.json(result);
+  }
+
+  @Post("refresh")
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // ✅ 20 requests per minute (normal usage uchun)
+  @ApiOperation({ summary: "Refresh access token using refresh token from cookie" })
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const refreshToken =
+      req.cookies?.refresh_token || req.headers["x-refresh-token"];
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        error: "Refresh token not provided",
+      });
+    }
+
+    try {
+      const result = await this.service.refreshAccessToken(refreshToken);
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(401).json({
+        error: error.message || "Invalid or expired refresh token",
+      });
+    }
+  }
+
+  @Post("logout")
+  @ApiOperation({ summary: "Logout member and invalidate refresh token" })
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = req.cookies?.refresh_token;
+    console.log("[Logout] Refresh token from cookie:", refreshToken ? "exists" : "not found");
+
+    // ✅ Refresh token bo'lsa, database'da invalid qilish
+    if (refreshToken) {
+      try {
+        await this.service.logout(refreshToken);
+        console.log("[Logout] Token invalidated in database");
+      } catch (error) {
+        // Error bo'lsa ham davom etish (cookie'ni o'chirish kerak)
+        console.error("[Logout] Database invalidation error:", error);
+      }
+    }
+
+    // ✅ Cookie'ni o'chirish - 2 xil usul bilan
+    const isProduction = process.env.NODE_ENV === "production";
+    console.log("[Logout] Clearing cookie, isProduction:", isProduction);
+    
+    // Usul 1: Cookie'ni maxAge: 0 qilib o'chirish (eng ishonchli)
+    res.cookie("refresh_token", "", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 0, // ✅ Darhol o'chirish
+      expires: new Date(0), // ✅ Expired qilish
+    });
+
+    // Usul 2: clearCookie (qo'shimcha)
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+    });
+
+    // Usul 3: Cookie'ni bo'sh string va maxAge: -1 qilib o'chirish
+    res.cookie("refresh_token", "", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+      maxAge: -1, // ✅ O'tmishga o'tkazish
+    });
+
+    console.log("[Logout] Cookie cleared");
+    return res.json({ message: "Successfully logged out" });
+  }
+
+  @Post("logout-all")
+  @UseGuards(JwtTenantGuard)
+  @ApiOperation({ summary: "Logout from all devices" })
+  async logoutAll(@ReqUser("id") userId: string, @Res() res: Response) {
+    await this.service.logoutAll(userId);
+
+    // Cookie'ni o'chirish
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
+
+    return res.json({ message: "Successfully logged out from all devices" });
   }
 
   @Post("send-credentials")
