@@ -57,8 +57,8 @@ export default function LoginPage() {
         const { setAccessToken, setMemberData } = await import("../../lib/api");
         
         if (result.access_token) {
-          // ✅ Access token'ni memory'da saqlash
-          setAccessToken(result.access_token);
+          // ✅ Access token'ni memory'da saqlash (expires_in bilan)
+          setAccessToken(result.access_token, result.expires_in);
         }
         
         if (result.member) {

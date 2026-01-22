@@ -39,6 +39,7 @@ const getSuppliers = (products: ProductListItem[]): string[] => {
 type ProductBatch = {
   batch_no: string;
   유효기간: string | null;
+   purchase_price?: number | null;
   보관위치: string | null;
   "입고 수량": number;
   inbound_qty?: number; // Original qty from inbound (immutable)
@@ -59,6 +60,7 @@ type ProductListItem = {
   salePrice?: number | null;
   supplierName?: string | null;
   managerName?: string | null;
+    managerPosition?: string | null;
   expiryDate?: string | null;
   storageLocation?: string | null;
   memo?: string | null;
@@ -630,7 +632,7 @@ function ProductCard({
               </div>
             )}
           </div>
-          <div>
+           <div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 {product.category}
@@ -649,28 +651,26 @@ function ProductCard({
                 {product.currentStock.toLocaleString()} /{" "}
                 {product.minStock.toLocaleString()} {product.unit ?? "EA"}
               </span>
-              <span className="inline-flex items-center gap-1">
-                <WonIcon className="h-4 w-4 text-emerald-500" />
-                구매: ₩{(product.purchasePrice ?? 0).toLocaleString()}
-              </span>
+
               {product.supplierName && (
                 <span className="inline-flex items-center gap-1">
                   <TruckIcon className="h-4 w-4 text-indigo-500" />
                   {product.supplierName}
                 </span>
               )}
-              {product.expiryDate && (
+              {product.managerName && (
                 <span className="inline-flex items-center gap-1">
-                  <CalendarIcon className="h-4 w-4" />
-                  {new Date(product.expiryDate).toLocaleDateString()}
+                  
+                  {product.managerName}
                 </span>
               )}
-              {product.storageLocation && (
+              {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
-                  <WarehouseIcon className="h-4 w-4" />
-                  {product.storageLocation}
+                  직책: {product.managerPosition}
                 </span>
               )}
+
+             
             </div>
           </div>
         </div>
@@ -755,9 +755,14 @@ function ProductCard({
                         유효기간: {batch.유효기간}
                       </span>
                     )}
+                    {batch.purchase_price && (
+                      <span className="inline-flex items-center gap-1">
+                        구매가: {batch.purchase_price.toLocaleString()}원
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 ml-auto">
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        입고수량:
+                        현재수량:
                       </span>
                       <span className="text-base font-bold text-slate-900 dark:text-white">
                         {batch.inbound_qty?.toLocaleString() ?? 0}

@@ -250,6 +250,7 @@ export class ProductsService {
       capacityUnit: product.capacity_unit,
       supplierName: supplierManager?.company_name ?? null,
       managerName: supplierManager?.name ?? null,
+      managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
       supplierId: supplierManager?.id ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
       storageLocation: latestBatch?.storage ?? product.storage ?? null,
@@ -771,6 +772,7 @@ export class ProductsService {
                 name: true,
                 phone_number: true,
                 business_number: true,
+                position: true, // ✅ 직책 (Position)
               },
             },
           },
@@ -812,6 +814,7 @@ export class ProductsService {
         capacityUnit: product.capacity_unit,
         supplierName: supplierManager?.company_name ?? null,
         managerName: supplierManager?.name ?? null,
+        managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
         supplierId: supplierManager?.id ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
         storageLocation: latestBatch?.storage ?? product.storage ?? null,
@@ -1349,6 +1352,7 @@ export class ProductsService {
         // available_quantity: true, // ✅ Will be available after migration
         unit: true,
         min_stock: true,
+        purchase_price: true, // ✅ 구매가 (Purchase price)
       },
     });
 
@@ -1366,6 +1370,7 @@ export class ProductsService {
       inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
       unit: batch.unit ?? null,
       min_stock: batch.min_stock ?? null, // ✅ Minimum stock from product (immutable)
+      purchase_price: batch.purchase_price ?? null, // ✅ 구매가 (Purchase price)
       created_at: batch.created_at,
       // Raw fields for batch copying (입고 대기 page uchun)
       expiry_months: batch.expiry_months,

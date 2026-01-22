@@ -78,13 +78,13 @@ export default function InboundNewPage() {
   const [storageOptions, setStorageOptions] = useState<string[]>([]);
 
   // Initialize manager name from localStorage (current logged-in member)
-  useEffect(() => {
-    const memberData = localStorage.getItem("erp_member_data");
-    if (memberData) {
-      const member = JSON.parse(memberData);
-      setSelectedManager(member.full_name || member.member_id || "");
-    }
-  }, []);
+  // useEffect(() => {
+  //   const memberData = localStorage.getItem("erp_member_data");
+  //   if (memberData) {
+  //     const member = JSON.parse(memberData);
+  //     setSelectedManager(member.full_name || member.member_id || "");
+  //   }
+  // }, []);
 
   // Fetch storage options from backend
   useEffect(() => {
@@ -2984,7 +2984,7 @@ export default function InboundNewPage() {
                 <input
                   type="text"
                   list="storage-options"
-                  placeholder="보관 위치를 입력하거나 선택하세요"
+                  placeholder="보관 위치를 입력해 주세요"
                   value={formData.storage}
                   onChange={(e) => handleInputChange("storage", e.target.value)}
                   className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -3003,6 +3003,7 @@ export default function InboundNewPage() {
               <input
                 type="text"
                 value={selectedManager}
+                
                 onChange={(e) => setSelectedManager(e.target.value)}
                 placeholder="담당자 이름 입력"
                 className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"

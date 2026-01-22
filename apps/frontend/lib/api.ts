@@ -19,7 +19,7 @@ let cacheStats = {
 };
 
 // Cache configuration
-const CACHE_TTL = 30000; // 30 seconds
+const CACHE_TTL = 5; // 5 seconds
 const REQUEST_TIMEOUT = 10000; // 10 seconds
 
 const getApiUrl = () => {
@@ -139,6 +139,7 @@ export const handleLogout = async () => {
   accessTokenExpiry = null;
   memberData = null;
   tenantId = null;
+  refreshPromise = null; // ✅ Refresh promise'ni ham tozalash
 
   // ✅ Backend'ga logout request
   try {
@@ -178,6 +179,8 @@ let accessToken: string | null = null;
 let accessTokenExpiry: number | null = null;
 let memberData: any | null = null;
 let tenantId: string | null = null;
+// ✅ Refresh request'ni deduplicate qilish uchun
+let refreshPromise: Promise<string | null> | null = null;
 
 /**
  * Check if token is expired
@@ -196,70 +199,78 @@ export const getAccessToken = async (): Promise<string | null> => {
     return accessToken;
   }
 
-  // ✅ Refresh token bilan yangi access token olish
-  try {
-    const refreshUrl = `${getApiUrl()}/iam/members/refresh`;
-    
-    
-    const response = await fetch(refreshUrl, {
-      method: "POST",
-      credentials: "include", // ✅ Cookie'ni yuborish
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+  // ✅ Agar refresh request allaqachon davom etayotgan bo'lsa, uni kutish (deduplication)
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-   
-    if (response.ok) {
-      const data = await response.json();
-     
+  // ✅ Refresh token bilan yangi access token olish
+  refreshPromise = (async () => {
+    try {
+      const refreshUrl = `${getApiUrl()}/iam/members/refresh`;
       
-      if (!data.access_token) {
-        console.error("[getAccessToken] Refresh response missing access_token:", data);
-        // Token yo'q bo'lsa, logout qilish
-        handleLogout();
+      const response = await fetch(refreshUrl, {
+        method: "POST",
+        credentials: "include", // ✅ Cookie'ni yuborish
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (!data.access_token) {
+          console.error("[getAccessToken] Refresh response missing access_token:", data);
+          // Token yo'q bo'lsa, logout qilish
+          handleLogout();
+          return null;
+        }
+        
+        accessToken = data.access_token;
+        
+        // ✅ Token expiry'ni hisoblash (15 minut default yoki response'dan)
+        const expiresIn = data.expires_in 
+          ? data.expires_in * 1000 // seconds to milliseconds
+          : 15 * 60 * 1000; // Default 15 minutes
+        accessTokenExpiry = Date.now() + expiresIn;
+
+        // ✅ Member data'ni yangilash
+        if (data.member) {
+          memberData = data.member;
+          tenantId = data.member.tenant_id;
+          
+          // ✅ Backward compatibility: localStorage'ga ham saqlash (faqat member data)
+          if (typeof window !== "undefined") {
+            localStorage.setItem("erp_member_data", JSON.stringify(data.member));
+            localStorage.setItem("erp_tenant_id", data.member.tenant_id);
+          }
+        }
+
+        return accessToken;
+      } else {
+        // Refresh token invalid yoki yo'q - faqat 401 bo'lsa logout qilish
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[getAccessToken] Token refresh failed:", response.status, errorData);
+        
+        // Faqat 401 (Unauthorized) bo'lsa logout qilish
+        // 429 (Too Many Requests) yoki boshqa error'lar uchun null qaytarish (retry mumkin)
+        if (response.status === 401) {
+          handleLogout();
+        }
         return null;
       }
-      
-      accessToken = data.access_token;
-      
-      // ✅ Token expiry'ni hisoblash (15 minut default)
-      const expiresIn = 15 * 60 * 1000; // 15 minutes in milliseconds
-      accessTokenExpiry = Date.now() + expiresIn;
-
-      // ✅ Member data'ni yangilash
-      if (data.member) {
-        memberData = data.member;
-        tenantId = data.member.tenant_id;
-        
-        // ✅ Backward compatibility: localStorage'ga ham saqlash (faqat member data)
-        if (typeof window !== "undefined") {
-          localStorage.setItem("erp_member_data", JSON.stringify(data.member));
-          localStorage.setItem("erp_tenant_id", data.member.tenant_id);
-        }
-      }
-
-     
-      return accessToken;
-    } else {
-      // Refresh token invalid yoki yo'q - faqat 401 bo'lsa logout qilish
-      const errorData = await response.json().catch(() => ({}));
-      console.error("[getAccessToken] Token refresh failed:", response.status, errorData);
-      
-      // Faqat 401 (Unauthorized) bo'lsa logout qilish
-      // 500 (Server error) yoki boshqa error'lar uchun null qaytarish (retry mumkin)
-      if (response.status === 401) {
-       
-        handleLogout();
-      }
+    } catch (error) {
+      console.error("[getAccessToken] Token refresh error:", error);
+      // Network error bo'lsa, logout qilmaslik (retry mumkin)
       return null;
+    } finally {
+      // ✅ Refresh promise'ni tozalash
+      refreshPromise = null;
     }
-  } catch (error) {
-    console.error("[getAccessToken] Token refresh error:", error);
-    // Network error bo'lsa, logout qilmaslik (retry mumkin)
-    // Faqat clear error bo'lsa logout qilish
-    return null;
-  }
+  })();
+
+  return refreshPromise;
 };
 
 /**
@@ -508,31 +519,13 @@ export const apiGet = async <T = any>(
       const age = now - cached.timestamp;
 
       if (age < CACHE_TTL) {
-        // Fresh cache
+        // ✅ Fresh cache - qaytarish
         cacheStats.hits++;
         return cached.data as T;
       } else {
-        // Stale cache - background'da yangilash
-        const refreshPromise = apiRequest(endpoint, {
-          method: "GET",
-          ...options,
-        })
-          .then(async (response) => {
-            if (response.ok) {
-              const data = await response.json();
-              requestCache.set(cacheKey, {
-                data,
-                timestamp: Date.now(),
-              });
-            }
-          })
-          .catch(() => {
-            // Error handling (user'ga ko'rsatilmaydi)
-          });
-
-        // Stale data darhol qaytariladi
-        cacheStats.hits++;
-        return cached.data as T; // ✅ Stale data qaytariladi
+        // ✅ Stale cache - o'chirish va yangi request yuborish (qaytarmaydi)
+        requestCache.delete(cacheKey);
+        // Cache miss deb hisoblanadi va yangi request yuboriladi
       }
     }
   } else {

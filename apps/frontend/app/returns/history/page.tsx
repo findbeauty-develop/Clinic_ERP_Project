@@ -62,7 +62,7 @@ export default function ReturnHistoryPage() {
     page: number;
     searchQuery: string;
   } | null>(null);
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5; // 5 seconds
 
   // Cache invalidation helper
   const invalidateCache = useCallback(() => {

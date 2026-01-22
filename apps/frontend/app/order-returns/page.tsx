@@ -25,7 +25,7 @@ export default function OrderReturnsPage() {
     data: any[];
     timestamp: number;
   } | null>(null);
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5000; // 30 seconds
 
   // Cache invalidation helper
   const invalidateCache = useCallback(

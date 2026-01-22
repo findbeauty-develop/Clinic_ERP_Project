@@ -173,7 +173,7 @@ function OutboundPageContent() {
     data: PackageForOutbound[];
     timestamp: number;
   } | null>(null);
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5000; // 5 seconds
 
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
@@ -501,7 +501,7 @@ function OutboundPageContent() {
   const packageItemsCacheRef = useRef<
     Map<string, { data: PackageItemForOutbound[]; timestamp: number }>
   >(new Map());
-  const PACKAGE_ITEMS_CACHE_TTL = 30000; // 30 seconds
+  const PACKAGE_ITEMS_CACHE_TTL = 5000; // 5 seconds
 
   const fetchPackageItems = useCallback(
     async (packageId: string) => {

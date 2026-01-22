@@ -79,20 +79,20 @@ export default function ReturnsPage() {
     timestamp: number;
     searchQuery: string;
   } | null>(null);
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5000; // 5 seconds
 
   // Cache invalidation helper
   const invalidateCache = useCallback(() => {
     productsCacheRef.current = null;
   }, []);
 
-  useEffect(() => {
-    const memberData = localStorage.getItem("erp_member_data");
-    if (memberData) {
-      const member = JSON.parse(memberData);
-      setManagerName(member.full_name || member.member_id || "");
-    }
-  }, []);
+  // useEffect(() => {
+  //   const memberData = localStorage.getItem("erp_member_data");
+  //   if (memberData) {
+  //     const member = JSON.parse(memberData);
+  //     setManagerName(member.full_name || member.member_id || "");
+  //   }
+  // }, []);
 
   const fetchAvailableProducts = useCallback(async () => {
     const cacheKey = debouncedSearchQuery.trim() || "";
@@ -643,9 +643,7 @@ export default function ReturnsPage() {
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     반납 담당자
                   </label>
-                  <button className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-                    성함 선택
-                  </button>
+                  
                 </div>
                 <input
                   type="text"

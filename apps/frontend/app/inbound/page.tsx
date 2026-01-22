@@ -49,6 +49,7 @@ type ProductBatch = {
   유효기간: string | null;
   보관위치: string | null;
   "입고 수량": number;
+  purchase_price?: number | null;
   qty?: number; // Original qty from inbound (immutable)
   created_at: string;
 };
@@ -102,7 +103,7 @@ export default function InboundPage() {
     data: any[];
     timestamp: number;
   } | null>(null);
-  const PENDING_ORDERS_CACHE_TTL = 10000; // 10 seconds for faster updates
+  const PENDING_ORDERS_CACHE_TTL = 5000; // 10 seconds for faster updates
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -741,7 +742,7 @@ const ProductCard = memo(function ProductCard({
   const batchesCacheRef = useRef<
     Map<string, { data: ProductBatch[]; timestamp: number }>
   >(new Map());
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5000; // 30 seconds
 
   useEffect(() => {
     const fetchBatches = async () => {
@@ -1016,13 +1017,19 @@ const ProductCard = memo(function ProductCard({
                   {product.supplierName}
                 </span>
               )}
-
-              {product.storageLocation && (
+              {product.managerName && (
                 <span className="inline-flex items-center gap-1">
-                  <WarehouseIcon className="h-4 w-4" />
-                  {product.storageLocation}
+                  
+                  {product.managerName}
                 </span>
               )}
+              {product.managerPosition && (
+                <span className="inline-flex items-center gap-1">
+                  직책: {product.managerPosition}
+                </span>
+              )}
+
+             
             </div>
           </div>
         </div>
@@ -1100,6 +1107,11 @@ const ProductCard = memo(function ProductCard({
                     {batch.유효기간 && (
                       <span className="inline-flex items-center gap-1">
                         유효기간: {batch.유효기간}
+                      </span>
+                    )}
+                    {batch.purchase_price && (
+                      <span className="inline-flex items-center gap-1">
+                        구매가: {batch.purchase_price.toLocaleString()}원
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1 ml-auto">

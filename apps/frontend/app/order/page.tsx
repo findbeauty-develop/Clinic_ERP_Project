@@ -207,7 +207,7 @@ export default function OrderPage() {
     timestamp: number;
     sessionId: string;
   } | null>(null);
-  const CACHE_TTL = 30000; // 30 seconds
+  const CACHE_TTL = 5000; // 30 seconds
 
   // Client-side mount initialization (hydration error'dan qochish uchun)
   useEffect(() => {
