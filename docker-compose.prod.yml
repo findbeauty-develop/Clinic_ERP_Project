@@ -9,7 +9,7 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - ./apps/backend/.env
+      - ./apps/backend/.env.production
     environment:
       # ✅ Docker network ichida container nomi ishlatiladi
       - SUPPLIER_BACKEND_URL=http://supplier-erp-backend-prod:3002
@@ -40,9 +40,9 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://72.60.108.46:3000
+      - NEXT_PUBLIC_API_URL=https://api.jaclit.com
     env_file:
-      - ./apps/frontend/.env.local
+      - ./apps/frontend/.env.production
     depends_on:
       - backend
     networks:
@@ -56,12 +56,12 @@ services:
     ports:
       - "3002:3002"
     env_file:
-      - ./apps/supplier-backend/.env
+      - ./apps/supplier-backend/.env.production
     environment:
       # ✅ Docker network ichida container nomi ishlatiladi
       - CLINIC_BACKEND_URL=http://clinic-erp-backend-prod:3000
       - SUPPLIER_BACKEND_API_KEY=your_secret_api_key_here_34534sdffsd69ds8f8e9sdf89sd4e9e8w9f
-      - CORS_ORIGINS=http://13.209.40.48:3001,http://13.209.40.48:3003,http://localhost:3001,http://localhost:3003
+      - CORS_ORIGINS=http://13.209.40.48:3001,http://13.209.40.48:3003,https://clinic.jaclit.com,https://supplier.jaclit.com
     volumes:
       - ./apps/supplier-backend/keys:/app/apps/supplier-backend/keys:ro
     networks:
@@ -90,9 +90,9 @@ services:
       - "3003:3003"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://72.60.108.46:3002
+      - NEXT_PUBLIC_API_URL=https://api-supplier.jaclit.com
     env_file:
-      - ./apps/supplier-frontend/.env.local
+      - ./apps/supplier-frontend/.env.production
     depends_on:
       - supplier-backend
     networks:

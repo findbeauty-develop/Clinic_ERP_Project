@@ -878,12 +878,7 @@ export class ProductsService {
       dto.currentStock !== undefined
         ? dto.currentStock
         : existing.current_stock;
-    console.log(
-      "🔍 Updating current_stock from",
-      existing.current_stock,
-      "to",
-      newCurrentStock
-    );
+    
 
     // ✅ Update inbound_qty ONLY if user explicitly changed the stock field
     // If currentStock is different from existing, user edited it manually on edit page
@@ -893,14 +888,7 @@ export class ProductsService {
     const newInboundQty = stockWasChanged
       ? dto.currentStock
       : (existing as any).inbound_qty;
-    console.log(
-      "🔍 Stock changed:",
-      stockWasChanged,
-      "| Updating inbound_qty from",
-      (existing as any).inbound_qty,
-      "to",
-      newInboundQty
-    );
+   
 
     await this.prisma.$transaction(
       async (tx: any) => {
@@ -971,9 +959,7 @@ export class ProductsService {
             supplier.company_name;
 
           if (!hasSupplierData) {
-            console.log(
-              "⚠️ Empty supplier object received, skipping supplier update"
-            );
+            
           } else {
             // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
             if (supplier.contact_name || supplier.contact_phone) {
@@ -1306,9 +1292,7 @@ export class ProductsService {
         const outboundService = this.outboundService as any;
         if (outboundService.invalidateProductsCache) {
           outboundService.invalidateProductsCache(tenantId);
-          console.log(
-            `[ProductsService] OutboundService cache invalidated for tenant: ${tenantId}`
-          );
+          
         }
       } catch (error) {
         console.warn(
@@ -2083,9 +2067,7 @@ export class ProductsService {
                   if (supplier) {
                     supplierId = supplier.id;
                     supplierName = supplier.company_name;
-                    this.logger.log(
-                      `📞 Supplier matched: ${supplierName} (${row.contact_phone})`
-                    );
+                    
                   } else {
                     this.logger.warn(
                       `📞 No supplier found for phone: ${row.contact_phone}`

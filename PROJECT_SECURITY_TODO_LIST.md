@@ -90,6 +90,35 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 
 ---
 
+#### 6. Error Handling & Logging
+**Muammo:** Production'da stack trace ko'rinadi
+
+**Qilish kerak:**
+- ✅  HTTP Exception Filter yaratish
+- ✅ Production'da stack trace yashirish
+- ✅  Error logging (Winston yoki Pino)
+- ✅ Sensitive data filtering
+
+
+
+#### 7. Swagger Security
+**Muammo:** Production'da Swagger ochiq
+
+**Qilish kerak:**
+- ✅ Production'da Swagger butunlay o'chirish (development'da ishlaydi)
+- [ ] Nginx'da `/docs` endpoint'ni IP whitelist qilish (ixtiyoriy)
+- [ ] Yoki basic auth qo'shish (ixtiyoriy)
+
+**Fayllar:**
+- ✅ `apps/backend/src/main.ts` (conditional Swagger)
+- [ ] Nginx config file (ixtiyoriy)
+
+
+**Fayllar:**
+- `apps/backend/src/common/filters/http-exception.filter.ts` (yangi)
+
+---
+
 ## ❌ QILISH KERAK BO'LGAN ISHLAR (TODO)
 
 ### 🔴 CRITICAL (Production'ga chiqishdan oldin majburiy)
@@ -117,14 +146,14 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 **Muammo:** Production'da localhost fallback mavjud
 
 **Qilish kerak:**
-- [ ] Production'da localhost fallback'ni o'chirish
-- [ ] CORS_ORIGINS bo'sh bo'lsa error throw qilish
-- [ ] Origin validation callback function
-- [ ] Preflight request handling
+- ✅ Production'da localhost fallback'ni o'chirish
+- ✅ CORS_ORIGINS bo'sh bo'lsa error throw qilish
+- ✅ Origin validation callback function
+- ✅ Preflight request handling
 
 **Fayllar:**
-- `apps/backend/src/main.ts` (Line 23-32)
-- `apps/supplier-backend/src/main.ts` (Line 28-38)
+- ✅ `apps/backend/src/main.ts` (Line 23-65)
+- ✅ `apps/supplier-backend/src/main.ts` (Line 28-70)
 
 ---
 
@@ -161,32 +190,7 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 
 ---
 
-#### 6. Error Handling & Logging
-**Muammo:** Production'da stack trace ko'rinadi
 
-**Qilish kerak:**
-- ✅ HTTP Exception Filter yaratish
-- ✅ Production'da stack trace yashirish
-- ✅ Error logging (Logger ishlatilmoqda)
-- ✅ Sensitive data filtering (password, token, secret key'lar)
-
-**Fayllar:**
-- ✅ `apps/backend/src/common/filters/http-exception.filter.ts`
-- ✅ `apps/backend/src/app.module.ts`
-
----
-
-#### 7. Swagger Security
-**Muammo:** Production'da Swagger ochiq
-
-**Qilish kerak:**
-- [ ] Nginx'da `/docs` endpoint'ni IP whitelist qilish
-- [ ] Yoki basic auth qo'shish
-- [ ] Yoki production'da butunlay o'chirish
-
-**Fayllar:**
-- Nginx config file
-- `apps/backend/src/main.ts` (conditional Swagger)
 
 ---
 
