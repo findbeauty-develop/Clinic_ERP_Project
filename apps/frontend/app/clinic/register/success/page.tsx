@@ -21,6 +21,7 @@ type Clinic = {
 };
 
 type ClinicSummary = {
+  id?: string | null;
   name?: string | null;
   englishName?: string | null;
   category?: string | null;
@@ -54,7 +55,7 @@ const normalizeClinicName = (name: string) =>
 
 const STEP_ITEMS = [
   { step: 1, label: "클리닉 인증" },
-  { step: 2, label: "법인 인증" },
+  // { step: 2, label: "법인 인증" },
   { step: 3, label: "계정 만들기" },
   { step: 4, label: "가입성공" },
 ];
@@ -84,6 +85,7 @@ export default function ClinicRegisterSuccessPage() {
   const [members, setMembers] = useState<CreatedMember[]>([]);
   const [missingData, setMissingData] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -263,11 +265,12 @@ export default function ClinicRegisterSuccessPage() {
               <button
                 type="button"
                 onClick={() => {
-                  // Store clinic ID for edit mode
-                  if (clinicFromApi?.id) {
+                  // Store clinic ID for edit mode (from API or sessionStorage)
+                  const clinicId = clinicFromApi?.id || clinic?.id;
+                  if (clinicId) {
                     sessionStorage.setItem(
                       "erp_editing_clinic_id",
-                      clinicFromApi.id
+                      clinicId
                     );
                   }
                   router.push("/clinic/register");
@@ -353,11 +356,12 @@ export default function ClinicRegisterSuccessPage() {
               <button
                 type="button"
                 onClick={() => {
-                  // Store clinic ID for edit mode
-                  if (clinicFromApi?.id) {
+                  // Store clinic ID for edit mode (from API or sessionStorage)
+                  const clinicId = clinicFromApi?.id || clinic?.id;
+                  if (clinicId) {
                     sessionStorage.setItem(
                       "erp_editing_clinic_id",
-                      clinicFromApi.id
+                      clinicId
                     );
                   }
                   router.push("/clinic/register/member");
@@ -425,7 +429,7 @@ export default function ClinicRegisterSuccessPage() {
           <button
             type="button"
             onClick={() => {
-              router.push("/login");
+              setShowCompletionModal(true);
             }}
             className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
           >
@@ -433,6 +437,59 @@ export default function ClinicRegisterSuccessPage() {
           </button>
         </footer>
       </div>
+
+      {/* Completion Modal */}
+      {showCompletionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowCompletionModal(false)}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              <h2 className="mb-2 text-xl font-bold text-slate-900">
+                가입이 완료되었습니다.
+              </h2>
+              <p className="mb-6 text-sm font-semibold text-slate-900">
+                로그인 후 서비스를 이용해주세요.
+              </p>
+
+              {/* Confirmation Button */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCompletionModal(false);
+                    router.push("/login");
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-teal-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

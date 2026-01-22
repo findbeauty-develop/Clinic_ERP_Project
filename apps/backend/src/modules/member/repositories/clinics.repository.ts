@@ -37,5 +37,21 @@ export class ClinicsRepository {
       },
     });
   }
+
+  findByDocumentIssueNumberAndNameExcludingId(
+    documentIssueNumber: string,
+    name: string,
+    excludeId: string
+  ) {
+    return this.prisma.clinic.findFirst({
+      where: {
+        document_issue_number: documentIssueNumber,
+        name: name,
+        id: {
+          not: excludeId,
+        },
+      },
+    });
+  }
 }
 

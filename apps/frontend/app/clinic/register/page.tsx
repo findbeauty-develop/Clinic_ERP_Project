@@ -63,6 +63,7 @@ export default function ClinicRegisterPage() {
   const [certificateVerificationError, setCertificateVerificationError] =
     useState<string | null>(null);
   const [isCertificateVerified, setIsCertificateVerified] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
 
   useEffect(() => {
@@ -157,17 +158,31 @@ export default function ClinicRegisterPage() {
         let matchedClinic: Clinic | undefined;
         if (editingClinicId) {
           matchedClinic = clinics.find((c) => c.id === editingClinicId);
+          // If not found by ID, try to set clinicId from sessionStorage
+          if (!matchedClinic && editingClinicId) {
+            setClinicId(editingClinicId);
+          }
         } else if (clinicSummaryRaw) {
           const clinicSummary = JSON.parse(clinicSummaryRaw) as {
+            id?: string;
             name?: string;
             englishName?: string;
           };
-          matchedClinic = clinics.find((c) => c.name === clinicSummary.name);
+          // Try to find by ID first (from sessionStorage)
+          if (clinicSummary.id) {
+            matchedClinic = clinics.find((c) => c.id === clinicSummary.id);
+            if (!matchedClinic && clinicSummary.id) {
+              setClinicId(clinicSummary.id);
+            }
+          }
+          // If not found by ID, try by name
+          if (!matchedClinic) {
+            matchedClinic = clinics.find((c) => c.name === clinicSummary.name);
+          }
         }
 
         if (matchedClinic) {
           // Store clinic ID for update mode
-
           setClinicId(matchedClinic.id);
 
           // Convert image URLs to absolute URLs if they are relative
@@ -445,6 +460,12 @@ export default function ClinicRegisterPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Show confirmation modal instead of submitting directly
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    setShowConfirmModal(false);
     if (!apiUrl) {
       window.alert("API 주소가 설정되지 않았습니다.");
       return;
@@ -535,7 +556,7 @@ export default function ClinicRegisterPage() {
             tenantId: result.tenant_id, // Include tenant_id
           })
         );
-        window.location.href = "/clinic/register/complete";
+        window.location.href = "/clinic/register/member";
       }
     } catch (error) {
       // Error message is already shown in the if (!response.ok) block
@@ -567,7 +588,7 @@ export default function ClinicRegisterPage() {
         <nav className="mx-auto flex w-full max-w-2xl items-center justify-between text-sm text-slate-400">
           {[
             { step: 1, label: "클리닉 인증" },
-            { step: 2, label: "법인 인증" },
+            // { step: 2, label: "법인 인증" },
             { step: 3, label: "계정 만들기" },
             { step: 4, label: "가입성공" },
           ].map(({ step, label }) => (
@@ -887,6 +908,67 @@ export default function ClinicRegisterPage() {
           </form>
         </section>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowConfirmModal(false)}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              <h2 className="mb-4 text-xl font-bold text-slate-900">
+                내용을 확인하셨습니까?
+              </h2>
+              <p className="mb-6 text-sm text-slate-600">
+                다음단계로 이동하면 병의원 정보{" "}
+                <span className="font-semibold text-red-500">
+                  수정 불가능합니다.
+                </span>
+              </p>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="text-sm font-medium text-slate-600 underline transition hover:text-slate-800"
+                >
+                  다시 확인하기
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSubmit}
+                  disabled={loading}
+                  className="rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-teal-600 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {loading ? "처리 중..." : "다음 단계"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

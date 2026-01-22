@@ -349,7 +349,7 @@ export default function ClinicMemberSetupPage() {
         <nav className="mx-auto flex w-full max-w-2xl items-center justify-between text-sm text-slate-400">
           {[
             { step: 1, label: "클리닉 인증" },
-            { step: 2, label: "법인 인증" },
+            // { step: 2, label: "법인 인증" },
             { step: 3, label: "계정 만들기" },
             { step: 4, label: "가입성공" },
           ].map(({ step, label }) => (

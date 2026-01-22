@@ -128,6 +128,19 @@ export class ClinicsService {
       throw new NotFoundException("Clinic not found");
     }
 
+    // Check for duplicate clinic (same name and document_issue_number) excluding current clinic
+    const duplicateClinic = await this.repository.findByDocumentIssueNumberAndNameExcludingId(
+      recognized.documentIssueNumber,
+      recognized.name,
+      id
+    );
+
+    if (duplicateClinic) {
+      throw new BadRequestException(
+        `이미 등록된 클리닉입니다.`
+      );
+    }
+
     // Process new images (base64) and keep existing URLs
     const documentUrls = recognized.documentImageUrls ?? [];
     const newBase64Images = documentUrls.filter((url) =>
