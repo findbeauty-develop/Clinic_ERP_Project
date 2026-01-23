@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
+  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
 
   const next = searchParams.get("next") || "/dashboard";
 

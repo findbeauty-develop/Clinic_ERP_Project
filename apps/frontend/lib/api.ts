@@ -202,6 +202,12 @@ export const getAccessToken = async (skipLogout: boolean = false): Promise<strin
     return accessToken;
   }
 
+  // ✅ Agar skipLogout true bo'lsa va access token yo'q bo'lsa, refresh so'rovini yubormaslik
+  // Bu register page'lar uchun - ular authentication'siz ishlaydi
+  if (skipLogout && !accessToken) {
+    return null; // Token yo'q, lekin logout qilmaslik
+  }
+
   // ✅ Agar refresh request allaqachon davom etayotgan bo'lsa, uni kutish (deduplication)
   if (refreshPromise) {
     return refreshPromise;

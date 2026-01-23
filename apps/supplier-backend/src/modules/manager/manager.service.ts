@@ -522,70 +522,177 @@ export class ManagerService {
           });
 
           // 12. ✨ AUTO-LINK: Barcha matching ClinicSupplierManager'larni topish va link qilish
-          // Match by: phone_number + name (yoki business_number if linked)
-          const allMatchingClinicManagers =
-            await tx.clinicSupplierManager.findMany({
-              where: {
-                OR: [
-                  {
-                    // Match by phone + name
-                    phone_number: dto.manager.phoneNumber,
-                    name: dto.manager.name,
-                  },
-                  {
-                    // Match by phone (agar name biroz farq qilsa)
-                    phone_number: dto.manager.phoneNumber,
-                  },
-                ],
-                linked_supplier_manager_id: null, // Faqat unlinked suppliers
-              },
-              include: {
-                linkedManager: {
-                  include: {
-                    supplier: {
-                      select: {
-                        business_number: true,
-                      },
-                    },
-                  },
-                },
-              },
+          // Match by: phone_number + name + business_number (ClinicSupplierManager'ning o'zidagi)
+          try {
+            this.logger.log(
+              `[AUTO-LINK] Starting auto-link for phone: ${dto.manager.phoneNumber}, name: ${dto.manager.name}, businessNumber: ${dto.company.businessNumber}`
+            );
+
+            // Phone number normalization (remove spaces, dashes, parentheses)
+            const normalizedPhone = dto.manager.phoneNumber.replace(/[\s\-\(\)]/g, "").trim();
+            const phoneVariations = [
+              dto.manager.phoneNumber,
+              normalizedPhone,
+              dto.manager.phoneNumber.replace(/-/g, ""),
+              dto.manager.phoneNumber.replace(/\s/g, ""),
+            ].filter((p, i, arr) => arr.indexOf(p) === i); // Remove duplicates
+
+            // Business number normalization (remove dashes)
+            const normalizedBusinessNumber = dto.company.businessNumber
+              ? dto.company.businessNumber.replace(/-/g, "").trim()
+              : null;
+
+            const businessNumberVariations = normalizedBusinessNumber
+              ? [
+                  dto.company.businessNumber,
+                  normalizedBusinessNumber,
+                  dto.company.businessNumber.replace(/-/g, ""),
+                ].filter((b, i, arr) => arr.indexOf(b) === i) // Remove duplicates
+              : [];
+
+            this.logger.log(
+              `[AUTO-LINK] Phone variations: ${JSON.stringify(phoneVariations)}`
+            );
+            this.logger.log(
+              `[AUTO-LINK] Business number variations: ${JSON.stringify(businessNumberVariations)}`
+            );
+
+            // Build OR conditions
+            const orConditions: any[] = [];
+
+            // 1. Match by phone + name
+            phoneVariations.forEach((phone) => {
+              orConditions.push({
+                phone_number: phone,
+                name: { equals: dto.manager.name, mode: "insensitive" },
+              });
             });
 
-          // Filter: Faqat matching business (yoki manual - linkedManager yo'q)
-          const matchingManagers = allMatchingClinicManagers.filter(
-            (cm: any) => {
-              return (
-                !cm.linkedManager || // Manual supplier (not linked yet)
-                cm.linkedManager.supplier.business_number ===
-                  dto.company.businessNumber
-              );
+            // 2. Match by phone only (if name differs slightly)
+            phoneVariations.forEach((phone) => {
+              orConditions.push({
+                phone_number: phone,
+              });
+            });
+
+            // 3. ✅ CRITICAL: Match by ClinicSupplierManager'ning o'zidagi business_number
+            // Agar business number mos kelsa, phone/name farq qilsa ham link qilish
+            if (businessNumberVariations.length > 0) {
+              businessNumberVariations.forEach((businessNumber) => {
+                orConditions.push({
+                  business_number: businessNumber,
+                });
+              });
             }
-          );
 
-          // Auto-link barcha matching managers
-          if (matchingManagers.length > 0) {
-           
+            // 4. Match by business_number + name (more specific)
+            if (businessNumberVariations.length > 0) {
+              businessNumberVariations.forEach((businessNumber) => {
+                orConditions.push({
+                  business_number: businessNumber,
+                  name: { equals: dto.manager.name, mode: "insensitive" },
+                });
+              });
+            }
 
-            for (const clinicManager of matchingManagers) {
-              await tx.clinicSupplierManager.update({
-                where: { id: clinicManager.id },
-                data: {
-                  linked_supplier_manager_id: manager.id, // Link to SupplierManager
+            const allMatchingClinicManagers =
+              await tx.clinicSupplierManager.findMany({
+                where: {
+                  OR: orConditions,
+                  linked_supplier_manager_id: null, // Faqat unlinked suppliers
                 },
+                // linkedManager include qilish shart emas, chunki biz ClinicSupplierManager'ning o'zidagi business_number'ni tekshiramiz
               });
 
-            
+            this.logger.log(
+              `[AUTO-LINK] Found ${allMatchingClinicManagers.length} matching clinic managers (unlinked)`
+            );
+
+            // Log found records for debugging
+            if (allMatchingClinicManagers.length > 0) {
+              this.logger.log(
+                `[AUTO-LINK] Matching records: ${JSON.stringify(
+                  allMatchingClinicManagers.map((cm: any) => ({
+                    id: cm.id,
+                    tenant_id: cm.tenant_id,
+                    name: cm.name,
+                    phone_number: cm.phone_number,
+                    business_number: cm.business_number,
+                  })),
+                  null,
+                  2
+                )}`
+              );
             }
 
-            // 12a. Trade link creation removed
-            // IMPORTANT: ClinicSupplierLink should NOT be auto-created when supplier registers
-            // Trade links should only be created when:
-            // 1. Clinic creates a product with this supplier (automatic)
-            // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
-            // This ensures that only clinics that have actually done business with the supplier
-            // will see the supplier in primary search results
-            
+            // ✅ Filter: ClinicSupplierManager'ning o'zidagi business_number'ni tekshirish
+            const matchingManagers = allMatchingClinicManagers.filter(
+              (cm: any) => {
+                // Agar ClinicSupplierManager'da business_number mos kelsa, avtomatik qabul qilish
+                if (normalizedBusinessNumber && cm.business_number) {
+                  const cmBusinessNumber = cm.business_number.replace(/-/g, "").trim();
+                  if (cmBusinessNumber === normalizedBusinessNumber) {
+                    this.logger.log(
+                      `[AUTO-LINK] ✅ Business number match: ${cm.business_number} === ${dto.company.businessNumber}`
+                    );
+                    return true;
+                  }
+                }
+
+                // Phone number match bo'lsa ham qabul qilish (OR condition'da allaqachon filter qilingan)
+                return true;
+              }
+            );
+
+            this.logger.log(
+              `[AUTO-LINK] Filtered to ${matchingManagers.length} matching managers after business number check`
+            );
+
+            // Auto-link barcha matching managers
+            if (matchingManagers.length > 0) {
+              for (const clinicManager of matchingManagers) {
+                try {
+                  await tx.clinicSupplierManager.update({
+                    where: { id: clinicManager.id },
+                    data: {
+                      linked_supplier_manager_id: manager.id, // Link to SupplierManager
+                    },
+                  });
+                  this.logger.log(
+                    `[AUTO-LINK] ✅ Linked clinic manager ${clinicManager.id} (tenant: ${clinicManager.tenant_id}, phone: ${clinicManager.phone_number}, business: ${clinicManager.business_number}) to supplier manager ${manager.id}`
+                  );
+                } catch (linkError: any) {
+                  this.logger.error(
+                    `[AUTO-LINK] ❌ Failed to link clinic manager ${clinicManager.id}: ${linkError.message}`,
+                    linkError.stack
+                  );
+                  // Continue with other managers even if one fails
+                }
+              }
+
+              this.logger.log(
+                `[AUTO-LINK] ✅ Successfully processed ${matchingManagers.length} clinic managers`
+              );
+
+              // 12a. Trade link creation removed
+              // IMPORTANT: ClinicSupplierLink should NOT be auto-created when supplier registers
+              // Trade links should only be created when:
+              // 1. Clinic creates a product with this supplier (automatic)
+              // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
+              // This ensures that only clinics that have actually done business with the supplier
+              // will see the supplier in primary search results
+            } else {
+              this.logger.log(
+                `[AUTO-LINK] ℹ️ No matching clinic managers found for auto-link`
+              );
+            }
+          } catch (autoLinkError: any) {
+            // Auto-link muammosi registration'ni to'xtatmasligi kerak
+            this.logger.error(
+              `[AUTO-LINK] ❌ Auto-link process failed: ${autoLinkError.message}`,
+              autoLinkError.stack
+            );
+            // Continue registration even if auto-link fails
           } 
 
           // 13. Create region tags

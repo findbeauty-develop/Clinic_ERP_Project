@@ -78,7 +78,7 @@ const roleLabel = (role: string) => {
 
 export default function ClinicRegisterSuccessPage() {
   const router = useRouter();
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
+  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
   const [clinic, setClinic] = useState<ClinicSummary | null>(null);
   const [clinicFromApi, setClinicFromApi] = useState<Clinic | null>(null);
   const [owner, setOwner] = useState<OwnerProfile | null>(null);

@@ -327,25 +327,14 @@ build_and_push_images() {
             exit 1
         fi
         
-        # Domain yoki IP tekshirish
-        if [[ "$VPS_IP_INPUT" == *"."* ]] && [[ "$VPS_IP_INPUT" != *"http"* ]]; then
-            # Domain yoki IP
-            if [[ "$VPS_IP_INPUT" == *"jaclit.com"* ]] || [[ "$VPS_IP_INPUT" == *"localhost"* ]]; then
-                # Domain
-                BACKEND_URL="https://api.jaclit.com"
-                SUPPLIER_BACKEND_URL="https://api-supplier.jaclit.com"
-            else
-                # IP
-                BACKEND_URL="http://${VPS_IP_INPUT}:3000"
-                SUPPLIER_BACKEND_URL="http://${VPS_IP_INPUT}:3002"
-            fi
-        else
-            BACKEND_URL="$VPS_IP_INPUT"
-            SUPPLIER_BACKEND_URL="$VPS_IP_INPUT"
-        fi
+        # Production deployment uchun har doim HTTPS domain'lar ishlatiladi
+        # IP kiritilsa ham, production'da domain ishlatish kerak
+        BACKEND_URL="https://api.jaclit.com"
+        SUPPLIER_BACKEND_URL="https://api-supplier.jaclit.com"
     else
-        BACKEND_URL="${BACKEND_URL:-http://${VPS_IP:-YOUR_VPS_IP}:3000}"
-        SUPPLIER_BACKEND_URL="${SUPPLIER_BACKEND_URL:-http://${VPS_IP:-YOUR_VPS_IP}:3002}"
+        # Default: Production domain'lar
+        BACKEND_URL="https://api.jaclit.com"
+        SUPPLIER_BACKEND_URL="https://api-supplier.jaclit.com"
     fi
     
     print_info "Backend URL: $BACKEND_URL"

@@ -46,7 +46,7 @@ const isProduction = process.env.NODE_ENV === "production";
           "CORS_ORIGINS environment variable must be set in production mode"
         );
       })()
-    : ["https://clinic.jaclit.com", "https://supplier.jaclit.com"];
+    : ["https://clinic.jaclit.com", "https://supplier.jaclit.com", "http://localhost:3000", "http://localhost:3001", "http://localhost:3003"];
 
   // Origin validation callback function (qo'shimcha xavfsizlik)
   const originValidator = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {

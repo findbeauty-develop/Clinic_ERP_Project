@@ -29,7 +29,7 @@ async function bootstrap() {
   // Production'da CORS_ORIGINS majburiy, development'da localhost fallback
   const isProduction = process.env.NODE_ENV === "production";
   
-  const allowedOrigins = process.env.CORS_ORIGINS
+  let allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
     : isProduction
     ? (() => {
@@ -37,12 +37,36 @@ async function bootstrap() {
           "CORS_ORIGINS environment variable must be set in production mode"
         );
       })()
-    : ["https://clinic.jaclit.com", "https://supplier.jaclit.com"];
+    : ["https://clinic.jaclit.com", "https://supplier.jaclit.com", "http://localhost:3000", "http://localhost:3001", "http://localhost:3003"];
+
+  // ✅ FIX: Development mode'da localhost'ni avtomatik qo'shish
+  if (!isProduction && process.env.CORS_ORIGINS) {
+    const localhostOrigins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3003"];
+    localhostOrigins.forEach((origin) => {
+      if (!allowedOrigins.includes(origin)) {
+        allowedOrigins.push(origin);
+      }
+    });
+  }
+
+  // ✅ FIX: Production mode'da ham localhost'ni qo'shish (local development uchun)
+  // Agar localhost'dan so'rov kelsa, ruxsat berish
+  const localhostOrigins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3003"];
+  localhostOrigins.forEach((origin) => {
+    if (!allowedOrigins.includes(origin)) {
+      allowedOrigins.push(origin);
+    }
+  });
 
   // Origin validation callback function (qo'shimcha xavfsizlik)
   const originValidator = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Preflight request'lar uchun origin undefined bo'lishi mumkin
     if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Localhost'ni har doim ruxsat berish (local development uchun)
+    if (origin.startsWith("http://localhost:") || origin.startsWith("https://localhost:")) {
       return callback(null, true);
     }
     

@@ -295,7 +295,7 @@ sudo nano /etc/nginx/sites-available/clinic.conf
 # Clinic Frontend (Port 3001)
 server {
     listen 80;
-    server_name clinic.YOUR_DOMAIN.com;
+    server_name clinic.jaclit.com;
     
     # HTTP'dan HTTPS'ga redirect (Certbot qo'shadi)
     return 301 https://$server_name$request_uri;
@@ -303,11 +303,11 @@ server {
 
 server {
     listen 443 ssl http2;
-    server_name clinic.YOUR_DOMAIN.com;
+    server_name clinic.jaclit.com;
 
     # SSL Sertifikatlar (Certbot to'ldiradi)
-    ssl_certificate /etc/letsencrypt/live/clinic.YOUR_DOMAIN.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/clinic.YOUR_DOMAIN.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/clinic.jaclit.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/clinic.jaclit.com/privkey.pem;
     
     # SSL Sozlamalari
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -367,17 +367,17 @@ sudo nano /etc/nginx/sites-available/supplier.conf
 # Supplier Frontend (Port 3003)
 server {
     listen 80;
-    server_name supplier.YOUR_DOMAIN.com;
+    server_name supplier.jaclit.com;
     
     return 301 https://$server_name$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name supplier.YOUR_DOMAIN.com;
+    server_name supplier.jaclit.com;
 
-    ssl_certificate /etc/letsencrypt/live/supplier.YOUR_DOMAIN.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/supplier.YOUR_DOMAIN.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/supplier.jaclit.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/supplier.jaclit.com/privkey.pem;
     
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -430,17 +430,17 @@ sudo nano /etc/nginx/sites-available/api.conf
 # Clinic Backend API (Port 3000)
 server {
     listen 80;
-    server_name api.YOUR_DOMAIN.com;
+    server_name api.jaclit.com;
     
     return 301 https://$server_name$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name api.YOUR_DOMAIN.com;
+    server_name api.jaclit.com;
 
-    ssl_certificate /etc/letsencrypt/live/api.YOUR_DOMAIN.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.YOUR_DOMAIN.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.jaclit.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.jaclit.com/privkey.pem;
     
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -500,17 +500,17 @@ sudo nano /etc/nginx/sites-available/api-supplier.conf
 # Supplier Backend API (Port 3002)
 server {
     listen 80;
-    server_name api-supplier.YOUR_DOMAIN.com;
+    server_name api-supplier.jaclit.com;
     
     return 301 https://$server_name$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name api-supplier.YOUR_DOMAIN.com;
+    server_name api-supplier.jaclit.com;
 
-    ssl_certificate /etc/letsencrypt/live/api-supplier.YOUR_DOMAIN.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api-supplier.YOUR_DOMAIN.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api-supplier.jaclit.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api-supplier.jaclit.com/privkey.pem;
     
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;

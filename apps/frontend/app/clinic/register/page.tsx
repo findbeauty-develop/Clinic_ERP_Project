@@ -64,7 +64,7 @@ export default function ClinicRegisterPage() {
     useState<string | null>(null);
   const [isCertificateVerified, setIsCertificateVerified] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "", []);
+  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
 
   useEffect(() => {
     const loadToken = async () => {
@@ -320,19 +320,35 @@ export default function ClinicRegisterPage() {
       const formData = new FormData();
       formData.append("file", file);
 
+      // ✅ Token ixtiyoriy - register page'da token yo'q bo'lishi mumkin
+      const headers: HeadersInit = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${apiUrl}/iam/members/clinics/verify-certificate`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
           body: formData,
         }
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // 500 error yoki boshqa server error
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {
+          // JSON parse xatosi - text response olish
+          const errorText = await response.text().catch(() => "");
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();

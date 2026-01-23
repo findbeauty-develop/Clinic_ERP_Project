@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ClinicsRepository } from "../repositories/clinics.repository";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
@@ -12,6 +12,8 @@ import { v4 as uuidv4 } from "uuid";
 
 @Injectable()
 export class ClinicsService {
+  private readonly logger = new Logger(ClinicsService.name);
+
   constructor(
     private readonly repository: ClinicsRepository,
     private readonly googleVisionService: GoogleVisionService,
@@ -210,7 +212,45 @@ export class ClinicsService {
     }
 
     // Step 2: Extract text using OCR
-    const rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
+    let rawText = "";
+    try {
+      rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
+    } catch (error) {
+      // Google Vision API xatosi - graceful degradation
+      this.logger.error("OCR extraction failed:", error);
+      // Return error response instead of throwing
+      return {
+        isValid: false,
+        confidence: 0,
+        fields: {},
+        mappedData: {
+          name: "",
+          category: "",
+          location: "",
+          medicalSubjects: "",
+          licenseType: "의사면허",
+          licenseNumber: "",
+          documentIssueNumber: "",
+        },
+        rawText: "",
+        warnings: [
+          "OCR 서비스에 연결할 수 없습니다. Google Cloud Vision API 설정을 확인해주세요.",
+          error instanceof Error ? error.message : "Unknown OCR error"
+        ],
+        fileUrl: fileUrl || undefined,
+        hiraVerification: {
+          isValid: false,
+          confidence: 0,
+          matches: {
+            nameMatch: false,
+            addressMatch: false,
+            typeMatch: false,
+            dateMatch: false,
+          },
+          warnings: ["OCR failed, HIRA verification skipped"],
+        },
+      };
+    }
 
     // Step 3: Parse fields from OCR text
     const fields = this.certificateParserService.parseKoreanClinicCertificate(rawText);

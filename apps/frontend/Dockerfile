@@ -39,6 +39,7 @@ COPY --from=builder /workspace/apps/frontend/package.json ./package.json
 COPY --from=builder /workspace/apps/frontend/next.config.js ./next.config.js
 COPY --from=builder /workspace/apps/frontend/tailwind.config.ts ./tailwind.config.ts
 COPY --from=builder /workspace/apps/frontend/postcss.config.js ./postcss.config.js
+COPY --from=builder /workspace/apps/frontend/public ./public
 
 EXPOSE 3001
 CMD node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port 3001
