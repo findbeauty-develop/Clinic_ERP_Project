@@ -1,15 +1,28 @@
 import React, { useState, useEffect } from "react";
 
 export default function KoreanClockWidget() {
-  const [time, setTime] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [time, setTime] = useState<Date | null>(null);
 
   useEffect(() => {
+    setMounted(true);
+    setTime(new Date());
+    
     const timer = setInterval(() => {
       setTime(new Date());
     }, 1000);
 
     return () => clearInterval(timer);
   }, []);
+
+  // Hydration mismatch'ni oldini olish
+  if (!mounted || !time) {
+    return (
+      <div className="relative w-80 h-80 flex items-center justify-center">
+        <div className="text-white">로딩 중...</div>
+      </div>
+    );
+  }
 
   // Convert to Korean time (KST = UTC+9)
   const koreanTime = new Date(

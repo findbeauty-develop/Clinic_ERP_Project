@@ -141,6 +141,7 @@ export default function OrderPage() {
 
   // Current logged-in member name (read-only)
   const [orderManagerName, setOrderManagerName] = useState("");
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
   // Client-side mount state (hydration error'dan qochish uchun)
   const [isMounted, setIsMounted] = useState(false);
@@ -214,6 +215,7 @@ export default function OrderPage() {
     if (typeof window !== "undefined") {
       // Mark as mounted
       setIsMounted(true);
+      setLastUpdateTime(new Date().toLocaleString("ko-KR"));
 
       // Initialize session ID
       const existingSessionId = localStorage.getItem("order_session_id");
@@ -1011,7 +1013,7 @@ export default function OrderPage() {
                 새로고침
               </button>
               <div className="text-sm text-slate-500 dark:text-slate-400">
-                마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+                마지막 업데이트: {lastUpdateTime || "로딩 중..."}
               </div>
             </div>
           </div>

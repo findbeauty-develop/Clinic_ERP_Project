@@ -420,6 +420,7 @@ export default function PackageNewPage() {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     new Set()
   );
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
   // Load package data if in edit mode
   useEffect(() => {
@@ -482,6 +483,11 @@ export default function PackageNewPage() {
       setShowSuggestions(false);
     }
   }, [packageName, apiUrl]);
+
+  // Set last update time after mount to prevent hydration mismatch
+  useEffect(() => {
+    setLastUpdateTime(new Date().toLocaleString("ko-KR"));
+  }, []);
 
   const fetchProducts = async (forceRefresh = false) => {
     setLoading(true);
@@ -879,7 +885,7 @@ export default function PackageNewPage() {
               </div>
             </div>
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              마지막 업데이트: {new Date().toLocaleString("ko-KR")}
+              마지막 업데이트: {lastUpdateTime || "로딩 중..."}
             </span>
           </div>
         </header>

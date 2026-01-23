@@ -64,6 +64,7 @@ export default function ReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
   // Debounce search query to avoid excessive API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
@@ -135,6 +136,19 @@ export default function ReturnsPage() {
   useEffect(() => {
     fetchAvailableProducts();
   }, [fetchAvailableProducts]);
+
+  // Set last update time after mount to prevent hydration mismatch
+  useEffect(() => {
+    setLastUpdateTime(
+      new Date().toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+  }, []);
 
   const handleQuantityChange = (productId: string, delta: number) => {
     const product = products.find((p) => p.productId === productId);
@@ -348,14 +362,7 @@ export default function ReturnsPage() {
               </p>
             </div>
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              마지막 업데이트:{" "}
-              {new Date().toLocaleString("ko-KR", {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              마지막 업데이트: {lastUpdateTime || "로딩 중..."}
             </div>
           </div>
         </header>

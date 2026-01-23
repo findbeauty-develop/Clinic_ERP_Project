@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { apiRequest, getTenantId, getMemberData } from "../../lib/api";
+import { apiGet, getTenantId, getMemberData } from "../../lib/api";
 import { Settings } from "lucide-react";
 
 const navItems = [
@@ -254,18 +254,15 @@ export function Sidebar() {
         return;
       }
 
-      // Clinic name'ni API'dan olish
+      // Clinic name'ni API'dan olish - apiGet body'ni avtomatik o'qiydi
       try {
-        const clinicsResponse = await apiRequest(
+        const clinics = await apiGet<any[]>(
           `/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
         );
         
-        if (clinicsResponse.ok) {
-          const clinics = await clinicsResponse.json();
-          if (clinics && clinics.length > 0) {
-            // Birinchi clinic'ni olish (tenant_id bo'yicha faqat bitta clinic bo'lishi kerak)
-            setClinicName(clinics[0].name || "");
-          }
+        if (clinics && clinics.length > 0) {
+          // Birinchi clinic'ni olish (tenant_id bo'yicha faqat bitta clinic bo'lishi kerak)
+          setClinicName(clinics[0].name || "");
         }
       } catch (error) {
         console.error("Error fetching clinic name:", error);
