@@ -275,7 +275,7 @@ export default function InboundPage() {
               전체 제품
             </h1>
           </div>
-          <div className="flex gap-3">
+          {/* <div className="flex gap-3">
             <button
               onClick={() => setShowCSVImportModal(true)}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-blue-700 hover:to-blue-800 hover:shadow-xl dark:from-blue-500 dark:to-blue-600 dark:hover:from-blue-600 dark:hover:to-blue-700"
@@ -283,7 +283,7 @@ export default function InboundPage() {
               <span className="text-xl">📦</span>
               CSV Import
             </button>
-          </div>
+          </div> */}
         </header>
 
         <>

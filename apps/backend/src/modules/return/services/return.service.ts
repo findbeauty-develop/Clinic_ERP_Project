@@ -29,7 +29,7 @@ export class ReturnService {
   ) {
     this.availableProductsCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000,
       name: "ReturnService",
     });
@@ -117,35 +117,6 @@ export class ReturnService {
     });
 
     // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
-
-    // Avval barcha product'larni olish (debug uchun)
-    const allProductsCount = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).product.count({
-        where: { tenant_id: tenantId },
-      });
-    });
-
-    // ReturnPolicy bilan product'larni olish (debug uchun)
-    const productsWithReturnPolicy = await this.prisma.executeWithRetry(
-      async () => {
-        return await (this.prisma as any).product.findMany({
-          where: {
-            tenant_id: tenantId,
-            returnPolicy: { isNot: null }, // returnPolicy mavjud bo'lganlar (Prisma'da isNot camelCase)
-          },
-          select: {
-            id: true,
-            name: true,
-            returnPolicy: {
-              select: {
-                is_returnable: true,
-              },
-            },
-          },
-        });
-      }
-    );
-
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.findMany({
         where: {

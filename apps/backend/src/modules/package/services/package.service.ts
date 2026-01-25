@@ -24,14 +24,14 @@ export class PackageService {
   ) {
     this.packagesCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000,
       name: "PackageService:Packages",
     });
 
     this.packageItemsCache = new CacheManager({
       maxSize: 200, // More items expected
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000,
       name: "PackageService:Items",
     });

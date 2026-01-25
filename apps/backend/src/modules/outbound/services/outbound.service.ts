@@ -31,7 +31,7 @@ export class OutboundService {
     // Initialize CacheManagers
     this.productsForOutboundCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000,
       name: "OutboundService:Products",
     });

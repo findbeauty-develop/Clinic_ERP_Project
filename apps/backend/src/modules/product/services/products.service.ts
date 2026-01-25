@@ -39,7 +39,7 @@ export class ProductsService {
     // Initialize CacheManager with auto-cleanup
     this.productsCache = new CacheManager({
       maxSize: 100, // Max 100 tenants cached
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000, // Cleanup every minute
       name: "ProductsService",
     });

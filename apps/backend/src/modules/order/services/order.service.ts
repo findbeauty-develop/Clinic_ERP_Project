@@ -34,7 +34,7 @@ export class OrderService {
   ) {
     this.productsForOrderCache = new CacheManager({
       maxSize: 100,
-      ttl: 30000, // 30 seconds
+      ttl: 5000, // 30 seconds
       cleanupInterval: 60000,
       name: "OrderService:Products",
     });

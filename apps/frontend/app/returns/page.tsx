@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { apiGet, apiPost } from "../../lib/api";
 import { useDebounce } from "../../hooks/useDebounce";
@@ -74,19 +74,6 @@ export default function ReturnsPage() {
   const [selectedItems, setSelectedItems] = useState<SelectedReturnItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  // Cache for available products to prevent duplicate requests
-  const productsCacheRef = useRef<{
-    data: AvailableProduct[];
-    timestamp: number;
-    searchQuery: string;
-  } | null>(null);
-  const CACHE_TTL = 5000; // 5 seconds
-
-  // Cache invalidation helper
-  const invalidateCache = useCallback(() => {
-    productsCacheRef.current = null;
-  }, []);
-
   // useEffect(() => {
   //   const memberData = localStorage.getItem("erp_member_data");
   //   if (memberData) {
@@ -96,19 +83,6 @@ export default function ReturnsPage() {
   // }, []);
 
   const fetchAvailableProducts = useCallback(async () => {
-    const cacheKey = debouncedSearchQuery.trim() || "";
-    // Check cache first
-    if (
-      productsCacheRef.current &&
-      productsCacheRef.current.searchQuery === cacheKey &&
-      Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setProducts(productsCacheRef.current.data);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
@@ -120,12 +94,7 @@ export default function ReturnsPage() {
       );
       const productsData = data || [];
       setProducts(productsData);
-      // Update cache
-      productsCacheRef.current = {
-        data: productsData,
-        timestamp: Date.now(),
-        searchQuery: cacheKey,
-      };
+      // ✅ API-level cache allaqachon mavjud, page-level cache kerak emas
     } catch (err) {
       setError("반납 가능한 제품 정보를 불러오지 못했습니다.");
     } finally {
@@ -322,8 +291,7 @@ export default function ReturnsPage() {
         // Clear selected items
         setSelectedItems([]);
 
-        // Invalidate cache and refresh products from backend (real data)
-        invalidateCache();
+        // Refresh products from backend (API-level cache handles caching)
         await fetchAvailableProducts();
       } else {
         alert(
