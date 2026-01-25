@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 
 export default function OrderReturnsPage() {
   const [activeTab, setActiveTab] = useState<
@@ -15,58 +15,11 @@ export default function OrderReturnsPage() {
     []
   );
 
-  // Cache for returns and members to prevent duplicate requests
-  const returnsCacheRef = useRef<{
-    data: any[];
-    timestamp: number;
-    status: string;
-  } | null>(null);
-  const membersCacheRef = useRef<{
-    data: any[];
-    timestamp: number;
-  } | null>(null);
-  const CACHE_TTL = 5000; // 30 seconds
-
-  // Cache invalidation helper
-  const invalidateCache = useCallback(
-    (cacheType?: "returns" | "members" | "all") => {
-      if (!cacheType || cacheType === "all") {
-        returnsCacheRef.current = null;
-        membersCacheRef.current = null;
-      } else {
-        switch (cacheType) {
-          case "returns":
-            returnsCacheRef.current = null;
-            break;
-          case "members":
-            membersCacheRef.current = null;
-            break;
-        }
-      }
-    },
-    []
-  );
-
   const fetchMembers = useCallback(async () => {
-    // Check cache first
-    if (
-      membersCacheRef.current &&
-      Date.now() - membersCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setMembers(membersCacheRef.current.data);
-      return;
-    }
-
     try {
       const { apiGet } = await import("../../lib/api");
       const data = await apiGet<any[]>(`${apiUrl}/iam/members`);
-      const membersData = data || [];
-      setMembers(membersData);
-      // Update cache
-      membersCacheRef.current = {
-        data: membersData,
-        timestamp: Date.now(),
-      };
+      setMembers(data || []);
     } catch (err) {
       // Silent error handling
     }
@@ -80,31 +33,13 @@ export default function OrderReturnsPage() {
     };
     const status = statusMap[activeTab];
 
-    // Check cache first
-    if (
-      returnsCacheRef.current &&
-      returnsCacheRef.current.status === status &&
-      Date.now() - returnsCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setReturns(returnsCacheRef.current.data);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
       const { apiGet } = await import("../../lib/api");
       const data = await apiGet<any[]>(
         `${apiUrl}/order-returns?status=${status}`
       );
-      const returnsData = data || [];
-      setReturns(returnsData);
-      // Update cache
-      returnsCacheRef.current = {
-        data: returnsData,
-        timestamp: Date.now(),
-        status,
-      };
+      setReturns(data || []);
     } catch (err) {
       // Silent error handling
     } finally {
@@ -220,7 +155,6 @@ export default function OrderReturnsPage() {
                 returnItem={returnItem}
                 members={members}
                 onRefresh={() => {
-                  invalidateCache("returns");
                   fetchReturns();
                 }}
                 onRemove={(id: string) => {
