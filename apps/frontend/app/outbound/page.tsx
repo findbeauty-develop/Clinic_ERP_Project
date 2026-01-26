@@ -1137,6 +1137,9 @@ function OutboundPageContent() {
         clearCache("/packages");
         clearCache("packages");
         clearCache(`${apiUrl}/packages`);
+        clearCache("/returns/available-products"); // ✅ Return page cache
+        clearCache("returns/available-products");
+        clearCache(`${apiUrl}/returns/available-products`);
 
         // ✅ Also clear component-level cache refs BEFORE fetching
         productsCacheRef.current = null;
@@ -1179,6 +1182,9 @@ function OutboundPageContent() {
         clearCache("/packages");
         clearCache("packages");
         clearCache(`${apiUrl}/packages`);
+        clearCache("/returns/available-products"); // ✅ Return page cache
+        clearCache("returns/available-products");
+        clearCache(`${apiUrl}/returns/available-products`);
 
         // ✅ Also clear component-level cache refs BEFORE fetching
         productsCacheRef.current = null;
