@@ -102,6 +102,15 @@ const isProduction = process.env.NODE_ENV === "production";
   const uploadsDir = join(process.cwd(), "uploads");
   app.use("/uploads", express.static(uploadsDir));
 
+  // ✅ Health check endpoint (for Docker healthcheck)
+  app.getHttpAdapter().get("/health", (req, res) => {
+    res.status(200).json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      service: "clinic-backend"
+    });
+  });
+
   // ✅ Swagger setup - faqat development'da (production'da xavfsizlik uchun o'chiriladi)
 
   if (!isProduction) {

@@ -27,7 +27,7 @@ services:
           "--quiet",
           "--tries=1",
           "--spider",
-          "http://localhost:3000/docs",
+          "http://localhost:3000/health",
         ]
       interval: 30s
       timeout: 10s
@@ -78,7 +78,7 @@ services:
           "--quiet",
           "--tries=1",
           "--spider",
-          "http://localhost:3002/docs",
+          "http://localhost:3002/health",
         ]
       interval: 30s
       timeout: 10s
