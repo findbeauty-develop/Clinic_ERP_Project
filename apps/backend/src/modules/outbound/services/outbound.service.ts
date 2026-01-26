@@ -12,6 +12,7 @@ import { PackageOutboundDto } from "../../package/dto/package-outbound.dto";
 import { UnifiedOutboundDto, OutboundType } from "../dto/unified-outbound.dto";
 import { OrderReturnService } from "../../order-return/order-return.service";
 import { ReturnRepository } from "../../return/repositories/return.repository";
+import { ReturnService } from "../../return/services/return.service";
 import { CacheManager } from "../../../common/cache";
 import { ConfigService } from "@nestjs/config";
 
@@ -26,6 +27,8 @@ export class OutboundService {
     @Inject(forwardRef(() => OrderReturnService))
     private readonly orderReturnService: OrderReturnService,
     private readonly returnRepository: ReturnRepository,
+    @Inject(forwardRef(() => ReturnService))
+    private readonly returnService: ReturnService,
     private readonly configService: ConfigService
   ) {
     // Initialize CacheManagers
@@ -128,6 +131,15 @@ export class OutboundService {
     const deleted = this.productsForOutboundCache.deletePattern(
       `^${tenantId}:`
     );
+
+    // ✅ CRITICAL: Also clear ReturnService cache (available products for return)
+    if (this.returnService) {
+      try {
+        this.returnService.invalidateCache(tenantId);
+      } catch (error) {
+        console.error("Failed to invalidate ReturnService cache:", error);
+      }
+    }
 
     // ✅ CRITICAL: Also clear ProductsService cache since getProductsForOutbound uses getAllProducts
     // This ensures fresh data from database after outbound creation

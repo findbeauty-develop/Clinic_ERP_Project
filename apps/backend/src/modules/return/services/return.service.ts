@@ -29,23 +29,12 @@ export class ReturnService {
   ) {
     this.availableProductsCache = new CacheManager({
       maxSize: 100,
-      ttl: 5000, // 30 seconds
+      ttl: 30000, // 30 seconds
       cleanupInterval: 60000,
       name: "ReturnService",
     });
   }
 
-  private async refreshAvailableProductsCacheInBackground(
-    tenantId: string,
-    search?: string
-  ): Promise<void> {
-    try {
-      // ... (getAvailableProducts ichidagi barcha logic'ni copy qiling)
-      // Lekin cache'ga saqlash qismini qoldiring
-    } catch (error) {
-      // Error handling
-    }
-  }
   /**
    * Qaytarilishi mumkin bo'lgan mahsulotlarni olish
    * 미반납 수량 = Chiqarilgan miqdor - Qaytarilgan miqdor
@@ -61,12 +50,22 @@ export class ReturnService {
 
     if (result) {
       if (result.isStale) {
-        // Stale cache - background'da yangilash
-        this.refreshAvailableProductsCacheInBackground(tenantId, search).catch(
-          () => {}
+        // ⚡ Stale cache - o'chirish va yangi data olish
+        this.logger.debug(
+          `⚠️ [getAvailableProducts] Cache STALE for key: ${cacheKey}, deleting and fetching fresh data`
         );
+        this.availableProductsCache.delete(cacheKey);
+        // Cache o'chirildi - quyida yangi data olinadi
+      } else {
+        this.logger.debug(
+          `✨ [getAvailableProducts] Cache HIT (fresh) for key: ${cacheKey}`
+        );
+        return result.data; // Return fresh cached data
       }
-      return result.data; // Return cached data (fresh or stale)
+    } else {
+      this.logger.debug(
+        `❌ [getAvailableProducts] Cache MISS for key: ${cacheKey}, fetching from DB`
+      );
     }
     // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
     const allReturns = await this.prisma.executeWithRetry(async () => {
@@ -117,6 +116,11 @@ export class ReturnService {
     });
 
     // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
+    const queryStartTime = Date.now();
+    this.logger.debug(
+      `🔍 [getAvailableProducts] Starting query for tenant: ${tenantId}`
+    );
+    
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.findMany({
         where: {
@@ -139,7 +143,8 @@ export class ReturnService {
             },
           },
           productSupplier: {
-            include: {
+            select: {
+              product_id: true,
               clinicSupplierManager: {
                 select: {
                   id: true,
@@ -181,6 +186,11 @@ export class ReturnService {
         },
       });
     });
+
+    const queryEndTime = Date.now();
+    this.logger.debug(
+      `✅ [getAvailableProducts] Query completed in ${queryEndTime - queryStartTime}ms, found ${products.length} products`
+    );
 
     const availableProducts = products
       .map((product: any) => {
@@ -287,11 +297,30 @@ export class ReturnService {
       .filter((p: any) => p !== null);
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
+    
+    this.logger.debug(
+      `📦 [getAvailableProducts] Processed ${products.length} products → ${availableProducts.length} available for return`
+    );
 
     // Cache'ga saqlash
     this.availableProductsCache.set(cacheKey, availableProducts);
+    this.logger.debug(
+      `💾 [getAvailableProducts] Cached result for key: ${cacheKey}`
+    );
 
     return availableProducts;
+  }
+
+  /**
+   * Cache'ni invalidate qilish (Outbound yaratilganda chaqiriladi)
+   */
+  public invalidateCache(tenantId: string): void {
+    const deleted = this.availableProductsCache.deletePattern(
+      `^available-products:${tenantId}:`
+    );
+    this.logger.debug(
+      `🗑️ [ReturnService] Invalidated ${deleted} cache entries for tenant: ${tenantId}`
+    );
   }
 
   /**

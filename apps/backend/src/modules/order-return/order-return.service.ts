@@ -144,27 +144,69 @@ export class OrderReturnService {
           : [],
       ]);
 
-      // 4. ProductSupplier'larni olish (faqat kerakli product'lar uchun)
+      // 4. ProductSupplier'larni olish (FAQAT supplier_id yo'q bo'lgan return'lar uchun)
+      // ✅ Optimization: Faqat kerakli product'lar uchun query
+      const productsNeedingSupplier = new Set<string>();
+      
+      // Return'lar orasida supplier_id yo'q bo'lganlarni topish
+      returns.forEach((r: any) => {
+        if (!r.supplier_id && r.product_id) {
+          productsNeedingSupplier.add(r.product_id);
+        }
+      });
+      
+      // Outbound'lar orasida supplier_id yo'q bo'lganlarni topish
+      outbounds.forEach((o: any) => {
+        // Outbound'ning product_id'si bo'lsa va supplier_id yo'q bo'lsa
+        if (o.product_id) {
+          // Return'larni tekshirish
+          const hasReturnWithoutSupplier = returns.some(
+            (r: any) => r.outbound_id === o.id && !r.supplier_id
+          );
+          if (hasReturnWithoutSupplier) {
+            productsNeedingSupplier.add(o.product_id);
+          }
+        }
+      });
+
       const productSuppliersMap = new Map();
-      if (productIds.length > 0) {
+      if (productsNeedingSupplier.size > 0) {
+        this.logger.debug(
+          `🔍 [ProductSupplier Query] Querying for ${productsNeedingSupplier.size} products (out of ${returns.length} returns)`
+        );
+        
         const productSuppliers = await (
           this.prisma as any
         ).productSupplier.findMany({
           where: {
-            product_id: { in: productIds },
+            product_id: { in: Array.from(productsNeedingSupplier) },
             tenant_id: tenantId,
           },
-          include: {
+          select: {
+            product_id: true,
             clinicSupplierManager: {
-              include: {
+              select: {
+                company_name: true,
+                name: true,
+                position: true,
+                phone_number: true,
+                email1: true,
                 linkedManager: {
-                  include: {
+                  select: {
                     supplier: {
-                      include: {
+                      select: {
+                        company_name: true,
                         managers: {
                           where: { status: "ACTIVE" },
                           take: 1,
                           orderBy: { created_at: "asc" },
+                          select: {
+                            id: true,
+                            name: true,
+                            position: true,
+                            phone_number: true,
+                            email1: true,
+                          },
                         },
                       },
                     },
@@ -178,6 +220,14 @@ export class OrderReturnService {
         productSuppliers.forEach((ps: any) => {
           productSuppliersMap.set(ps.product_id, ps);
         });
+        
+        this.logger.debug(
+          `✅ [ProductSupplier Query] Found ${productSuppliers.length} product suppliers`
+        );
+      } else {
+        this.logger.debug(
+          `⚡ [ProductSupplier Query] Skipped - all returns have supplier_id`
+        );
       }
 
       // 5. Map'lar yaratish tez lookup uchun
