@@ -962,10 +962,8 @@ export default function InboundNewPage() {
         position: manualEntryForm.position || undefined,
       };
 
-      // Call API to create supplier (use supplier backend URL)
-      const supplierApiUrl =
-        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "https://api-supplier.jaclit.com";
-      const response = await fetch(`${supplierApiUrl}/supplier/create-manual`, {
+      // Call API to create supplier
+      const response = await fetch(`${apiUrl}/supplier/create-manual`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
