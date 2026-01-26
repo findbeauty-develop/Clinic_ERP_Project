@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getApiUrl } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
+  const apiUrl = useMemo(() => getApiUrl(), []);
 
   const next = searchParams.get("next") || "/dashboard";
 
@@ -24,10 +25,6 @@ export default function LoginPage() {
     event.preventDefault();
     if (!memberId.trim() || !password.trim()) {
       window.alert("Please enter both ID and password.");
-      return;
-    }
-    if (!apiUrl) {
-      window.alert("API base URL is not configured.");
       return;
     }
 

@@ -22,7 +22,7 @@ let cacheStats = {
 const CACHE_TTL = 5; // 5 seconds
 const REQUEST_TIMEOUT = 10000; // 10 seconds
 
-const getApiUrl = () => {
+export const getApiUrl = () => {
   if (typeof window !== "undefined") {
     // Browser'da: environment variable yoki window.location'dan HTTPS olish
     return (
