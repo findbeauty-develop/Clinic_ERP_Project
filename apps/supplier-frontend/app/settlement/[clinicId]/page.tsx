@@ -19,6 +19,7 @@ interface Transaction {
   timeType: "요청시간" | "확인시간" | "완료시간";
   itemCount: number;
   amount: number;
+  productNames?: string[]; // ✅ Product name'lar
 }
 
 export default function SettlementPage() {
@@ -119,6 +120,11 @@ export default function SettlementPage() {
             const minutes = String(orderDate.getMinutes()).padStart(2, "0");
             const timestamp = `${month}-${day} ${hours}:${minutes}`;
 
+            // ✅ Extract product names from order items
+            const productNames = order.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
             formattedPending.push({
               id: order.id,
               type: "주문",
@@ -127,6 +133,7 @@ export default function SettlementPage() {
               timeType: "요청시간",
               itemCount: order.items?.length || 0,
               amount: order.totalAmount || 0,
+              productNames: productNames.length > 0 ? productNames : undefined,
             });
           });
 
@@ -150,6 +157,11 @@ export default function SettlementPage() {
               item.returnType?.includes("교환") || item.return_type?.includes("교환")
             ) ? "반품 및 교환" : "반납";
 
+            // ✅ Extract product names from return items
+            const productNames = returnItem.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
             formattedPending.push({
               id: returnItem.id || returnItem.returnId,
               type: returnType as "반납" | "반품 및 교환",
@@ -158,6 +170,7 @@ export default function SettlementPage() {
               timeType: "요청시간",
               itemCount: returnItem.items?.length || 0,
               amount: returnItem.totalRefund || 0, // Use totalRefund if available
+              productNames: productNames.length > 0 ? productNames : undefined,
             });
           });
 
@@ -373,7 +386,12 @@ export default function SettlementPage() {
                   {transaction.type}
                 </button>
                 <div className="flex-1 text-sm text-gray-700">
-                  {transaction.timeType} {transaction.timestamp} 아이텀 {transaction.itemCount}{" "}
+                  {transaction.timeType} {transaction.timestamp}{" "}
+                  {transaction.productNames && transaction.productNames.length > 0
+                    ? transaction.productNames.length === 1
+                      ? transaction.productNames[0]
+                      : `${transaction.productNames[0]} 외 ${transaction.productNames.length - 1}개`
+                    : `아이텀 ${transaction.itemCount}`}{" "}
                   {transaction.amount > 0 ? formatCurrency(transaction.amount) : "0,000,000,000"}
                 </div>
               </div>
@@ -398,7 +416,12 @@ export default function SettlementPage() {
                   {transaction.type}
                 </button>
                 <div className="flex-1 text-sm text-gray-700">
-                  {transaction.timeType} {transaction.timestamp} 아이텀 {transaction.itemCount}{" "}
+                  {transaction.timeType} {transaction.timestamp}{" "}
+                  {transaction.productNames && transaction.productNames.length > 0
+                    ? transaction.productNames.length === 1
+                      ? transaction.productNames[0]
+                      : `${transaction.productNames[0]} 외 ${transaction.productNames.length - 1}개`
+                    : `아이텀 ${transaction.itemCount}`}{" "}
                   {transaction.amount > 0 ? formatCurrency(transaction.amount) : "0,000,000,000"}
                 </div>
               </div>
@@ -429,7 +452,12 @@ export default function SettlementPage() {
                   {transaction.type}
                 </button>
                 <div className="flex-1 text-sm text-gray-700">
-                  {transaction.timeType} {transaction.timestamp} 아이텀 {transaction.itemCount}{" "}
+                  {transaction.timeType} {transaction.timestamp}{" "}
+                  {transaction.productNames && transaction.productNames.length > 0
+                    ? transaction.productNames.length === 1
+                      ? transaction.productNames[0]
+                      : `${transaction.productNames[0]} 외 ${transaction.productNames.length - 1}개`
+                    : `아이텀 ${transaction.itemCount}`}{" "}
                   {transaction.amount > 0 ? formatCurrency(transaction.amount) : "0,000,000,000"}
                 </div>
               </div>

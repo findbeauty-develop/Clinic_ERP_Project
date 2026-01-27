@@ -45,9 +45,7 @@ export class OrderService {
       memo: item.memo || null,
     }));
 
-    this.logger.log(
-      `📦 [Order Create] Starting order creation: ${orderNo}, Items: ${items.length}, SupplierTenantId: ${supplierTenantId}`
-    );
+    
 
     try {
       const order = await this.prisma.executeWithRetry(async () => {
@@ -86,9 +84,7 @@ export class OrderService {
           throw new Error("Failed to create order items - transaction may have rolled back");
         }
 
-        this.logger.log(
-          `✅ [Order Create] Order created successfully: ${result.id}, Items: ${result.items.length}`
-        );
+       
 
         return result;
       });

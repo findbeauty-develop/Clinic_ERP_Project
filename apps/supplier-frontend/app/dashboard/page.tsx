@@ -238,32 +238,137 @@ export default function DashboardPage() {
         setOrders([]);
       }
 
-      setReturnExchanges([
-        {
-          id: "1",
-          clinicName: "EEE Clinic",
-          status: "접수대기",
-          timestamp: "00-00 10:50",
-          timeType: "요청시간",
-        },
-        {
-          id: "2",
-          clinicName: "A Clinic",
-          status: "진행중",
-          timestamp: "00-00 10:50",
-          timeType: "확인시간",
-        },
-      ]);
+      // ✅ Fetch returns/exchanges from API
+      try {
+        const supplierApiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
+        const token = localStorage.getItem("supplier_access_token");
 
-      setReturns([
-        {
-          id: "1",
-          clinicName: "A Clinic",
-          status: "접수대기",
-          timestamp: "00-00 10:50",
-          timeType: "요청시간",
-        },
-      ]);
+        // Fetch product returns/exchanges (반품 및 교환)
+        const exchangesResponse = await fetch(
+          `${supplierApiUrl}/supplier/returns?status=ALL&returnCategory=product&limit=3`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        if (exchangesResponse.ok) {
+          const exchangesData = await exchangesResponse.json();
+          const allExchanges = exchangesData.notifications || exchangesData.returns || [];
+
+          // Format exchanges data - sort by date (newest first) and get latest 3
+          const formattedExchanges: ReturnExchange[] = allExchanges
+            .sort((a: any, b: any) => {
+              const dateA = new Date(a.createdAt || a.returnDate || a.created_at || 0);
+              const dateB = new Date(b.createdAt || b.returnDate || b.created_at || 0);
+              return dateB.getTime() - dateA.getTime();
+            })
+            .slice(0, 3)
+            .map((item: any) => {
+              // Map status to Korean
+              const statusMap: Record<string, "접수대기" | "진행중"> = {
+                PENDING: "접수대기",
+                ACCEPTED: "진행중",
+                PROCESSING: "진행중",
+                REJECTED: "접수대기",
+                COMPLETED: "진행중",
+              };
+
+              const koreanStatus = statusMap[item.status] || "접수대기";
+
+              // Format timestamp
+              const returnDate = new Date(
+                item.createdAt || item.returnDate || item.created_at || new Date()
+              );
+              const month = String(returnDate.getMonth() + 1).padStart(2, "0");
+              const day = String(returnDate.getDate()).padStart(2, "0");
+              const hours = String(returnDate.getHours()).padStart(2, "0");
+              const minutes = String(returnDate.getMinutes()).padStart(2, "0");
+              const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+              // Determine time type based on status
+              const timeType =
+                item.status === "PENDING" ? "요청시간" : "확인시간";
+
+              return {
+                id: item.id || item.returnId,
+                clinicName: item.clinicName || item.clinic_name || "알 수 없음",
+                status: koreanStatus,
+                timestamp: timestamp,
+                timeType: timeType,
+              };
+            });
+
+          setReturnExchanges(formattedExchanges);
+        } else {
+          console.error("Failed to fetch exchanges:", exchangesResponse.statusText);
+          setReturnExchanges([]);
+        }
+      } catch (error) {
+        console.error("Error fetching exchanges:", error);
+        setReturnExchanges([]);
+      }
+
+      // ✅ Fetch empty box returns (반납)
+      try {
+        const supplierApiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
+        const token = localStorage.getItem("supplier_access_token");
+
+        const returnsResponse = await fetch(
+          `${supplierApiUrl}/supplier/returns?status=PENDING&returnCategory=empty_box&limit=3`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        if (returnsResponse.ok) {
+          const returnsData = await returnsResponse.json();
+          const allReturns = returnsData.notifications || returnsData.returns || [];
+
+          // Format returns data - sort by date (newest first) and get latest 3
+          const formattedReturns: Return[] = allReturns
+            .sort((a: any, b: any) => {
+              const dateA = new Date(a.createdAt || a.returnDate || a.created_at || 0);
+              const dateB = new Date(b.createdAt || b.returnDate || b.created_at || 0);
+              return dateB.getTime() - dateA.getTime();
+            })
+            .slice(0, 3)
+            .map((item: any) => {
+              // Format timestamp
+              const returnDate = new Date(
+                item.createdAt || item.returnDate || item.created_at || new Date()
+              );
+              const month = String(returnDate.getMonth() + 1).padStart(2, "0");
+              const day = String(returnDate.getDate()).padStart(2, "0");
+              const hours = String(returnDate.getHours()).padStart(2, "0");
+              const minutes = String(returnDate.getMinutes()).padStart(2, "0");
+              const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+              return {
+                id: item.id || item.returnId,
+                clinicName: item.clinicName || item.clinic_name || "알 수 없음",
+                status: "접수대기",
+                timestamp: timestamp,
+                timeType: "요청시간",
+              };
+            });
+
+          setReturns(formattedReturns);
+        } else {
+          console.error("Failed to fetch returns:", returnsResponse.statusText);
+          setReturns([]);
+        }
+      } catch (error) {
+        console.error("Error fetching returns:", error);
+        setReturns([]);
+      }
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
     } finally {
@@ -423,7 +528,7 @@ export default function DashboardPage() {
                     {item.status}
                   </span>
                   <Link
-                    href={`/exchanges/${item.id}`}
+                    href={`/exchanges`}
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {item.clinicName}
