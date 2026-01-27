@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "../components/layout/sidebar";
+import { MainWrapper } from "../components/layout/main-wrapper";
 
 export const metadata: Metadata = {
   title: "Supplier ERP",
@@ -16,9 +17,9 @@ export default function RootLayout({
     <html lang="ko">
       <body className="antialiased">
         <Sidebar />
-        <main className="lg:pl-64">
+        <MainWrapper>
           {children}
-        </main>
+        </MainWrapper>
       </body>
     </html>
   );

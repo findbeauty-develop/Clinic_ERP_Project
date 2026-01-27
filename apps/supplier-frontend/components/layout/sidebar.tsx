@@ -239,7 +239,20 @@ export function Sidebar() {
     return "S";
   };
 
-  // Sidebar is now visible on all pages
+  // ✅ Hide sidebar and hamburger on login, register, company, complete pages
+  const hideSidebarPages = [
+    "/login",
+    "/register",
+    "/register/company",
+    "/register/contact",
+    "/register/complete",
+  ];
+  
+  const shouldHideSidebar = hideSidebarPages.some(page => pathname.startsWith(page));
+
+  if (shouldHideSidebar) {
+    return null; // Don't render sidebar on these pages
+  }
 
   return (
     <>

@@ -211,7 +211,7 @@ export default function ContactInfoPage() {
               />
             </svg>
           </button>
-          <h1 className="text-2xl font-bold text-slate-900">뷰티재고</h1>
+          <h1 className="text-2xl font-bold text-slate-900">제클릿 공급업체</h1>
         </div>
 
         {/* Progress Indicator - 4 steps */}

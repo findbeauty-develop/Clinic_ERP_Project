@@ -46,7 +46,7 @@ export default function ExchangesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(10);
-   const [notificationCount, setNotificationCount] = useState(4);
+   const [notificationCount, setNotificationCount] = useState(0);
 
   // Clinic backend URL for images
   const clinicBackendUrl = process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "https://api.jaclit.com";
@@ -100,6 +100,11 @@ export default function ExchangesPage() {
       setTotal(response.total);
       setTotalPages(response.totalPages || Math.ceil(response.total / limit));
       setCurrentPage(response.page || page);
+      
+      // ✅ Update notification count from API response
+      if (response.unreadCount !== undefined) {
+        setNotificationCount(response.unreadCount);
+      }
     } catch (error: any) {
       console.error("Error fetching return requests:", error);
       alert("반품/교환 목록을 불러오는데 실패했습니다: " + error.message);
@@ -108,9 +113,79 @@ export default function ExchangesPage() {
     }
   };
 
+  // ✅ Fetch notification count on component mount
+  const fetchNotificationCount = async () => {
+    try {
+      const supplierApiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
+      const token = localStorage.getItem("supplier_access_token");
+      
+      if (!token) return;
+
+      // Fetch unread counts for different notification types
+      const [exchangesResponse, returnsResponse, ordersResponse] = await Promise.all([
+        // Product returns/exchanges (반품 및 교환)
+        fetch(
+          `${supplierApiUrl}/supplier/returns?status=PENDING&returnCategory=product&limit=1`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        ),
+        // Empty box returns (반납)
+        fetch(
+          `${supplierApiUrl}/supplier/returns?status=PENDING&returnCategory=empty_box&limit=1`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        ),
+        // Pending orders (주문)
+        fetch(
+          `${supplierApiUrl}/supplier/orders?status=pending&limit=1`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        ),
+      ]);
+
+      let totalUnread = 0;
+
+      if (exchangesResponse.ok) {
+        const exchangesData = await exchangesResponse.json();
+        totalUnread += exchangesData.unreadCount || 0;
+      }
+
+      if (returnsResponse.ok) {
+        const returnsData = await returnsResponse.json();
+        totalUnread += returnsData.unreadCount || 0;
+      }
+
+      if (ordersResponse.ok) {
+        const ordersData = await ordersResponse.json();
+        // Count pending orders
+        const pendingOrders = (ordersData.orders || []).filter(
+          (order: any) => order.status === "pending"
+        ).length;
+        totalUnread += pendingOrders;
+      }
+
+      setNotificationCount(totalUnread);
+    } catch (error) {
+      console.error("Error fetching notification count:", error);
+    }
+  };
+
   useEffect(() => {
     setCurrentPage(1);
     fetchRequests(1);
+    fetchNotificationCount(); // ✅ Fetch notification count on mount
   }, [activeTab]);
 
   const handlePageChange = (page: number) => {
@@ -133,6 +208,7 @@ export default function ExchangesPage() {
       setShowConfirmModal(false);
       setSelectedRequest(null);
       await fetchRequests();
+      await fetchNotificationCount(); // ✅ Update notification count
       alert("요청이 확인되었습니다.");
     } catch (error: any) {
       console.error("Error accepting return:", error);
@@ -158,6 +234,7 @@ export default function ExchangesPage() {
       setSelectedRequest(null);
       setRejectionReason("");
       await fetchRequests();
+      await fetchNotificationCount(); // ✅ Update notification count
       alert("요청이 거절되었습니다.");
     } catch (error: any) {
       console.error("Error rejecting return:", error);
@@ -178,6 +255,7 @@ export default function ExchangesPage() {
       setShowCompleteModal(false);
       setSelectedRequest(null);
       await fetchRequests();
+      await fetchNotificationCount(); // ✅ Update notification count
     } catch (error: any) {
       console.error("Error marking as received:", error);
       alert("처리에 실패했습니다: " + error.message);
@@ -240,7 +318,10 @@ export default function ExchangesPage() {
           <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-4">반품 및 교환</h1>
           
          <div className="flex items-center justify-center mt-2"><button
-          
+            onClick={() => {
+              fetchRequests(currentPage);
+              fetchNotificationCount();
+            }}
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
@@ -260,7 +341,14 @@ export default function ExchangesPage() {
             </svg>
             새로고침
           </button>
-            <button className="relative flex ml-2  items-center justify-center">
+            <button 
+              onClick={() => {
+                fetchNotificationCount();
+                fetchRequests(currentPage);
+              }}
+              className="relative flex ml-2 items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
+              title="알림 새로고침"
+            >
   <svg
     xmlns="http://www.w3.org/2000/svg"
     fill="none"

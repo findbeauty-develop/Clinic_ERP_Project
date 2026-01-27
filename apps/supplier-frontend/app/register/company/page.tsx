@@ -113,10 +113,7 @@ export default function CompanyInfoPage() {
         "최소 1개 이상의 제품 카테고리를 선택하세요";
     }
 
-    if (!formData.shareConsent) {
-      newErrors.shareConsent =
-        "⚠️ 다음 단계로 진행하려면 회사 정보 공유에 동의해야 합니다";
-    }
+    // ✅ shareConsent is now optional - removed validation
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -190,7 +187,7 @@ export default function CompanyInfoPage() {
               />
             </svg>
           </button>
-          <h1 className="text-2xl font-bold text-slate-900">뷰티재고</h1>
+          <h1 className="text-2xl font-bold text-slate-900">제클릿 공급업체</h1>
         </div>
 
         {/* Progress Indicator - 4 steps */}
@@ -455,7 +452,7 @@ export default function CompanyInfoPage() {
                 </svg>
                 <div className="flex-1">
                   <p className="mb-2 text-sm font-medium text-slate-900">
-                    회사 정보 공유 동의 <span className="text-red-500">*</span>
+                    회사 정보 공유 동의
                   </p>
                   <p className="mb-3 text-xs text-slate-600">
                     병원 모드의 재고 관리 및 주문 시스템과 회사 정보를 공유하여
@@ -499,7 +496,6 @@ export default function CompanyInfoPage() {
                       }`}
                     >
                       위 회사 정보를 클리닉 사용자에게 공유하는 것에 동의합니다
-                      (필수)
                     </span>
                   </label>
                   {errors.shareConsent && (
@@ -525,11 +521,9 @@ export default function CompanyInfoPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || !formData.shareConsent}
+              disabled={loading}
               className={`w-full rounded-lg px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all active:scale-[0.98] ${
-                !formData.shareConsent
-                  ? "cursor-not-allowed bg-slate-400 opacity-60"
-                  : loading
+                loading
                   ? "cursor-not-allowed bg-gradient-to-r from-purple-600 to-pink-600 opacity-50"
                   : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 hover:shadow-xl"
               }`}
@@ -557,23 +551,6 @@ export default function CompanyInfoPage() {
                     ></path>
                   </svg>
                   처리 중...
-                </span>
-              ) : !formData.shareConsent ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                  회사 정보 공유 동의 필요
                 </span>
               ) : (
                 "다음"

@@ -364,49 +364,7 @@ export default function RegisterPage() {
           {/* Registration Card */}
           <div className="rounded-2xl bg-white p-6 shadow-xl sm:p-8">
             {/* Header */}
-            <div className="mb-8 text-center">
-              <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center">
-                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-purple-100">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-10 w-10 text-purple-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                    />
-                  </svg>
-                </div>
-                {/* Profile picture overlay */}
-                <div className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-200">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-slate-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                    />
-                  </svg>
-                </div>
-              </div>
-              <h2 className="mb-2 text-2xl font-bold text-slate-900 sm:text-3xl">
-                공급업체 회원가입
-              </h2>
-              <p className="text-sm text-slate-600 sm:text-base">
-                뷰티겠고 공급업체 모드
-              </p>
-            </div>
+            
 
             {/* Error Message */}
             {errors.submit && (
