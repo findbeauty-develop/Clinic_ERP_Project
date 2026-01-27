@@ -14,6 +14,7 @@ interface NewClinic {
 interface Order {
   id: string;
   clinicName: string;
+  clinicTenantId?: string; // ✅ Clinic tenant ID for settlement page
   status: "접수대기" | "진행중" | "완료";
   timestamp: string;
   timeType: "요청시간" | "확인시간";
@@ -219,7 +220,8 @@ export default function DashboardPage() {
                 order.clinic?.tenantId || order.clinicTenantId || order.id;
 
               return {
-                id: clinicTenantId, // Use clinic tenant ID for settlement page
+                id: order.id, // ✅ Use unique order ID as key
+                clinicTenantId: clinicTenantId, // ✅ Store clinic tenant ID separately for link
                 clinicName:
                   order.clinic?.name || order.clinicName || "알 수 없음",
                 status: koreanStatus,
@@ -544,7 +546,7 @@ export default function DashboardPage() {
                     {order.status}
                   </span>
                   <Link
-                    href={`/settlement/${order.id}`}
+                    href={order.clinicTenantId ? `/settlement/${order.clinicTenantId}` : `/orders`}
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {order.clinicName}
