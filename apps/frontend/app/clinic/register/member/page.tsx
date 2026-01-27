@@ -120,8 +120,7 @@ export default function ClinicMemberSetupPage() {
                   setOwnerPhoneNumber(ownerProfile.ownerPhoneNumber);
                 if (ownerProfile.ownerIdCardNumber)
                   setOwnerIdCardNumber(ownerProfile.ownerIdCardNumber);
-                if (ownerProfile.ownerAddress)
-                  setOwnerAddress(ownerProfile.ownerAddress);
+              
               } catch (err) {
                 console.error("Failed to parse owner profile", err);
               }
@@ -140,10 +139,37 @@ export default function ClinicMemberSetupPage() {
         );
       } finally {
         setLoading(false);
+        // ✅ fetchClinics tugagach ownerAddress'ni bo'sh qoldirish
+        setOwnerAddress("");
       }
     };
     fetchClinics();
   }, [apiUrl]);
+
+  // ✅ ownerAddress'ni har doim bo'sh qoldirish (component mount bo'lganda va fetchClinics'dan keyin)
+  useEffect(() => {
+    // ✅ sessionStorage'dan noto'g'ri ownerAddress'ni o'chirish
+    const ownerProfileRaw = sessionStorage.getItem("erp_owner_profile");
+    if (ownerProfileRaw) {
+      try {
+        const ownerProfile = JSON.parse(ownerProfileRaw);
+        // Agar ownerAddress member_id formatida bo'lsa yoki noto'g'ri bo'lsa, o'chirish
+        if (ownerProfile.ownerAddress && 
+            (ownerProfile.ownerAddress.includes('@') || 
+             ownerProfile.ownerAddress.includes('owner') ||
+             ownerProfile.ownerAddress.match(/^[a-zA-Z0-9]+@/) ||
+             ownerProfile.ownerAddress === ownerProfile.ownerId ||
+             ownerProfile.ownerAddress === ownerProfile.memberId)) {
+          delete ownerProfile.ownerAddress;
+          sessionStorage.setItem("erp_owner_profile", JSON.stringify(ownerProfile));
+        }
+      } catch (err) {
+        console.error("Failed to clean owner profile", err);
+      }
+    }
+    // ✅ ownerAddress'ni har doim bo'sh qoldirish
+    setOwnerAddress("");
+  }, []); // Faqat mount bo'lganda ishlaydi
 
   const handleSendVerificationCode = async () => {
     const cleanPhone = ownerPhoneNumber.replace(/[^0-9]/g, "");
@@ -342,9 +368,7 @@ export default function ClinicMemberSetupPage() {
           <h1 className="text-3xl font-semibold text-slate-900 md:text-4xl">
             계정 만들기
           </h1>
-          <p className="text-sm text-slate-500 md:text-base">
-            오너 정보를 입력하고 기본 계정을 생성하세요.
-          </p>
+          
         </header>
 
         <nav className="mx-auto flex w-full max-w-2xl items-center justify-between text-sm text-slate-400">
@@ -491,10 +515,12 @@ export default function ClinicMemberSetupPage() {
                     주소 *
                   </label>
                   <input
+                    type="text"
                     value={ownerAddress}
                     onChange={(e) => setOwnerAddress(e.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                     placeholder="주소를 입력하세요."
+                    autoComplete="off"
                     required
                   />
                 </div>

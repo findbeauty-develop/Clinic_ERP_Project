@@ -262,23 +262,7 @@ export default function ClinicRegisterSuccessPage() {
               <h2 className="text-xl font-semibold text-slate-900">
                 병의원 인증
               </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  // Store clinic ID for edit mode (from API or sessionStorage)
-                  const clinicId = clinicFromApi?.id || clinic?.id;
-                  if (clinicId) {
-                    sessionStorage.setItem(
-                      "erp_editing_clinic_id",
-                      clinicId
-                    );
-                  }
-                  router.push("/clinic/register");
-                }}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-indigo-400 hover:text-indigo-500"
-              >
-                수정
-              </button>
+              
             </div>
             <dl className="mt-6 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
               <div>

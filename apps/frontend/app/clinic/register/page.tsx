@@ -64,6 +64,9 @@ export default function ClinicRegisterPage() {
     useState<string | null>(null);
   const [isCertificateVerified, setIsCertificateVerified] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState("");
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
 
   useEffect(() => {
@@ -414,10 +417,8 @@ export default function ClinicRegisterPage() {
         setIsCertificateVerified(true);
         setCertificateVerificationError(null);
 
-        // Show success message
-        window.alert(
-          "인증서가 성공적으로 인식되었습니다. 필드가 자동으로 채워졌습니다."
-        );
+        // Show success modal
+        setShowSuccessModal(true);
       } else {
         // Check if HIRA verification failed
         const hiraFailed =
@@ -437,6 +438,10 @@ export default function ClinicRegisterPage() {
         // Set error message to display below image uploader
         setCertificateVerificationError(errorMessage);
         setIsCertificateVerified(false);
+
+        // Show error modal
+        setErrorModalMessage(errorMessage);
+        setShowErrorModal(true);
 
         // Still try to fill what we can from fields or mappedData
         if (data.mappedData) {
@@ -478,6 +483,10 @@ export default function ClinicRegisterPage() {
         "인증서 검증 중 오류가 발생했습니다. 수동으로 입력해주세요.";
       setCertificateVerificationError(errorMessage);
       setIsCertificateVerified(false);
+
+      // Show error modal
+      setErrorModalMessage(errorMessage);
+      setShowErrorModal(true);
 
       // Still add the image to documentImageUrls even if verification fails
       const reader = new FileReader();
@@ -946,6 +955,146 @@ export default function ClinicRegisterPage() {
           </form>
         </section>
       </div>
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowSuccessModal(false)}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-8 text-center">
+              {/* Success Icon */}
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-10 w-10 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h2 className="mb-2 text-2xl font-bold text-slate-900">
+                인증서 인식 성공
+              </h2>
+
+              {/* Message */}
+              <p className="mb-6 text-sm text-slate-600">
+                인증서가 성공적으로 인식되었습니다.
+                <br />
+                필드가 자동으로 채워졌습니다.
+              </p>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                className="w-full rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-green-600 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-200"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-red-200 bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowErrorModal(false)}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-8 text-center">
+              {/* Error Icon */}
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-10 w-10 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h2 className="mb-2 text-2xl font-bold text-slate-900">
+                인증서 검증 실패
+              </h2>
+
+              {/* Message */}
+              <p className="mb-6 text-sm leading-relaxed text-slate-600">
+                {errorModalMessage}
+              </p>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowErrorModal(false)}
+                className="w-full rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-red-600 hover:to-rose-600 focus:outline-none focus:ring-2 focus:ring-red-200"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {showConfirmModal && (

@@ -2,23 +2,23 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getAccessToken } from "@/lib/api";
+import { getMemberData } from "@/lib/api";
 
 export default function Page() {
   const router = useRouter();
 
   useEffect(() => {
-    const checkAuthAndRedirect = async () => {
-      // ✅ Root page (`/`) faqat root path uchun ishlaydi
-      // Token'ni tekshirish
-      const token = await getAccessToken();
+    const checkAuthAndRedirect = () => {
+      // ✅ Root page (`/`) - member data'ni tekshirish (refresh qilmaydi)
+      // getMemberData() faqat localStorage'dan o'qiydi, API so'rov yubormaydi
+      const memberData = getMemberData();
       
-      if (token) {
-        // Token mavjud - dashboard'ga redirect
+      if (memberData) {
+        // ✅ Member data mavjud - dashboard'ga redirect
+        // Dashboard page ochilganda u o'zining API so'rovlarida token refresh qiladi
         router.replace("/dashboard");
       } else {
-        // Token yo'q - login'ga redirect
-        // Login va register page'lar to'g'ridan-to'g'ri URL'ga kirganda root page ishlamaydi
+        // ✅ Member data yo'q - login'ga redirect
         router.replace("/login");
       }
     };

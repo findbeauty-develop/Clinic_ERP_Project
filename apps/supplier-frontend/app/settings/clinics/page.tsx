@@ -142,8 +142,8 @@ export default function ClinicsManagementPage() {
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
       <div className="bg-white px-4 py-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-900">거래처 데이터 관리</h1>
+        <div className="flex items-center mt-2 justify-between">
+          <h1 className="text-xl ml-14 font-bold text-slate-900">거래처 데이터 관리</h1>
           <button
             onClick={() => router.back()}
             className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
