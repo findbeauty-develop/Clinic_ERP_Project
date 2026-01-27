@@ -43,8 +43,78 @@ export class ClinicSupplierHelperService {
   }
 
   /**
+   * Find platform SupplierManager by phone number (with normalization)
+   */
+  private async findPlatformSupplierManagerByPhone(
+    phone: string
+  ): Promise<any | null> {
+    if (!phone || phone === "000-0000-0000") return null;
+
+    const normalizedPhone = phone.replace(/[\s\-\(\)]/g, "").trim();
+    const phoneVariations = [
+      phone,
+      normalizedPhone,
+      phone.replace(/-/g, ""),
+    ].filter((p, i, arr) => arr.indexOf(p) === i);
+
+    try {
+      const platformManager = await (this.prisma as any).supplierManager.findFirst({
+        where: {
+          OR: phoneVariations.map((p) => ({ phone_number: p })),
+          status: "ACTIVE",
+        },
+        include: {
+          supplier: {
+            select: { tenant_id: true },
+          },
+        },
+      });
+
+      return platformManager;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to search platform SupplierManager by phone: ${error}`
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Find platform SupplierManager by business number
+   */
+  private async findPlatformSupplierManagerByBusinessNumber(
+    businessNumber: string
+  ): Promise<any | null> {
+    if (!businessNumber) return null;
+
+    try {
+      const platformManager = await (this.prisma as any).supplierManager.findFirst({
+        where: {
+          supplier: {
+            business_number: businessNumber,
+          },
+          status: "ACTIVE",
+        },
+        include: {
+          supplier: {
+            select: { tenant_id: true, business_number: true },
+          },
+        },
+      });
+
+      return platformManager;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to search platform SupplierManager by business_number: ${error}`
+      );
+      return null;
+    }
+  }
+
+  /**
    * Find or create ClinicSupplierManager from supplier data.
    * Used when creating products with supplier information.
+   * ✅ Auto-links to platform SupplierManager if found by phone or business_number
    */
   async findOrCreateSupplierManager(
     tenantId: string,
@@ -85,7 +155,7 @@ export class ClinicSupplierHelperService {
 
     // Try to find by phone_number (for claim matching)
     if (supplierData.contact_phone) {
-      const supplierManager = await this.prisma.clinicSupplierManager.findFirst(
+      const clinicSupplierManager = await this.prisma.clinicSupplierManager.findFirst(
         {
           where: {
             tenant_id: tenantId,
@@ -94,14 +164,41 @@ export class ClinicSupplierHelperService {
         }
       );
 
-      if (supplierManager) {
-        return { id: supplierManager.id };
+      if (clinicSupplierManager) {
+        // ✅ Auto-link: If linked_supplier_manager_id is null, try to find platform SupplierManager
+        if (!clinicSupplierManager.linked_supplier_manager_id) {
+          const platformManager =
+            await this.findPlatformSupplierManagerByPhone(
+              supplierData.contact_phone
+            );
+
+          if (platformManager) {
+            // ✅ Update with auto-link
+            const updated = await this.prisma.clinicSupplierManager.update({
+              where: { id: clinicSupplierManager.id },
+              data: {
+                linked_supplier_manager_id: platformManager.id,
+                business_number:
+                  supplierData.business_number ||
+                  clinicSupplierManager.business_number,
+              },
+            });
+
+            this.logger.log(
+              `🔗 [AUTO-LINK] Linked ClinicSupplierManager ${clinicSupplierManager.id} to SupplierManager ${platformManager.id} by phone: ${supplierData.contact_phone}`
+            );
+
+            return { id: updated.id };
+          }
+        }
+
+        return { id: clinicSupplierManager.id };
       }
     }
 
     // Try to find by business_number
     if (supplierData.business_number) {
-      const supplierManager = await this.prisma.clinicSupplierManager.findFirst(
+      const clinicSupplierManager = await this.prisma.clinicSupplierManager.findFirst(
         {
           where: {
             tenant_id: tenantId,
@@ -110,12 +207,75 @@ export class ClinicSupplierHelperService {
         }
       );
 
-      if (supplierManager) {
-        return { id: supplierManager.id };
+      if (clinicSupplierManager) {
+        // ✅ Auto-link: If linked_supplier_manager_id is null, try to find platform SupplierManager
+        if (!clinicSupplierManager.linked_supplier_manager_id) {
+          // Try by business_number first
+          let platformManager =
+            await this.findPlatformSupplierManagerByBusinessNumber(
+              supplierData.business_number
+            );
+
+          // If not found, try by phone_number
+          if (!platformManager && supplierData.contact_phone) {
+            platformManager = await this.findPlatformSupplierManagerByPhone(
+              supplierData.contact_phone
+            );
+          }
+
+          if (platformManager) {
+            // ✅ Update with auto-link
+            const updated = await this.prisma.clinicSupplierManager.update({
+              where: { id: clinicSupplierManager.id },
+              data: {
+                linked_supplier_manager_id: platformManager.id,
+              },
+            });
+
+            this.logger.log(
+              `🔗 [AUTO-LINK] Linked ClinicSupplierManager ${clinicSupplierManager.id} to SupplierManager ${platformManager.id} by business_number: ${supplierData.business_number}`
+            );
+
+            return { id: updated.id };
+          }
+        }
+
+        return { id: clinicSupplierManager.id };
       }
     }
 
-    // Create new ClinicSupplierManager
+    // ✅ Create new ClinicSupplierManager - check for platform SupplierManager first
+    let linkedSupplierManagerId: string | null = null;
+
+    // Try to find platform SupplierManager by phone_number
+    if (supplierData.contact_phone) {
+      const platformManager = await this.findPlatformSupplierManagerByPhone(
+        supplierData.contact_phone
+      );
+
+      if (platformManager) {
+        linkedSupplierManagerId = platformManager.id;
+        this.logger.log(
+          `🔗 [AUTO-LINK] Creating ClinicSupplierManager with auto-link to SupplierManager ${platformManager.id} by phone: ${supplierData.contact_phone}`
+        );
+      }
+    }
+
+    // If not found by phone, try by business_number
+    if (!linkedSupplierManagerId && supplierData.business_number) {
+      const platformManager =
+        await this.findPlatformSupplierManagerByBusinessNumber(
+          supplierData.business_number
+        );
+
+      if (platformManager) {
+        linkedSupplierManagerId = platformManager.id;
+        this.logger.log(
+          `🔗 [AUTO-LINK] Creating ClinicSupplierManager with auto-link to SupplierManager ${platformManager.id} by business_number: ${supplierData.business_number}`
+        );
+      }
+    }
+
     const newSupplierManager = await this.prisma.clinicSupplierManager.create({
       data: {
         tenant_id: tenantId,
@@ -130,6 +290,7 @@ export class ClinicSupplierHelperService {
         name: supplierData.contact_name || "담당자 없음",
         phone_number: supplierData.contact_phone || "000-0000-0000",
         email1: supplierData.contact_email,
+        linked_supplier_manager_id: linkedSupplierManagerId, // ✅ Auto-link
       },
     });
 

@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "../../node_modules/.prisma/client-supplier";
 
 @Injectable()
@@ -11,39 +12,32 @@ export class PrismaService
   private isConnected = false;
   private connectionAttempted = false;
   
-  constructor() {
-    const databaseUrl = process.env.DATABASE_URL;
+  constructor(private readonly configService: ConfigService) {
+    // ✅ ConfigService orqali DATABASE_URL ni olish (env file'dan yuklanadi, priority: .env.local > .env > process.env)
+    // Note: configService parameter is available before super() call
+    // ❌ Fallback'ni olib tashlash - faqat ConfigService'dan olish (env file priority)
+    const databaseUrl = configService.get<string>('DATABASE_URL');
+    const nodeEnv = configService.get<string>('NODE_ENV') || process.env.NODE_ENV || 'development';
     
-    // Validate DATABASE_URL format (before super call, use console)
-    if (databaseUrl) {
-      try {
-        const url = new URL(databaseUrl);
-        if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
-          console.warn(`Invalid database protocol: ${url.protocol}. Expected postgresql:// or postgres://`);
-        }
-        
-        // Check if using port 5432 and suggest port 6543 for pgbouncer
-        if (url.port === "5432" && url.hostname.includes("pooler.supabase.com")) {
-          console.warn(
-            "⚠️  Using port 5432 with Supabase pooler. Consider using port 6543 with ?pgbouncer=true&connection_limit=5&pool_timeout=30 for better connection pooling."
-          );
-        }
-      } catch (error) {
-        if (error instanceof TypeError) {
-          // Invalid URL format
-          console.warn(`DATABASE_URL format might be incorrect: ${databaseUrl.substring(0, 20)}...`);
-        }
-      }
+    // ✅ DATABASE_URL tekshirish - agar yo'q bo'lsa, error
+    if (!databaseUrl) {
+      const errorMsg = '❌ DATABASE_URL is not set in .env.local or .env file! Please check your environment configuration.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
+    // ✅ super() ni birinchi chaqirish (TypeScript requirement)
     super({
       datasources: {
         db: {
           url: databaseUrl,
         },
       },
-      log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+      log: nodeEnv === "development" ? ["error", "warn"] : ["error"],
     });
+    
+    // ✅ Logging - super() chaqirilgandan keyin (this.logger ishlatish mumkin)
+   
   }
   
   async onModuleInit() {

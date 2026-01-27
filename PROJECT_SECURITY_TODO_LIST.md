@@ -141,6 +141,21 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 - ✅ Service role policy'lar
 - ✅ RLS test qilish
 
+
+#### 9. Nginx Reverse Proxy & SSL
+**Qilish kerak:**
+- ✅ Nginx reverse proxy sozlash
+- ✅ SSL sertifikat o'rnatish (Let's Encrypt)
+- ✅ HTTP -> HTTPS redirect
+- ✅ Security headers (HSTS, X-Frame-Options, CSP)
+- ✅ Rate limiting zones
+- ✅ Upstream server configuration
+
+**Fayllar:**
+- `/etc/nginx/sites-available/clinic-erp` (yangi)
+
+---
+
 ## ❌ QILISH KERAK BO'LGAN ISHLAR (TODO)
 
 ### 🔴 CRITICAL (Production'ga chiqishdan oldin majburiy)
@@ -202,19 +217,6 @@ sudo ufw default deny incoming
 
 ---
 
-#### 9. Nginx Reverse Proxy & SSL
-**Qilish kerak:**
-- [ ] Nginx reverse proxy sozlash
-- [ ] SSL sertifikat o'rnatish (Let's Encrypt)
-- [ ] HTTP -> HTTPS redirect
-- [ ] Security headers (HSTS, X-Frame-Options, CSP)
-- [ ] Rate limiting zones
-- [ ] Upstream server configuration
-
-**Fayllar:**
-- `/etc/nginx/sites-available/clinic-erp` (yangi)
-
----
 
 
 

@@ -45,9 +45,13 @@ export class OrderService {
       memo: item.memo || null,
     }));
 
+    this.logger.log(
+      `📦 [Order Create] Starting order creation: ${orderNo}, Items: ${items.length}, SupplierTenantId: ${supplierTenantId}`
+    );
+
     try {
       const order = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierOrder.create({
+        const result = await (this.prisma as any).supplierOrder.create({
           data: {
             order_no: orderNo,
             supplier_tenant_id: supplierTenantId,
@@ -65,11 +69,46 @@ export class OrderService {
             items: true,
           },
         });
+
+        // ✅ Tekshirish: Items yaratildimi?
+        if (!result.items || result.items.length === 0) {
+          this.logger.error(
+            `⚠️ Order created but NO ITEMS were saved! Order ID: ${result.id}, Expected: ${itemsData.length} items`
+          );
+          this.logger.error(
+            `   Order data: ${JSON.stringify({
+              orderNo,
+              supplierTenantId,
+              itemsCount: items.length,
+              itemsDataSample: itemsData.slice(0, 1),
+            })}`
+          );
+          throw new Error("Failed to create order items - transaction may have rolled back");
+        }
+
+        this.logger.log(
+          `✅ [Order Create] Order created successfully: ${result.id}, Items: ${result.items.length}`
+        );
+
+        return result;
       });
 
       return this.formatOrder(order);
     } catch (error: any) {
-      this.logger.error(`Order create failed: ${error.message}`, error.stack);
+      // ✅ Detailed error logging
+      this.logger.error(
+        `❌ [Order Create] Failed: ${error.message}`,
+        error.stack
+      );
+      this.logger.error(
+        `   Order data: ${JSON.stringify({
+          orderNo,
+          supplierTenantId,
+          itemsCount: items.length,
+          itemsDataSample: itemsData.slice(0, 1),
+        })}`
+      );
+      
       throw new BadRequestException(`Order create failed: ${error.message}`);
     }
   }

@@ -6,18 +6,47 @@ import * as bodyParser from "body-parser";
 import * as express from "express";
 import * as compression from "compression";
 import * as cookieParser from "cookie-parser";
-import { join } from "path";
+import { join, resolve } from "path";
+import { existsSync } from "fs";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  // ✅ Environment tekshirish log
+  // ✅ Environment detection va logging (AppModule yaratilishidan oldin)
   const nodeEnv = process.env.NODE_ENV || 'development';
+  const isProduction = nodeEnv === 'production';
+  
+  // ✅ Env file paths tekshirish
+  const envFilePaths = isProduction
+    ? [
+        resolve(process.cwd(), ".env.production"),
+        resolve(process.cwd(), "apps/backend/.env.production"),
+        resolve(process.cwd(), "../../apps/backend/.env.production"),
+      ]
+    : [
+        resolve(process.cwd(), ".env.local"),
+        resolve(process.cwd(), ".env"),
+        resolve(process.cwd(), "apps/backend/.env.local"),
+        resolve(process.cwd(), "apps/backend/.env"),
+        resolve(process.cwd(), "../../apps/backend/.env.local"),
+        resolve(process.cwd(), "../../apps/backend/.env"),
+      ];
+  
+  const foundEnvFile = envFilePaths.find(path => existsSync(path));
+  const envFileName = foundEnvFile 
+    ? foundEnvFile.replace(process.cwd(), '.').replace(/\\/g, '/')
+    : 'NOT FOUND';
+  
+ 
+ 
+  
+  // ✅ Key environment variables status
   const dbUrl = process.env.DATABASE_URL;
   const dbHost = dbUrl ? new URL(dbUrl).hostname : 'not set';
+  const corsOrigins = process.env.CORS_ORIGINS ? '✅ Set' : '❌ Not set';
+  const port = process.env.PORT || '3000';
+  
 
- console.log(`🚀 Environment: ${nodeEnv}`);
-  console.log(`📊 Database Host: ${dbHost}`);
-  console.log(`📁 Env File: ${nodeEnv === 'production' ? '.env.production' : '.env.local/.env'}`);
+
+  const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -31,7 +60,7 @@ async function bootstrap() {
 
   // ✅ CORS configuration from environment variable
   // Production'da CORS_ORIGINS majburiy, development'da localhost fallback
-const isProduction = process.env.NODE_ENV === "production";
+  // isProduction already declared above
   
   // Development'da localhost'da ishlayotgan bo'lsa, production'ga o'xshamaslik
   const isLocalhost = process.env.PORT === "3000" || 
@@ -134,8 +163,12 @@ const isProduction = process.env.NODE_ENV === "production";
     console.log("Swagger disabled in production mode");
   }
 
-  const port = Number(process.env.PORT) || 3000;
-  await app.listen(port);
-  console.log(`Server is running on port ${port}`);
+  const serverPort = Number(process.env.PORT) || 3000;
+  await app.listen(serverPort);
+  
+  console.log('\n' + '='.repeat(60));
+  console.log(`✅ Clinic Backend server is running on port ${serverPort}`);
+  console.log(`📌 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log('='.repeat(60) + '\n');
 }
 bootstrap();

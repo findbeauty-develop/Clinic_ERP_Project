@@ -810,7 +810,7 @@ docker-compose -f docker-compose.prod.yml up -d --force-recreate backend
 
 ```bash
 # Barcha log'larni ko'rish
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Yoki alohida log'lar
   docker logs -f clinic-erp-backend-prod

@@ -45,11 +45,34 @@ export class SupplierReturnNotificationService {
 
       const clinicName = clinic?.name || `Clinic-${tenantId}`;
 
-      // 3. Check if linked to platform supplier
-      const clinicSupplierManager = productSupplier.clinicSupplierManager;
-      const linkedManager = clinicSupplierManager.linkedManager;
+      // 3. Check if ProductSupplier exists
+      if (!productSupplier) {
+        this.logger.debug(
+          `ProductSupplier not found for product ${returnRecord.product_id}`
+        );
+        return;
+      }
 
-      // 4. Find supplier via linkedManager
+      // 4. Check if linked to platform supplier
+      const clinicSupplierManager = productSupplier?.clinicSupplierManager;
+      if (!clinicSupplierManager) {
+        this.logger.debug(
+          `ClinicSupplierManager not found for product ${returnRecord.product_id}`
+        );
+        return;
+      }
+
+      const linkedManager = clinicSupplierManager?.linkedManager;
+
+      // ✅ Manual supplier - no platform notification needed
+      if (!linkedManager || !linkedManager.supplier_tenant_id) {
+        this.logger.debug(
+          `Skipping notification - manual supplier (no auto-link) for product ${returnRecord.product_id}, ClinicSupplierManager: ${clinicSupplierManager.id}`
+        );
+        return;
+      }
+
+      // 5. Find supplier via linkedManager
       const supplier = await (prisma as any).supplier.findFirst({
         where: {
           tenant_id: linkedManager.supplier_tenant_id,
@@ -57,11 +80,13 @@ export class SupplierReturnNotificationService {
       });
 
       if (!supplier) {
-        this.logger.warn(`Supplier not found for manager ${linkedManager.id}`);
+        this.logger.warn(
+          `Supplier not found for manager ${linkedManager.id}, tenant_id: ${linkedManager.supplier_tenant_id}`
+        );
         return;
       }
 
-      // 5. Get all ACTIVE SupplierManagers for this supplier
+      // 6. Get all ACTIVE SupplierManagers for this supplier
       const supplierManagers = await (prisma as any).supplierManager.findMany({
         where: {
           supplier_tenant_id: supplier.tenant_id,
@@ -73,7 +98,7 @@ export class SupplierReturnNotificationService {
         return;
       }
 
-      // 6. Create notification for each SupplierManager
+      // 7. Create notification for each SupplierManager
       for (const manager of supplierManagers) {
         try {
           await (prisma as any).supplierReturnNotification.create({

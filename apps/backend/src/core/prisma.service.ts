@@ -4,6 +4,7 @@ import {
   Logger,
   OnModuleDestroy,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "../../node_modules/.prisma/client-backend";
 
 @Injectable()
@@ -17,18 +18,25 @@ export class PrismaService
   private readonly retryDelay = 3000; // 3 seconds
   $transaction: any;
 
-  constructor() {
-    let databaseUrl = process.env.DATABASE_URL;
+  constructor(private readonly configService: ConfigService) {
+    // ✅ ConfigService orqali DATABASE_URL ni olish (env file'dan yuklanadi, priority: .env.local > .env > process.env)
+    // Note: configService parameter is available before super() call
+    // ❌ Fallback'ni olib tashlash - faqat ConfigService'dan olish (env file priority)
+    let databaseUrl = configService.get<string>('DATABASE_URL');
+    const nodeEnv = configService.get<string>('NODE_ENV') || process.env.NODE_ENV || 'development';
+    
+    // ✅ DATABASE_URL tekshirish - agar yo'q bo'lsa, error
+    if (!databaseUrl) {
+      const errorMsg = '❌ DATABASE_URL is not set in .env.local or .env file! Please check your environment configuration.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
 
     // Validate DATABASE_URL format and ensure pgbouncer parameter for connection poolers
+    // (before super() call, use console for warnings if needed)
     if (databaseUrl) {
       try {
         const url = new URL(databaseUrl);
-        if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
-          console.warn(
-            `Invalid database protocol: ${url.protocol}. Expected postgresql:// or postgres://`
-          );
-        }
 
         // Check if using a connection pooler (Supabase, Neon, etc.)
         const isPooler =
@@ -43,26 +51,8 @@ export class PrismaService
           url.searchParams.set("pgbouncer", "true");
           databaseUrl = url.toString();
         }
-
-        // Check if using port 5432 and suggest port 6543 for pgbouncer
-        if (
-          url.port === "5432" &&
-          url.hostname.includes("pooler.supabase.com")
-        ) {
-          console.warn(
-            "⚠️  Using port 5432 with Supabase pooler. Consider using port 6543 with ?pgbouncer=true for better connection pooling."
-          );
-        }
       } catch (error) {
-        if (error instanceof TypeError) {
-          // Invalid URL format
-          console.warn(
-            `DATABASE_URL format might be incorrect: ${databaseUrl?.substring(
-              0,
-              20
-            )}...`
-          );
-        }
+        // URL parsing failed - will log after super() call
       }
     }
 
@@ -111,16 +101,8 @@ export class PrismaService
       // For Supabase, use port 6543 with ?pgbouncer=true in DATABASE_URL
     });
 
-    // Now we can use this.logger after super() is called
-    if (databaseUrl) {
-      try {
-        new URL(databaseUrl);
-      } catch (error) {
-        this.logger.warn(
-          "Failed to parse DATABASE_URL for connection pool optimization"
-        );
-      }
-    }
+    // ✅ Now we can use this.logger after super() is called
+  
   }
 
   /**

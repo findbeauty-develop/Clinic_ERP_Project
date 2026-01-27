@@ -2274,8 +2274,24 @@ export class OrderService {
             const errorText = await response
               .text()
               .catch(() => "Unknown error");
+            
+            // ✅ ERROR LOG QO'SHISH
+            this.logger.error(
+              `❌ Supplier backend API error: ${response.status} ${response.statusText}`
+            );
+            this.logger.error(`   Error response: ${errorText}`);
+            this.logger.error(`   Order data: ${JSON.stringify({
+              orderNo: supplierOrderData.orderNo,
+              supplierTenantId: supplierOrderData.supplierTenantId,
+              itemsCount: supplierOrderData.items.length
+            })}`);
           } else {
             const result: any = await response.json();
+
+            // ✅ SUCCESS LOG QO'SHISH
+            this.logger.log(
+              `✅ Order sent to supplier backend: ${supplierOrderData.orderNo}, Items: ${result.items?.length || 0}`
+            );
 
             supplierBackendSuccess = true;
           }
@@ -2294,12 +2310,22 @@ export class OrderService {
             errorMessage.includes("aborted") ||
             errorMessage.includes("timeout")
           ) {
+            this.logger.warn(
+              `⏱️ Supplier backend API timeout for order ${supplierOrderData.orderNo}`
+            );
           } else if (
             errorMessage.includes("fetch failed") ||
             errorMessage.includes("ECONNREFUSED") ||
             errorMessage.includes("ENOTFOUND")
           ) {
+            this.logger.warn(
+              `🔌 Supplier backend API connection failed for order ${supplierOrderData.orderNo}: ${errorMessage}`
+            );
           } else {
+            this.logger.error(
+              `❌ Supplier backend API error for order ${supplierOrderData.orderNo}: ${errorMessage}`,
+              fetchError?.stack
+            );
           }
           // Continue - we'll still try to send SMS even if API call failed
         }

@@ -8,6 +8,41 @@ import { join, resolve } from "path";
 import { existsSync } from "fs";
 
 async function bootstrap() {
+  // ✅ Environment detection va logging (AppModule yaratilishidan oldin)
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const isProduction = nodeEnv === 'production';
+  
+  // ✅ Env file paths tekshirish
+  const envFilePaths = isProduction
+    ? [
+        resolve(process.cwd(), ".env.production"),
+        resolve(process.cwd(), "apps/supplier-backend/.env.production"),
+        resolve(process.cwd(), "../../apps/supplier-backend/.env.production"),
+        resolve(process.cwd(), "/app/apps/supplier-backend/.env.production"),
+      ]
+    : [
+        resolve(process.cwd(), ".env.local"),
+        resolve(process.cwd(), ".env"),
+        resolve(process.cwd(), "apps/supplier-backend/.env.local"),
+        resolve(process.cwd(), "apps/supplier-backend/.env"),
+        resolve(process.cwd(), "../../apps/supplier-backend/.env.local"),
+        resolve(process.cwd(), "../../apps/supplier-backend/.env"),
+        resolve(process.cwd(), "/app/apps/supplier-backend/.env.local"),
+        resolve(process.cwd(), "/app/apps/supplier-backend/.env"),
+      ];
+  
+  const foundEnvFile = envFilePaths.find(path => existsSync(path));
+  const envFileName = foundEnvFile 
+    ? foundEnvFile.replace(process.cwd(), '.').replace(/\\/g, '/')
+    : 'NOT FOUND';
+  
+  
+  
+
+  
+ 
+  
+
   // Set GOOGLE_APPLICATION_CREDENTIALS to absolute path if it's relative
   if (
     process.env.GOOGLE_APPLICATION_CREDENTIALS &&
@@ -19,15 +54,16 @@ async function bootstrap() {
     );
     if (existsSync(credentialsPath)) {
       process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
-      
-    }
+     
+    } 
   }
+  
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // ✅ CORS configuration from environment variable
   // Production'da CORS_ORIGINS majburiy, development'da localhost fallback
-  const isProduction = process.env.NODE_ENV === "production";
+  // isProduction already declared above
   
   let allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
@@ -144,8 +180,12 @@ async function bootstrap() {
     console.log("Swagger disabled in production mode");
   }
 
-  const port = Number(process.env.PORT) || 3002;
-  await app.listen(port);
+  const serverPort = Number(process.env.PORT) || 3002;
+  await app.listen(serverPort);
   
+  console.log('\n' + '='.repeat(60));
+  console.log(`✅ Supplier Backend server is running on port ${serverPort}`);
+  console.log(`📌 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log('='.repeat(60) + '\n');
 }
 bootstrap();
