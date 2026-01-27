@@ -191,110 +191,267 @@ export default function SettlementPage() {
         setPendingTransactions([]);
       }
 
-      setInProgressTransactions([
-        {
-          id: "3",
-          type: "주문",
-          status: "진행중",
-          timestamp: "00-00 10:50",
-          timeType: "확인시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "4",
-          type: "반품 및 교환",
-          status: "진행중",
-          timestamp: "00-00 10:50",
-          timeType: "확인시간",
-          itemCount: 111,
-          amount: 0,
-        },
-      ]);
+      // ✅ Fetch in-progress orders (confirmed, shipped)
+      try {
+        const inProgressOrdersResponse = await fetch(
+          `${supplierApiUrl}/supplier/orders?status=all&limit=100`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
-      setCompletedTransactions([
-        {
-          id: "5",
-          type: "주문",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "6",
-          type: "반납",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "7",
-          type: "주문",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "8",
-          type: "반품 및 교환",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "9",
-          type: "반품 및 교환",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "10",
-          type: "주문",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "11",
-          type: "반납",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "12",
-          type: "반납",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-        {
-          id: "13",
-          type: "반품 및 교환",
-          status: "완료",
-          timestamp: "00-00 10:50",
-          timeType: "완료시간",
-          itemCount: 111,
-          amount: 0,
-        },
-      ]);
+        if (inProgressOrdersResponse.ok) {
+          const inProgressOrdersData = await inProgressOrdersResponse.json();
+          
+          // Filter orders by clinic tenant ID and status (confirmed, shipped)
+          const clinicInProgressOrders = (inProgressOrdersData.orders || []).filter(
+            (order: any) => 
+              (order.clinic?.tenantId === clinicId || order.clinicTenantId === clinicId) &&
+              (order.status === "confirmed" || order.status === "shipped")
+          );
+
+          // Get clinic name if not already set
+          if (clinicInProgressOrders.length > 0 && !clinicName && clinicInProgressOrders[0].clinic?.name) {
+            setClinicName(clinicInProgressOrders[0].clinic.name);
+          }
+
+          // Fetch in-progress returns (ACCEPTED, PROCESSING)
+          const inProgressReturnsResponse = await fetch(
+            `${supplierApiUrl}/supplier/returns?status=ALL&limit=100`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          let clinicInProgressReturns: any[] = [];
+          if (inProgressReturnsResponse.ok) {
+            const inProgressReturnsData = await inProgressReturnsResponse.json();
+            const allInProgressReturns = inProgressReturnsData.notifications || inProgressReturnsData.returns || [];
+            
+            const targetClinicName = clinicInProgressOrders[0]?.clinic?.name || clinicName;
+            
+            clinicInProgressReturns = allInProgressReturns.filter(
+              (returnItem: any) => {
+                const isInProgress = returnItem.status === "ACCEPTED" || returnItem.status === "PROCESSING";
+                const matchesClinic = returnItem.clinicName === targetClinicName || 
+                                     returnItem.clinic_name === targetClinicName;
+                return isInProgress && matchesClinic;
+              }
+            );
+          }
+
+          // Format in-progress transactions
+          const formattedInProgress: Transaction[] = [];
+
+          // Add in-progress orders
+          clinicInProgressOrders.forEach((order: any) => {
+            const orderDate = new Date(order.orderDate || order.confirmedAt || order.updatedAt);
+            const month = String(orderDate.getMonth() + 1).padStart(2, "0");
+            const day = String(orderDate.getDate()).padStart(2, "0");
+            const hours = String(orderDate.getHours()).padStart(2, "0");
+            const minutes = String(orderDate.getMinutes()).padStart(2, "0");
+            const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+            const productNames = order.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
+            formattedInProgress.push({
+              id: order.id,
+              type: "주문",
+              status: "진행중",
+              timestamp: timestamp,
+              timeType: "확인시간",
+              itemCount: order.items?.length || 0,
+              amount: order.totalAmount || 0,
+              productNames: productNames.length > 0 ? productNames : undefined,
+            });
+          });
+
+          // Add in-progress returns
+          clinicInProgressReturns.forEach((returnItem: any) => {
+            const returnDate = new Date(
+              returnItem.confirmedAt || returnItem.createdAt || returnItem.returnDate || new Date()
+            );
+            const month = String(returnDate.getMonth() + 1).padStart(2, "0");
+            const day = String(returnDate.getDate()).padStart(2, "0");
+            const hours = String(returnDate.getHours()).padStart(2, "0");
+            const minutes = String(returnDate.getMinutes()).padStart(2, "0");
+            const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+            const returnType = returnItem.items?.some((item: any) => 
+              item.returnType?.includes("교환") || item.return_type?.includes("교환")
+            ) ? "반품 및 교환" : "반납";
+
+            const productNames = returnItem.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
+            formattedInProgress.push({
+              id: returnItem.id || returnItem.returnId,
+              type: returnType as "반납" | "반품 및 교환",
+              status: "진행중",
+              timestamp: timestamp,
+              timeType: "확인시간",
+              itemCount: returnItem.items?.length || 0,
+              amount: returnItem.totalRefund || 0,
+              productNames: productNames.length > 0 ? productNames : undefined,
+            });
+          });
+
+          // Sort by timestamp (newest first)
+          formattedInProgress.sort((a, b) => {
+            const dateA = new Date(`20${a.timestamp.replace(" ", "T")}`);
+            const dateB = new Date(`20${b.timestamp.replace(" ", "T")}`);
+            return dateB.getTime() - dateA.getTime();
+          });
+
+          setInProgressTransactions(formattedInProgress);
+        } else {
+          console.error("Failed to fetch in-progress orders:", inProgressOrdersResponse.statusText);
+          setInProgressTransactions([]);
+        }
+      } catch (error) {
+        console.error("Error fetching in-progress transactions:", error);
+        setInProgressTransactions([]);
+      }
+
+      // ✅ Fetch completed orders
+      try {
+        const completedOrdersResponse = await fetch(
+          `${supplierApiUrl}/supplier/orders?status=all&limit=100`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (completedOrdersResponse.ok) {
+          const completedOrdersData = await completedOrdersResponse.json();
+          
+          // Filter orders by clinic tenant ID and status (completed)
+          const clinicCompletedOrders = (completedOrdersData.orders || []).filter(
+            (order: any) => 
+              (order.clinic?.tenantId === clinicId || order.clinicTenantId === clinicId) &&
+              order.status === "completed"
+          );
+
+          // Get clinic name if not already set
+          if (clinicCompletedOrders.length > 0 && !clinicName && clinicCompletedOrders[0].clinic?.name) {
+            setClinicName(clinicCompletedOrders[0].clinic.name);
+          }
+
+          // Fetch completed returns (COMPLETED)
+          const completedReturnsResponse = await fetch(
+            `${supplierApiUrl}/supplier/returns?status=ALL&limit=100`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          let clinicCompletedReturns: any[] = [];
+          if (completedReturnsResponse.ok) {
+            const completedReturnsData = await completedReturnsResponse.json();
+            const allCompletedReturns = completedReturnsData.notifications || completedReturnsData.returns || [];
+            
+            const targetClinicName = clinicCompletedOrders[0]?.clinic?.name || clinicName;
+            
+            clinicCompletedReturns = allCompletedReturns.filter(
+              (returnItem: any) => {
+                const isCompleted = returnItem.status === "COMPLETED";
+                const matchesClinic = returnItem.clinicName === targetClinicName || 
+                                     returnItem.clinic_name === targetClinicName;
+                return isCompleted && matchesClinic;
+              }
+            );
+          }
+
+          // Format completed transactions
+          const formattedCompleted: Transaction[] = [];
+
+          // Add completed orders
+          clinicCompletedOrders.forEach((order: any) => {
+            const orderDate = new Date(order.completedAt || order.updatedAt || order.orderDate);
+            const month = String(orderDate.getMonth() + 1).padStart(2, "0");
+            const day = String(orderDate.getDate()).padStart(2, "0");
+            const hours = String(orderDate.getHours()).padStart(2, "0");
+            const minutes = String(orderDate.getMinutes()).padStart(2, "0");
+            const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+            const productNames = order.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
+            formattedCompleted.push({
+              id: order.id,
+              type: "주문",
+              status: "완료",
+              timestamp: timestamp,
+              timeType: "완료시간",
+              itemCount: order.items?.length || 0,
+              amount: order.totalAmount || 0,
+              productNames: productNames.length > 0 ? productNames : undefined,
+            });
+          });
+
+          // Add completed returns
+          clinicCompletedReturns.forEach((returnItem: any) => {
+            const returnDate = new Date(
+              returnItem.completedAt || returnItem.updatedAt || returnItem.createdAt || new Date()
+            );
+            const month = String(returnDate.getMonth() + 1).padStart(2, "0");
+            const day = String(returnDate.getDate()).padStart(2, "0");
+            const hours = String(returnDate.getHours()).padStart(2, "0");
+            const minutes = String(returnDate.getMinutes()).padStart(2, "0");
+            const timestamp = `${month}-${day} ${hours}:${minutes}`;
+
+            const returnType = returnItem.items?.some((item: any) => 
+              item.returnType?.includes("교환") || item.return_type?.includes("교환")
+            ) ? "반품 및 교환" : "반납";
+
+            const productNames = returnItem.items?.map((item: any) => 
+              item.productName || item.name || item.product_name || "상품명 없음"
+            ).filter((name: string) => name !== "상품명 없음") || [];
+
+            formattedCompleted.push({
+              id: returnItem.id || returnItem.returnId,
+              type: returnType as "반납" | "반품 및 교환",
+              status: "완료",
+              timestamp: timestamp,
+              timeType: "완료시간",
+              itemCount: returnItem.items?.length || 0,
+              amount: returnItem.totalRefund || 0,
+              productNames: productNames.length > 0 ? productNames : undefined,
+            });
+          });
+
+          // Sort by timestamp (newest first)
+          formattedCompleted.sort((a, b) => {
+            const dateA = new Date(`20${a.timestamp.replace(" ", "T")}`);
+            const dateB = new Date(`20${b.timestamp.replace(" ", "T")}`);
+            return dateB.getTime() - dateA.getTime();
+          });
+
+          setCompletedTransactions(formattedCompleted);
+        } else {
+          console.error("Failed to fetch completed orders:", completedOrdersResponse.statusText);
+          setCompletedTransactions([]);
+        }
+      } catch (error) {
+        console.error("Error fetching completed transactions:", error);
+        setCompletedTransactions([]);
+      }
     } catch (error) {
       console.error("Failed to fetch settlement data:", error);
     } finally {
@@ -316,8 +473,8 @@ export default function SettlementPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <div className="sticky top-0 z-30 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-30 h-20 flex items-center justify-between bg-white px-4 py-3 shadow-sm">
+        <div className="flex items-center ml-12 gap-3">
           <Link href="/" className="flex items-center justify-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -347,7 +504,7 @@ export default function SettlementPage() {
       {/* Content */}
       <div className="p-4 space-y-4">
         {/* 전사보기 Section */}
-        <div>
+        {/* <div>
           <h2 className="text-base font-semibold text-gray-900 mb-3">전사보기</h2>
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
@@ -367,7 +524,7 @@ export default function SettlementPage() {
               <p className="text-lg font-bold text-gray-900">D+{stats.daysOverdue}</p>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* 접수대기 Section */}
         <div className="bg-white rounded-lg shadow-sm p-4">

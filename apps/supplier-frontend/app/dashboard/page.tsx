@@ -22,6 +22,7 @@ interface Order {
 interface ReturnExchange {
   id: string;
   clinicName: string;
+  clinicTenantId?: string; // ✅ Clinic tenant ID for settlement page
   status: "접수대기" | "진행중";
   timestamp: string;
   timeType: "요청시간" | "확인시간";
@@ -30,6 +31,7 @@ interface ReturnExchange {
 interface Return {
   id: string;
   clinicName: string;
+  clinicTenantId?: string; // ✅ Clinic tenant ID for settlement page
   status: "접수대기";
   timestamp: string;
   timeType: "요청시간";
@@ -244,6 +246,30 @@ export default function DashboardPage() {
           process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
         const token = localStorage.getItem("supplier_access_token");
 
+        // First, fetch orders to get clinic tenant ID mapping
+        const ordersForMappingResponse = await fetch(
+          `${supplierApiUrl}/supplier/orders?status=all&limit=100`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        // Create a map of clinic name -> clinic tenant ID
+        const clinicTenantIdMap = new Map<string, string>();
+        if (ordersForMappingResponse.ok) {
+          const ordersForMappingData = await ordersForMappingResponse.json();
+          (ordersForMappingData.orders || []).forEach((order: any) => {
+            const clinicName = order.clinic?.name || order.clinicName;
+            const clinicTenantId = order.clinic?.tenantId || order.clinicTenantId;
+            if (clinicName && clinicTenantId) {
+              clinicTenantIdMap.set(clinicName, clinicTenantId);
+            }
+          });
+        }
+
         // Fetch product returns/exchanges (반품 및 교환)
         const exchangesResponse = await fetch(
           `${supplierApiUrl}/supplier/returns?status=ALL&returnCategory=product&limit=3`,
@@ -293,9 +319,13 @@ export default function DashboardPage() {
               const timeType =
                 item.status === "PENDING" ? "요청시간" : "확인시간";
 
+              const clinicName = item.clinicName || item.clinic_name || "알 수 없음";
+              const clinicTenantId = item.clinicTenantId || item.clinic_tenant_id || clinicTenantIdMap.get(clinicName);
+
               return {
                 id: item.id || item.returnId,
-                clinicName: item.clinicName || item.clinic_name || "알 수 없음",
+                clinicName: clinicName,
+                clinicTenantId: clinicTenantId,
                 status: koreanStatus,
                 timestamp: timestamp,
                 timeType: timeType,
@@ -317,6 +347,30 @@ export default function DashboardPage() {
         const supplierApiUrl =
           process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
         const token = localStorage.getItem("supplier_access_token");
+
+        // First, fetch orders to get clinic tenant ID mapping (if not already fetched)
+        const ordersForMappingResponse = await fetch(
+          `${supplierApiUrl}/supplier/orders?status=all&limit=100`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        // Create a map of clinic name -> clinic tenant ID
+        const clinicTenantIdMap = new Map<string, string>();
+        if (ordersForMappingResponse.ok) {
+          const ordersForMappingData = await ordersForMappingResponse.json();
+          (ordersForMappingData.orders || []).forEach((order: any) => {
+            const clinicName = order.clinic?.name || order.clinicName;
+            const clinicTenantId = order.clinic?.tenantId || order.clinicTenantId;
+            if (clinicName && clinicTenantId) {
+              clinicTenantIdMap.set(clinicName, clinicTenantId);
+            }
+          });
+        }
 
         const returnsResponse = await fetch(
           `${supplierApiUrl}/supplier/returns?status=PENDING&returnCategory=empty_box&limit=3`,
@@ -351,9 +405,13 @@ export default function DashboardPage() {
               const minutes = String(returnDate.getMinutes()).padStart(2, "0");
               const timestamp = `${month}-${day} ${hours}:${minutes}`;
 
+              const clinicName = item.clinicName || item.clinic_name || "알 수 없음";
+              const clinicTenantId = item.clinicTenantId || item.clinic_tenant_id || clinicTenantIdMap.get(clinicName);
+
               return {
                 id: item.id || item.returnId,
-                clinicName: item.clinicName || item.clinic_name || "알 수 없음",
+                clinicName: clinicName,
+                clinicTenantId: clinicTenantId,
                 status: "접수대기",
                 timestamp: timestamp,
                 timeType: "요청시간",
@@ -528,7 +586,7 @@ export default function DashboardPage() {
                     {item.status}
                   </span>
                   <Link
-                    href={`/exchanges`}
+                    href={item.clinicTenantId ? `/settlement/${item.clinicTenantId}` : `/exchanges`}
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {item.clinicName}
@@ -568,7 +626,7 @@ export default function DashboardPage() {
                     {item.status}
                   </span>
                   <Link
-                    href={`/returns/${item.id}`}
+                    href={item.clinicTenantId ? `/settlement/${item.clinicTenantId}` : `/returns`}
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {item.clinicName}
@@ -583,8 +641,8 @@ export default function DashboardPage() {
         </div>
 
         {/* 나의 전산 Section */}
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-3">
+        {/* <div className="bg-white rounded-lg shadow-sm p-4"> */}
+          {/* <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">나의 전산</h2>
             <Link
               href="/settings"
@@ -592,26 +650,26 @@ export default function DashboardPage() {
             >
               전체 보기
             </Link>
-          </div>
-          <div className="grid grid-cols-1 gap-3">
+          </div> */}
+          {/* <div className="grid grid-cols-1 gap-3"> */}
             {/* 총 업체수 Card */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-1">총 업체수</p>
               <p className="text-lg font-bold text-gray-900">
                 {stats.totalCompanies}
               </p>
-            </div>
+            </div> */}
 
             {/* 총 미수금 Card */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-1">총 미수금</p>
               <p className="text-lg font-bold text-gray-900">
                 {formatCurrency(stats.totalReceivables)}
               </p>
-            </div>
+            </div> */}
 
             {/* TOP 3 Card */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-2">TOP 3</p>
               <div className="space-y-1">
                 {stats.topCompanies.map((company, index) => (
@@ -628,9 +686,9 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
+            </div> */}
+          {/* </div> */}
+        {/* </div> */}
       </div>
     </div>
   );
