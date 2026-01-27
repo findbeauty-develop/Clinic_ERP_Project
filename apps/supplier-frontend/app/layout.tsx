@@ -4,8 +4,11 @@ import { Sidebar } from "../components/layout/sidebar";
 import { MainWrapper } from "../components/layout/main-wrapper";
 
 export const metadata: Metadata = {
-  title: "Supplier ERP",
-  description: "Supplier Management System",
+  title: "Jaclit Supplier",
+  description: "Jaclit Supplier Management System",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

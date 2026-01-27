@@ -7,8 +7,12 @@ import { AppShell } from "@/components/layout/app-shell";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ERP System",
-  description: "Clinic ERP Management System",
+  title: "Jaclit Clinic",
+  description: "Jaclit Clinic ERP Management System",
+  icons: {
+    icon: "/favicon.svg",
+  },
+  
 };
 
 export default function RootLayout({
