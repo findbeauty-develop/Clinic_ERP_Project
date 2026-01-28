@@ -2,6 +2,7 @@
 
 import KoreanClockWidget from "@/components/watch";
 import { apiGet } from "@/lib/api";
+import { duration } from "html2canvas/dist/types/css/property-descriptors/duration";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 
@@ -26,6 +27,29 @@ export default function DashboardPage() {
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [selectedCity, setSelectedCity] = useState("seoul");
   const [scheduleType, setScheduleType] = useState("프로젝트 일정");
+
+  const [particlePositions, setParticlePositions] = useState<Array<{
+    left: number;
+    top: number;
+    duration: number;
+  }>>([]);
+
+  useEffect(() => {
+    setParticlePositions(
+      Array.from({ length: 6 }, () => ({
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        duration: 3 + Math.random() * 2,
+      }))
+    );
+  }, []);
+
+  const monthInputValue = useMemo(() => {
+    const date = selectedDate || currentDate;
+    const year =date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`;
+  }, [selectedDate, currentDate]);
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
@@ -1151,7 +1175,7 @@ export default function DashboardPage() {
                   <div className="relative">
                     <input
                       type="month"
-                      value={`${(selectedDate || currentDate).getFullYear()}-${String((selectedDate || currentDate).getMonth() + 1).padStart(2, "0")}`}
+                      value={monthInputValue}
                       onChange={(e) => {
                         if (e.target.value) {
                           const [year, month] = e.target.value
@@ -1328,15 +1352,15 @@ export default function DashboardPage() {
 
             {/* Floating Particles Effect */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {[...Array(6)].map((_, i) => (
+              {particlePositions.map((particle, i) => (
                 <div
                   key={i}
                   className="absolute w-2 h-2 bg-white rounded-full opacity-20 animate-float"
                   style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
+                    left: `${particle.left}%`,
+                    top: `${particle.top}%`,
                     animationDelay: `${i * 0.5}s`,
-                    animationDuration: `${3 + Math.random() * 2}s`,
+                    animationDuration: `${particle.duration}s`,
                   }}
                 ></div>
               ))}
