@@ -967,22 +967,63 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
               ? "교환"
               : "반품";
 
+            // Fetch product unit from product table
+            let productUnit = "";
+            if (returnItem.product_id) {
+              try {
+                const product = await this.prisma.executeWithRetry(async () => {
+                  return (this.prisma as any).product.findFirst({
+                    where: { id: returnItem.product_id },
+                    select: { unit: true },
+                  });
+                });
+                productUnit = product?.unit || "";
+              } catch (error: any) {
+                this.logger.warn(
+                  `Failed to fetch product unit: ${error.message}`
+                );
+              }
+            }
+
             const products = returnData.items.map((item: any) => ({
               productName: item.productName,
               brand: item.brand,
               quantity: item.quantity,
+              unit: productUnit,
             }));
 
-            await this.emailService.sendReturnNotificationEmail(
-              supplierEmail,
-              clinicName,
-              returnItem.return_no,
-              returnData.items[0].totalPrice,
-              returnData.items[0].quantity,
-              clinicManagerName,
-              products,
-              returnTypeText
+            // Template ID'ni environment variable'dan olish
+            const templateId = parseInt(
+              process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || "0",
+              10
             );
+
+            if (templateId > 0) {
+              // Template ishlatish
+              await this.emailService.sendReturnNotificationEmailWithTemplate(
+                supplierEmail,
+                templateId,
+                clinicName,
+                returnItem.return_no,
+                returnData.items[0].totalPrice,
+                returnData.items[0].quantity,
+                clinicManagerName,
+                products,
+                returnTypeText
+              );
+            } else {
+              // Oddiy HTML email (fallback)
+              await this.emailService.sendReturnNotificationEmail(
+                supplierEmail,
+                clinicName,
+                returnItem.return_no,
+                returnData.items[0].totalPrice,
+                returnData.items[0].quantity,
+                clinicManagerName,
+                products,
+                returnTypeText
+              );
+            }
           } else {
           }
         } catch (emailError: any) {

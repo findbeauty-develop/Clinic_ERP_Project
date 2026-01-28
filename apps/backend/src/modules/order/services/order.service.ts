@@ -2192,16 +2192,21 @@ export class OrderService {
               0
             );
 
-            const emailSent =
-              await this.emailService.sendOrderNotificationEmail(
-                supplierEmail,
-                finalClinicName,
-                order.order_no,
-                order.total_amount,
-                totalQuantity,
-                finalClinicManagerName,
-                products
-              );
+            const templateId = parseInt(
+  process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
+  10
+);
+
+            const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate(
+  supplierEmail,
+  templateId, // ✅ Brevo template ID
+  finalClinicName,
+  order.order_no,
+  order.total_amount,
+  totalQuantity,
+  finalClinicManagerName,
+  products
+);
           } else {
             this.logger.warn(
               `No email address found for manual supplier ${order.supplier_id}`
@@ -2593,15 +2598,22 @@ export class OrderService {
             0
           );
 
-          const emailSent = await this.emailService.sendOrderNotificationEmail(
-            supplierEmail,
-            finalClinicName,
-            order.order_no,
-            order.total_amount,
-            totalQuantity,
-            clinicManagerName,
-            products
-          );
+
+         const templateId = parseInt(
+  process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
+  10
+);
+
+const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate(
+  supplierEmail,
+  templateId, // ✅ Brevo template ID
+  finalClinicName,
+  order.order_no,
+  order.total_amount,
+  totalQuantity,
+  clinicManagerName,
+  products
+);
 
          
 

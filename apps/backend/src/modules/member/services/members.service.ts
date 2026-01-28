@@ -11,6 +11,7 @@ import { Response } from "express";
 import { MembersRepository } from "../repositories/members.repository";
 import { CreateMembersDto } from "../dto/create-members.dto";
 import { MessageService } from "./message.service";
+import { EmailService } from "./email.service";
 
 type CreatedMemberResult = {
   memberId: string;
@@ -24,7 +25,8 @@ export class MembersService {
 
   constructor(
     private readonly repository: MembersRepository,
-    private readonly messageService: MessageService
+    private readonly messageService: MessageService,
+    private readonly emailService: EmailService
   ) {}
 
   public async getMembers(tenantId: string) {
@@ -177,17 +179,18 @@ export class MembersService {
     }
     // Ownerga barcha memberlarning (owner, manager, member) ID va passwordlari yuboriladi
     if (!dto.isEditMode && dto.ownerPhoneNumber) {
-      try {
-        // Barcha memberlarni (owner, manager, member) SMS'ga qo'shish
-        const allMembers = definitions.map((definition) => {
-          const memberId = `${definition.label}@${clinicIdentifier}`;
-          return {
-            memberId: memberId,
-            role: definition.role,
-            temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
-          };
-        });
+      // Barcha memberlarni (owner, manager, member) formatlash
+      const allMembers = definitions.map((definition) => {
+        const memberId = `${definition.label}@${clinicIdentifier}`;
+        return {
+          memberId: memberId,
+          role: definition.role,
+          temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
+        };
+      });
 
+      // SMS yuborish
+      try {
         await this.messageService.sendMemberCredentials(
           dto.ownerPhoneNumber,
           dto.clinicName,
@@ -196,6 +199,37 @@ export class MembersService {
       } catch (error) {
         this.logger.warn("Failed to send SMS to owner", error);
         // Continue even if SMS fails - don't throw error
+      }
+
+      // Email yuborish (agar email mavjud bo'lsa)
+      if (dto.ownerEmail) {
+        try {
+          // Template ID'ni environment variable'dan olish
+          const templateId = parseInt(
+            process.env.BREVO_MEMBER_CREDENTIALS_TEMPLATE_ID || "0",
+            10
+          );
+
+          if (templateId > 0) {
+            // Template ishlatish
+            await this.emailService.sendMemberCredentialsEmailWithTemplate(
+              dto.ownerEmail,
+              templateId,
+              dto.clinicName,
+              allMembers
+            );
+          } else {
+            // Oddiy HTML email (fallback)
+            await this.emailService.sendMemberCredentialsEmail(
+              dto.ownerEmail,
+              dto.clinicName,
+              allMembers
+            );
+          }
+        } catch (error) {
+          this.logger.warn("Failed to send email to owner", error);
+          // Continue even if email fails - don't throw error
+        }
       }
     }
 

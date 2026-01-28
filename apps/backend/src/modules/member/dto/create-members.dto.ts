@@ -21,6 +21,10 @@ export class CreateMembersDto {
   @IsString()
   ownerPhoneNumber!: string;
 
+  @IsOptional()
+  @IsString()
+  ownerEmail?: string;
+
   @IsString()
   ownerIdCardNumber!: string;
 

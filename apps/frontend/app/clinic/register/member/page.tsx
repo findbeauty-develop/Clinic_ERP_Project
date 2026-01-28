@@ -43,6 +43,7 @@ export default function ClinicMemberSetupPage() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<string>("");
   const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPhoneNumber, setOwnerPhoneNumber] = useState("");
   const [ownerIdCardNumber, setOwnerIdCardNumber] = useState("");
   const [ownerAddress, setOwnerAddress] = useState("");
@@ -110,12 +111,15 @@ export default function ClinicMemberSetupPage() {
               try {
                 const ownerProfile = JSON.parse(ownerProfileRaw) as {
                   ownerName?: string;
+                  ownerEmail?: string;
                   ownerPhoneNumber?: string;
                   ownerIdCardNumber?: string;
                   ownerAddress?: string;
                 };
                 if (ownerProfile.ownerName)
                   setOwnerName(ownerProfile.ownerName);
+                if (ownerProfile.ownerEmail)
+                  setOwnerEmail(ownerProfile.ownerEmail);
                 if (ownerProfile.ownerPhoneNumber)
                   setOwnerPhoneNumber(ownerProfile.ownerPhoneNumber);
                 if (ownerProfile.ownerIdCardNumber)
@@ -291,6 +295,7 @@ export default function ClinicMemberSetupPage() {
       clinicName: selectedClinic.name,
       ownerPassword,
       ownerName,
+      ownerEmail: ownerEmail || undefined,
       ownerPhoneNumber,
       ownerIdCardNumber,
       ownerAddress,
@@ -338,6 +343,7 @@ export default function ClinicMemberSetupPage() {
           JSON.stringify({
             ownerId,
             ownerName,
+            ownerEmail,
             ownerPhoneNumber,
             ownerIdCardNumber,
             ownerAddress,
@@ -434,6 +440,23 @@ export default function ClinicMemberSetupPage() {
                     required
                   />
                 </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    이메일
+                  </label>
+                  <input
+                    type="email"
+                    value={ownerEmail}
+                    onChange={(e) => setOwnerEmail(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    placeholder="이메일을 입력하세요."
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    계정 정보가 이메일로도 발송됩니다.
+                  </p>
+                </div>
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     핸드폰 *

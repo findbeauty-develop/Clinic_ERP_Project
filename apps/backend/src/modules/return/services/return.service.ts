@@ -778,18 +778,18 @@ export class ReturnService {
     productName: string,
     returnQty: number,
     totalRefund: number,
-    isPlatformSupplier: boolean = true
+    isPlatformSupplier: boolean = true,
+    unit?: string
   ): string {
     const footer = isPlatformSupplier
       ? "자세한 내용은 공급옵제 플렛폼에서 확인하세요"
       : "자세한 내용은 확인해주세요.";
 
-    return `[반납 알림]
+    return `${clinicName}에서 발생한[반납 알림]
 반납번호: ${returnNo}
-병의원: ${clinicName}
 반납담당자: ${clinicManagerName}
 제품명: ${productName}
-수량: ${returnQty}개
+수량: ${returnQty}${unit ? ` ${unit}` : ""} 
 총 금액: ${totalRefund.toLocaleString()}원
 
 ${footer}`;
@@ -815,7 +815,7 @@ ${footer}`;
       const randomDigits = Math.floor(
         100000 + Math.random() * 900000
       ).toString();
-      const returnNo = `${dateStr}000000${randomDigits}`; // YYYYMMDD + 000000 + 6 random digits
+      const returnNo = `${dateStr}${randomDigits}`; // YYYYMMDD + 000000 + 6 random digits
 
       // Check if this return_no already exists in OrderReturn and Return tables
       // (to avoid conflicts, since both OrderReturn and Return send to supplier-backend)
@@ -849,7 +849,7 @@ ${footer}`;
     const year = String(date.getFullYear());
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
-    return `${year}${month}${day}000000${timestamp}`;
+    return `${year}${month}${day}${timestamp}`;
   }
 
   /**
@@ -943,7 +943,8 @@ ${footer}`;
             productName,
             returnQty,
             totalRefund,
-            false // Manual supplier
+            false, // Manual supplier
+            product?.unit || ""
           );
 
           // Send SMS
@@ -980,9 +981,11 @@ ${footer}`;
                   productName: productName,
                   brand: product?.brand || "",
                   quantity: returnQty,
+                  unit: product?.unit || "",
                 },
               ];
 
+              // ReturnService faqat /returns page (empty box returns - 반납) bilan ishlaydi
               await this.emailService.sendReturnNotificationEmail(
                 supplierEmail,
                 clinicName,
@@ -991,7 +994,7 @@ ${footer}`;
                 returnQty,
                 clinicManagerName,
                 products,
-                "반품"
+                "반납"
               );
             } else {
               this.logger.warn(
@@ -1106,17 +1109,10 @@ ${footer}`;
       // Generate return_no (format: R + YYYYMMDD + 6 random digits)
       const returnNo = await this.generateReturnNumber();
 
-      // Determine return type based on memo
-      // Empty box returns (빈 박스) → returnType: "반품" (without "|")
-      // Product returns/exchanges → returnType: "불량|반품", "주문|반품", etc. (with "|")
-      let returnType = "불량|반품"; // Default for product returns/exchanges
-
-      if (
-        returnRecord.memo &&
-        returnRecord.memo.includes("자동 반납: 빈 박스")
-      ) {
-        returnType = "반품"; // ✅ Empty box return (NO "|" - goes to /returns page)
-      }
+      // ReturnService faqat /returns page (empty box returns - 반납) bilan ishlaydi
+      // Product returns/exchanges order-return.service.ts da boshqariladi
+      const returnType = "반납"; // Always 반납 for /returns page
+      const emailReturnType = "반납"; // Always 반납 for email notification
 
       // Get batch inbound date (created_at)
       const batchData = await this.prisma.executeWithRetry(async () => {
@@ -1257,7 +1253,8 @@ ${footer}`;
               productName,
               returnQty,
               totalRefund,
-              true // Platform supplier
+              true, // Platform supplier
+              product?.unit || ""
             );
 
             // Har bir manager'ga SMS yuborish
@@ -1334,19 +1331,42 @@ ${footer}`;
                           productName: productName,
                           brand: product?.brand || "",
                           quantity: returnQty,
+                          unit: product?.unit || "",
                         },
                       ];
 
-                      await this.emailService.sendReturnNotificationEmail(
-                        supplierEmail,
-                        clinicName,
-                        returnNo,
-                        totalRefund,
-                        returnQty,
-                        clinicManagerName,
-                        products,
-                        "반품"
+                      // Template ID'ni environment variable'dan olish
+                      const templateId = parseInt(
+                        process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || "0",
+                        10
                       );
+
+                      if (templateId > 0) {
+                        // Template ishlatish
+                        await this.emailService.sendReturnNotificationEmailWithTemplate(
+                          supplierEmail,
+                          templateId,
+                          clinicName,
+                          returnNo,
+                          totalRefund,
+                          returnQty,
+                          clinicManagerName,
+                          products,
+                          emailReturnType
+                        );
+                      } else {
+                        // Oddiy HTML email (fallback)
+                        await this.emailService.sendReturnNotificationEmail(
+                          supplierEmail,
+                          clinicName,
+                          returnNo,
+                          totalRefund,
+                          returnQty,
+                          clinicManagerName,
+                          products,
+                          emailReturnType
+                        );
+                      }
                     }
                   } catch (emailError: any) {
                     this.logger.error(

@@ -82,4 +82,55 @@ export class BrevoProvider implements IEmailProvider {
       return false;
     }
   }
+
+  // ✅ Template ishlatib email yuborish
+  async sendEmailWithTemplate(
+    to: string,
+    templateId: number,
+    templateParams?: Record<string, any>
+  ): Promise<boolean> {
+    try {
+      if (!this.apiInstance || !this.fromEmail) {
+        this.logger.warn("Brevo service not initialized");
+        return false;
+      }
+
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = {
+        email: this.fromEmail,
+        name: this.fromName || undefined,
+      };
+      sendSmtpEmail.to = [{ email: to }];
+      
+      // ✅ Template ID'ni belgilash
+      sendSmtpEmail.templateId = templateId;
+      
+      // ✅ Template parametrlarini yuborish (agar mavjud bo'lsa)
+      if (templateParams && Object.keys(templateParams).length > 0) {
+        sendSmtpEmail.params = templateParams;
+      }
+
+      const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
+
+      if (result.response.statusCode === 201) {
+        this.logger.log(`✅ Brevo template email sent successfully to ${to} using template ${templateId}`);
+        return true;
+      } else {
+        this.logger.warn(
+          `Brevo template email failed with status: ${result.response.statusCode}`
+        );
+        return false;
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Brevo template email failed: ${error?.message || "Unknown error"}`
+      );
+      if (error?.response?.body) {
+        this.logger.error(
+          `Brevo Error Details: ${JSON.stringify(error.response.body)}`
+        );
+      }
+      return false;
+    }
+  }
 }
