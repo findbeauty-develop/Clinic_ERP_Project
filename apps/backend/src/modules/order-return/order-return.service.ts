@@ -654,9 +654,145 @@ export class OrderReturnService {
             linkedManager.supplier?.tenant_id ||
             null;
         } else if (productSupplier?.clinicSupplierManager) {
-          // Manual supplier - no platform notification
+          // Manual supplier - send email/SMS notification directly (no platform API call)
+          const clinicSupplierManager = productSupplier.clinicSupplierManager;
+          
+          try {
+            // Get clinic details
+            const clinic = await this.prisma.executeWithRetry(async () => {
+              return (this.prisma as any).clinic.findFirst({
+                where: { tenant_id: tenantId },
+                select: { name: true },
+              });
+            });
 
-          return;
+            const clinicName = clinic?.name || "알 수 없음";
+
+            // Get clinic manager name
+            let clinicManagerName = returnItem.return_manager || "";
+            if (returnItem.return_manager) {
+              const member = await this.prisma.executeWithRetry(async () => {
+                return (this.prisma as any).member.findFirst({
+                  where: {
+                    member_id: returnItem.return_manager,
+                    tenant_id: tenantId,
+                  },
+                  select: { full_name: true },
+                });
+              });
+              if (member?.full_name) {
+                clinicManagerName = member.full_name;
+              } else {
+                clinicManagerName = returnItem.return_manager;
+              }
+            }
+
+            // Get product details
+            const product = await this.prisma.executeWithRetry(async () => {
+              return (this.prisma as any).product.findFirst({
+                where: { id: returnItem.product_id },
+                select: { name: true, brand: true, unit: true },
+              });
+            });
+
+            // ✅ Product name'ni to'g'ri olish - avval product.name, keyin returnItem.product_name
+            const productName = (product?.name && product.name.trim() !== "") 
+              ? product.name 
+              : (returnItem.product_name && returnItem.product_name.trim() !== "") 
+                ? returnItem.product_name 
+                : "알 수 없음";
+            const returnQty = returnItem.return_quantity || 0;
+            const totalRefund = (returnItem.unit_price || 0) * returnQty;
+            const returnNo = returnItem.return_no;
+
+            // Determine return type (반품 or 교환)
+            const returnTypeText = returnItem.return_type?.includes("교환")
+              ? "교환"
+              : "반품";
+
+            // Send SMS notification
+            const phoneNumber =
+              clinicSupplierManager.phone_number ||
+              clinicSupplierManager.email1 ||
+              null;
+
+            if (phoneNumber) {
+              try {
+                const smsMessage = `[반품/교환 알림]
+${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.unit}` : ""} ${returnTypeText} 요청이 있습니다.
+반품번호: ${returnNo}
+확인 후 처리해주세요.`;
+
+                await this.messageService.sendSMS(phoneNumber, smsMessage);
+              } catch (smsError: any) {
+                this.logger.error(
+                  `Failed to send SMS to manual supplier: ${smsError.message}`
+                );
+              }
+            }
+
+            // Send Email notification
+            const supplierEmail =
+              clinicSupplierManager.company_email ||
+              clinicSupplierManager.email1 ||
+              clinicSupplierManager.email2 ||
+              null;
+
+            if (supplierEmail) {
+              const products = [
+                {
+                  productName: productName,
+                  brand: product?.brand || returnItem.brand || "",
+                  quantity: returnQty,
+                  unit: product?.unit || "",
+                },
+              ];
+
+              // Template ID'ni environment variable'dan olish
+             const templateId = parseInt(
+  process.env.BREVO_PRODUCT_RETURN_TEMPLATE_ID || 
+  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || 
+  "0",
+  10
+);
+
+              if (templateId > 0) {
+                await this.emailService.sendReturnNotificationEmailWithTemplate(
+                  supplierEmail,
+                  templateId,
+                  clinicName,
+                  returnNo,
+                  totalRefund,
+                  returnQty,
+                  clinicManagerName,
+                  products,
+                  returnTypeText
+                );
+              } else {
+                await this.emailService.sendReturnNotificationEmail(
+                  supplierEmail,
+                  clinicName,
+                  returnNo,
+                  totalRefund,
+                  returnQty,
+                  clinicManagerName,
+                  products,
+                  returnTypeText
+                );
+              }
+            } else {
+              this.logger.warn(
+                `No email found for manual supplier, skipping email notification for return ${returnNo}`
+              );
+            }
+          } catch (error: any) {
+            this.logger.error(
+              `Error sending notification to manual supplier: ${error.message}`
+            );
+            // Don't throw - notification failure shouldn't break return process
+          }
+
+          return; // Manual supplier - no platform API call needed
         }
       } catch (error: any) {
         this.logger.error(`Error fetching supplierManagerId: ${error.message}`);
@@ -736,9 +872,155 @@ export class OrderReturnService {
             linkedManager.supplier?.tenant_id ||
             null;
         } else if (outbound?.product?.productSupplier?.clinicSupplierManager) {
-          // Manual supplier - no platform notification
+          // Manual supplier - send email/SMS notification directly (no platform API call)
+          const clinicSupplierManager = outbound.product.productSupplier.clinicSupplierManager;
+          
+          try {
+            // Get clinic details
+            const clinic = await this.prisma.executeWithRetry(async () => {
+              return (this.prisma as any).clinic.findFirst({
+                where: { tenant_id: tenantId },
+                select: { name: true },
+              });
+            });
 
-          return;
+            const clinicName = clinic?.name || "알 수 없음";
+
+            // Get clinic manager name
+            let clinicManagerName = returnItem.return_manager || "";
+            if (returnItem.return_manager) {
+              const member = await this.prisma.executeWithRetry(async () => {
+                return (this.prisma as any).member.findFirst({
+                  where: {
+                    member_id: returnItem.return_manager,
+                    tenant_id: tenantId,
+                  },
+                  select: { full_name: true },
+                });
+              });
+              if (member?.full_name) {
+                clinicManagerName = member.full_name;
+              } else {
+                clinicManagerName = returnItem.return_manager;
+              }
+            }
+
+            // Get product details
+            let product = null;
+            if (outbound?.product?.id) {
+              // Agar outbound.product include qilingan bo'lsa, lekin name bo'lmasligi mumkin
+              // Shuning uchun yana fetch qilish kerak
+              product = await this.prisma.executeWithRetry(async () => {
+                return (this.prisma as any).product.findFirst({
+                  where: { id: returnItem.product_id || outbound.product.id },
+                  select: { name: true, brand: true, unit: true },
+                });
+              });
+            } else {
+              product = await this.prisma.executeWithRetry(async () => {
+                return (this.prisma as any).product.findFirst({
+                  where: { id: returnItem.product_id },
+                  select: { name: true, brand: true, unit: true },
+                });
+              });
+            }
+
+            // ✅ Product name'ni to'g'ri olish
+            const productName = (product?.name && product.name.trim() !== "") 
+              ? product.name 
+              : (returnItem.product_name && returnItem.product_name.trim() !== "") 
+                ? returnItem.product_name 
+                : "알 수 없음";
+            const returnQty = returnItem.return_quantity || 0;
+            const totalRefund = (returnItem.unit_price || 0) * returnQty;
+            const returnNo = returnItem.return_no;
+
+            // Determine return type (반품 or 교환)
+            const returnTypeText = returnItem.return_type?.includes("교환")
+              ? "교환"
+              : "반품";
+
+            // Send SMS notification
+            const phoneNumber =
+              clinicSupplierManager.phone_number ||
+              clinicSupplierManager.email1 ||
+              null;
+
+            if (phoneNumber) {
+              try {
+                const smsMessage = `[반품/교환 알림]
+${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.unit}` : ""} ${returnTypeText} 요청이 있습니다.
+반품번호: ${returnNo}
+확인 후 처리해주세요.`;
+
+                await this.messageService.sendSMS(phoneNumber, smsMessage);
+              } catch (smsError: any) {
+                this.logger.error(
+                  `Failed to send SMS to manual supplier: ${smsError.message}`
+                );
+              }
+            }
+
+            // Send Email notification
+            const supplierEmail =
+              clinicSupplierManager.company_email ||
+              clinicSupplierManager.email1 ||
+              clinicSupplierManager.email2 ||
+              null;
+
+            if (supplierEmail) {
+              const products = [
+                {
+                  productName: productName,
+                  brand: product?.brand || returnItem.brand || "",
+                  quantity: returnQty,
+                  unit: product?.unit || "",
+                },
+              ];
+
+              // Template ID'ni environment variable'dan olish
+              const templateId = parseInt(
+                process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || "0",
+                10
+              );
+
+              if (templateId > 0) {
+                await this.emailService.sendReturnNotificationEmailWithTemplate(
+                  supplierEmail,
+                  templateId,
+                  clinicName,
+                  returnNo,
+                  totalRefund,
+                  returnQty,
+                  clinicManagerName,
+                  products,
+                  returnTypeText
+                );
+              } else {
+                await this.emailService.sendReturnNotificationEmail(
+                  supplierEmail,
+                  clinicName,
+                  returnNo,
+                  totalRefund,
+                  returnQty,
+                  clinicManagerName,
+                  products,
+                  returnTypeText
+                );
+              }
+            } else {
+              this.logger.warn(
+                `No email found for manual supplier, skipping email notification for return ${returnNo}`
+              );
+            }
+          } catch (error: any) {
+            this.logger.error(
+              `Error sending notification to manual supplier: ${error.message}`
+            );
+            // Don't throw - notification failure shouldn't break return process
+          }
+
+          return; // Manual supplier - no platform API call needed
         }
       } catch (error: any) {
         this.logger.error(
@@ -967,17 +1249,19 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
               ? "교환"
               : "반품";
 
-            // Fetch product unit from product table
+            // Fetch product name va unit from product table
             let productUnit = "";
+            let productNameFromDB = "";
             if (returnItem.product_id) {
               try {
                 const product = await this.prisma.executeWithRetry(async () => {
                   return (this.prisma as any).product.findFirst({
                     where: { id: returnItem.product_id },
-                    select: { unit: true },
+                    select: { unit: true, name: true }, // ✅ name'ni ham select qilish
                   });
                 });
                 productUnit = product?.unit || "";
+                productNameFromDB = product?.name || ""; // ✅ Product name'ni saqlash
               } catch (error: any) {
                 this.logger.warn(
                   `Failed to fetch product unit: ${error.message}`
@@ -986,7 +1270,11 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
             }
 
             const products = returnData.items.map((item: any) => ({
-              productName: item.productName,
+              productName: (item.productName && item.productName.trim() !== "") 
+                ? item.productName 
+                : (productNameFromDB && productNameFromDB.trim() !== "") 
+                  ? productNameFromDB 
+                  : "알 수 없음", // ✅ Fallback qo'shish
               brand: item.brand,
               quantity: item.quantity,
               unit: productUnit,

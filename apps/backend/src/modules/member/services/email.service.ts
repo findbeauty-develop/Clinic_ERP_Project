@@ -229,6 +229,19 @@ export class EmailService {
         : `${itemCount}개 제품`,
     };
 
+    // ✅ Har bir product uchun alohida parametrlar qo'shish (unit bilan)
+    if (products && products.length > 0) {
+      products.forEach((product, index) => {
+        const productIndex = index + 1;
+        templateParams[`product${productIndex}Name`] = product.productName || "";
+        templateParams[`product${productIndex}Brand`] = product.brand || "";
+        templateParams[`product${productIndex}Quantity`] = product.quantity.toString();
+        templateParams[`product${productIndex}Unit`] = product.unit || "";
+        // Combined format: "제품명 (브랜드) x5 개"
+        templateParams[`product${productIndex}Full`] = `${product.productName}${product.brand ? ` (${product.brand})` : ""}  ${product.quantity}${product.unit ? ` ${product.unit}` : ""}`;
+      });
+    }
+
     return await this.sendEmailWithTemplate(email, templateId, templateParams);
   }
 

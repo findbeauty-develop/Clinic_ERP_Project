@@ -928,7 +928,10 @@ ${footer}`;
 
           const clinicName = clinic?.name || "알 수 없음";
           const clinicManagerName = returnRecord.manager_name || "알 수 없음";
-          const productName = product?.name || "알 수 없음";
+          // ✅ Product name'ni to'g'ri olish - avval product.name, keyin fallback
+          const productName = (product?.name && product.name.trim() !== "") 
+            ? product.name 
+            : "알 수 없음";
           const returnQty = returnRecord.return_qty || 0;
           const totalRefund = returnRecord.total_refund || 0;
 
@@ -1141,8 +1144,10 @@ ${footer}`;
         clinicManagerName: clinicManagerName,
         items: [
           {
-            productName: product.name || "",
-            brand: product.brand || "",
+            productName: (product?.name && product.name.trim() !== "") 
+              ? product.name 
+              : "알 수 없음",
+            brand: product?.brand || "",
             quantity: returnRecord.return_qty,
             returnType: returnType,
             memo: returnRecord.memo || "",
@@ -1241,7 +1246,10 @@ ${footer}`;
             : allManagers;
 
           if (managersToNotify.length > 0) {
-            const productName = product.name || "알 수 없음";
+            // ✅ Product name'ni to'g'ri olish
+            const productName = (product?.name && product.name.trim() !== "") 
+              ? product.name 
+              : "알 수 없음";
             const returnQty = returnRecord.return_qty || 0;
             const totalRefund = returnRecord.total_refund || 0;
 
@@ -1337,9 +1345,11 @@ ${footer}`;
 
                       // Template ID'ni environment variable'dan olish
                       const templateId = parseInt(
-                        process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || "0",
-                        10
-                      );
+  process.env.BREVO_EMPTY_BOX_RETURN_TEMPLATE_ID || 
+  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || 
+  "0",
+  10
+);
 
                       if (templateId > 0) {
                         // Template ishlatish
