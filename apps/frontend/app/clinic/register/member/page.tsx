@@ -457,11 +457,11 @@ export default function ClinicMemberSetupPage() {
                   </p>
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     핸드폰 *
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       value={ownerPhoneNumber}
                       onChange={(e) => {
@@ -469,7 +469,7 @@ export default function ClinicMemberSetupPage() {
                         setIsPhoneVerified(false); // Reset verification when phone changes
                         setVerificationCode(""); // Clear code
                       }}
-                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 sm:px-5"
                       placeholder="010-0000-0000"
                       required
                       disabled={isPhoneVerified}
@@ -480,7 +480,7 @@ export default function ClinicMemberSetupPage() {
                       disabled={
                         isSendingCode || isPhoneVerified || !ownerPhoneNumber
                       }
-                      className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-2xl bg-indigo-500 px-4 py-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:text-sm sm:px-4"
                     >
                       {isSendingCode ? "전송 중..." : "인증번호 전송"}
                     </button>
@@ -492,11 +492,11 @@ export default function ClinicMemberSetupPage() {
                   )}
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-slate-600">
                     핸드폰 인증번호 *
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       value={verificationCode}
                       onChange={(e) =>
@@ -504,7 +504,7 @@ export default function ClinicMemberSetupPage() {
                           e.target.value.replace(/[^0-9]/g, "").slice(0, 6)
                         )
                       }
-                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 sm:px-5"
                       placeholder="6자리 인증번호"
                       maxLength={6}
                       disabled={isPhoneVerified}
@@ -517,7 +517,7 @@ export default function ClinicMemberSetupPage() {
                         isPhoneVerified ||
                         verificationCode.length !== 6
                       }
-                      className="rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-2xl bg-indigo-500 px-4 py-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:text-sm sm:px-4"
                     >
                       {isVerifyingCode
                         ? "인증 중..."
