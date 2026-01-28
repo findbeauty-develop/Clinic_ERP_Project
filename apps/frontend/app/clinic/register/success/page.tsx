@@ -86,6 +86,8 @@ export default function ClinicRegisterSuccessPage() {
   const [missingData, setMissingData] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [copiedMemberId, setCopiedMemberId] = useState<string | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -194,6 +196,30 @@ export default function ClinicRegisterSuccessPage() {
       return member;
     });
   }, [members, clinicSlug]);
+
+  const handleCopyMemberId = async (memberId: string) => {
+    try {
+      await navigator.clipboard.writeText(memberId);
+      setCopiedMemberId(memberId);
+      setTimeout(() => {
+        setCopiedMemberId(null);
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy member ID", err);
+    }
+  };
+
+  const togglePasswordVisibility = (memberId: string) => {
+    setVisiblePasswords((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId);
+      } else {
+        newSet.add(memberId);
+      }
+      return newSet;
+    });
+  };
 
   const ownerFields = useMemo(
     () => [
@@ -385,17 +411,119 @@ export default function ClinicRegisterSuccessPage() {
                         <span className="text-xs font-semibold uppercase text-indigo-500">
                           {roleLabel(member.role)}
                         </span>
-                        <span className="font-medium text-slate-900">
-                          {member.memberId}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900">
+                            {member.memberId}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyMemberId(member.memberId)}
+                            className="flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            aria-label="복사"
+                            title="복사"
+                          >
+                            {copiedMemberId === member.memberId ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4 text-green-500"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </div>
                       <div className="flex flex-1 flex-col gap-1 md:items-end">
                         <span className="text-xs font-semibold uppercase text-slate-400">
                           비밀번호
                         </span>
-                        <span className="font-medium text-slate-900">
-                          {member.password}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900 font-mono">
+                            {visiblePasswords.has(member.memberId)
+                              ? member.password || ""
+                              : "•".repeat(member.password?.length || 0)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(member.memberId)}
+                            className="flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            aria-label={
+                              visiblePasswords.has(member.memberId)
+                                ? "비밀번호 숨기기"
+                                : "비밀번호 보기"
+                            }
+                            title={
+                              visiblePasswords.has(member.memberId)
+                                ? "비밀번호 숨기기"
+                                : "비밀번호 보기"
+                            }
+                          >
+                            {visiblePasswords.has(member.memberId) ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M3.98 8.223A10.477 10.477 0 001.942 12C3.644 16.09 7.523 19 12 19c1.356 0 2.65-.272 3.828-.765M6.228 6.228A10.45 10.45 0 0112 5c4.477 0 8.356 2.91 10.058 7-.52 1.272-1.198 2.444-2.002 3.47m-3.728 2.442A10.45 10.45 0 0112 19c-4.477 0-8.356-2.91-10.058-7a10.52 10.52 0 012.51-3.56"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M4.5 4.5l15 15"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.036 12.322a1.012 1.012 0 010-.644C3.423 7.51 7.36 5 12 5c4.642 0 8.58 2.51 9.966 6.678.07.21.07.434 0 .644C20.577 16.49 16.64 19 12 19c-4.642 0-8.58-2.51-9.966-6.678z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
