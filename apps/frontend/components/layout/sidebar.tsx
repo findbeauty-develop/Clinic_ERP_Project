@@ -327,7 +327,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sticky top-0 z-40 flex h-screen w-80 flex-col bg-[#fcfcfc] px-6 py-8 text-black">
+    <aside className="sticky top-0 z-40 flex h-screen w-80 flex-col bg-[#fcfcfc] px-6 py-8 text-black border border-gray-400 dark:border-gray-700">
       {/* Logo & Clinic Info Section */}
       <div className="flex flex-col items-center gap-4 border-b border-slate-200 pb-6">
         {/* Logo Display Area */}

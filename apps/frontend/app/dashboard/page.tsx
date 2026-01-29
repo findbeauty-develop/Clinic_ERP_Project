@@ -5,10 +5,15 @@ import { apiGet } from "@/lib/api";
 import { duration } from "html2canvas/dist/types/css/property-descriptors/duration";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [currentBannerSlide, setCurrentBannerSlide] = useState(0);
-  const [currentNewsTab, setCurrentNewsTab] = useState("추천");
+  const [currentNewsTab, setCurrentNewsTab] = useState(
+    searchParams.get("tab") || "추천"
+  );
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
   const [newsArticlesState, setNewsArticlesState] = useState<any[]>([]);
   const [loadingNews, setLoadingNews] = useState(false);
@@ -119,6 +124,16 @@ export default function DashboardPage() {
     "엔터테인먼트",
   ];
 
+  // Sync URL param with state when URL changes
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab");
+    if (tabFromUrl && newsTabs.includes(tabFromUrl)) {
+      setCurrentNewsTab(tabFromUrl);
+    } else if (!tabFromUrl) {
+      setCurrentNewsTab("추천");
+    }
+  }, [searchParams]);
+
   // Category to keywords mapping
   // Category to keywords mapping
   const categoryKeywords: Record<string, string[]> = {
@@ -213,20 +228,38 @@ export default function DashboardPage() {
   const productRecommendations = [
     {
       id: 1,
-      name: "대웅제약 밀크씨 슬 간 건강 실...",
-      image: "bg-gradient-to-br from-red-400 to-red-600",
+      name: "뉴라미스 하트 필러/1cc×1S/1박스",
+      image: "/images/ads_1.png",
       isAd: true,
     },
     {
       id: 2,
-      name: "로킷아메리카 NMN 프테로스...",
-      image: "bg-gradient-to-br from-blue-400 to-blue-600",
+      name: "뉴라미스 스킨 인헨서 필러/1cc×1S",
+      image: "/images/ads_2.png",
       isAd: true,
     },
     {
       id: 3,
-      name: "[2개월] 더작 유기농 양배추즙",
-      image: "bg-gradient-to-br from-green-400 to-green-600",
+      name: "특가)뉴럭스주100",
+      image: "/images/ads_3.png",
+      isAd: true,
+    },
+    {
+      id: 4,
+      name: "스킨바이브/1cc×2S/1박스",
+      image: "/images/ads_4.png",
+      isAd: true,
+    },
+    {
+      id: 5,
+      name: "쥬베룩_볼륨",
+      image: "/images/ads_5.png",
+      isAd: true,
+    },
+    {
+      id: 6,
+      name: "PD NANO Cannula",
+      image: "/images/ads_6.jpg",
       isAd: true,
     },
   ];
@@ -643,17 +676,17 @@ export default function DashboardPage() {
   };
 
   const nextProductSlide = () => {
-    setCurrentProductSlide(
-      (prev) => (prev + 1) % productRecommendations.length
-    );
+    setCurrentProductSlide((prev) => {
+      const maxSlide = Math.max(0, productRecommendations.length - 3);
+      return prev >= maxSlide ? 0 : prev + 3;
+    });
   };
 
   const prevProductSlide = () => {
-    setCurrentProductSlide(
-      (prev) =>
-        (prev - 1 + productRecommendations.length) %
-        productRecommendations.length
-    );
+    setCurrentProductSlide((prev) => {
+      const maxSlide = Math.max(0, productRecommendations.length - 3);
+      return prev <= 0 ? maxSlide : prev - 3;
+    });
   };
 
   return (
@@ -669,7 +702,7 @@ export default function DashboardPage() {
       </div> */}
 
       {/* Top Banner Carousel */}
-      <div className="relative mb-6 h-96 rounded-2xl overflow-hidden shadow-lg">
+      <div className="relative mb-6 h-[280px] rounded-2xl overflow-hidden shadow-lg">
         <div className="relative h-full">
           {bannerSlides.map((slide, index) => (
             <div
@@ -878,14 +911,14 @@ export default function DashboardPage() {
 </div> */} 
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 ">
         {/* Left Column (70%) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 space-y-6 ">
           {/* News Section - Enhanced Design */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden border border-gray-400 dark:border-gray-700">
             {/* Header with Gradient */}
             <div className="bg-white from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between">
                 {/* <div>
                   <h2 className="text-2xl font-bold mb-1">최신 뉴스</h2>
                   <p className="text-sm opacity-90">
@@ -910,171 +943,178 @@ export default function DashboardPage() {
                 </div> */}
               </div>
 
-              {/* News Tabs - Enhanced */}
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 bg-white rounded-2xl p-2">
-                {newsTabs.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setCurrentNewsTab(tab)}
-                    className={`px-5 py-2.5 rounded-xl font-semibold whitespace-nowrap transition-all duration-300 ${
-                      currentNewsTab === tab
-                        ? "bg-indigo-600 text-white shadow-lg scale-105"
-                        : "bg-gray-100 text-gray-800 hover:bg-gray-200 hover:scale-105"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+             {/* News Tabs - Text-based with slashes */}
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                <div className="flex items-center gap-2 mr-8 text-3xl font-bold text-black dark:text-white py-2">
+                  <img src="/images/news.svg" alt="news" className="w-16 h-16" /> 
+                  <span className="text-3xl font-bold text-black dark:text-white">뉴스</span>
+                 </div>
+                {newsTabs.map((tab, index) => {
+                  const isActive = currentNewsTab === tab;
+                  return (
+                    <div key={tab} className="flex items-center gap-2">
+                      <Link
+                        href={`/dashboard?tab=${encodeURIComponent(tab)}`}
+                        onClick={() => setCurrentNewsTab(tab)}
+                        className={`font-bold text-xl whitespace-nowrap transition-colors ${
+                          isActive
+                            ? "text-black dark:text-white"
+                            : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                        }`}
+                      >
+                        {tab}
+                      </Link>
+                      {index < newsTabs.length - 1 && (
+                        <span className="text-gray-300 dark:text-gray-600 font-bold">
+                          /
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* News Articles Grid - Enhanced */}
-            <div className="p-2">
+            {/* News Articles Grid - Horizontal Layout with 2 Columns */}
+            <div className="p-2 max-h-[750px] overflow-y-auto">
               {loadingNews ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-2 gap-4">
                   {[...Array(6)].map((_, i) => (
                     <div
                       key={i}
-                      className="animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl overflow-hidden"
+                      className="animate-pulse bg-white dark:bg-gray-800  overflow-hidden flex flex-row border border-gray-200 dark:border-gray-700"
                     >
-                      <div className="h-48 bg-gray-200 dark:bg-gray-700"></div>
-                      <div className="p-4 space-y-3">
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                      <div className="w-40 h-28 bg-gray-200 dark:bg-gray-700 flex-shrink-0"></div>
+                      <div className="flex-1 p-3 space-y-2">
+                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                        <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : newsArticlesState.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {newsArticlesState.map((article, index) => (
-                    <div
-                      key={article.id || index}
-                      onClick={() => {
-                        // Open news detail page in new tab when clicking card
-                        if (article.url) {
-                          window.open(
-                            article.url,
-                            "_blank",
-                            "noopener,noreferrer"
-                          );
-                        }
-                      }}
-                      className="group cursor-pointer rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50 to-white dark:from-gray-800 dark:to-gray-900 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] border border-gray-200 dark:border-gray-700"
-                    >
-                      {/* Image Section */}
-                      <div className="relative h-48 overflow-hidden bg-gradient-to-br from-indigo-400 to-purple-500">
-                        {article.image &&
-                        !article.image.includes("placeholder") &&
-                        !article.image.includes("via.placeholder") ? (
-                          <img
-                            src={article.image}
-                            alt={article.title}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 brightness-[1.15] contrast-105 saturate-110"
-                            onError={(e) => {
-                              // Hide failed image and show fallback
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = "none";
-                              // Check if fallback already exists
-                              const parent = target.parentElement;
-                              if (
-                                parent &&
-                                !parent.querySelector(".image-fallback")
-                              ) {
-                                const fallback = document.createElement("div");
-                                fallback.className =
-                                  "image-fallback w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-400 to-purple-500";
-                                fallback.innerHTML = `
-                                  <svg class="w-16 h-16 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
-                                  </svg>
-                                `;
-                                parent.appendChild(fallback);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-400 to-purple-500">
-                            <svg
-                              className="w-16 h-16 text-white/30"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
-                              />
-                            </svg>
-                          </div>
-                        )}
-                        {/* Very Light Gradient Overlay - Maximum Image Visibility */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent"></div>
+                <div className="grid grid-cols-2 gap-4">
+                  {newsArticlesState.map((article, index) => {
+                    // Format timestamp (relative time)
+                    const formatTimeAgo = (dateString?: string) => {
+                      if (!dateString) return "";
+                      try {
+                        const date = new Date(dateString);
+                        const now = new Date();
+                        const diffMs = now.getTime() - date.getTime();
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffHours = Math.floor(diffMins / 60);
+                        const diffDays = Math.floor(diffHours / 24);
 
-                        {/* Category Badge */}
-                        <div className="absolute top-3 left-3">
-                          <span className="bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                            {article.category}
-                          </span>
-                        </div>
+                        if (diffMins < 1) return "방금 전";
+                        if (diffMins < 60) return `${diffMins}분 전`;
+                        if (diffHours < 24) return `${diffHours}시간 전`;
+                        if (diffDays < 7) return `${diffDays}일 전`;
+                        return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+                      } catch {
+                        return "";
+                      }
+                    };
 
-                        {/* Date Badge */}
-                        {article.publishedDate && (
-                          <div className="absolute top-3 right-3">
-                            <span className="bg-black/50 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full">
-                              {article.publishedDate}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Content Section */}
-                      <div className="p-5">
-                        <h3 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-lg leading-tight">
-                          {article.title}
-                        </h3>
-                        {article.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                            {article.description}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">
-                                {article.source?.charAt(0) || "N"}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                {article.source}
-                              </p>
-                              {article.author && (
-                                <p className="text-xs text-gray-500 dark:text-gray-500">
-                                  {article.author}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <svg
-                            className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
+                    return (
+                      <div
+                        key={article.id || index}
+                        onClick={() => {
+                          // Open news detail page in new tab when clicking card
+                          if (article.url) {
+                            window.open(
+                              article.url,
+                              "_blank",
+                              "noopener,noreferrer"
+                            );
+                          }
+                        }}
+                        className="group cursor-pointer overflow-hidden bg-white dark:bg-gray-900 hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700 flex flex-row"
+                      >
+                        {/* Image Section - Left Side */}
+                        <div className="relative w-40 h-28 flex-shrink-0 overflow-hidden bg-gray-100 dark:bg-gray-800 ">
+                          {article.image &&
+                          !article.image.includes("placeholder") &&
+                          !article.image.includes("via.placeholder") ? (
+                            <img
+                              src={article.image}
+                              alt={article.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                // Hide failed image and show fallback
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = "none";
+                                // Check if fallback already exists
+                                const parent = target.parentElement;
+                                if (
+                                  parent &&
+                                  !parent.querySelector(".image-fallback")
+                                ) {
+                                  const fallback = document.createElement("div");
+                                  fallback.className =
+                                    "image-fallback w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800";
+                                  fallback.innerHTML = `
+                                    <svg class="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                                    </svg>
+                                  `;
+                                  parent.appendChild(fallback);
+                                }
+                              }}
                             />
-                          </svg>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                              <svg
+                                className="w-10 h-10 text-gray-300 dark:text-gray-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                                />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Content Section - Right Side */}
+                        <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
+                          <div className="flex-1">
+                            {/* Title - Can be 2 lines */}
+                            <h3 className="font-bold text-gray-900 dark:text-white line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-sm leading-tight mb-2">
+                              {article.title}
+                            </h3>
+                          </div>
+                          
+                          <div className="flex flex-col gap-1 mt-auto">
+                            {/* Source/Subtitle */}
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 bg-black dark:bg-white rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-white dark:text-black text-[9px] font-bold">
+                                  {article.source?.charAt(0) || article.category?.charAt(0) || "N"}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
+                                {article.source || article.category || "뉴스"}
+                              </p>
+                            </div>
+                            
+                            {/* Timestamp */}
+                            {/* {(article.publishedDate || article.publishedAt) && (
+                              <p className="text-[10px] text-gray-500 dark:text-gray-500">
+                                {formatTimeAgo(article.publishedDate || article.publishedAt)}
+                              </p>
+                            )} */}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16">
@@ -1102,7 +1142,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-900 h-96 rounded-2xl shadow-lg p-4 flex flex-col">
+          <div className="bg-white dark:bg-gray-900 h-[340px] rounded-2xl shadow-lg p-4 flex flex-col border border-gray-400 dark:border-gray-700">
             {/* Header */}
             <div className="flex items-center justify-between mb-3 shrink-0">
               <div className="flex items-center gap-3">
@@ -1338,16 +1378,16 @@ export default function DashboardPage() {
           {/* Korean Clock Widgate
           <KoreanClockWidget /> */}
           <div
-            className={`relative overflow-hidden rounded-3xl shadow-2xl bg-gradient-to-br ${getWeatherGradient(
+            className={`relative overflow-hidden rounded-2xl shadow-lg bg-gradient-to-br ${getWeatherGradient(
               weatherData?.condition || "맑음"
-            )} p-8 text-white transition-all duration-500 hover:shadow-3xl hover:scale-[1.02] group`}
+            )} p-4 text-white transition-all duration-500 hover:shadow-xl hover:scale-[1.01] group`}
           >
             {/* Animated Background Pattern */}
             <div className="absolute inset-0 opacity-10 overflow-hidden">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full -mr-48 -mt-48 animate-pulse"></div>
-              <div className="absolute bottom-0 left-0 w-72 h-72 bg-white rounded-full -ml-36 -mb-36 animate-pulse delay-300"></div>
-              <div className="absolute top-1/2 right-1/4 w-48 h-48 bg-white rounded-full opacity-50 animate-pulse delay-700"></div>
-              <div className="absolute top-1/3 left-1/3 w-32 h-32 bg-white rounded-full opacity-30 animate-pulse delay-1000"></div>
+              <div className="absolute top-0 right-0 w-48 h-48 bg-white rounded-full -mr-24 -mt-24 animate-pulse"></div>
+              <div className="absolute bottom-0 left-0 w-36 h-36 bg-white rounded-full -ml-18 -mb-18 animate-pulse delay-300"></div>
+              <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-white rounded-full opacity-50 animate-pulse delay-700"></div>
+              <div className="absolute top-1/3 left-1/3 w-16 h-16 bg-white rounded-full opacity-30 animate-pulse delay-1000"></div>
             </div>
 
             {/* Floating Particles Effect */}
@@ -1355,7 +1395,7 @@ export default function DashboardPage() {
               {particlePositions.map((particle, i) => (
                 <div
                   key={i}
-                  className="absolute w-2 h-2 bg-white rounded-full opacity-20 animate-float"
+                  className="absolute w-1 h-1 bg-white rounded-full opacity-20 animate-float"
                   style={{
                     left: `${particle.left}%`,
                     top: `${particle.top}%`,
@@ -1368,12 +1408,12 @@ export default function DashboardPage() {
 
             <div className="relative z-10">
               {/* Header with Enhanced Design */}
-              <div className="flex items-start justify-between mb-8">
+              <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="p-2 bg-white/20 backdrop-blur-sm rounded-xl">
+                  <div className="flex items-center gap-1 mb-2">
+                    <div className="p-1 bg-white/20 backdrop-blur-sm rounded-lg">
                       <svg
-                        className="w-5 h-5"
+                        className="w-3 h-3"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -1393,10 +1433,10 @@ export default function DashboardPage() {
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold opacity-90">
+                      <h3 className="text-[10px] font-semibold opacity-90">
                         {weatherData?.city || weatherData?.nameKo || "서울"}
                       </h3>
-                      <p className="text-xs opacity-70">
+                      <p className="text-[8px] opacity-70">
                         {new Date().toLocaleDateString("ko-KR", {
                           month: "long",
                           day: "numeric",
@@ -1405,24 +1445,24 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <div className="text-7xl font-extrabold tracking-tight drop-shadow-lg">
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <div className="text-4xl font-extrabold tracking-tight drop-shadow-lg">
                       {loadingWeather ? (
                         <span className="animate-pulse">--</span>
                       ) : (
                         `${Math.round(weatherData?.temperature || 0)}`
                       )}
                     </div>
-                    <div className="text-3xl font-bold opacity-80">°</div>
+                    <div className="text-xl font-bold opacity-80">°</div>
                   </div>
 
                   {/* Additional Weather Details */}
                   {weatherData && !loadingWeather && (
-                    <div className="flex items-center gap-7 text-sm opacity-80">
+                    <div className="flex items-center gap-3 text-[10px] opacity-80">
                       {weatherData.humidity && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0.5">
                           <svg
-                            className="w-4 h-4"
+                            className="w-2 h-2"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1438,9 +1478,9 @@ export default function DashboardPage() {
                         </div>
                       )}
                       {weatherData.windSpeed && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0.5">
                           <svg
-                            className="w-4 h-4"
+                            className="w-2 h-2"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1456,9 +1496,9 @@ export default function DashboardPage() {
                         </div>
                       )}
                       {weatherData.precipitation !== undefined && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0.5">
                           <svg
-                            className="w-4 h-4"
+                            className="w-2 h-2"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1476,122 +1516,17 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-                <div className="text-9xl drop-shadow-2xl transform transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12">
+                <div className="text-5xl drop-shadow-xl transform transition-transform duration-500 group-hover:scale-105 group-hover:rotate-6">
                   {getWeatherIcon(weatherData?.condition || "맑음")}
                 </div>
               </div>
 
-              {/* Temperature Range - Enhanced */}
-              {/* {forecastData.length > 0 && (
-                <div className="flex items-center justify-between mb-6 bg-white/25 backdrop-blur-md rounded-2xl p-4 border border-white/30 shadow-lg">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-white/20 rounded-lg">
-                      <svg
-                        className="w-5 h-5 opacity-90"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 12h14M5 12l4-4m-4 4l4 4"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="text-xs opacity-70 mb-1">최저</div>
-                      <div className="text-2xl font-bold">
-                        {Math.round(forecastData[0]?.minTemp || 0)}°
-                      </div>
-                    </div>
-                  </div>
-                  <div className="h-12 w-px bg-white/30"></div>
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <div className="text-xs opacity-70 mb-1">최고</div>
-                      <div className="text-2xl font-bold">
-                        {Math.round(forecastData[0]?.maxTemp || 0)}°
-                      </div>
-                    </div>
-                    <div className="p-2 bg-white/20 rounded-lg">
-                      <svg
-                        className="w-5 h-5 opacity-90"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 12h14m-4-4l4 4m-4 4l4-4"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              )} */}
-
-              {/* Air Quality - Enhanced */}
-              {/* <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-white/25 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-lg hover:bg-white/30 transition-all duration-300 group">
-                  <div className="flex items-center gap-2 text-xs opacity-90 mb-3 font-semibold">
-                    <div className="p-1.5 bg-white/20 rounded-lg group-hover:bg-white/30 transition-colors">
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
-                        />
-                      </svg>
-                    </div>
-                    미세먼지
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {airQualityData?.fine || "좋음"}
-                  </div>
-                </div>
-                <div className="bg-white/25 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-lg hover:bg-white/30 transition-all duration-300 group">
-                  <div className="flex items-center gap-2 text-xs opacity-90 mb-3 font-semibold">
-                    <div className="p-1.5 bg-white/20 rounded-lg group-hover:bg-white/30 transition-colors">
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                        />
-                      </svg>
-                    </div>
-                    초미세먼지
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {airQualityData?.ultrafine || "좋음"}
-                  </div>
-                </div>
-              </div> */}
-
-              {/* Hourly Forecast - Enhanced */}
-
               {/* 7-Day Forecast - Compact Grid */}
               {forecastData && forecastData.length > 0 ? (
-                <div className="mt-6 pt-6 border-t border-white/30">
-                  <div className="flex items-center gap-2 mb-4">
+                <div className="mt-3 pt-3 border-t border-white/30">
+                  <div className="flex items-center gap-1 mb-2">
                     <svg
-                      className="w-4 h-4 opacity-80"
+                      className="w-2 h-2 opacity-80"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -1603,11 +1538,11 @@ export default function DashboardPage() {
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
-                    <span className="text-sm opacity-90 font-semibold">
+                    <span className="text-[10px] opacity-90 font-semibold">
                       7일 예보
                     </span>
                   </div>
-                  <div className="grid grid-cols-7 gap-2 min-w-full">
+                  <div className="grid grid-cols-7 gap-1 min-w-full">
                     {(forecastData.length >= 7
                       ? forecastData.slice(0, 7)
                       : forecastData.concat(
@@ -1638,26 +1573,26 @@ export default function DashboardPage() {
                     ).map((day: any, index: number) => (
                       <div
                         key={index}
-                        className="flex flex-col items-center bg-white/15 backdrop-blur-sm rounded-xl p-2 sm:p-3 border border-white/20 hover:bg-white/25 transition-all duration-300 group min-w-0"
+                        className="flex flex-col items-center bg-white/15 backdrop-blur-sm rounded-lg p-1 border border-white/20 hover:bg-white/25 transition-all duration-300 group min-w-0"
                       >
                         {/* Day Name */}
-                        <div className="text-xs font-semibold opacity-90 mb-2">
+                        <div className="text-[8px] font-semibold opacity-90 mb-1">
                           {day.dayOfWeek}
                         </div>
 
                         {/* Weather Icon */}
-                        <div className="text-3xl mb-2 transform group-hover:scale-110 transition-transform duration-300">
+                        <div className="text-xl mb-1 transform group-hover:scale-110 transition-transform duration-300">
                           {getWeatherIcon(day.condition || "맑음")}
                         </div>
 
                         {/* Temperatures */}
-                        <div className="flex flex-col items-center gap-1 w-full">
+                        <div className="flex flex-col items-center gap-0.5 w-full">
                           {/* High Temperature */}
-                          <div className="text-xs font-bold text-black-300">
+                          <div className="text-[8px] font-bold text-black-300">
                             {Math.round(day.maxTemp || 0)}°
                           </div>
                           {/* Low Temperature */}
-                          <div className="text-xs opacity-75 text-black-200">
+                          <div className="text-[8px] opacity-75 text-black-200">
                             {Math.round(day.minTemp || 0)}°
                           </div>
                         </div>
@@ -1665,18 +1600,18 @@ export default function DashboardPage() {
                         {/* Precipitation Probability (if available) */}
                         {day.precipitationProbability !== undefined &&
                           day.precipitationProbability > 0 && (
-                            <div className="text-[10px] opacity-90 mt-1"></div>
+                            <div className="text-[6px] opacity-90 mt-0.5"></div>
                           )}
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="mt-6 pt-6 border-t border-white/30">
-                  <div className="text-sm opacity-70 text-center py-8">
+                <div className="mt-3 pt-3 border-t border-white/30">
+                  <div className="text-[10px] opacity-70 text-center py-4">
                     {loadingWeather ? (
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                         <span>예보를 불러오는 중...</span>
                       </div>
                     ) : (
@@ -1688,9 +1623,9 @@ export default function DashboardPage() {
 
               {/* Loading State */}
               {loadingWeather && !weatherData && (
-                <div className="flex flex-col items-center justify-center py-12 gap-4">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-3 border-white"></div>
-                  <span className="text-sm opacity-80">
+                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                  <span className="text-[10px] opacity-80">
                     날씨 정보를 불러오는 중...
                   </span>
                 </div>
@@ -1725,31 +1660,169 @@ export default function DashboardPage() {
           `}</style>
 
           {/* Product Recommendations (Ads) */}
+          <div className="bg-white h-[230px] flex flex-row dark:bg-gray-900 rounded-2xl shadow-lg p-3 border border-gray-400 dark:border-gray-700">
+            {/* Header */}
+            <div className="mb-3 flex flex-col justify-start items-center">
+              <h2 className="font-bold text-2xl text-gray-900 dark:text-white">
+                주목할 만한 상품 추천
+              </h2>
+              <span className="text-[10px]  font-bold mt-20 text-gray-500 dark:text-gray-400 block">
+                AD
+              </span>
+            </div>
+
+            {/* Carousel Container */}
+            <div className="relative">
+              {/* Product Cards */}
+              <div className="overflow-hidden w-[490px] mx-auto rounded-xl">
+                <div
+                  className="flex transition-transform duration-300 ease-in-out"
+                  style={{
+                    transform: `translateX(-${(currentProductSlide / 3) * 100}%)`,
+                  }}
+                >
+                  {productRecommendations.map((product, index) => (
+                    <div
+                      key={product.id}
+                      className="min-w-[33.333%] flex-shrink-0 cursor-pointer group"
+                      style={{
+                        paddingRight: index < productRecommendations.length - 1 ? '0.5rem' : '0',
+                      }}
+                      onClick={() => {
+                        // Handle product click
+                        console.log("Product clicked:", product.id);
+                      }}
+                    >
+                      <div className="relative   ">
+                        {/* Product Image */}
+                        <div className="relative w-full h-36 overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="max-w-full max-h-full object-contain"
+                            onError={(e) => {
+                              // Hide failed image and show fallback
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = "none";
+                              // Check if fallback already exists
+                              const parent = target.parentElement;
+                              if (
+                                parent &&
+                                !parent.querySelector(".image-fallback")
+                              ) {
+                                const fallback = document.createElement("div");
+                                fallback.className =
+                                  "image-fallback w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800";
+                                fallback.innerHTML = `
+                                  <svg class="w-8 h-8 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                  </svg>
+                                `;
+                                parent.appendChild(fallback);
+                              }
+                            }}
+                          />
+                          {/* AD Badge */}
+                          {product.isAd && (
+                            <div className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">
+                              AD
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Product Title */}
+                        <div className="p-2">
+                          <h3 className="text-[10px] font-medium text-gray-900 dark:text-white line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors leading-tight">
+                            {product.name}
+                          </h3>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Navigation Arrows */}
+              {productRecommendations.length > 3 && (
+                <>
+                  <button
+                    onClick={prevProductSlide}
+                    className="absolute left-0 top-1/3 -translate-y-1/4 transform -translate-x-1/2 bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-800 rounded-full p-1.5 shadow-md transition-all z-10"
+                    aria-label="Previous product"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-4 h-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 19.5L8.25 12l7.5-7.5"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={nextProductSlide}
+                    className="absolute right-0 top-1/3 -translate-y-1/4 transform translate-x-1/4 bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-800 rounded-full p-1.5 shadow-md transition-all z-10"
+                    aria-label="Next product"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-4 h-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                      />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Messages/Notifications */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 h-[410px] flex flex-col">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 shrink-0">
+                 <div className="bg-gray-200 dark:bg-gray-800 rounded-2xl shadow-lg p-3 h-[340px] flex flex-col border border-gray-400 dark:border-gray-700 relative">
+            <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2 shrink-0">
               쪽지함
             </h2>
 
-            <div className="space-y-2 flex-1 overflow-y-auto">
+            {/* Development Notice */}
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div className="text-center">
+                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+                  아직 개발 중입니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1 flex-1 overflow-hidden opacity-20">
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                  className="flex items-center justify-between p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <div className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-[10px]">
                         {message.clinic.charAt(0)}
                       </div>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 dark:text-white truncate">
+                      <div className="font-medium text-gray-900 dark:text-white truncate text-xs">
                         {message.clinic}
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                      <div className="text-[10px] text-gray-600 dark:text-gray-400 truncate">
                         {message.sender}
                       </div>
                     </div>
@@ -1757,7 +1830,7 @@ export default function DashboardPage() {
 
                   {message.unread > 0 && (
                     <div className="flex-shrink-0">
-                      <div className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      <div className="bg-red-500 text-white text-[8px] font-bold rounded-full w-3 h-3 flex items-center justify-center">
                         {message.unread}
                       </div>
                     </div>

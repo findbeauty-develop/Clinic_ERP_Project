@@ -207,8 +207,9 @@ export class MembersController {
     @Tenant() tenantId?: string,
     @Query("tenantId") tenantQuery?: string
   ) {
-    // memberId'ni token'dan yoki body'dan olish
-    const memberId = body.memberId || tokenMemberId;
+    // ✅ body.memberId mavjud va bo'sh emas bo'lsa, uni ishlatish (owner boshqa member'ning password'ini o'zgartirmoqchi)
+    // ✅ body.memberId bo'sh bo'lsa, tokenMemberId'ni ishlatish (owner o'z password'ini o'zgartirmoqchi)
+    const memberId = (body.memberId && body.memberId.trim() !== "") ? body.memberId : tokenMemberId;
     if (!memberId) {
       throw new BadRequestException(
         "Member ID is required. Either provide it in the request body (memberId) or ensure the JWT token contains member_id."

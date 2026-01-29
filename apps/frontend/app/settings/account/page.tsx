@@ -56,6 +56,7 @@ export default function AccountManagementPage() {
   const [logoUrl, setLogoUrl] = useState<string>("");
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,8 +75,8 @@ export default function AccountManagementPage() {
 
         // ✅ Owner emas bo'lsa, access'ni rad etish
         if (memberData?.role !== "owner") {
-          setError("이 페이지는 원장만 접근할 수 있습니다.");
           setLoading(false);
+          setShowAccessDeniedModal(true);
           return;
         }
 
@@ -102,7 +103,8 @@ export default function AccountManagementPage() {
       } catch (err: any) {
         console.error("Failed to load account data", err);
         if (err?.response?.status === 403 || err?.status === 403) {
-          setError("이 페이지는 원장만 접근할 수 있습니다.");
+          setLoading(false);
+          setShowAccessDeniedModal(true);
         } else {
           setError("계정 정보를 불러오지 못했습니다.");
         }
@@ -777,6 +779,81 @@ export default function AccountManagementPage() {
           </div>
         </section>
       </div>
+
+      {/* Access Denied Modal */}
+      {showAccessDeniedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-red-200 bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAccessDeniedModal(false);
+                router.push("/");
+              }}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-8 text-center">
+              {/* Error Icon */}
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-10 w-10 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h2 className="mb-2 text-2xl font-bold text-slate-900">
+                접근 권한 없음
+              </h2>
+
+              {/* Message */}
+              <p className="mb-6 text-sm leading-relaxed text-slate-600">
+                이 페이지는 원장만 접근할 수 있습니다.
+              </p>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAccessDeniedModal(false);
+                  router.push("/");
+                }}
+                className="w-full rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-red-600 hover:to-rose-600 focus:outline-none focus:ring-2 focus:ring-red-200"
+              >
+                홈으로 돌아가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
