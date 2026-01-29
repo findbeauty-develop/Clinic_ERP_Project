@@ -51,6 +51,20 @@ export class ClinicsController {
     return this.service.getClinics(resolvedTenantId);
   }
 
+  @Get("info")
+@UseGuards(JwtTenantGuard) // ✅ Faqat authentication, role check yo'q
+@ApiOperation({ summary: "Get clinic basic info (name and logo) for all authenticated users" })
+getClinicInfo(
+  @Tenant() tenantId: string,
+  @Query("tenantId") tenantQuery?: string
+) {
+  const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+  if (!resolvedTenantId) {
+    throw new BadRequestException("tenant_id is required");
+  }
+  return this.service.getClinicInfo(resolvedTenantId);
+}
+
   @Post()
   @ApiOperation({ summary: "Register a clinic for the tenant" })
   @Roles("admin", "manager")

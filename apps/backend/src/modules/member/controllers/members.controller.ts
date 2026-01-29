@@ -208,7 +208,7 @@ export class MembersController {
     @Query("tenantId") tenantQuery?: string
   ) {
     // memberId'ni token'dan yoki body'dan olish
-    const memberId = tokenMemberId || body.memberId;
+    const memberId = body.memberId || tokenMemberId;
     if (!memberId) {
       throw new BadRequestException(
         "Member ID is required. Either provide it in the request body (memberId) or ensure the JWT token contains member_id."

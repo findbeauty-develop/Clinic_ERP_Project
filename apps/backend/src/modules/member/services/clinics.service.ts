@@ -410,5 +410,19 @@ export class ClinicsService {
       message: "로고가 성공적으로 업데이트되었습니다.",
     };
   }
+
+  async getClinicInfo(tenantId: string) {
+  const clinics = await this.repository.findByTenant(tenantId);
+  if (!clinics || clinics.length === 0) {
+    return null;
+  }
+  
+  const clinic = clinics[0];
+  // ✅ Faqat name va logo_url qaytarish
+  return {
+    name: clinic.name,
+    logo_url: (clinic as any).logo_url ?? null,
+  };
+}
 }
 

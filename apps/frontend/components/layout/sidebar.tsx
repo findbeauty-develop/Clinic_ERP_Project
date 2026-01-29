@@ -236,26 +236,24 @@ export function Sidebar() {
       }
 
       // Clinic name'ni API'dan olish - apiGet body'ni avtomatik o'qiydi
-      try {
-        const clinics = await apiGet<any[]>(
-          `/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
-        );
+       try {
+      const clinicInfo = await apiGet<{ name: string; logo_url: string | null }>(
+        `/iam/members/clinics/info?tenantId=${encodeURIComponent(tenantId)}`
+      );
+      
+      if (clinicInfo) {
+        setClinicName(clinicInfo.name || "");
         
-        if (clinics && clinics.length > 0) {
-          // Birinchi clinic'ni olish (tenant_id bo'yicha faqat bitta clinic bo'lishi kerak)
-          setClinicName(clinics[0].name || "");
-          
-          // ✅ Logo URL'ni olish va ko'rsatish
-          if (clinics[0].logo_url) {
-            const apiUrl = getApiUrl();
-            setClinicLogo(`${apiUrl}${clinics[0].logo_url}`);
-          } else {
-            setClinicLogo(""); // Default logo
-          }
+        if (clinicInfo.logo_url) {
+          const apiUrl = getApiUrl();
+          setClinicLogo(`${apiUrl}${clinicInfo.logo_url}`);
+        } else {
+          setClinicLogo(""); // Default logo
         }
-      } catch (error) {
-        console.error("Error fetching clinic name:", error);
       }
+    } catch (error) {
+      console.error("Error fetching clinic info:", error);
+    }
 
       // Member role'ni localStorage'dan yoki member data'dan olish
       const memberData = getMemberData();
