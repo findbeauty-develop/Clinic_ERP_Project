@@ -9,6 +9,7 @@ import { HiraService } from "../../hira/services/hira.service";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { Clinic } from "@prisma/client";
 
 @Injectable()
 export class ClinicsService {
@@ -381,6 +382,32 @@ export class ClinicsService {
         hiraData: hiraVerification.hiraData,
         warnings: hiraVerification.warnings,
       } : undefined,
+    };
+  }
+  
+  async updateClinicLogo(tenantId: string, logoUrl: string) {
+    const clinic = await this.repository.findByTenant(tenantId);
+    if (!clinic || clinic.length === 0) {
+      throw new NotFoundException("Clinic not found");
+    }
+
+    // Type assertion needed because TypeScript language server may use cached Prisma types
+    // logo_url field exists in schema and Prisma generated types
+    const updateData: Partial<Clinic> & { logo_url?: string } = {
+      logo_url: logoUrl,
+      updated_at: new Date(),
+    };
+
+    const updatedClinic = await this.repository.update(
+      clinic[0].id,
+      updateData,
+      tenantId
+    );
+
+    return {
+      success: true,
+      logo_url: (updatedClinic as Clinic & { logo_url: string | null }).logo_url,
+      message: "로고가 성공적으로 업데이트되었습니다.",
     };
   }
 }

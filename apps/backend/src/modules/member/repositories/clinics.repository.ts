@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
+import { Clinic } from "@prisma/client";
 
 @Injectable()
 export class ClinicsRepository {
@@ -22,9 +23,13 @@ export class ClinicsRepository {
     });
   }
 
-  update(id: string, data: any, tenantId: string) {
+  update(id: string, data: Partial<Clinic>, tenantId?: string): Promise<Clinic> {
+    const where: any = { id };
+    if (tenantId) {
+      where.tenant_id = tenantId;
+    }
     return this.prisma.clinic.update({
-      where: { id, tenant_id: tenantId },
+      where,
       data,
     });
   }

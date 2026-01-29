@@ -18,6 +18,7 @@ type Clinic = {
   doctor_name?: string | null;
   phone_number?: string | null;
   open_date?: string | null;
+  logo_url?: string | null;
 };
 
 type Member = {
@@ -52,6 +53,9 @@ export default function AccountManagementPage() {
   const [isVerificationCodeVerified, setIsVerificationCodeVerified] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string>("");
+  const [logoPreview, setLogoPreview] = useState<string>("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,6 +85,11 @@ export default function AccountManagementPage() {
         );
         if (clinicsData && clinicsData.length > 0) {
           setClinic(clinicsData[0]);
+          // Set logo preview if logo_url exists
+          if (clinicsData[0].logo_url) {
+            setLogoUrl(clinicsData[0].logo_url);
+            setLogoPreview(`${apiUrl}${clinicsData[0].logo_url}`);
+          }
         }
 
         // Fetch members data
@@ -215,6 +224,156 @@ export default function AccountManagementPage() {
     return sameRole.length > 1 ? index + 1 : "";
   };
 
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // File validation
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      alert(`지원하지 않는 파일 형식입니다. 허용된 형식: ${validTypes.join(", ")}`);
+      event.target.value = "";
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert(`파일 크기가 너무 큽니다. 최대 크기: 5MB`);
+      event.target.value = "";
+      return;
+    }
+
+    // Preview yaratish
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload qilish
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      console.log("Uploading file:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
+      const { getAccessToken, getTenantId, apiPut, clearCache } = await import("../../../lib/api");
+      const token = await getAccessToken();
+      const tenantId = getTenantId();
+
+      if (!token) {
+        throw new Error("인증이 필요합니다.");
+      }
+
+      // Upload file - FormData uchun Content-Type header'ni o'chirish kerak
+      const uploadUrl = `${apiUrl}/iam/members/clinics/upload-logo${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`;
+      
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Tenant-Id": tenantId || "",
+          // Content-Type ni qo'shmaslik - browser avtomatik qo'shadi FormData uchun
+        },
+        credentials: "include",
+      });
+
+      if (!uploadResponse.ok) {
+        let errorMessage = "로고 업로드에 실패했습니다.";
+        try {
+          const errorData = await uploadResponse.json();
+          errorMessage = errorData?.message || errorData?.error || `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
+          console.error("Upload error details:", {
+            status: uploadResponse.status,
+            statusText: uploadResponse.statusText,
+            errorData,
+          });
+        } catch (e) {
+          const errorText = await uploadResponse.text().catch(() => "");
+          console.error("Upload error (non-JSON):", {
+            status: uploadResponse.status,
+            statusText: uploadResponse.statusText,
+            errorText,
+          });
+          errorMessage = `HTTP ${uploadResponse.status}: ${uploadResponse.statusText || "Unknown error"}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const uploadResult = await uploadResponse.json();
+      console.log("Upload result:", uploadResult);
+
+      // Database'ga saqlash
+      const updateUrl = `${apiUrl}/iam/members/clinics/logo${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`;
+      
+      console.log("Updating logo URL:", updateUrl, { logoUrl: uploadResult.url });
+      
+      try {
+        await apiPut(updateUrl, {
+          logoUrl: uploadResult.url,
+        });
+      } catch (updateError: any) {
+      console.error("Logo URL update error - Full details:", {
+    error: updateError,
+    message: updateError?.message,
+    response: updateError?.response,
+    status: updateError?.response?.status,
+    statusText: updateError?.response?.statusText,
+    data: updateError?.response?.data,
+    body: updateError?.body,
+  });
+  
+  // ✅ Error response'ni to'liq ko'rsatish
+  let errorMessage = "로고 업로드되었지만 데이터베이스 업데이트에 실패했습니다.";
+  if (updateError?.response?.data) {
+    const errorData = updateError.response.data;
+    if (Array.isArray(errorData.message)) {
+      // Validation error - array of messages
+      errorMessage = `Validation error: ${errorData.message.join(", ")}`;
+    } else if (typeof errorData.message === "string") {
+      errorMessage = errorData.message;
+    }
+  } else if (updateError?.message) {
+    errorMessage = updateError.message;
+  }
+  
+  alert(errorMessage);
+  throw updateError;
+      }
+
+      setLogoUrl(uploadResult.url);
+      const fullUrl = `${apiUrl}${uploadResult.url}`;
+      setLogoPreview(fullUrl);
+
+      // Clinic state'ni yangilash
+      if (clinic) {
+        setClinic({ ...clinic, logo_url: uploadResult.url });
+      }
+
+      // Cache'ni tozalash va sidebar'ni yangilash uchun event yuborish
+      clearCache("/iam/members/clinics");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("clinicLogoUpdated", { detail: { logoUrl: uploadResult.url } }));
+      }
+
+      alert("로고가 성공적으로 업로드되었습니다.");
+    } catch (error: any) {
+      console.error("Logo upload error:", error);
+      alert(error?.message || "로고 업로드에 실패했습니다.");
+      setLogoPreview("");
+    } finally {
+      setUploadingLogo(false);
+      // Reset file input
+      event.target.value = "";
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
@@ -275,6 +434,104 @@ export default function AccountManagementPage() {
             돌아가기
           </Link>
         </header>
+
+         {/* 병의원 로고 Section */}
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+          <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            병의원 로고
+          </h2>
+
+          <div className="flex flex-col items-center gap-4">
+            {/* Logo Preview */}
+            <div className="relative">
+              <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-2 border-slate-200 bg-slate-50 shadow-sm">
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Clinic Logo"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-slate-400">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-12 w-12"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Upload Button */}
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                onChange={handleLogoUpload}
+                disabled={uploadingLogo}
+                className="hidden"
+              />
+              <div className="flex items-center gap-2 rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {uploadingLogo ? (
+                  <>
+                    <svg
+                      className="h-4 w-4 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    업로드 중...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                      />
+                    </svg>
+                    로고 업로드
+                  </>
+                )}
+              </div>
+            </label>
+            <p className="text-xs text-slate-500">
+              JPG, PNG 또는 WEBP 형식 (최대 5MB)
+            </p>
+          </div>
+        </section>
 
         {/* 병의원 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
@@ -348,6 +605,8 @@ export default function AccountManagementPage() {
             </div>
           </div>
         </section>
+
+       
 
         {/* 원장 개인 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">

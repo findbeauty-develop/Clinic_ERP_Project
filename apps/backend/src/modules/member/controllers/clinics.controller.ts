@@ -17,6 +17,7 @@ import { join } from "path";
 import { promises as fs } from "fs";
 import { ClinicsService } from "../services/clinics.service";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
+import { UpdateClinicLogoDto } from "../dto/update-clinic-logo.dto";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { Roles } from "../../../common/decorators/roles.decorator";
@@ -89,6 +90,31 @@ export class ClinicsController {
       throw new BadRequestException("tenant_id is required");
     }
     return this.service.updateClinicSettings(tenantId, dto);
+  }
+
+  @Put("logo")
+  @UseGuards(JwtTenantGuard, RolesGuard)
+  @Roles("owner")
+  @ApiOperation({ summary: "Update clinic logo URL" })
+  async updateLogo(
+    @Body() dto: UpdateClinicLogoDto,
+    @Tenant() tenantId?: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    
+    try {
+      const result = await this.service.updateClinicLogo(resolvedTenantId, dto.logoUrl);
+      return result;
+    } catch (error) {
+      console.error("Update logo service error:", {
+        error,
+        message: (error instanceof Error) ? error.message : undefined,
+        tenantId: resolvedTenantId,
+        logoUrl: dto.logoUrl,
+      });
+      throw error;
+    }
   }
 
   @Put(":id")
@@ -255,6 +281,78 @@ export class ClinicsController {
     }
 
     return this.service.verifyCertificate(buffer, resolvedTenantId, mimetype);
+  }
+
+  @Post("upload-logo")
+  @UseGuards(JwtTenantGuard, RolesGuard)
+  @Roles("owner")
+  @ApiOperation({ summary: "Upload clinic logo image" })
+  @ApiConsumes("multipart/form-data")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: diskStorage({
+        destination: async (
+          req: Request,
+          file: Express.Multer.File,
+          callback: (error: Error | null, destination: string) => void
+        ) => {
+          const tenantId = (req as any).tenantId || (req.query?.tenantId as string) || "self-service-tenant";
+          const UPLOAD_ROOT = join(process.cwd(), "uploads");
+          const targetDir = join(UPLOAD_ROOT, "clinic", tenantId, "logo");
+          try {
+            await fs.mkdir(targetDir, { recursive: true });
+            callback(null, targetDir);
+          } catch (error) {
+            callback(error as Error, targetDir);
+          }
+        },
+        filename: (
+          req: Request,
+          file: Express.Multer.File,
+          callback: (error: Error | null, filename: string) => void
+        ) => {
+          const filename = getSerialForImage(file.originalname);
+          callback(null, filename);
+        },
+      }),
+      fileFilter: (
+        req: Request,
+        file: Express.Multer.File,
+        callback: (error: Error | null, acceptFile: boolean) => void
+      ) => {
+        const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+        if (!validTypes.includes(file.mimetype)) {
+          return callback(
+            new BadRequestException(`Invalid file type. Allowed types: ${validTypes.join(", ")}`),
+            false
+          );
+        }
+        callback(null, true);
+      },
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+    })
+  )
+  async uploadLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @Tenant() tenantId?: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    if (!file) {
+      throw new BadRequestException("File is required");
+    }
+
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    const url = `/uploads/clinic/${resolvedTenantId}/logo/${file.filename}`;
+
+    return {
+      filename: file.filename,
+      url,
+      category: "clinic-logo",
+      size: file.size,
+      mimetype: file.mimetype,
+    };
   }
 }
 

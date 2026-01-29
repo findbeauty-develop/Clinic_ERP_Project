@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, getTenantId, getMemberData } from "../../lib/api";
+import { apiGet, getTenantId, getMemberData, getApiUrl } from "../../lib/api";
 import { Settings } from "lucide-react";
 
 const navItems = [
@@ -244,6 +244,14 @@ export function Sidebar() {
         if (clinics && clinics.length > 0) {
           // Birinchi clinic'ni olish (tenant_id bo'yicha faqat bitta clinic bo'lishi kerak)
           setClinicName(clinics[0].name || "");
+          
+          // ✅ Logo URL'ni olish va ko'rsatish
+          if (clinics[0].logo_url) {
+            const apiUrl = getApiUrl();
+            setClinicLogo(`${apiUrl}${clinics[0].logo_url}`);
+          } else {
+            setClinicLogo(""); // Default logo
+          }
         }
       } catch (error) {
         console.error("Error fetching clinic name:", error);
@@ -280,8 +288,21 @@ export function Sidebar() {
       }
     };
 
+    const handleLogoUpdate = (e: CustomEvent) => {
+      // Logo yangilanganda sidebar'ni yangilash
+      if (e.detail?.logoUrl) {
+        const apiUrl = getApiUrl();
+        setClinicLogo(`${apiUrl}${e.detail.logoUrl}`);
+      }
+    };
+
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("clinicLogoUpdated", handleLogoUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("clinicLogoUpdated", handleLogoUpdate as EventListener);
+    };
   }, [loadUserInfo, loadClinicAndRole]);
 
   const handleLogout = () => {
@@ -314,15 +335,19 @@ export function Sidebar() {
         {/* Logo Display Area */}
         <div className="relative">
           <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden border-2 border-gray-200 rounded-full bg-[#fcfcfc] shadow-full">
-            <img
-              src="/images/white-question-mark.svg"
-              alt="Clinic Logo"
-              cursor-pointer
-              aria-label="Message to owner"
-              onClick={() => alert("Message to owner")}
-              
-              className="h-24 w-24 object-contain bg-[#fcfcfc]"
-            />
+            {clinicLogo ? (
+              <img
+                src={clinicLogo}
+                alt="Clinic Logo"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <img
+                src="/images/white-question-mark.svg"
+                alt="Clinic Logo"
+                className="h-24 w-24 object-contain bg-[#fcfcfc]"
+              />
+            )}
           </div>
         </div>
 

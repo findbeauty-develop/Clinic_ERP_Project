@@ -81,6 +81,7 @@ model Clinic {
   updated_by            String?
   doctor_name           String?
   open_date             DateTime?
+  logo_url              String?
   // Privacy and disclosure settings
   allow_company_search  Boolean   @default(false) // 기업 검색 허용
   allow_info_disclosure Boolean   @default(false) // 병의원 정보 공개
