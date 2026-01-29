@@ -44,18 +44,36 @@ export default function AccountManagementPage() {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingPassword, setEditingPassword] = useState<string | null>(null);
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [isVerificationCodeSent, setIsVerificationCodeSent] = useState(false);
+  const [isVerificationCodeVerified, setIsVerificationCodeVerified] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const { apiGet } = await import("../../../lib/api");
+        const { apiGet, getMemberData } = await import("../../../lib/api");
         const { getTenantId } = await import("../../../lib/api");
         const tenantId = getTenantId();
+
+        // ✅ Current user'ning role'ni olish
+        const memberData = getMemberData();
+        if (memberData?.role) {
+          setCurrentUserRole(memberData.role);
+        }
+
+        // ✅ Owner emas bo'lsa, access'ni rad etish
+        if (memberData?.role !== "owner") {
+          setError("이 페이지는 원장만 접근할 수 있습니다.");
+          setLoading(false);
+          return;
+        }
 
         // Fetch clinic data
         const clinicsData = await apiGet<Clinic[]>(
@@ -72,9 +90,13 @@ export default function AccountManagementPage() {
         if (membersData) {
           setMembers(membersData);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load account data", err);
-        setError("계정 정보를 불러오지 못했습니다.");
+        if (err?.response?.status === 403 || err?.status === 403) {
+          setError("이 페이지는 원장만 접근할 수 있습니다.");
+        } else {
+          setError("계정 정보를 불러오지 못했습니다.");
+        }
       } finally {
         setLoading(false);
       }
@@ -87,10 +109,62 @@ export default function AccountManagementPage() {
     setEditingPassword(memberId);
     setNewPassword("");
     setConfirmPassword("");
-    setCurrentPassword("");
+    setVerificationCode("");
+    setIsVerificationCodeSent(false);
+    setIsVerificationCodeVerified(false);
+  };
+
+  const handleSendVerificationCode = async (phoneNumber: string) => {
+    if (!phoneNumber) {
+      alert("전화번호가 없습니다.");
+      return;
+    }
+
+    setIsSendingCode(true);
+    try {
+      const { apiPost } = await import("../../../lib/api");
+      await apiPost(`${apiUrl}/iam/members/send-phone-verification`, {
+        phone_number: phoneNumber,
+      });
+      setIsVerificationCodeSent(true);
+      alert("인증번호가 전송되었습니다.");
+    } catch (err: any) {
+      console.error("Failed to send verification code", err);
+      alert(err?.message || "인증번호 전송에 실패했습니다.");
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleVerifyCode = async (phoneNumber: string, code: string) => {
+    if (!code || code.length !== 6) {
+      alert("6자리 인증번호를 입력해주세요.");
+      return;
+    }
+
+    setIsVerifyingCode(true);
+    try {
+      const { apiPost } = await import("../../../lib/api");
+      await apiPost(`${apiUrl}/iam/members/verify-phone-code`, {
+        phone_number: phoneNumber,
+        code: code,
+      });
+      setIsVerificationCodeVerified(true);
+      alert("인증이 완료되었습니다.");
+    } catch (err: any) {
+      console.error("Failed to verify code", err);
+      alert(err?.message || "인증번호가 올바르지 않습니다.");
+      setIsVerificationCodeVerified(false);
+    } finally {
+      setIsVerifyingCode(false);
+    }
   };
 
   const handlePasswordSave = async (member: Member) => {
+    if (!isVerificationCodeVerified) {
+      alert("핸드폰 인증을 완료해주세요.");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       alert("비밀번호가 일치하지 않습니다.");
       return;
@@ -99,23 +173,21 @@ export default function AccountManagementPage() {
       alert("비밀번호는 최소 6자 이상이어야 합니다.");
       return;
     }
-    if (!currentPassword) {
-      alert("현재 비밀번호를 입력해주세요.");
-      return;
-    }
 
     try {
       const { apiPost } = await import("../../../lib/api");
       await apiPost(`${apiUrl}/iam/members/change-password`, {
         memberId: member.member_id, // Use member_id (string) not id (UUID)
-        currentPassword,
         newPassword,
+        // ✅ currentPassword yo'q - phone verification bilan
       });
       alert("비밀번호가 성공적으로 변경되었습니다.");
       setEditingPassword(null);
       setNewPassword("");
       setConfirmPassword("");
-      setCurrentPassword("");
+      setVerificationCode("");
+      setIsVerificationCodeSent(false);
+      setIsVerificationCodeVerified(false);
     } catch (err: any) {
       console.error("Failed to change password", err);
       alert(err?.message || "비밀번호 변경에 실패했습니다.");
@@ -344,40 +416,80 @@ export default function AccountManagementPage() {
                   </label>
                   {editingPassword === member.id ? (
                     <div className="space-y-2">
+                      {/* Owner phone number (read-only) */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={director?.phone_number || ""}
+                          readOnly
+                          className="h-9 flex-1 rounded-lg border border-slate-300 bg-slate-100 px-3 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          placeholder="핸드폰 번호"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSendVerificationCode(director?.phone_number || "")}
+                          disabled={isSendingCode || !director?.phone_number || isVerificationCodeVerified}
+                          className="h-9 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isSendingCode ? "전송 중..." : "인증번호 전송"}
+                        </button>
+                      </div>
+                      {/* Verification code input */}
                       <input
-                        type="password"
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="현재 비밀번호"
-                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                        type="text"
+                        value={verificationCode}
+                        onChange={(e) => {
+                          const code = e.target.value.replace(/[^0-9]/g, "").slice(0, 6);
+                          setVerificationCode(code);
+                          // Auto-verify when 6 digits entered
+                          if (code.length === 6 && director?.phone_number) {
+                            handleVerifyCode(director.phone_number, code);
+                          }
+                        }}
+                        placeholder="핸드폰 인증번호"
+                        maxLength={6}
+                        disabled={!isVerificationCodeSent || isVerificationCodeVerified}
+                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                       />
+                      {isVerificationCodeVerified && (
+                        <p className="text-xs text-green-600 dark:text-green-400">
+                          ✓ 인증이 완료되었습니다.
+                        </p>
+                      )}
+                      {/* New password */}
                       <input
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         placeholder="새 비밀번호"
-                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                        disabled={!isVerificationCodeVerified}
+                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                       />
+                      {/* Confirm password */}
                       <input
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="비밀번호 확인"
-                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                        disabled={!isVerificationCodeVerified}
+                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                       />
                       <div className="flex gap-2">
                         <button
                           onClick={() => handlePasswordSave(member)}
-                          className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-600"
+                          disabled={!isVerificationCodeVerified}
+                          className="rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           저장
                         </button>
                         <button
                           onClick={() => {
                             setEditingPassword(null);
-                            setCurrentPassword("");
                             setNewPassword("");
                             setConfirmPassword("");
+                            setVerificationCode("");
+                            setIsVerificationCodeSent(false);
+                            setIsVerificationCodeVerified(false);
                           }}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                         >
@@ -392,7 +504,7 @@ export default function AccountManagementPage() {
                   )}
                 </div>
                 <div className="flex items-end">
-                  {editingPassword !== member.id && (
+                  {editingPassword !== member.id && currentUserRole === "owner" && (
                     <button
                       onClick={() => handlePasswordEdit(member.id)}
                       className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"

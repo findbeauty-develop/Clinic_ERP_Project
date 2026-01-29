@@ -472,7 +472,27 @@ export const apiPost = async <T = any>(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  // ✅ Handle empty responses gracefully
+  const contentType = response.headers.get("content-type");
+  const text = await response.text();
+  
+  // Agar response bo'sh bo'lsa yoki JSON emas bo'lsa
+  if (!text || text.trim() === "") {
+    return {} as T;
+  }
+  
+  // Agar JSON bo'lsa, parse qilish
+  if (contentType?.includes("application/json")) {
+    try {
+      return JSON.parse(text) as T;
+    } catch (e) {
+      // JSON parse xatosi bo'lsa, bo'sh object qaytarish
+      return {} as T;
+    }
+  }
+  
+  // Boshqa hollarda text qaytarish
+  return text as T;
 };
 
 /**

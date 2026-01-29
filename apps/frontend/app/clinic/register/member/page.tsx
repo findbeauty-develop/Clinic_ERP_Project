@@ -381,15 +381,15 @@ export default function ClinicMemberSetupPage() {
           {[
             { step: 1, label: "클리닉 인증" },
             // { step: 2, label: "법인 인증" },
-            { step: 3, label: "계정 만들기" },
-            { step: 4, label: "가입성공" },
+            { step: 2, label: "계정 만들기" },
+            { step: 3, label: "가입성공" },
           ].map(({ step, label }) => (
             <div key={step} className="flex flex-col items-center gap-2">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold ${
-                  step === 3
+                  step === 2
                     ? "border-indigo-500 bg-indigo-500 text-white"
-                    : step < 3
+                    : step < 2
                       ? "border-indigo-200 bg-indigo-50 text-indigo-400"
                       : "border-slate-200 bg-white text-slate-400"
                 }`}

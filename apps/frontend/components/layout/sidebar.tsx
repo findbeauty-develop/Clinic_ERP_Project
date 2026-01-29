@@ -313,10 +313,14 @@ export function Sidebar() {
       <div className="flex flex-col items-center gap-4 border-b border-slate-200 pb-6">
         {/* Logo Display Area */}
         <div className="relative">
-          <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-[#fcfcfc] shadow-full">
+          <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden border-2 border-gray-200 rounded-full bg-[#fcfcfc] shadow-full">
             <img
-              src="/images/JaclitLogo.svg"
+              src="/images/white-question-mark.svg"
               alt="Clinic Logo"
+              cursor-pointer
+              aria-label="Message to owner"
+              onClick={() => alert("Message to owner")}
+              
               className="h-24 w-24 object-contain bg-[#fcfcfc]"
             />
           </div>

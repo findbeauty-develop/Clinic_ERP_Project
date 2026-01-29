@@ -56,8 +56,8 @@ const normalizeClinicName = (name: string) =>
 const STEP_ITEMS = [
   { step: 1, label: "클리닉 인증" },
   // { step: 2, label: "법인 인증" },
-  { step: 3, label: "계정 만들기" },
-  { step: 4, label: "가입성공" },
+  { step: 2, label: "계정 만들기" },
+  { step: 3, label: "가입성공" },
 ];
 
 const roleLabel = (role: string) => {
@@ -107,6 +107,14 @@ export default function ClinicRegisterSuccessPage() {
         const parsedClinic = JSON.parse(clinicRaw) as ClinicSummary;
         const parsedOwner = JSON.parse(ownerRaw) as OwnerProfile;
         const parsedMembers = JSON.parse(membersRaw) as CreatedMember[];
+
+        // ✅ Debug: Log members to check if owner password is present
+        console.log("Parsed members:", parsedMembers);
+        const ownerMember = parsedMembers.find((m) => m.role === "owner" || m.role === "owner1" || m.role === "소유자");
+        if (ownerMember) {
+          console.log("Owner member:", ownerMember);
+          console.log("Owner password:", ownerMember.password);
+        }
 
         setClinic(parsedClinic);
         setOwner(parsedOwner);
@@ -262,9 +270,9 @@ export default function ClinicRegisterSuccessPage() {
             <div key={step} className="flex flex-col items-center gap-2">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-semibold ${
-                  step === 4
+                  step === 3
                     ? "border-indigo-500 bg-indigo-500 text-white"
-                    : step < 4
+                    : step < 3
                       ? "border-indigo-200 bg-indigo-50 text-indigo-400"
                       : "border-slate-200 bg-white text-slate-400"
                 }`}
@@ -394,17 +402,42 @@ export default function ClinicRegisterSuccessPage() {
           </div>
 
           <div className="rounded-3xl border border-white bg-white shadow-[0px_24px_60px_rgba(15,23,42,0.08)] p-6 md:p-10">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-4 flex-col">
               <h2 className="text-xl font-semibold text-slate-900">
                 계정 정보
               </h2>
+              <div className="flex items-start gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <h3 className="text-sm font-medium text-slate-900">
+                  아이디가 생성 되었으니 아래 아이디와 설정하신 비번으로 로그인 하세요
+                </h3>
+              </div>
             </div>
             <div className="mt-6 space-y-4">
               {displayMembers.length > 0 ? (
-                displayMembers.map((member) => (
+                displayMembers.map((member) => {
+                  const isOwner = member.role === "owner" || member.role === "owner1" || member.role === "소유자";
+                  return (
                   <div
                     key={member.memberId}
-                    className="rounded-2xl border border-slate-100 bg-slate-50/60 px-5 py-4 shadow-sm"
+                    className={`rounded-2xl border-2 bg-slate-50/60 px-5 py-4 shadow-sm ${
+                      isOwner 
+                        ? "border-yellow-400" 
+                        : "border-slate-100"
+                    }`}
                   >
                     <div className="flex flex-col gap-3 text-sm text-slate-700 md:flex-row md:items-center md:justify-between">
                       <div className="flex flex-1 flex-col gap-1">
@@ -527,7 +560,8 @@ export default function ClinicRegisterSuccessPage() {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-sm text-slate-500">
                   생성된 계정 정보를 불러오지 못했습니다.
@@ -582,7 +616,7 @@ export default function ClinicRegisterSuccessPage() {
                 가입이 완료되었습니다.
               </h2>
               <p className="mb-6 text-sm font-semibold text-slate-900">
-                로그인 후 서비스를 이용해주세요.
+                생성된 아이디와 설정하신 비번을 이용하여 로그인 하세요
               </p>
 
               {/* Confirmation Button */}

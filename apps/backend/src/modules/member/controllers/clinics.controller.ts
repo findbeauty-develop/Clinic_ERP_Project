@@ -34,8 +34,9 @@ export class ClinicsController {
   constructor(private readonly service: ClinicsService) {}
 
   @Get()
-  // @UseGuards(JwtTenantGuard) // Removed for registration flow - tenantId from query is sufficient
-  @ApiOperation({ summary: "Retrieve clinics for the tenant" })
+  @UseGuards(JwtTenantGuard, RolesGuard)
+  @Roles("owner")
+  @ApiOperation({ summary: "Retrieve clinics for the tenant (owner only)" })
   getClinics(
     @Tenant() tenantId: string,
     @Query("tenantId") tenantQuery?: string

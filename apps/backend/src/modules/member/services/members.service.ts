@@ -107,7 +107,7 @@ export class MembersService {
           result: {
             memberId,
             role: definition.role,
-            password: definition.isOwner ? undefined : definition.password, // Temporary password faqat non-owner'lar uchun
+            password: definition.password, // ✅ Owner'ning password'ini ham qaytarish
           },
         };
       })
@@ -525,13 +525,16 @@ export class MembersService {
         throw new UnauthorizedException("Member not found");
       }
 
-      // Current password'ni tekshirish
-      const isPasswordValid = await compare(
-        currentPassword,
-        member.password_hash
-      );
-      if (!isPasswordValid) {
-        throw new UnauthorizedException("Current password is incorrect");
+      // ✅ Current password'ni tekshirish (agar berilgan bo'lsa)
+      // Phone verification bilan password o'zgartirishda currentPassword bo'sh bo'lishi mumkin
+      if (currentPassword && currentPassword.trim() !== "") {
+        const isPasswordValid = await compare(
+          currentPassword,
+          member.password_hash
+        );
+        if (!isPasswordValid) {
+          throw new UnauthorizedException("Current password is incorrect");
+        }
       }
 
       // Yangi password'ni hash qilish
