@@ -16,12 +16,26 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private dbErrorCount = 0;
   private readonly maxDbErrors = 3;
   private readonly healthCheckIntervalMs = 5 * 60 * 1000; // 5 minutes
+  
+  // Database size monitoring thresholds
+  private readonly planLimitGB: number;
+  private readonly warningThreshold: number;
+  private readonly criticalThreshold: number;
+  private lastSizeCheck: Date | null = null;
+  private lastWarningSent: Date | null = null;
+  private lastCriticalSent: Date | null = null;
+  private readonly sizeCheckCooldown = 60 * 60 * 1000; // 1 hour cooldown between alerts
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramNotificationService,
     private readonly configService: ConfigService
-  ) {}
+  ) {
+    // Supabase storage monitoring configuration
+    this.planLimitGB = this.configService.get<number>("SUPABASE_PLAN_LIMIT_GB") || 8; // Default: 8GB for Pro plan
+    this.warningThreshold = this.configService.get<number>("DB_SIZE_WARNING_THRESHOLD") || 0.8; // 80%
+    this.criticalThreshold = this.configService.get<number>("DB_SIZE_CRITICAL_THRESHOLD") || 0.9; // 90%
+  }
 
   onModuleInit() {
 //   const isProduction = process.env.NODE_ENV === "production";
@@ -57,7 +71,10 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       // 1. Database health check
       await this.checkDatabase();
 
-      // 2. External API health check (payment, etc.)
+      // 2. Database size check (Supabase storage monitoring)
+      await this.checkDatabaseSize();
+
+      // 3. External API health check (payment, etc.)
       await this.checkExternalAPIs();
 
       this.logger.debug("Health check completed successfully");
@@ -198,6 +215,101 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       "Test Notification",
       "This is a test message from Clinic ERP Monitoring System"
     );
+  }
+
+  /**
+   * Check database storage size and send alerts if thresholds are exceeded
+   */
+  private async checkDatabaseSize(): Promise<void> {
+    const shouldNotify = 
+      process.env.NODE_ENV === "production" && 
+      process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true";
+    
+    if (!shouldNotify) {
+      return;
+    }
+
+    try {
+      // Get current database size in bytes
+      const sizeResult = await this.prisma.$queryRaw<Array<{ size: bigint }>>`
+        SELECT pg_database_size(current_database()) as size
+      `;
+      
+      const sizeInBytes = Number(sizeResult[0]?.size || 0);
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      const sizeInGB = sizeInMB / 1024;
+      const usagePercentage = (sizeInGB / this.planLimitGB) * 100;
+
+      this.lastSizeCheck = new Date();
+
+      // Get top 5 largest tables for cleanup recommendations
+      // Using pg_class instead of pg_tables to properly handle quoted identifiers (PascalCase table names)
+      const tableSizes = await this.prisma.$queryRaw<Array<{
+        table_name: string;
+        size_mb: number;
+        size_pretty: string;
+      }>>`
+        SELECT 
+          nspname || '.' || relname AS table_name,
+          pg_size_pretty(pg_total_relation_size(nspname||'.'||relname)) AS size_pretty,
+          pg_total_relation_size(nspname||'.'||relname)::bigint / (1024 * 1024) AS size_mb
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE nspname = 'public' 
+          AND c.relkind = 'r'
+        ORDER BY pg_total_relation_size(nspname||'.'||relname) DESC
+        LIMIT 5
+      `;
+
+      const topTables = tableSizes.map((t, index) => 
+        `${index + 1}. ${t.table_name}: ${t.size_pretty}`
+      ).join('\n');
+
+      // Check thresholds with cooldown to prevent spam
+      const now = new Date();
+      const shouldSendWarning = 
+        sizeInGB >= (this.planLimitGB * this.warningThreshold) &&
+        (!this.lastWarningSent || (now.getTime() - this.lastWarningSent.getTime()) > this.sizeCheckCooldown);
+
+      const shouldSendCritical = 
+        sizeInGB >= (this.planLimitGB * this.criticalThreshold) &&
+        (!this.lastCriticalSent || (now.getTime() - this.lastCriticalSent.getTime()) > this.sizeCheckCooldown);
+
+      if (shouldSendCritical) {
+        const message = `🚨 <b>CRITICAL: Database Storage Limit Approaching!</b>\n\n` +
+          `📊 <b>Current Size:</b> ${sizeInGB.toFixed(2)} GB / ${this.planLimitGB} GB (${usagePercentage.toFixed(1)}%)\n\n` +
+          `⚠️ <b>Action Required:</b> Upgrade plan or perform data cleanup immediately!\n\n` +
+          `📋 <b>Top 5 Largest Tables:</b>\n${topTables}\n\n` +
+          `💡 <b>Recommendations:</b>\n` +
+          `• Archive old orders/transactions\n` +
+          `• Clean up soft-deleted records\n` +
+          `• Remove expired sessions\n` +
+          `• Consider upgrading Supabase plan`;
+
+        await this.telegram.sendDatabaseAlert(message);
+        this.lastCriticalSent = now;
+        this.logger.error(`🚨 Database storage CRITICAL: ${sizeInGB.toFixed(2)}GB (${usagePercentage.toFixed(1)}%)`);
+      } else if (shouldSendWarning) {
+        const message = `⚠️ <b>WARNING: Database Storage Growing</b>\n\n` +
+          `📊 <b>Current Size:</b> ${sizeInGB.toFixed(2)} GB / ${this.planLimitGB} GB (${usagePercentage.toFixed(1)}%)\n\n` +
+          `💡 <b>Monitoring:</b> Consider planning upgrade or cleanup before reaching limit\n\n` +
+          `📋 <b>Top 5 Largest Tables:</b>\n${topTables}\n\n` +
+          `💡 <b>Recommendations:</b>\n` +
+          `• Review and archive old data\n` +
+          `• Clean up unused records\n` +
+          `• Monitor growth trends`;
+
+        await this.telegram.sendDatabaseAlert(message);
+        this.lastWarningSent = now;
+        this.logger.warn(`⚠️ Database storage WARNING: ${sizeInGB.toFixed(2)}GB (${usagePercentage.toFixed(1)}%)`);
+      } else {
+        this.logger.debug(`✅ Database storage OK: ${sizeInGB.toFixed(2)}GB (${usagePercentage.toFixed(1)}%)`);
+      }
+
+    } catch (error: any) {
+      this.logger.error(`Database size check failed: ${error.message}`);
+      // Don't send alert for monitoring failures (to avoid spam)
+    }
   }
 }
 

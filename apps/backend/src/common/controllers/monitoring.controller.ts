@@ -43,5 +43,16 @@ export class MonitoringController {
       message: "Health check completed",
     };
   }
+
+  @Get("database-size")
+  @ApiOperation({ summary: "Check current database storage size" })
+  async checkDatabaseSize() {
+    // This will trigger the check and send Telegram notification if thresholds exceeded
+    await this.monitoringService.performHealthCheck();
+    return {
+      success: true,
+      message: "Database size check completed. Check Telegram for alerts if thresholds exceeded.",
+    };
+  }
 }
 
