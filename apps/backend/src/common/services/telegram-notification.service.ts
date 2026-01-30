@@ -9,22 +9,30 @@ export class TelegramNotificationService {
   private readonly enabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-  this.botToken =
-    this.configService.get<string>("TELEGRAM_BOT_TOKEN") || "";
-  this.chatId = this.configService.get<string>("TELEGRAM_CHAT_ID") || "";
-  
-  // ✅ Development'da ham test qilish uchun ishlaydi (agar token va chat_id bo'lsa)
-  this.enabled = !!this.botToken && !!this.chatId;
+    this.botToken =
+      this.configService.get<string>("TELEGRAM_BOT_TOKEN") || "";
+    this.chatId = this.configService.get<string>("TELEGRAM_CHAT_ID") || "";
+    
+    // ✅ Faqat production'da va flag bo'lsa enabled
+    const isProduction = process.env.NODE_ENV === "production";
+    const flagEnabled = process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true";
+    
+    this.enabled = isProduction && flagEnabled && !!this.botToken && !!this.chatId;
 
-  if (this.enabled) {
-    const env = process.env.NODE_ENV === "production" ? "PRODUCTION" : "DEVELOPMENT";
-    this.logger.log(`✅ Telegram notifications enabled (${env})`);
-  } else {
-    this.logger.debug(
-      "Telegram notifications disabled (missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID)"
-    );
+    if (this.enabled) {
+      this.logger.log(`✅ Telegram notifications enabled (PRODUCTION)`);
+    } else {
+      if (!isProduction) {
+        this.logger.debug("Telegram notifications disabled (NODE_ENV !== production)");
+      } else if (!flagEnabled) {
+        this.logger.debug("Telegram notifications disabled (ENABLE_TELEGRAM_NOTIFICATIONS !== true)");
+      } else {
+        this.logger.debug(
+          "Telegram notifications disabled (missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID)"
+        );
+      }
+    }
   }
-}
 
   async sendMessage(message: string): Promise<boolean> {
     if (!this.enabled) {
@@ -32,8 +40,14 @@ export class TelegramNotificationService {
       return false;
     }
 
-     const MAX_LENGTH = 4000; // 4096 dan biroz kamroq (HTML tag'lar uchun)
-  let finalMessage = message;
+    // ✅ Qo'shimcha production check (double check)
+    if (process.env.NODE_ENV !== "production") {
+      this.logger.debug("Skipping Telegram notification (not in production)");
+      return false;
+    }
+
+    const MAX_LENGTH = 4000; // 4096 dan biroz kamroq (HTML tag'lar uchun)
+    let finalMessage = message;
   
   if (message.length > MAX_LENGTH) {
     finalMessage = message.substring(0, MAX_LENGTH - 50) + "\n\n... (message truncated)";

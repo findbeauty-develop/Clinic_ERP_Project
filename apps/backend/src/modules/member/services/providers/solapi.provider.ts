@@ -84,7 +84,11 @@ export class SolapiProvider implements IMessageProvider {
       this.logger.error(`Solapi SMS failed: ${error?.message || "Unknown error"}`);
 
       // ✅ Telegram notification for critical SMS failures
-      if (isCritical && process.env.NODE_ENV === "production") {
+      if (
+        isCritical &&
+        process.env.NODE_ENV === "production" &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         await this.telegramService.sendSystemAlert(
           "SMS Service Failure",
           `Solapi SMS failed: ${error?.message || "Unknown error"}\nTo: ${phoneNumber}\nMessage length: ${message.length} chars`

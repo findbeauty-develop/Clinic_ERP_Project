@@ -263,11 +263,7 @@ export default function AccountManagementPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      console.log("Uploading file:", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-      });
+     
 
       const { getAccessToken, getTenantId, apiPut, clearCache } =
         await import("../../../lib/api");
@@ -318,14 +314,12 @@ export default function AccountManagementPage() {
       }
 
       const uploadResult = await uploadResponse.json();
-      console.log("Upload result:", uploadResult);
+     
 
       // Database'ga saqlash
       const updateUrl = `${apiUrl}/iam/members/clinics/logo${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`;
 
-      console.log("Updating logo URL:", updateUrl, {
-        logoUrl: uploadResult.url,
-      });
+    
 
       try {
         await apiPut(updateUrl, {

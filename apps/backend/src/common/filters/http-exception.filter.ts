@@ -108,7 +108,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
 
       // ✅ Production'da critical error'lar uchun Telegram notification
-      if (isProduction) {
+      if (
+        isProduction &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         // Faqat critical error'lar uchun (spam oldini olish)
         const shouldNotify =
           status >= 500 &&

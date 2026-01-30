@@ -844,7 +844,10 @@ export class OrderService {
         });
       } catch (transactionError: any) {
         // ✅ Telegram notification for transaction rollback
-        if (process.env.NODE_ENV === "production") {
+        if (
+          process.env.NODE_ENV === "production" &&
+          process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+        ) {
           await this.telegramService.sendSystemAlert(
             "Transaction Rollback",
             `Order creation transaction failed: ${transactionError?.message || "Unknown error"}\nOrder No: ${orderNo}\nTenant: ${tenantId}\nTotal Amount: ${group.totalAmount.toLocaleString()}원`
@@ -2656,7 +2659,11 @@ export class OrderService {
         );
 
         // ✅ Telegram notification for high-value orders (>1M won)
-        if (process.env.NODE_ENV === "production" && order.total_amount > 1000000) {
+        if (
+          process.env.NODE_ENV === "production" &&
+          process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true" &&
+          order.total_amount > 1000000
+        ) {
           await this.telegramService.sendSystemAlert(
             "High-Value Order Email Failed",
             `Order ${order.order_no} (${order.total_amount.toLocaleString()}원) email notification failed: ${emailError?.message || "Unknown error"}`
@@ -2671,7 +2678,10 @@ export class OrderService {
         error.stack
       );
 
-      if (process.env.NODE_ENV === "production") {
+      if (
+        process.env.NODE_ENV === "production" &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         await this.telegramService.sendErrorAlert(error, {
           url:`/orders/${order.id}`,
           method: "POST",
@@ -3736,7 +3746,10 @@ export class OrderService {
         );
         
         // ✅ Telegram notification for supplier-backend communication failures
-        if (process.env.NODE_ENV === "production") {
+        if (
+          process.env.NODE_ENV === "production" &&
+          process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+        ) {
           await this.telegramService.sendSystemAlert(
             "Supplier Notification Failed",
             `Order ${orderNo} completion notification failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`
@@ -3752,7 +3765,10 @@ export class OrderService {
       );
       
       // ✅ Telegram notification for supplier-backend communication failures
-      if (process.env.NODE_ENV === "production") {
+      if (
+        process.env.NODE_ENV === "production" &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         await this.telegramService.sendSystemAlert(
           "Supplier Notification Failed",
           `Order ${orderNo} completion notification failed: ${error.message}`

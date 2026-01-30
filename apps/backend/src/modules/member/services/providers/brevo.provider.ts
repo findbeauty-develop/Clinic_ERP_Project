@@ -85,7 +85,10 @@ export class BrevoProvider implements IEmailProvider {
       }
       
       // ✅ Telegram notification for critical email failures in production
-      if (process.env.NODE_ENV === "production") {
+      if (
+        process.env.NODE_ENV === "production" &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         await this.telegramService.sendSystemAlert(
           "Email Service Failure",
           `Brevo email service error: ${error?.message || "Unknown error"}\nTo: ${to}\nSubject: ${subject}`
@@ -143,7 +146,10 @@ export class BrevoProvider implements IEmailProvider {
         `Brevo template email failed: ${error?.message || "Unknown error"}`
       );
 
-      if (process.env.NODE_ENV === "production") {
+      if (
+        process.env.NODE_ENV === "production" &&
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
+      ) {
         await this.telegramService.sendSystemAlert(
           "Brevo Email Failed",
           `Brevo template email failed: ${error.message}`

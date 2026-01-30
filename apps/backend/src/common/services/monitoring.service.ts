@@ -24,25 +24,25 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-  const isProduction = process.env.NODE_ENV === "production";
-  const intervalMs = isProduction 
-    ? this.healthCheckIntervalMs  // 5 minut production'da
-    : 1 * 60 * 1000; // 1 minut development'da (test uchun)
+//   const isProduction = process.env.NODE_ENV === "production";
+//   const intervalMs = isProduction 
+//     ? this.healthCheckIntervalMs  // 5 minut production'da
+//     : 1 * 60 * 1000; // 1 minut development'da (test uchun)
 
-  this.logger.log("Starting health check monitoring...");
+//   this.logger.log("Starting health check monitoring...");
   
-  this.healthCheckInterval = setInterval(() => {
-    this.performHealthCheck().catch((error) => {
-      this.logger.error(`Health check error: ${error.message}`);
-    });
-  }, intervalMs);
+//   this.healthCheckInterval = setInterval(() => {
+//     this.performHealthCheck().catch((error) => {
+//       this.logger.error(`Health check error: ${error.message}`);
+//     });
+//   }, intervalMs);
 
-  // Dastlabki health check (30 sekunddan keyin)
-  setTimeout(() => {
-    this.performHealthCheck().catch((error) => {
-      this.logger.error(`Initial health check error: ${error.message}`);
-    });
-  }, 30000);
+//   // Dastlabki health check (30 sekunddan keyin)
+//   setTimeout(() => {
+//     this.performHealthCheck().catch((error) => {
+//       this.logger.error(`Initial health check error: ${error.message}`);
+//     });
+//   }, 30000);
 }
 
   onModuleDestroy() {
@@ -67,6 +67,15 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   }
 
  private async checkDatabase(): Promise<void> {
+  // ✅ Policy check qo'shish
+  const shouldNotify = 
+    process.env.NODE_ENV === "production" && 
+    process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true";
+  
+  if (!shouldNotify) {
+    return; // Development'da yubormaslik
+  }
+
   try {
     const startTime = Date.now();
     await this.prisma.$queryRaw`SELECT 1`;
@@ -76,7 +85,8 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     this.lastDbCheck = new Date();
     this.logger.debug(`✅ Database check successful (${duration}ms)`);
 
-    if (duration > 1000) {
+    // ✅ Threshold'ni 3s ga o'zgartirish (1s juda past)
+    if (duration > 3000) {
       await this.telegram.sendDatabaseAlert(
         `⚠️ Database response slow: ${duration}ms`
       );
@@ -113,6 +123,15 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 }
 
   private async checkExternalAPIs(): Promise<void> {
+    // ✅ Policy check qo'shish
+    const shouldNotify = 
+      process.env.NODE_ENV === "production" && 
+      process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true";
+    
+    if (!shouldNotify) {
+      return; // Development'da yubormaslik
+    }
+
     const apis = [
       {
         name: "Payment API",
