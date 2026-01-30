@@ -1,8 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { normalizeAddress, compareAddresses, extractSidoCode, extractSgguCode, extractEmdongNm } from '../../../common/utils/address-normalizer.util';
-import { normalizeDate, compareDates } from '../../../common/utils/date-normalizer.util';
-import { fuzzyMatchClinicName, compareClinicTypes } from '../../../common/utils/string-normalizer.util';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import {
+  normalizeAddress,
+  compareAddresses,
+  extractSidoCode,
+  extractSgguCode,
+  extractEmdongNm,
+} from "../../../common/utils/address-normalizer.util";
+import {
+  normalizeDate,
+  compareDates,
+} from "../../../common/utils/date-normalizer.util";
+import {
+  fuzzyMatchClinicName,
+  compareClinicTypes,
+} from "../../../common/utils/string-normalizer.util";
 
 export interface HiraSearchParams {
   yadmNm?: string; // 의료기관명
@@ -45,14 +57,17 @@ export class HiraService {
   private readonly apiUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('HIRA_API_KEY') || '';
-    this.apiUrl = this.configService.get<string>('HIRA_API_URL') || 
-      'https://apis.data.go.kr/B551182/hospInfoService/v2';
-    
+    this.apiKey = this.configService.get<string>("HIRA_API_KEY") || "";
+    this.apiUrl =
+      this.configService.get<string>("HIRA_API_URL") ||
+      "https://apis.data.go.kr/B551182/hospInfoService/v2";
+
     if (!this.apiKey) {
-      this.logger.warn('HIRA_API_KEY is not configured in .env file');
-      this.logger.warn('HIRA verification will be skipped. Please add HIRA_API_KEY to apps/backend/.env');
-    } 
+      this.logger.warn("HIRA_API_KEY is not configured in .env file");
+      this.logger.warn(
+        "HIRA verification will be skipped. Please add HIRA_API_KEY to apps/backend/.env"
+      );
+    }
   }
 
   /**
@@ -60,7 +75,7 @@ export class HiraService {
    */
   async searchHospitals(params: HiraSearchParams): Promise<HiraHospitalInfo[]> {
     if (!this.apiKey) {
-      this.logger.warn('HIRA_API_KEY not configured, skipping search');
+      this.logger.warn("HIRA_API_KEY not configured, skipping search");
       return [];
     }
 
@@ -74,51 +89,56 @@ export class HiraService {
 
       // Only add numOfRows if explicitly provided
       if (params.numOfRows) {
-        searchParams.append('numOfRows', String(params.numOfRows));
+        searchParams.append("numOfRows", String(params.numOfRows));
       }
 
       if (params.yadmNm) {
-        searchParams.append('yadmNm', params.yadmNm);
+        searchParams.append("yadmNm", params.yadmNm);
       }
       if (params.sidoCd) {
-        searchParams.append('sidoCd', params.sidoCd);
+        searchParams.append("sidoCd", params.sidoCd);
       }
       if (params.sgguCd) {
-        searchParams.append('sgguCd', params.sgguCd);
+        searchParams.append("sgguCd", params.sgguCd);
       }
       if (params.emdongNm) {
-        searchParams.append('emdongNm', params.emdongNm);
+        searchParams.append("emdongNm", params.emdongNm);
       }
       if (params.clcd) {
-        searchParams.append('clcd', params.clcd);
+        searchParams.append("clcd", params.clcd);
       }
 
       const requestUrl = `${this.apiUrl}/getHospBasisList?${searchParams.toString()}`;
-      
+
       const response = await fetch(requestUrl, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        this.logger.error(`HIRA API request failed: ${response.status} ${response.statusText}`);
+        this.logger.error(
+          `HIRA API request failed: ${response.status} ${response.statusText}`
+        );
         this.logger.error(`Error response: ${errorText.substring(0, 500)}`);
         return [];
       }
 
-      const contentType = response.headers.get('content-type') || '';
+      const contentType = response.headers.get("content-type") || "";
       let data: any;
-      let rawResponse: string = '';
+      let rawResponse: string = "";
 
-      if (contentType.includes('application/json')) {
+      if (contentType.includes("application/json")) {
         rawResponse = await response.text();
         data = JSON.parse(rawResponse);
-      } else if (contentType.includes('text/xml') || contentType.includes('application/xml')) {
+      } else if (
+        contentType.includes("text/xml") ||
+        contentType.includes("application/xml")
+      ) {
         rawResponse = await response.text();
-        
+
         // Parse XML response properly
         try {
           // Simple XML parsing for HIRA API response structure
@@ -127,29 +147,32 @@ export class HiraService {
           if (itemsMatch) {
             const itemsXml = itemsMatch[1];
             const itemMatches = itemsXml.match(/<item>(.*?)<\/item>/gs) || [];
-            
+
             const items: any[] = [];
             itemMatches.forEach((itemXml: string) => {
               const item: any = {};
               // Extract common fields
               const fieldPatterns = [
-                { name: 'yadmNm', pattern: /<yadmNm>(.*?)<\/yadmNm>/i }, // Add 'i' flag for case-insensitive
-                { name: 'addr', pattern: /<addr>(.*?)<\/addr>/i },
-                { name: 'clcdNm', pattern: /<cl[Cc]d[Nn]m>(.*?)<\/cl[Cc]d[Nn]m>/i }, // Match both clcdNm and clCdNm
-                { name: 'estbDd', pattern: /<estbDd>(.*?)<\/estbDd>/i },
-                { name: 'telno', pattern: /<telno>(.*?)<\/telno>/i },
-                { name: 'clCd', pattern: /<clCd>(.*?)<\/clCd>/i },
-                { name: 'ykiho', pattern: /<ykiho>(.*?)<\/ykiho>/i },
-                { name: 'emdongNm', pattern: /<emdongNm>(.*?)<\/emdongNm>/i },
+                { name: "yadmNm", pattern: /<yadmNm>(.*?)<\/yadmNm>/i }, // Add 'i' flag for case-insensitive
+                { name: "addr", pattern: /<addr>(.*?)<\/addr>/i },
+                {
+                  name: "clcdNm",
+                  pattern: /<cl[Cc]d[Nn]m>(.*?)<\/cl[Cc]d[Nn]m>/i,
+                }, // Match both clcdNm and clCdNm
+                { name: "estbDd", pattern: /<estbDd>(.*?)<\/estbDd>/i },
+                { name: "telno", pattern: /<telno>(.*?)<\/telno>/i },
+                { name: "clCd", pattern: /<clCd>(.*?)<\/clCd>/i },
+                { name: "ykiho", pattern: /<ykiho>(.*?)<\/ykiho>/i },
+                { name: "emdongNm", pattern: /<emdongNm>(.*?)<\/emdongNm>/i },
               ];
-              
+
               fieldPatterns.forEach(({ name, pattern }) => {
                 const match = itemXml.match(pattern);
                 if (match && match[1]) {
                   item[name] = match[1].trim();
                 }
               });
-              
+
               // ✅ FIX: Also try case-insensitive match for clcdNm (XML has clCdNm)
               if (!item.clcdNm) {
                 const clcdNmMatch = itemXml.match(/<clCdNm>(.*?)<\/clCdNm>/i);
@@ -157,7 +180,7 @@ export class HiraService {
                   item.clcdNm = clcdNmMatch[1].trim();
                 }
               }
-              
+
               // ✅ FIX: Also try case-insensitive match for clCdNm
               if (!item.clcdNm) {
                 const clcdNmMatch = itemXml.match(/<clCdNm>(.*?)<\/clCdNm>/i);
@@ -165,12 +188,12 @@ export class HiraService {
                   item.clcdNm = clcdNmMatch[1].trim();
                 }
               }
-              
+
               if (Object.keys(item).length > 0) {
                 items.push(item);
               }
             });
-            
+
             data = {
               response: {
                 body: {
@@ -183,12 +206,12 @@ export class HiraService {
             try {
               data = JSON.parse(rawResponse);
             } catch {
-              this.logger.error('Failed to parse XML response');
+              this.logger.error("Failed to parse XML response");
               return [];
             }
           }
         } catch (error) {
-          this.logger.error('Error parsing XML response', error);
+          this.logger.error("Error parsing XML response", error);
           return [];
         }
       } else {
@@ -203,16 +226,16 @@ export class HiraService {
 
       // Parse HIRA API response structure
       const hospitals: HiraHospitalInfo[] = [];
-      
+
       // Try different response structures
       let items: any[] = [];
       if (data.response?.body?.items) {
-        items = Array.isArray(data.response.body.items) 
-          ? data.response.body.items 
+        items = Array.isArray(data.response.body.items)
+          ? data.response.body.items
           : [data.response.body.items];
       } else if (data.body?.items) {
-        items = Array.isArray(data.body.items) 
-          ? data.body.items 
+        items = Array.isArray(data.body.items)
+          ? data.body.items
           : [data.body.items];
       } else if (data.items) {
         items = Array.isArray(data.items) ? data.items : [data.items];
@@ -232,7 +255,7 @@ export class HiraService {
 
       return hospitals;
     } catch (error: any) {
-      this.logger.error('Error searching HIRA API', error);
+      this.logger.error("Error searching HIRA API", error);
       return [];
     }
   }
@@ -256,7 +279,7 @@ export class HiraService {
           typeMatch: false,
           dateMatch: false,
         },
-        warnings: ['HIRA_API_KEY not configured'],
+        warnings: ["HIRA_API_KEY not configured"],
       };
     }
 
@@ -270,7 +293,7 @@ export class HiraService {
           typeMatch: false,
           dateMatch: false,
         },
-        warnings: ['Clinic name is required for HIRA verification'],
+        warnings: ["Clinic name is required for HIRA verification"],
       };
     }
 
@@ -304,7 +327,9 @@ export class HiraService {
             typeMatch: false,
             dateMatch: false,
           },
-          warnings: [`Clinic "${certificateData.clinicName}" not found in HIRA database`],
+          warnings: [
+            `Clinic "${certificateData.clinicName}" not found in HIRA database`,
+          ],
         };
       }
 
@@ -312,41 +337,62 @@ export class HiraService {
       const bestMatch = hospitals[0]; // For now, use first result
 
       // Compare fields
-      const nameMatch = certificateData.clinicName 
-        ? fuzzyMatchClinicName(certificateData.clinicName, bestMatch.yadmNm || '')
+      const nameMatch = certificateData.clinicName
+        ? fuzzyMatchClinicName(
+            certificateData.clinicName,
+            bestMatch.yadmNm || ""
+          )
         : false;
 
-      const addressMatch = certificateData.address && bestMatch.addr
-        ? compareAddresses(certificateData.address, bestMatch.addr)
-        : false;
+      const addressMatch =
+        certificateData.address && bestMatch.addr
+          ? compareAddresses(certificateData.address, bestMatch.addr)
+          : false;
 
-      const typeMatch = certificateData.clinicType && bestMatch.clcdNm
-        ? compareClinicTypes(certificateData.clinicType, bestMatch.clcdNm)
-        : false;
+      const typeMatch =
+        certificateData.clinicType && bestMatch.clcdNm
+          ? compareClinicTypes(certificateData.clinicType, bestMatch.clcdNm)
+          : false;
 
       // Update date comparison to handle YYYYMMDD format
-      const dateMatch = certificateData.openDate && bestMatch.estbDd
-        ? compareDates(certificateData.openDate, bestMatch.estbDd)
-        : false;
+      const dateMatch =
+        certificateData.openDate && bestMatch.estbDd
+          ? compareDates(certificateData.openDate, bestMatch.estbDd)
+          : false;
 
       // Calculate confidence
-      const matchCount = [nameMatch, addressMatch, typeMatch, dateMatch].filter(Boolean).length;
-      const totalChecks = [nameMatch, addressMatch, typeMatch, dateMatch].filter(m => m !== undefined).length;
+      const matchCount = [nameMatch, addressMatch, typeMatch, dateMatch].filter(
+        Boolean
+      ).length;
+      const totalChecks = [
+        nameMatch,
+        addressMatch,
+        typeMatch,
+        dateMatch,
+      ].filter((m) => m !== undefined).length;
       const confidence = totalChecks > 0 ? matchCount / totalChecks : 0;
 
       // Generate warnings
       const warnings: string[] = [];
       if (!nameMatch) {
-        warnings.push(`Clinic name mismatch: certificate="${certificateData.clinicName}", HIRA="${bestMatch.yadmNm}"`);
+        warnings.push(
+          `Clinic name mismatch: certificate="${certificateData.clinicName}", HIRA="${bestMatch.yadmNm}"`
+        );
       }
       if (!addressMatch && certificateData.address && bestMatch.addr) {
-        warnings.push(`Address mismatch: certificate="${certificateData.address}", HIRA="${bestMatch.addr}"`);
+        warnings.push(
+          `Address mismatch: certificate="${certificateData.address}", HIRA="${bestMatch.addr}"`
+        );
       }
       if (!typeMatch && certificateData.clinicType && bestMatch.clcdNm) {
-        warnings.push(`Clinic type mismatch: certificate="${certificateData.clinicType}", HIRA="${bestMatch.clcdNm}"`);
+        warnings.push(
+          `Clinic type mismatch: certificate="${certificateData.clinicType}", HIRA="${bestMatch.clcdNm}"`
+        );
       }
       if (!dateMatch && certificateData.openDate && bestMatch.estbDd) {
-        warnings.push(`Open date mismatch: certificate="${certificateData.openDate}", HIRA="${bestMatch.estbDd}"`);
+        warnings.push(
+          `Open date mismatch: certificate="${certificateData.openDate}", HIRA="${bestMatch.estbDd}"`
+        );
       }
 
       return {
@@ -362,7 +408,7 @@ export class HiraService {
         warnings,
       };
     } catch (error: any) {
-      this.logger.error('Error verifying clinic info with HIRA', error);
+      this.logger.error("Error verifying clinic info with HIRA", error);
       return {
         isValid: false,
         confidence: 0,
@@ -372,9 +418,10 @@ export class HiraService {
           typeMatch: false,
           dateMatch: false,
         },
-        warnings: [`HIRA verification failed: ${error?.message || 'Unknown error'}`],
+        warnings: [
+          `HIRA verification failed: ${error?.message || "Unknown error"}`,
+        ],
       };
     }
   }
 }
-

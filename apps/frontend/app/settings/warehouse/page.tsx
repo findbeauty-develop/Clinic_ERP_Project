@@ -40,7 +40,6 @@ export default function WarehouseManagementPage() {
       const warehouseLocations = await apiGet<any[]>(
         `${apiUrl}/products/warehouses/list`
       ).catch(() => []);
-     
 
       // Also fetch storage locations from Batch table (for backward compatibility)
       const storages = await apiGet<string[]>(
@@ -58,7 +57,7 @@ export default function WarehouseManagementPage() {
         storages,
         inventoryByLocation
       );
-     
+
       setWarehouses(organized);
     } catch (err: any) {
       console.error("Failed to load warehouses", err);
@@ -111,7 +110,6 @@ export default function WarehouseManagementPage() {
 
     // Process warehouse locations from WarehouseLocation table
     warehouseLocations.forEach((warehouse) => {
-     
       const category = warehouse.category || "기타";
       const categoryKey = category in categories ? category : "기타";
 
@@ -121,7 +119,6 @@ export default function WarehouseManagementPage() {
         : warehouse.items
           ? [warehouse.items]
           : [];
-      
 
       categories[categoryKey].push({
         name: warehouse.name,
@@ -190,15 +187,11 @@ export default function WarehouseManagementPage() {
         .map((item) => item.trim())
         .filter((item) => item.length > 0);
 
-     
-
       const result = await apiPost(`${apiUrl}/products/warehouse`, {
         name: newWarehouseName.trim(),
         category: newCategory || null,
         items: items,
       });
-
-      
 
       alert("창고가 추가되었습니다.");
       setShowAddModal(false);
@@ -282,14 +275,13 @@ export default function WarehouseManagementPage() {
                   <div className="space-y-4">
                     {category.locations.map((location, idx) => {
                       // Use items from database
-                      
+
                       const displayItems =
                         location.items &&
                         Array.isArray(location.items) &&
                         location.items.length > 0
                           ? location.items
                           : [];
-                    
 
                       return (
                         <div

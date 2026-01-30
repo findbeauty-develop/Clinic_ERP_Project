@@ -1,22 +1,22 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
-import { RejectedOrderService } from './rejected-order.service';
-import { JwtTenantGuard } from '../../common/guards/jwt-tenant.guard';
-import { Tenant } from '../../common/decorators/tenant.decorator';
+import { Controller, Post, Get, Body, UseGuards } from "@nestjs/common";
+import { RejectedOrderService } from "./rejected-order.service";
+import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
+import { Tenant } from "../../common/decorators/tenant.decorator";
 
-@Controller('rejected-order')
+@Controller("rejected-order")
 @UseGuards(JwtTenantGuard)
 export class RejectedOrderController {
   constructor(private readonly rejectedOrderService: RejectedOrderService) {}
 
-  @Post('confirm')
+  @Post("confirm")
   async confirmRejection(
     @Tenant() tenantId: string,
-    @Body() body: { orderId: string; memberName: string },
+    @Body() body: { orderId: string; memberName: string }
   ) {
     return this.rejectedOrderService.createRejectedOrder(
       tenantId,
       body.orderId,
-      body.memberName,
+      body.memberName
     );
   }
 
@@ -25,4 +25,3 @@ export class RejectedOrderController {
     return this.rejectedOrderService.getRejectedOrders(tenantId);
   }
 }
-

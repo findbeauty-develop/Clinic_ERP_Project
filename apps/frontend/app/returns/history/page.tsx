@@ -70,8 +70,6 @@ export default function ReturnHistoryPage() {
   }, []);
 
   const fetchHistory = useCallback(async () => {
-  
-
     const cacheKey = debouncedSearchQuery.trim() || "";
     // Check cache first
     if (
@@ -80,7 +78,6 @@ export default function ReturnHistoryPage() {
       historyCacheRef.current.searchQuery === cacheKey &&
       Date.now() - historyCacheRef.current.timestamp < CACHE_TTL
     ) {
-      
       setHistoryData(historyCacheRef.current.data);
       setTotalPages(historyCacheRef.current.totalPages);
       setLoading(false);

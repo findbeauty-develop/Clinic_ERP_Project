@@ -187,7 +187,7 @@ const navItems = [
   //         </svg>
   //       ),
   //     },
-     
+
   //   ],
   // },
 ];
@@ -228,7 +228,7 @@ export function Sidebar() {
     }
   }, []);
 
-   const loadClinicAndRole = useCallback(async () => {
+  const loadClinicAndRole = useCallback(async () => {
     try {
       const tenantId = getTenantId();
       if (!tenantId) {
@@ -236,24 +236,27 @@ export function Sidebar() {
       }
 
       // Clinic name'ni API'dan olish - apiGet body'ni avtomatik o'qiydi
-       try {
-      const clinicInfo = await apiGet<{ name: string; logo_url: string | null }>(
-        `/iam/members/clinics/info?tenantId=${encodeURIComponent(tenantId)}`
-      );
-      
-      if (clinicInfo) {
-        setClinicName(clinicInfo.name || "");
-        
-        if (clinicInfo.logo_url) {
-          const apiUrl = getApiUrl();
-          setClinicLogo(`${apiUrl}${clinicInfo.logo_url}`);
-        } else {
-          setClinicLogo(""); // Default logo
+      try {
+        const clinicInfo = await apiGet<{
+          name: string;
+          logo_url: string | null;
+        }>(
+          `/iam/members/clinics/info?tenantId=${encodeURIComponent(tenantId)}`
+        );
+
+        if (clinicInfo) {
+          setClinicName(clinicInfo.name || "");
+
+          if (clinicInfo.logo_url) {
+            const apiUrl = getApiUrl();
+            setClinicLogo(`${apiUrl}${clinicInfo.logo_url}`);
+          } else {
+            setClinicLogo(""); // Default logo
+          }
         }
+      } catch (error) {
+        console.error("Error fetching clinic info:", error);
       }
-    } catch (error) {
-      console.error("Error fetching clinic info:", error);
-    }
 
       // Member role'ni localStorage'dan yoki member data'dan olish
       const memberData = getMemberData();
@@ -262,20 +265,21 @@ export function Sidebar() {
         if (memberData.role) {
           setRole(memberData.role);
         }
-        
+
         // User name'ni ham olish
-        setUserName(memberData.full_name || memberData.member_id || "Foydalanuvchi");
+        setUserName(
+          memberData.full_name || memberData.member_id || "Foydalanuvchi"
+        );
       }
     } catch (error) {
       console.error("Error loading clinic and role:", error);
     }
   }, []);
 
-
   useEffect(() => {
     setMounted(true);
     loadUserInfo();
-    
+
     // ✅ Clinic name va role'ni API'dan yuklash
     loadClinicAndRole();
 
@@ -295,11 +299,17 @@ export function Sidebar() {
     };
 
     window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("clinicLogoUpdated", handleLogoUpdate as EventListener);
-    
+    window.addEventListener(
+      "clinicLogoUpdated",
+      handleLogoUpdate as EventListener
+    );
+
     return () => {
       window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("clinicLogoUpdated", handleLogoUpdate as EventListener);
+      window.removeEventListener(
+        "clinicLogoUpdated",
+        handleLogoUpdate as EventListener
+      );
     };
   }, [loadUserInfo, loadClinicAndRole]);
 
@@ -366,7 +376,11 @@ export function Sidebar() {
 
       <nav className="mt-10 flex-1 space-y-1 overflow-y-auto pr-2">
         {navItems.map((item: any) => {
-          if ('isDropdown' in item && item.isDropdown && Array.isArray(item.children)) {
+          if (
+            "isDropdown" in item &&
+            item.isDropdown &&
+            Array.isArray(item.children)
+          ) {
             const isOpen = openDropdowns.has(item.label);
             const isAnyChildActive = item.children.some(
               (child: any) => pathname === child.href
@@ -503,17 +517,17 @@ export function Sidebar() {
             </div>
           </div>
         )} */}
-{/* Bottom Settings Button (like the screenshot) */}
-<div className="">
-  <button
-    onClick={() => setShowSettingsModal(true)}
-    className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
-  >
-    {/* Gear icon */}
-   <Settings className="h-5 w-5 text-slate-500" />
-<span className="text-sm font-medium">설정</span>
-  </button>
-</div>
+        {/* Bottom Settings Button (like the screenshot) */}
+        <div className="">
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
+          >
+            {/* Gear icon */}
+            <Settings className="h-5 w-5 text-slate-500" />
+            <span className="text-sm font-medium">설정</span>
+          </button>
+        </div>
 
         {/* Settings Modal */}
         {showSettingsModal && (
@@ -560,7 +574,7 @@ export function Sidebar() {
                       { label: "계정 관리", href: "/settings/account" },
                       { label: "공급업체 정보", href: "/settings/supplier" },
                       { label: "제품 가격 관리", href: "/settings/csvprice" },
-                      { label: "창고위치 관리", href: "/settings/warehouse" },
+                      // { label: "창고위치 관리", href: "/settings/warehouse" },
                       { label: "알림 설정", href: "/settings/notifications" },
                       { label: "고객센터", href: "/settings/support" },
                     ].map((mi) => (
@@ -592,30 +606,29 @@ export function Sidebar() {
 
                 {/* Logout Button */}
                 <div className="border-t border-slate-200 px-3 py-3">
-                <button
-  onClick={() => {
-    setShowSettingsModal(false);
-    handleLogout();
-  }}
-  className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    strokeWidth={2}
-    stroke="currentColor"
-    className="h-4 w-4 text-white"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
-    />
-  </svg>
-  <span>로그아웃</span>
-</button>
-
+                  <button
+                    onClick={() => {
+                      setShowSettingsModal(false);
+                      handleLogout();
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="h-4 w-4 text-white"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+                      />
+                    </svg>
+                    <span>로그아웃</span>
+                  </button>
                 </div>
               </div>
             </div>

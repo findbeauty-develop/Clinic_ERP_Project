@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsInt, Min, IsNumber } from "class-validator";
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Min,
+  IsNumber,
+} from "class-validator";
 import { Type } from "class-transformer";
 
 export class OrderItemDto {
@@ -50,4 +58,3 @@ export class CreateOrderDto {
   @IsOptional()
   clinicManagerName?: string; // 클리닉 담당자 이름
 }
-

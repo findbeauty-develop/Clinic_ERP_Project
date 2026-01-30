@@ -5,9 +5,7 @@ module.exports = {
     sourceType: "module",
   },
   plugins: ["@typescript-eslint/eslint-plugin"],
-  extends: [
-    "plugin:@typescript-eslint/recommended",
-  ],
+  extends: ["plugin:@typescript-eslint/recommended"],
   root: true,
   env: {
     node: true,
@@ -21,4 +19,3 @@ module.exports = {
     "@typescript-eslint/no-explicit-any": "warn",
   },
 };
-

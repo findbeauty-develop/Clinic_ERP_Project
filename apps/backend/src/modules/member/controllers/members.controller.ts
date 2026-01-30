@@ -1,4 +1,15 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { Request, Response } from "express";
@@ -22,7 +33,7 @@ export class MembersController {
   constructor(
     private readonly service: MembersService,
     private readonly messageService: MessageService,
-    private readonly phoneVerificationService: PhoneVerificationService,
+    private readonly phoneVerificationService: PhoneVerificationService
   ) {}
 
   @Get()
@@ -38,7 +49,9 @@ export class MembersController {
   }
 
   @Post()
-  @ApiOperation({ summary: "Create default members for a clinic (owner, manager, member)" })
+  @ApiOperation({
+    summary: "Create default members for a clinic (owner, manager, member)",
+  })
   @Roles("admin")
   createMembers(
     @Body() dto: CreateMembersDto,
@@ -54,13 +67,20 @@ export class MembersController {
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // ✅ 5 requests per minute (brute force himoya)
   @ApiOperation({ summary: "Login member by member_id and password" })
   async login(@Body() dto: MemberLoginDto, @Res() res: Response) {
-    const result = await this.service.login(dto.memberId, dto.password, undefined, res);
+    const result = await this.service.login(
+      dto.memberId,
+      dto.password,
+      undefined,
+      res
+    );
     return res.json(result);
   }
 
   @Post("refresh")
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // ✅ 20 requests per minute (normal usage uchun)
-  @ApiOperation({ summary: "Refresh access token using refresh token from cookie" })
+  @ApiOperation({
+    summary: "Refresh access token using refresh token from cookie",
+  })
   async refresh(@Req() req: Request, @Res() res: Response) {
     const refreshToken =
       req.cookies?.refresh_token || req.headers["x-refresh-token"];
@@ -85,7 +105,10 @@ export class MembersController {
   @ApiOperation({ summary: "Logout member and invalidate refresh token" })
   async logout(@Req() req: Request, @Res() res: Response) {
     const refreshToken = req.cookies?.refresh_token;
-    console.log("[Logout] Refresh token from cookie:", refreshToken ? "exists" : "not found");
+    console.log(
+      "[Logout] Refresh token from cookie:",
+      refreshToken ? "exists" : "not found"
+    );
 
     // ✅ Refresh token bo'lsa, database'da invalid qilish
     if (refreshToken) {
@@ -101,7 +124,7 @@ export class MembersController {
     // ✅ Cookie'ni o'chirish - 2 xil usul bilan
     const isProduction = process.env.NODE_ENV === "production";
     console.log("[Logout] Clearing cookie, isProduction:", isProduction);
-    
+
     // Usul 1: Cookie'ni maxAge: 0 qilib o'chirish (eng ishonchli)
     res.cookie("refresh_token", "", {
       httpOnly: true,
@@ -166,7 +189,9 @@ export class MembersController {
 
   @Post("change-password-first-login")
   @UseGuards(JwtTenantGuard)
-  @ApiOperation({ summary: "Change password on first login (for temporary password)" })
+  @ApiOperation({
+    summary: "Change password on first login (for temporary password)",
+  })
   async changePasswordFirstLogin(
     @Body() body: { currentPassword: string; newPassword: string },
     @ReqUser("member_id") tokenMemberId: string,
@@ -179,7 +204,9 @@ export class MembersController {
 
     // ✅ Faqat must_change_password true bo'lsa ishlaydi
     if (!mustChangePassword) {
-      throw new ForbiddenException("This endpoint is only for first-time password change");
+      throw new ForbiddenException(
+        "This endpoint is only for first-time password change"
+      );
     }
 
     const resolvedTenantId = tenantId ?? "self-service-tenant";
@@ -189,7 +216,7 @@ export class MembersController {
       body.newPassword,
       resolvedTenantId
     );
-    
+
     // ✅ JSON response qaytarish
     return {
       success: true,
@@ -200,16 +227,22 @@ export class MembersController {
   @Post("change-password")
   @UseGuards(JwtTenantGuard, RolesGuard)
   @Roles("owner")
-  @ApiOperation({ summary: "Change password (owner only - for account management)" })
+  @ApiOperation({
+    summary: "Change password (owner only - for account management)",
+  })
   async changePassword(
-    @Body() body: { memberId?: string; currentPassword?: string; newPassword: string },
+    @Body()
+    body: { memberId?: string; currentPassword?: string; newPassword: string },
     @ReqUser("member_id") tokenMemberId?: string,
     @Tenant() tenantId?: string,
     @Query("tenantId") tenantQuery?: string
   ) {
     // ✅ body.memberId mavjud va bo'sh emas bo'lsa, uni ishlatish (owner boshqa member'ning password'ini o'zgartirmoqchi)
     // ✅ body.memberId bo'sh bo'lsa, tokenMemberId'ni ishlatish (owner o'z password'ini o'zgartirmoqchi)
-    const memberId = (body.memberId && body.memberId.trim() !== "") ? body.memberId : tokenMemberId;
+    const memberId =
+      body.memberId && body.memberId.trim() !== ""
+        ? body.memberId
+        : tokenMemberId;
     if (!memberId) {
       throw new BadRequestException(
         "Member ID is required. Either provide it in the request body (memberId) or ensure the JWT token contains member_id."
@@ -217,17 +250,17 @@ export class MembersController {
     }
     // tenantId'ni guard'dan, query'dan yoki header'dan olish
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-    
+
     // ✅ currentPassword optional bo'lishi mumkin (phone verification bilan)
     const currentPassword = body.currentPassword || "";
-    
+
     await this.service.changePassword(
       memberId,
       currentPassword,
       body.newPassword,
       resolvedTenantId
     );
-    
+
     // ✅ JSON response qaytarish
     return {
       success: true,
@@ -235,24 +268,26 @@ export class MembersController {
     };
   }
 
-  @Post('send-phone-verification')
-@ApiOperation({ summary: 'Send phone verification code via SMS' })
-async sendPhoneVerification(@Body() body: { phone_number: string }) {
-  if (!body.phone_number) {
-    throw new BadRequestException('Phone number is required');
+  @Post("send-phone-verification")
+  @ApiOperation({ summary: "Send phone verification code via SMS" })
+  async sendPhoneVerification(@Body() body: { phone_number: string }) {
+    if (!body.phone_number) {
+      throw new BadRequestException("Phone number is required");
+    }
+    return this.phoneVerificationService.sendVerificationCode(
+      body.phone_number
+    );
   }
-  return this.phoneVerificationService.sendVerificationCode(body.phone_number);
-}
 
-@Post('verify-phone-code')
-@ApiOperation({summary: 'Verify phone verification code'})
-async verifyPhoneCode(
-  @Body() body: {phone_number: string, code:string}
-) {
-  if(!body.phone_number || !body.code) {
-    throw new BadRequestException('Phone number and code are required')
+  @Post("verify-phone-code")
+  @ApiOperation({ summary: "Verify phone verification code" })
+  async verifyPhoneCode(@Body() body: { phone_number: string; code: string }) {
+    if (!body.phone_number || !body.code) {
+      throw new BadRequestException("Phone number and code are required");
+    }
+    return this.phoneVerificationService.verifyCode(
+      body.phone_number,
+      body.code
+    );
   }
-  return this.phoneVerificationService.verifyCode(body.phone_number, body.code)
 }
-}
-

@@ -1,24 +1,24 @@
 /**
  * Migration Script: Fix Split Orders Creator Info
- * 
+ *
  * This script updates split orders (ending in -R or -B) to have
  * the correct created_by, clinic_manager_name, and order_date
  * from their original orders.
  */
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
 async function fixSplitOrders() {
   try {
-    console.log('🔍 Finding split orders...\n');
+    console.log("🔍 Finding split orders...\n");
 
     // Find all split orders (ending in -R or -B)
     const allOrders = await prisma.order.findMany({
       where: {
         order_no: {
-          contains: '-',
+          contains: "-",
         },
       },
       select: {
@@ -32,8 +32,8 @@ async function fixSplitOrders() {
     });
 
     // Filter split orders (ending with -R or -B)
-    const splitOrders = allOrders.filter(
-      (order) => order.order_no.match(/-[RB]$/)
+    const splitOrders = allOrders.filter((order) =>
+      order.order_no.match(/-[RB]$/)
     );
 
     console.log(`Found ${splitOrders.length} split orders\n`);
@@ -43,7 +43,7 @@ async function fixSplitOrders() {
 
     for (const splitOrder of splitOrders) {
       // Extract original order number (remove -R or -B)
-      const originalOrderNo = splitOrder.order_no.replace(/-[RB]$/, '');
+      const originalOrderNo = splitOrder.order_no.replace(/-[RB]$/, "");
 
       // Find original order
       const originalOrder = await prisma.order.findFirst({
@@ -92,16 +92,16 @@ async function fixSplitOrders() {
       updatedCount++;
     }
 
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`📊 SUMMARY:`);
     console.log(`   Total split orders: ${splitOrders.length}`);
     console.log(`   Updated: ${updatedCount}`);
     console.log(`   Skipped: ${skippedCount}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-    console.log('✅ Migration completed successfully!\n');
+    console.log("✅ Migration completed successfully!\n");
   } catch (error) {
-    console.error('❌ Migration failed:', error);
+    console.error("❌ Migration failed:", error);
     throw error;
   } finally {
     await prisma.$disconnect();
@@ -111,11 +111,10 @@ async function fixSplitOrders() {
 // Run migration
 fixSplitOrders()
   .then(() => {
-    console.log('✅ Script finished successfully');
+    console.log("✅ Script finished successfully");
     process.exit(0);
   })
   .catch((error) => {
-    console.error('❌ Script failed:', error);
+    console.error("❌ Script failed:", error);
     process.exit(1);
   });
-

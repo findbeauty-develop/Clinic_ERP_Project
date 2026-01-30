@@ -5,4 +5,3 @@ export const ReqUser = (key?: string) =>
     const u = ctx.switchToHttp().getRequest().user;
     return key ? u?.[key] : u;
   })();
-

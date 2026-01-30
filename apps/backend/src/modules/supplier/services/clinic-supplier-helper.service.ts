@@ -58,7 +58,9 @@ export class ClinicSupplierHelperService {
     ].filter((p, i, arr) => arr.indexOf(p) === i);
 
     try {
-      const platformManager = await (this.prisma as any).supplierManager.findFirst({
+      const platformManager = await (
+        this.prisma as any
+      ).supplierManager.findFirst({
         where: {
           OR: phoneVariations.map((p) => ({ phone_number: p })),
           status: "ACTIVE",
@@ -88,7 +90,9 @@ export class ClinicSupplierHelperService {
     if (!businessNumber) return null;
 
     try {
-      const platformManager = await (this.prisma as any).supplierManager.findFirst({
+      const platformManager = await (
+        this.prisma as any
+      ).supplierManager.findFirst({
         where: {
           supplier: {
             business_number: businessNumber,
@@ -155,22 +159,20 @@ export class ClinicSupplierHelperService {
 
     // Try to find by phone_number (for claim matching)
     if (supplierData.contact_phone) {
-      const clinicSupplierManager = await this.prisma.clinicSupplierManager.findFirst(
-        {
+      const clinicSupplierManager =
+        await this.prisma.clinicSupplierManager.findFirst({
           where: {
             tenant_id: tenantId,
             phone_number: supplierData.contact_phone,
           },
-        }
-      );
+        });
 
       if (clinicSupplierManager) {
         // ✅ Auto-link: If linked_supplier_manager_id is null, try to find platform SupplierManager
         if (!clinicSupplierManager.linked_supplier_manager_id) {
-          const platformManager =
-            await this.findPlatformSupplierManagerByPhone(
-              supplierData.contact_phone
-            );
+          const platformManager = await this.findPlatformSupplierManagerByPhone(
+            supplierData.contact_phone
+          );
 
           if (platformManager) {
             // ✅ Update with auto-link
@@ -198,14 +200,13 @@ export class ClinicSupplierHelperService {
 
     // Try to find by business_number
     if (supplierData.business_number) {
-      const clinicSupplierManager = await this.prisma.clinicSupplierManager.findFirst(
-        {
+      const clinicSupplierManager =
+        await this.prisma.clinicSupplierManager.findFirst({
           where: {
             tenant_id: tenantId,
             business_number: supplierData.business_number,
           },
-        }
-      );
+        });
 
       if (clinicSupplierManager) {
         // ✅ Auto-link: If linked_supplier_manager_id is null, try to find platform SupplierManager

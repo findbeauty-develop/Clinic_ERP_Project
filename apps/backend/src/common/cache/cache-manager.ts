@@ -65,8 +65,6 @@ export class CacheManager<T> {
 
     // Start automatic cleanup
     this.startCleanup();
-
-   
   }
 
   /**
@@ -280,7 +278,6 @@ export class CacheManager<T> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
-     
     }
   }
 
@@ -306,6 +303,5 @@ export class CacheManager<T> {
   destroy(): void {
     this.stopCleanup();
     this.clear();
-   
   }
 }

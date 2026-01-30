@@ -11,7 +11,10 @@ import { JwtPayload, verify } from "jsonwebtoken";
 
 @Injectable()
 export class JwtTenantGuard implements CanActivate {
-  constructor(private sb: SupabaseService, private reflector: Reflector) {}
+  constructor(
+    private sb: SupabaseService,
+    private reflector: Reflector
+  ) {}
 
   async canActivate(ctx: ExecutionContext) {
     // Check if the endpoint should skip JWT authentication

@@ -42,7 +42,11 @@ export class OrderRepository {
     });
   }
 
-  findByOrderNo(orderNo: string, tenantId: string, tx?: Prisma.TransactionClient) {
+  findByOrderNo(
+    orderNo: string,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     return (this.getClient(tx) as any).order.findFirst({
       where: { order_no: orderNo, tenant_id: tenantId },
       include: {
@@ -72,7 +76,11 @@ export class OrderRepository {
   }
 
   // OrderDraft CRUD
-  findDraftBySession(sessionId: string, tenantId: string, tx?: Prisma.TransactionClient) {
+  findDraftBySession(
+    sessionId: string,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     if (tx) {
       // Transaction ichida bo'lsa, executeWithRetry ishlatmaymiz
       return (this.getClient(tx) as any).orderDraft.findUnique({
@@ -154,7 +162,11 @@ export class OrderRepository {
     });
   }
 
-  deleteDraft(sessionId: string, tenantId: string, tx?: Prisma.TransactionClient) {
+  deleteDraft(
+    sessionId: string,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     return (this.getClient(tx) as any).orderDraft.delete({
       where: {
         tenant_id_session_id: {
@@ -175,4 +187,3 @@ export class OrderRepository {
     });
   }
 }
-

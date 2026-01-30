@@ -24,10 +24,7 @@ export class CertificateParserService {
    */
   parseKoreanClinicCertificate(rawText: string): ParsedCertificateFields {
     // Normalize whitespace: replace multiple spaces/newlines with single space
-    const normalized = rawText
-      .replace(/\s+/g, " ")
-      .replace(/\n+/g, " ")
-      .trim();
+    const normalized = rawText.replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
 
     const fields: ParsedCertificateFields = {
       rawText: normalized,
@@ -45,14 +42,14 @@ export class CertificateParserService {
       let clinicNameMatch = normalized.match(
         /명\s*칭\s+([가-힣a-zA-Z0-9()\s]+?)(?:\s+의원\s+의원|\s+종\s*류|\s+의료기관|$)/i
       );
-      
+
       if (!clinicNameMatch) {
         // Alternative: "명칭" without space
         clinicNameMatch = normalized.match(
           /명칭\s+([가-힣a-zA-Z0-9()\s]+?)(?:\s+의원\s+의원|\s+종\s*류|\s+의료기관|$)/i
         );
       }
-      
+
       if (clinicNameMatch) {
         let clinicName = clinicNameMatch[1].trim();
         // Remove trailing "의원" if it appears twice
@@ -68,23 +65,28 @@ export class CertificateParserService {
       let clinicTypeMatch = normalized.match(
         /종\s*류\s+([가-힣]+?)(?:\s+의료기관|$)/i
       );
-      
+
       if (!clinicTypeMatch) {
         // Alternative: find "의원" or "병원" after clinic name
         const afterClinicName = normalized.substring(
-          normalized.indexOf(fields.clinicName || "") + (fields.clinicName?.length || 0)
+          normalized.indexOf(fields.clinicName || "") +
+            (fields.clinicName?.length || 0)
         );
-        clinicTypeMatch = afterClinicName.match(/\s+(의원|병원|한의원|치과의원|안과의원)/);
+        clinicTypeMatch = afterClinicName.match(
+          /\s+(의원|병원|한의원|치과의원|안과의원)/
+        );
         if (clinicTypeMatch) {
           fields.clinicType = clinicTypeMatch[1];
         }
       } else {
         fields.clinicType = cleanText(clinicTypeMatch[1], 20);
       }
-      
+
       // If still not found, try to find standalone "의원" or "병원"
       if (!fields.clinicType) {
-        const standaloneMatch = normalized.match(/\b(의원|병원|한의원|치과의원|안과의원)\b/);
+        const standaloneMatch = normalized.match(
+          /\b(의원|병원|한의원|치과의원|안과의원)\b/
+        );
         if (standaloneMatch) {
           fields.clinicType = standaloneMatch[1];
         }
@@ -95,14 +97,14 @@ export class CertificateParserService {
       let addressMatch = normalized.match(
         /(?:의료기관\s+)?소재지\s+([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+진료과목|\s+개설신고일자|\s+개설자|$)/i
       );
-      
+
       if (!addressMatch) {
         // Alternative: just "소재지" without "의료기관"
         addressMatch = normalized.match(
           /소재지\s+([가-힣a-zA-Z0-9\s,()\-]+?)(?:\s+진료과목|\s+개설신고일자|\s+개설자|$)/i
         );
       }
-      
+
       if (addressMatch) {
         let address = addressMatch[1].trim();
         // Remove trailing "개설자" or numbers
@@ -124,7 +126,10 @@ export class CertificateParserService {
         // Remove extra spaces around commas
         departments = departments.replace(/\s*,\s*/g, ", ");
         // Add commas between departments if missing
-        departments = departments.replace(/([가-힣]+과)\s+([가-힣]+과)/g, "$1, $2");
+        departments = departments.replace(
+          /([가-힣]+과)\s+([가-힣]+과)/g,
+          "$1, $2"
+        );
         fields.department = cleanText(departments, 100);
       }
 
@@ -143,25 +148,25 @@ export class CertificateParserService {
       let doctorNameMatch = normalized.match(
         /성명\s*\(?법인명\)?\s+([가-힣]+?)(?:\s+생년월일|\s+\d{4}년|\s+주소|$)/i
       );
-      
+
       if (!doctorNameMatch) {
         doctorNameMatch = normalized.match(
           /성명\s*\(법인명\)\s+([가-힣]+?)(?:\s+생년월일|$)/i
         );
       }
-      
+
       if (!doctorNameMatch) {
         doctorNameMatch = normalized.match(
           /성명\s+법인명\s+([가-힣]+?)(?:\s+생년월일|$)/i
         );
       }
-      
+
       if (!doctorNameMatch) {
         doctorNameMatch = normalized.match(
           /성명\s+([가-힣]+?)(?:\s+생년월일|\s+\d{4}년|$)/i
         );
       }
-      
+
       if (doctorNameMatch) {
         let doctorName = doctorNameMatch[1].trim();
         doctorName = doctorName.replace(/\(?법인명\)?/gi, "").trim();
@@ -171,15 +176,11 @@ export class CertificateParserService {
       }
 
       // Extract doctor license number - already working
-      const licenseNoMatch = normalized.match(
-        /면허번호\s+제\s*(\d+)\s*호/i
-      );
+      const licenseNoMatch = normalized.match(/면허번호\s+제\s*(\d+)\s*호/i);
       if (licenseNoMatch) {
         fields.doctorLicenseNo = licenseNoMatch[1].trim();
       } else {
-        const licenseNoMatch2 = normalized.match(
-          /면허번호\s+(\d+)/i
-        );
+        const licenseNoMatch2 = normalized.match(/면허번호\s+(\d+)/i);
         if (licenseNoMatch2) {
           fields.doctorLicenseNo = licenseNoMatch2[1].trim();
         }
@@ -219,7 +220,6 @@ export class CertificateParserService {
       if (reportNumberMatch) {
         fields.reportNumber = reportNumberMatch[1].trim();
       }
-
     } catch (error) {
       this.logger.error("Error parsing certificate text", error);
     }
@@ -227,4 +227,3 @@ export class CertificateParserService {
     return fields;
   }
 }
-

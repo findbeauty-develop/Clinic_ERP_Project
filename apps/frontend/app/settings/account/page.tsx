@@ -50,7 +50,8 @@ export default function AccountManagementPage() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [isVerificationCodeSent, setIsVerificationCodeSent] = useState(false);
-  const [isVerificationCodeVerified, setIsVerificationCodeVerified] = useState(false);
+  const [isVerificationCodeVerified, setIsVerificationCodeVerified] =
+    useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string>("");
@@ -226,14 +227,18 @@ export default function AccountManagementPage() {
     return sameRole.length > 1 ? index + 1 : "";
   };
 
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     // File validation
     const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      alert(`지원하지 않는 파일 형식입니다. 허용된 형식: ${validTypes.join(", ")}`);
+      alert(
+        `지원하지 않는 파일 형식입니다. 허용된 형식: ${validTypes.join(", ")}`
+      );
       event.target.value = "";
       return;
     }
@@ -257,14 +262,15 @@ export default function AccountManagementPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      
+
       console.log("Uploading file:", {
         name: file.name,
         type: file.type,
         size: file.size,
       });
 
-      const { getAccessToken, getTenantId, apiPut, clearCache } = await import("../../../lib/api");
+      const { getAccessToken, getTenantId, apiPut, clearCache } =
+        await import("../../../lib/api");
       const token = await getAccessToken();
       const tenantId = getTenantId();
 
@@ -274,7 +280,7 @@ export default function AccountManagementPage() {
 
       // Upload file - FormData uchun Content-Type header'ni o'chirish kerak
       const uploadUrl = `${apiUrl}/iam/members/clinics/upload-logo${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`;
-      
+
       const uploadResponse = await fetch(uploadUrl, {
         method: "POST",
         body: formData,
@@ -290,7 +296,10 @@ export default function AccountManagementPage() {
         let errorMessage = "로고 업로드에 실패했습니다.";
         try {
           const errorData = await uploadResponse.json();
-          errorMessage = errorData?.message || errorData?.error || `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
+          errorMessage =
+            errorData?.message ||
+            errorData?.error ||
+            `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
           console.error("Upload error details:", {
             status: uploadResponse.status,
             statusText: uploadResponse.statusText,
@@ -313,40 +322,43 @@ export default function AccountManagementPage() {
 
       // Database'ga saqlash
       const updateUrl = `${apiUrl}/iam/members/clinics/logo${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`;
-      
-      console.log("Updating logo URL:", updateUrl, { logoUrl: uploadResult.url });
-      
+
+      console.log("Updating logo URL:", updateUrl, {
+        logoUrl: uploadResult.url,
+      });
+
       try {
         await apiPut(updateUrl, {
           logoUrl: uploadResult.url,
         });
       } catch (updateError: any) {
-      console.error("Logo URL update error - Full details:", {
-    error: updateError,
-    message: updateError?.message,
-    response: updateError?.response,
-    status: updateError?.response?.status,
-    statusText: updateError?.response?.statusText,
-    data: updateError?.response?.data,
-    body: updateError?.body,
-  });
-  
-  // ✅ Error response'ni to'liq ko'rsatish
-  let errorMessage = "로고 업로드되었지만 데이터베이스 업데이트에 실패했습니다.";
-  if (updateError?.response?.data) {
-    const errorData = updateError.response.data;
-    if (Array.isArray(errorData.message)) {
-      // Validation error - array of messages
-      errorMessage = `Validation error: ${errorData.message.join(", ")}`;
-    } else if (typeof errorData.message === "string") {
-      errorMessage = errorData.message;
-    }
-  } else if (updateError?.message) {
-    errorMessage = updateError.message;
-  }
-  
-  alert(errorMessage);
-  throw updateError;
+        console.error("Logo URL update error - Full details:", {
+          error: updateError,
+          message: updateError?.message,
+          response: updateError?.response,
+          status: updateError?.response?.status,
+          statusText: updateError?.response?.statusText,
+          data: updateError?.response?.data,
+          body: updateError?.body,
+        });
+
+        // ✅ Error response'ni to'liq ko'rsatish
+        let errorMessage =
+          "로고 업로드되었지만 데이터베이스 업데이트에 실패했습니다.";
+        if (updateError?.response?.data) {
+          const errorData = updateError.response.data;
+          if (Array.isArray(errorData.message)) {
+            // Validation error - array of messages
+            errorMessage = `Validation error: ${errorData.message.join(", ")}`;
+          } else if (typeof errorData.message === "string") {
+            errorMessage = errorData.message;
+          }
+        } else if (updateError?.message) {
+          errorMessage = updateError.message;
+        }
+
+        alert(errorMessage);
+        throw updateError;
       }
 
       setLogoUrl(uploadResult.url);
@@ -361,7 +373,11 @@ export default function AccountManagementPage() {
       // Cache'ni tozalash va sidebar'ni yangilash uchun event yuborish
       clearCache("/iam/members/clinics");
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("clinicLogoUpdated", { detail: { logoUrl: uploadResult.url } }));
+        window.dispatchEvent(
+          new CustomEvent("clinicLogoUpdated", {
+            detail: { logoUrl: uploadResult.url },
+          })
+        );
       }
 
       alert("로고가 성공적으로 업로드되었습니다.");
@@ -437,7 +453,7 @@ export default function AccountManagementPage() {
           </Link>
         </header>
 
-         {/* 병의원 로고 Section */}
+        {/* 병의원 로고 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
           <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
             병의원 로고
@@ -608,8 +624,6 @@ export default function AccountManagementPage() {
           </div>
         </section>
 
-       
-
         {/* 원장 개인 정보 Section */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
           <h2 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -688,8 +702,16 @@ export default function AccountManagementPage() {
                         />
                         <button
                           type="button"
-                          onClick={() => handleSendVerificationCode(director?.phone_number || "")}
-                          disabled={isSendingCode || !director?.phone_number || isVerificationCodeVerified}
+                          onClick={() =>
+                            handleSendVerificationCode(
+                              director?.phone_number || ""
+                            )
+                          }
+                          disabled={
+                            isSendingCode ||
+                            !director?.phone_number ||
+                            isVerificationCodeVerified
+                          }
                           className="h-9 rounded-lg bg-indigo-500 px-3 text-xs font-medium text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isSendingCode ? "전송 중..." : "인증번호 전송"}
@@ -700,7 +722,9 @@ export default function AccountManagementPage() {
                         type="text"
                         value={verificationCode}
                         onChange={(e) => {
-                          const code = e.target.value.replace(/[^0-9]/g, "").slice(0, 6);
+                          const code = e.target.value
+                            .replace(/[^0-9]/g, "")
+                            .slice(0, 6);
                           setVerificationCode(code);
                           // Auto-verify when 6 digits entered
                           if (code.length === 6 && director?.phone_number) {
@@ -709,7 +733,9 @@ export default function AccountManagementPage() {
                         }}
                         placeholder="핸드폰 인증번호"
                         maxLength={6}
-                        disabled={!isVerificationCodeSent || isVerificationCodeVerified}
+                        disabled={
+                          !isVerificationCodeSent || isVerificationCodeVerified
+                        }
                         className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                       />
                       {isVerificationCodeVerified && (
@@ -765,14 +791,15 @@ export default function AccountManagementPage() {
                   )}
                 </div>
                 <div className="flex items-end">
-                  {editingPassword !== member.id && currentUserRole === "owner" && (
-                    <button
-                      onClick={() => handlePasswordEdit(member.id)}
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      비번수정
-                    </button>
-                  )}
+                  {editingPassword !== member.id &&
+                    currentUserRole === "owner" && (
+                      <button
+                        onClick={() => handlePasswordEdit(member.id)}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        비번수정
+                      </button>
+                    )}
                 </div>
               </div>
             ))}

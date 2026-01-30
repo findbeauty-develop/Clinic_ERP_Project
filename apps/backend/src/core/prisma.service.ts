@@ -22,12 +22,16 @@ export class PrismaService
     // ✅ ConfigService orqali DATABASE_URL ni olish (env file'dan yuklanadi, priority: .env.local > .env > process.env)
     // Note: configService parameter is available before super() call
     // ❌ Fallback'ni olib tashlash - faqat ConfigService'dan olish (env file priority)
-    let databaseUrl = configService.get<string>('DATABASE_URL');
-    const nodeEnv = configService.get<string>('NODE_ENV') || process.env.NODE_ENV || 'development';
-    
+    let databaseUrl = configService.get<string>("DATABASE_URL");
+    const nodeEnv =
+      configService.get<string>("NODE_ENV") ||
+      process.env.NODE_ENV ||
+      "development";
+
     // ✅ DATABASE_URL tekshirish - agar yo'q bo'lsa, error
     if (!databaseUrl) {
-      const errorMsg = '❌ DATABASE_URL is not set in .env.local or .env file! Please check your environment configuration.';
+      const errorMsg =
+        "❌ DATABASE_URL is not set in .env.local or .env file! Please check your environment configuration.";
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
@@ -102,7 +106,6 @@ export class PrismaService
     });
 
     // ✅ Now we can use this.logger after super() is called
-  
   }
 
   /**

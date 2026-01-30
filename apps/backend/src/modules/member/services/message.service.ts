@@ -24,7 +24,6 @@ export class MessageService {
     const providerName =
       this.configService.get<string>("MESSAGE_PROVIDER") || "solapi";
     this.provider = this.getProvider(providerName);
-   
   }
 
   private getProvider(name: string): IMessageProvider {
@@ -52,7 +51,6 @@ export class MessageService {
     try {
       const smsSent = await this.provider.sendSMS(phoneNumber, message);
       if (smsSent) {
-      
       } else {
         this.logger.warn(`Failed to send SMS to ${phoneNumber}`);
       }
@@ -105,8 +103,8 @@ export class MessageService {
         member.role === "owner"
           ? "원장"
           : member.role === "manager"
-          ? "관리자"
-          : "직원";
+            ? "관리자"
+            : "직원";
 
       message += `${roleLabel} ID: ${member.memberId}\n`;
 
@@ -168,7 +166,6 @@ export class MessageService {
     try {
       const smsSent = await this.provider.sendSMS(phoneNumber, message);
       if (smsSent) {
-       
       } else {
         this.logger.warn(
           `Failed to send order notification SMS to ${phoneNumber}`

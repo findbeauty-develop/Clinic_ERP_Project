@@ -23,7 +23,11 @@ export class ClinicsRepository {
     });
   }
 
-  update(id: string, data: Partial<Clinic>, tenantId?: string): Promise<Clinic> {
+  update(
+    id: string,
+    data: Partial<Clinic>,
+    tenantId?: string
+  ): Promise<Clinic> {
     const where: any = { id };
     if (tenantId) {
       where.tenant_id = tenantId;
@@ -59,4 +63,3 @@ export class ClinicsRepository {
     });
   }
 }
-

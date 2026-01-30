@@ -7,10 +7,27 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Request, Response } from "express";
+import { TelegramNotificationService } from "../services/telegram-notification.service";
+import { ConfigService } from "@nestjs/config";
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
+  private telegramService: TelegramNotificationService | null = null;
+
+  private getTelegramService(): TelegramNotificationService | null {
+    // Lazy initialization to avoid circular dependencies
+    if (!this.telegramService) {
+      try {
+        const configService = new ConfigService();
+        this.telegramService = new TelegramNotificationService(configService);
+      } catch (error) {
+        this.logger.warn("Failed to initialize Telegram service");
+        return null;
+      }
+    }
+    return this.telegramService;
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -71,7 +88,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // ✅ Static file'lar (image, CSS, JS) uchun 404 log qilmaslik
       const isStaticFile =
         request.url.startsWith("/uploads/") ||
-        request.url.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js|woff|woff2|ttf|eot)$/i);
+        request.url.match(
+          /\.(jpg|jpeg|png|gif|svg|webp|ico|css|js|woff|woff2|ttf|eot)$/i
+        );
 
       if (!isStaticFile) {
         // ✅ Faqat API endpoint'lar uchun 404 log qilish
@@ -87,6 +106,34 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `${request.method} ${request.url} - ${status} - ${errorMessage}`,
         logContext
       );
+
+      // ✅ Production'da critical error'lar uchun Telegram notification
+      if (isProduction) {
+        // Faqat critical error'lar uchun (spam oldini olish)
+        const shouldNotify =
+          status >= 500 &&
+          !errorMessage.includes("favicon") &&
+          !errorMessage.includes("static") &&
+          !request.url.match(/\.(jpg|jpeg|png|gif|svg|webp|ico|css|js)$/i);
+
+        if (shouldNotify) {
+          const telegramService = this.getTelegramService();
+          if (telegramService) {
+            telegramService
+              .sendErrorAlert(exception as Error, {
+                url: request.url,
+                method: request.method,
+                userId: (request as any).user?.id,
+                tenantId: (request as any).tenantId,
+              })
+              .catch((err) => {
+                this.logger.error(
+                  `Failed to send Telegram alert: ${err.message}`
+                );
+              });
+          }
+        }
+      }
     } else {
       // ✅ Client error'lar (400-499) uchun warn level
       this.logger.warn(
@@ -169,4 +216,3 @@ export class HttpExceptionFilter implements ExceptionFilter {
     return sanitized;
   }
 }
-

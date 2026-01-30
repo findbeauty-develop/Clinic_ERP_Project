@@ -153,7 +153,6 @@ export class OutboundService {
           // ProductsService uses cache key format: "products:${tenantId}"
           const productsCacheKey = `products:${tenantId}`;
           productsCache.delete(productsCacheKey);
-         
         }
       } catch (error) {
         // If cache doesn't exist or method doesn't exist, log warning but continue
@@ -510,8 +509,6 @@ export class OutboundService {
               const usageIncrement = product.usage_capacity * item.outboundQty;
               const newUsedCount = currentUsedCount + usageIncrement;
 
-              
-
               // Bo'sh box aniqlash: yangilanishdan oldin va keyin
               const previousEmptyBoxes = Math.floor(
                 currentUsedCount / product.capacity_per_product
@@ -527,8 +524,6 @@ export class OutboundService {
               // batchQtyDecrement = 1 box (5 emas!)
               // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
               batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
-
-              
 
               // used_count ni yangilash
               const updatedBatch = await tx.batch.update({
@@ -556,8 +551,6 @@ export class OutboundService {
               where: { id: item.batchId },
               select: { qty: true, used_count: true },
             });
-
-            
 
             // Product stock yangilash uchun yig'ish (to'liq ishlatilgan box'lar yoki default)
             const currentDecrement =
@@ -1213,8 +1206,6 @@ export class OutboundService {
 
     // 🔍 DEBUG: Valid items
 
-   
-
     // Product ma'lumotlarini olish (capacity_per_product va usage_capacity uchun)
     const products = await this.prisma.product.findMany({
       where: {
@@ -1383,7 +1374,6 @@ export class OutboundService {
     }
 
     // 🔍 DEBUG: Request ma'lumotlari
- 
 
     // Barcha batch'larni va product'larni bir vaqtda tekshirish
     const batchIds = dto.items.map((item) => item.batchId);
@@ -1596,8 +1586,6 @@ export class OutboundService {
                 currentUsedCount;
               const availableQuantityAfter =
                 currentInboundQty * product.capacity_per_product - newUsedCount;
-
-             
 
               // used_count ni yangilash
               await tx.batch.update({

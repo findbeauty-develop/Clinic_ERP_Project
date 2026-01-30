@@ -1,4 +1,10 @@
-import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import {
+  IsArray,
+  IsDateString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from "class-validator";
 
 export class RegisterClinicDto {
   @IsOptional()
@@ -13,7 +19,6 @@ export class RegisterClinicDto {
   @IsNotEmpty()
   name!: string; // 명칭
 
-  
   @IsString()
   @IsNotEmpty()
   englishName!: string; // 영어이름
@@ -51,9 +56,7 @@ export class RegisterClinicDto {
   @IsDateString()
   openDate?: string; // 개설신고일자 (Open date from OCR)
 
-
   @IsString()
   @IsNotEmpty()
   doctorName!: string; // 성명 (Doctor name from OCR)
 }
-

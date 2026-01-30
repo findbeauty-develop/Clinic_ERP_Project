@@ -11,7 +11,12 @@ import {
   BadRequestException,
   Header,
 } from "@nestjs/common";
-import { ApiOperation, ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiOperation,
+  ApiTags,
+  ApiBearerAuth,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { PackageService } from "../services/package.service";
 import { CreatePackageDto } from "../dto/create-package.dto";
 import { UpdatePackageDto } from "../dto/update-package.dto";
@@ -134,7 +139,8 @@ export class PackageController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: "Get package items for outbound (with batches, stock, expiry info)",
+    summary:
+      "Get package items for outbound (with batches, stock, expiry info)",
   })
   @Header("Cache-Control", "public, max-age=30")
   getPackageItemsForOutbound(
@@ -184,4 +190,3 @@ export class PackageController {
     return this.packageService.deletePackage(id, tenantId);
   }
 }
-

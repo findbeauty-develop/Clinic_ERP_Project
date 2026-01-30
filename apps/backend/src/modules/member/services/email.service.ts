@@ -19,7 +19,6 @@ export class EmailService {
     const providerName =
       this.configService.get<string>("EMAIL_PROVIDER") || "amazon-ses";
     this.provider = this.getProvider(providerName);
-   
   }
 
   private getProvider(name: string): IEmailProvider {
@@ -54,7 +53,6 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-      
       } else {
         this.logger.warn(`Failed to send email to ${to}`);
       }
@@ -101,7 +99,6 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-       
       } else {
         this.logger.warn(`Failed to send order notification email to ${email}`);
       }
@@ -127,13 +124,13 @@ export class EmailService {
     try {
       // ✅ Faqat Brevo provider template'ni qo'llab-quvvatlaydi
       if (this.provider instanceof BrevoProvider) {
-        const emailSent = await (this.provider as BrevoProvider).sendEmailWithTemplate(
-          to,
-          templateId,
-          templateParams
-        );
+        const emailSent = await (
+          this.provider as BrevoProvider
+        ).sendEmailWithTemplate(to, templateId, templateParams);
         if (emailSent) {
-          this.logger.log(`✅ Template email sent successfully to ${to} using template ${templateId}`);
+          this.logger.log(
+            `✅ Template email sent successfully to ${to} using template ${templateId}`
+          );
         } else {
           this.logger.warn(`Failed to send template email to ${to}`);
         }
@@ -163,7 +160,12 @@ export class EmailService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string; quantity: number; unit?: string }>
+    products?: Array<{
+      productName: string;
+      brand: string;
+      quantity: number;
+      unit?: string;
+    }>
   ): Promise<boolean> {
     if (!email) {
       this.logger.warn("Email address is required for order notification");
@@ -181,7 +183,8 @@ export class EmailService {
       productsList: products
         ? products
             .map(
-              (p) => `${p.productName}${p.brand ? ` (${p.brand})` : ""} x${p.quantity}${p.unit ? ` ${p.unit}` : ""}`
+              (p) =>
+                `${p.productName}${p.brand ? ` (${p.brand})` : ""} x${p.quantity}${p.unit ? ` ${p.unit}` : ""}`
             )
             .join(", ")
         : `${itemCount}개 제품`,
@@ -201,7 +204,12 @@ export class EmailService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string; quantity: number; unit?: string }>,
+    products?: Array<{
+      productName: string;
+      brand: string;
+      quantity: number;
+      unit?: string;
+    }>,
     returnType?: string
   ): Promise<boolean> {
     if (!email) {
@@ -223,7 +231,8 @@ export class EmailService {
       productsList: products
         ? products
             .map(
-              (p) => `${p.productName}${p.brand ? ` (${p.brand})` : ""} x${p.quantity}${p.unit ? ` ${p.unit}` : ""}`
+              (p) =>
+                `${p.productName}${p.brand ? ` (${p.brand})` : ""} x${p.quantity}${p.unit ? ` ${p.unit}` : ""}`
             )
             .join(", ")
         : `${itemCount}개 제품`,
@@ -233,12 +242,15 @@ export class EmailService {
     if (products && products.length > 0) {
       products.forEach((product, index) => {
         const productIndex = index + 1;
-        templateParams[`product${productIndex}Name`] = product.productName || "";
+        templateParams[`product${productIndex}Name`] =
+          product.productName || "";
         templateParams[`product${productIndex}Brand`] = product.brand || "";
-        templateParams[`product${productIndex}Quantity`] = product.quantity.toString();
+        templateParams[`product${productIndex}Quantity`] =
+          product.quantity.toString();
         templateParams[`product${productIndex}Unit`] = product.unit || "";
         // Combined format: "제품명 (브랜드) x5 개"
-        templateParams[`product${productIndex}Full`] = `${product.productName}${product.brand ? ` (${product.brand})` : ""}  ${product.quantity}${product.unit ? ` ${product.unit}` : ""}`;
+        templateParams[`product${productIndex}Full`] =
+          `${product.productName}${product.brand ? ` (${product.brand})` : ""}  ${product.quantity}${product.unit ? ` ${product.unit}` : ""}`;
       });
     }
 
@@ -268,7 +280,12 @@ export class EmailService {
     );
 
     try {
-      const emailSent = await this.sendEmail(email, subject, htmlBody, textBody);
+      const emailSent = await this.sendEmail(
+        email,
+        subject,
+        htmlBody,
+        textBody
+      );
       if (emailSent) {
         this.logger.log(
           `✅ Member credentials email sent successfully to ${email}`
@@ -446,8 +463,8 @@ export class EmailService {
                     member.role === "owner"
                       ? "원장"
                       : member.role === "manager"
-                      ? "관리자"
-                      : "직원";
+                        ? "관리자"
+                        : "직원";
                   const passwordLabel =
                     member.role === "owner" ? "비밀번호" : "임시 비밀번호";
 
@@ -503,8 +520,8 @@ export class EmailService {
         member.role === "owner"
           ? "원장"
           : member.role === "manager"
-          ? "관리자"
-          : "직원";
+            ? "관리자"
+            : "직원";
       const passwordLabel =
         member.role === "owner" ? "비밀번호" : "임시 비밀번호";
 
@@ -776,7 +793,12 @@ export class EmailService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string; quantity: number; unit?: string }>,
+    products?: Array<{
+      productName: string;
+      brand: string;
+      quantity: number;
+      unit?: string;
+    }>,
     returnType?: string // "반품", "교환", "불량" etc.
   ): Promise<boolean> {
     if (!email) {
@@ -802,7 +824,6 @@ export class EmailService {
         textBody
       );
       if (emailSent) {
-      
       } else {
         this.logger.warn(
           `Failed to send return notification email to ${email}`
@@ -828,7 +849,12 @@ export class EmailService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string; quantity: number; unit?: string }>,
+    products?: Array<{
+      productName: string;
+      brand: string;
+      quantity: number;
+      unit?: string;
+    }>,
     returnType?: string
   ): { subject: string; htmlBody: string; textBody: string } {
     const returnTypeText = returnType || "반품/교환";

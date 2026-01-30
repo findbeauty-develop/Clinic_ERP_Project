@@ -63,14 +63,16 @@ export class InventoryService {
             lte: previousEndDate,
           },
         };
-        const prevInboundResult = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).batch.aggregate({
-            where: prevInboundWhere,
-            _sum: {
-              qty: true,
-            },
-          });
-        });
+        const prevInboundResult = await this.prisma.executeWithRetry(
+          async () => {
+            return (this.prisma as any).batch.aggregate({
+              where: prevInboundWhere,
+              _sum: {
+                qty: true,
+              },
+            });
+          }
+        );
         previousInbound = prevInboundResult._sum?.qty || 0;
       }
 
@@ -103,14 +105,16 @@ export class InventoryService {
             lte: previousEndDate,
           },
         };
-        const prevOutboundResult = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).outbound.aggregate({
-            where: prevOutboundWhere,
-            _sum: {
-              outbound_qty: true,
-            },
-          });
-        });
+        const prevOutboundResult = await this.prisma.executeWithRetry(
+          async () => {
+            return (this.prisma as any).outbound.aggregate({
+              where: prevOutboundWhere,
+              _sum: {
+                outbound_qty: true,
+              },
+            });
+          }
+        );
         previousOutbound = prevOutboundResult._sum?.outbound_qty || 0;
       }
 
@@ -191,9 +195,7 @@ export class InventoryService {
             const totalStock = product.current_stock || 0;
             const usageRate =
               totalStock > 0
-                ? Math.round(
-                    ((totalStock - batch.qty) / totalStock) * 100
-                  )
+                ? Math.round(((totalStock - batch.qty) / totalStock) * 100)
                 : 0;
 
             riskyItems.push({
@@ -287,7 +289,8 @@ export class InventoryService {
             unit: product.unit || "개",
             minStock: minStock,
             lastOrderQty: lastOrderQty,
-            orderFrequency: weeklyOutbound > 0 ? `${weeklyOutbound} /주` : "0 /주",
+            orderFrequency:
+              weeklyOutbound > 0 ? `${weeklyOutbound} /주` : "0 /주",
             estimatedDepletion: estimatedDepletion
               ? `${estimatedDepletion}주`
               : "-",
@@ -445,4 +448,3 @@ export class InventoryService {
     }
   }
 }
-

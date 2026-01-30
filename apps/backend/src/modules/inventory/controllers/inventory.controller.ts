@@ -5,7 +5,12 @@ import {
   UseGuards,
   ParseIntPipe,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiQuery,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { InventoryService } from "../services/inventory.service";
@@ -39,7 +44,11 @@ export class InventoryController {
   ) {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
-    return await this.inventoryService.getInventorySummary(tenantId, start, end);
+    return await this.inventoryService.getInventorySummary(
+      tenantId,
+      start,
+      end
+    );
   }
 
   @Get("risky")
@@ -101,4 +110,3 @@ export class InventoryController {
     );
   }
 }
-

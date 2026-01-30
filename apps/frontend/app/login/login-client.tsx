@@ -55,12 +55,12 @@ export default function LoginPage() {
       if (typeof window !== "undefined") {
         // Import setAccessToken va setMemberData
         const { setAccessToken, setMemberData } = await import("../../lib/api");
-        
+
         if (result.access_token) {
           // ✅ Access token'ni memory'da saqlash (expires_in bilan)
           setAccessToken(result.access_token, result.expires_in);
         }
-        
+
         if (result.member) {
           // ✅ Member data'ni memory'da saqlash
           setMemberData(result.member);
@@ -76,8 +76,8 @@ export default function LoginPage() {
       // Redirect to dashboard after successful login
       // Use window.location.href for full page reload to update sidebar state
       if (typeof window !== "undefined") {
-  window.location.href = next; // "/dashboard" yoki ?next=... bo'lsa o'sha
-}
+        window.location.href = next; // "/dashboard" yoki ?next=... bo'lsa o'sha
+      }
     } catch (error) {
       window.alert(
         error instanceof Error ? error.message : "ID or Password is incorrect"
@@ -141,19 +141,22 @@ export default function LoginPage() {
         throw new Error("인증 토큰이 없습니다.");
       }
 
-      const response = await fetch(`${apiUrl}/iam/members/change-password-first-login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: "include", // ✅ Cookie'ni yuborish
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          // ✅ memberId yo'q - token'dan olinadi
-        }),
-      });
+      const response = await fetch(
+        `${apiUrl}/iam/members/change-password-first-login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          credentials: "include", // ✅ Cookie'ni yuborish
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+            // ✅ memberId yo'q - token'dan olinadi
+          }),
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -177,20 +180,18 @@ export default function LoginPage() {
   };
 
   return (
-<div className="min-h-screen bg-[#f5fbff] flex items-center justify-center px-6 py-16">
-
+    <div className="min-h-screen bg-[#f5fbff] flex items-center justify-center px-6 py-16">
       <div className="w-full max-w-xl">
         <div className="rounded-[36px] bg-white/95 px-12 py-12 shadow-[0px_24px_60px_rgba(99,102,241,0.18)] backdrop-blur-xl min-h-[560px] flex flex-col justify-between space-y-10 border border-white/60">
           <div className="text-center">
-    <div className="mx-auto flex h-52 w-52 items-center justify-center ">
-  <img
-    src="/images/JaclitName.svg"
-    alt="Jaclit Logo"
-    className="h-full w-full object-contain "
-  />
-</div>
+            <div className="mx-auto flex h-52 w-52 items-center justify-center ">
+              <img
+                src="/images/JaclitName.svg"
+                alt="Jaclit Logo"
+                className="h-full w-full object-contain "
+              />
+            </div>
 
-           
             <p className="text-base mt-[-30px] text-gray-500">
               우리 병원 재고 관리를 쉽고 간편하게!
             </p>
@@ -289,14 +290,12 @@ export default function LoginPage() {
 
             <div className="flex flex-col gap-4">
               <button
-  type="submit"
-  disabled={loading}
-  className="w-full rounded-2xl bg-gradient-to-r from-[#2f66d9] to-[#3f8f98] px-5 py-4 text-base font-semibold text-white shadow-lg transition hover:from-[#285bc2] hover:to-[#378086] focus:outline-none focus:ring-2 focus:ring-[#2f66d9]/30 disabled:cursor-not-allowed disabled:opacity-70"
-
->
-  {loading ? "로그인 중..." : "로그인"}
-</button>
-
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-2xl bg-gradient-to-r from-[#2f66d9] to-[#3f8f98] px-5 py-4 text-base font-semibold text-white shadow-lg transition hover:from-[#285bc2] hover:to-[#378086] focus:outline-none focus:ring-2 focus:ring-[#2f66d9]/30 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? "로그인 중..." : "로그인"}
+              </button>
             </div>
           </form>
 
@@ -368,7 +367,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowCurrentPassword((prev) => !prev)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600 focus:outline-none"
-                    aria-label={showCurrentPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-label={
+                      showCurrentPassword ? "비밀번호 숨기기" : "비밀번호 보기"
+                    }
                   >
                     {showCurrentPassword ? (
                       <svg
@@ -433,7 +434,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowNewPassword((prev) => !prev)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600 focus:outline-none"
-                    aria-label={showNewPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-label={
+                      showNewPassword ? "비밀번호 숨기기" : "비밀번호 보기"
+                    }
                   >
                     {showNewPassword ? (
                       <svg
@@ -498,7 +501,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600 focus:outline-none"
-                    aria-label={showConfirmPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-label={
+                      showConfirmPassword ? "비밀번호 숨기기" : "비밀번호 보기"
+                    }
                   >
                     {showConfirmPassword ? (
                       <svg

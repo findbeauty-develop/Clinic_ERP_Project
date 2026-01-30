@@ -147,9 +147,8 @@ export class MembersService {
         }
       } else {
         // Create mode: check if members already exist GLOBALLY (member_id is unique across all tenants)
-        const existingMembers = await this.repository.findManyByMemberIdsGlobal(
-          memberIds
-        );
+        const existingMembers =
+          await this.repository.findManyByMemberIdsGlobal(memberIds);
         if (existingMembers.length > 0) {
           const existingMemberIds = existingMembers.map(
             (m: { member_id: string; tenant_id: string }) =>
@@ -304,8 +303,7 @@ export class MembersService {
       }
 
       // Access token - qisqa muddat (15 minut)
-      const accessTokenExpiresIn =
-        process.env.MEMBER_JWT_EXPIRES_IN || "15m";
+      const accessTokenExpiresIn = process.env.MEMBER_JWT_EXPIRES_IN || "15m";
       const accessToken = sign(
         {
           sub: member.id,
@@ -350,7 +348,11 @@ export class MembersService {
         expiresAt.setDate(expiresAt.getDate() + 7);
       }
 
-      await this.repository.saveRefreshToken(member.id, refreshToken, expiresAt);
+      await this.repository.saveRefreshToken(
+        member.id,
+        refreshToken,
+        expiresAt
+      );
 
       // HttpOnly cookie'ga refresh token saqlash
       if (res) {
@@ -448,8 +450,7 @@ export class MembersService {
         throw new UnauthorizedException("JWT secret not configured");
       }
 
-      const accessTokenExpiresIn =
-        process.env.MEMBER_JWT_EXPIRES_IN || "15m";
+      const accessTokenExpiresIn = process.env.MEMBER_JWT_EXPIRES_IN || "15m";
 
       const accessToken = sign(
         {
@@ -478,10 +479,12 @@ export class MembersService {
         },
       };
 
-      this.logger.log(`[Refresh] Returning member data for: ${member.member_id}`);
       return result;
     } catch (error: any) {
-      this.logger.error("Refresh token error:", error?.message || String(error));
+      this.logger.error(
+        "Refresh token error:",
+        error?.message || String(error)
+      );
       throw new UnauthorizedException("Invalid or expired refresh token");
     }
   }

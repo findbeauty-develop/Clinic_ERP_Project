@@ -84,7 +84,7 @@ export default function OrdersPage() {
   const [rejectionReasons, setRejectionReasons] = useState<
     Record<string, string>
   >({});
-   const [notificationCount, setNotificationCount] = useState(4);
+   const [notificationCount, setNotificationCount] = useState("");
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -511,11 +511,11 @@ export default function OrdersPage() {
     />
   </svg>
 
-  {notificationCount > 0 && (
+  {/* {notificationCount > 0 && (
     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
       {notificationCount}
     </span>
-  )}
+  )} */}
 </button></div>
           
 

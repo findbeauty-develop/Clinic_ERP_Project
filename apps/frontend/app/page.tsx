@@ -12,7 +12,7 @@ export default function Page() {
       // ✅ Root page (`/`) - member data'ni tekshirish (refresh qilmaydi)
       // getMemberData() faqat localStorage'dan o'qiydi, API so'rov yubormaydi
       const memberData = getMemberData();
-      
+
       if (memberData) {
         // ✅ Member data mavjud - dashboard'ga redirect
         // Dashboard page ochilganda u o'zining API so'rovlarida token refresh qiladi

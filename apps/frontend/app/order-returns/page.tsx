@@ -190,7 +190,7 @@ const ReturnCard = memo(function ReturnCard({
   const [returnType, setReturnType] = useState(returnItem.return_type || "");
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
-  
+
   // Price modal state
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [modalPrices, setModalPrices] = useState({
@@ -266,7 +266,7 @@ const ReturnCard = memo(function ReturnCard({
     // Check if product has prices (unit_price is purchase_price, need sale_price too)
     const hasUnitPrice = returnItem.unit_price && returnItem.unit_price > 0;
     const hasSalePrice = returnItem.sale_price && returnItem.sale_price > 0;
-    
+
     if (!hasUnitPrice || !hasSalePrice) {
       // Show price modal if prices are missing
       setModalPrices({
@@ -276,7 +276,7 @@ const ReturnCard = memo(function ReturnCard({
       setShowPriceModal(true);
       return;
     }
-    
+
     // Continue with normal processing if prices exist
     await processReturn();
   };
@@ -902,7 +902,8 @@ const ReturnCard = memo(function ReturnCard({
                 <div className="flex gap-2 text-xs text-yellow-800 dark:text-yellow-300">
                   <span className="flex-shrink-0">⚠️</span>
                   <div>
-                    가격 정보가 없습니다. 설정 시 제품에 저장되며 이후 반품/교환에도 적용됩니다.
+                    가격 정보가 없습니다. 설정 시 제품에 저장되며 이후
+                    반품/교환에도 적용됩니다.
                   </div>
                 </div>
               </div>
@@ -929,7 +930,9 @@ const ReturnCard = memo(function ReturnCard({
                         type="text"
                         value={
                           modalPrices.purchasePrice
-                            ? Number(modalPrices.purchasePrice).toLocaleString("ko-KR")
+                            ? Number(modalPrices.purchasePrice).toLocaleString(
+                                "ko-KR"
+                              )
                             : ""
                         }
                         onChange={(e) => {
@@ -944,7 +947,9 @@ const ReturnCard = memo(function ReturnCard({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            const salePriceInput = document.getElementById("sale-price-input-return");
+                            const salePriceInput = document.getElementById(
+                              "sale-price-input-return"
+                            );
                             if (salePriceInput) {
                               salePriceInput.focus();
                             }
@@ -954,7 +959,9 @@ const ReturnCard = memo(function ReturnCard({
                         className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
                         autoFocus
                       />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">원</span>
+                      <span className="text-sm text-slate-700 dark:text-slate-300">
+                        원
+                      </span>
                     </div>
                   </div>
 
@@ -968,7 +975,9 @@ const ReturnCard = memo(function ReturnCard({
                         type="text"
                         value={
                           modalPrices.salePrice
-                            ? Number(modalPrices.salePrice).toLocaleString("ko-KR")
+                            ? Number(modalPrices.salePrice).toLocaleString(
+                                "ko-KR"
+                              )
                             : ""
                         }
                         onChange={(e) => {
@@ -986,13 +995,18 @@ const ReturnCard = memo(function ReturnCard({
                             handleSavePrices();
                           } else if (e.key === "Escape") {
                             setShowPriceModal(false);
-                            setModalPrices({ purchasePrice: "", salePrice: "" });
+                            setModalPrices({
+                              purchasePrice: "",
+                              salePrice: "",
+                            });
                           }
                         }}
                         placeholder="판매가 입력"
                         className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
                       />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">원</span>
+                      <span className="text-sm text-slate-700 dark:text-slate-300">
+                        원
+                      </span>
                     </div>
                   </div>
                 </div>

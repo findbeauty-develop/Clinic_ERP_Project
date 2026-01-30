@@ -34,7 +34,12 @@ export class ProductsRepository {
     });
   }
 
-  update(id: string, data: any, tenantId: string, tx?: Prisma.TransactionClient) {
+  update(
+    id: string,
+    data: any,
+    tenantId: string,
+    tx?: Prisma.TransactionClient
+  ) {
     return this.getClient(tx).product.update({
       where: { id, tenant_id: tenantId },
       data: data as any,

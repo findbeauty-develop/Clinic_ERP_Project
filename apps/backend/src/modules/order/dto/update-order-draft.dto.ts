@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsInt, Min } from "class-validator";
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Min,
+} from "class-validator";
 import { Type } from "class-transformer";
 
 export class DraftOrderItemDto {
@@ -53,4 +60,3 @@ export class UpdateOrderDraftItemDto {
   @Min(0)
   quantity!: number; // 0 bo'lsa, item o'chiriladi
 }
-

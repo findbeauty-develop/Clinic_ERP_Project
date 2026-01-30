@@ -1,5 +1,5 @@
-import { IsArray, IsString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsArray, IsString, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
 
 class MemberCredentialDto {
   @IsString()
@@ -24,4 +24,3 @@ export class SendMembersCredentialsDto {
   @Type(() => MemberCredentialDto)
   members!: MemberCredentialDto[];
 }
-

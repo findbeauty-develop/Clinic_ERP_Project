@@ -10,7 +10,12 @@ import {
   Delete,
   Header,
 } from "@nestjs/common";
-import { ApiOperation, ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiOperation,
+  ApiTags,
+  ApiBearerAuth,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { CreateOutboundDto, BulkOutboundDto } from "../dto/create-outbound.dto";
 import { PackageOutboundDto } from "../../package/dto/package-outbound.dto";
 import { UnifiedOutboundDto } from "../dto/unified-outbound.dto";
@@ -27,8 +32,16 @@ export class OutboundController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @Header("Cache-Control", "public, max-age=30")
-  @ApiOperation({ summary: "Get all products with batches for outbound processing (FEFO sorted)" })
-  @ApiQuery({ name: "search", required: false, type: String, description: "Search by product name, brand, or batch number" })
+  @ApiOperation({
+    summary:
+      "Get all products with batches for outbound processing (FEFO sorted)",
+  })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    type: String,
+    description: "Search by product name, brand, or batch number",
+  })
   getProductsForOutbound(
     @Tenant() tenantId: string,
     @Query("search") search?: string
@@ -177,7 +190,8 @@ export class OutboundController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: "통합 출고 처리 - 모든 출고 타입(제품, 패키지, 바코드)을 통합 처리",
+    summary:
+      "통합 출고 처리 - 모든 출고 타입(제품, 패키지, 바코드)을 통합 처리",
     description:
       "출고 예정 목록의 데이터를 최종 검토 후 실제 출고를 확정하는 단계. " +
       "재고 DB 차감 반영, 출고 로그 생성, 오류 발생 시 실패 리스트 출력",
@@ -197,10 +211,21 @@ export class OutboundController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: "출고 취소 - 특정 시간의 출고 건들을 취소하고 재고 복원",
-    description: "출고 내역을 취소하고 제품 재고를 원래대로 복원합니다. outboundTimestamp와 managerName을 query params로 전달합니다.",
+    description:
+      "출고 내역을 취소하고 제품 재고를 원래대로 복원합니다. outboundTimestamp와 managerName을 query params로 전달합니다.",
   })
-  @ApiQuery({ name: "outboundTimestamp", required: true, type: String, description: "출고 시간 (ISO string)" })
-  @ApiQuery({ name: "managerName", required: true, type: String, description: "담당자 이름" })
+  @ApiQuery({
+    name: "outboundTimestamp",
+    required: true,
+    type: String,
+    description: "출고 시간 (ISO string)",
+  })
+  @ApiQuery({
+    name: "managerName",
+    required: true,
+    type: String,
+    description: "담당자 이름",
+  })
   cancelOutbound(
     @Query("outboundTimestamp") outboundTimestamp: string,
     @Query("managerName") managerName: string,
@@ -209,7 +234,10 @@ export class OutboundController {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-    return this.outboundService.cancelOutboundByTimestamp(outboundTimestamp, managerName, tenantId);
+    return this.outboundService.cancelOutboundByTimestamp(
+      outboundTimestamp,
+      managerName,
+      tenantId
+    );
   }
 }
-

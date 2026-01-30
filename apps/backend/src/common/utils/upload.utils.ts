@@ -59,8 +59,7 @@ export const saveBase64Images = async (
     }
 
     const buffer = Buffer.from(base64Data, "base64");
-    const filename =
-      uuidv4() + getExtensionFromMime(mime ?? "image/png");
+    const filename = uuidv4() + getExtensionFromMime(mime ?? "image/png");
     const filePath = join(categoryDir, filename);
     await fs.writeFile(filePath, buffer);
     // Return path with tenant ID if provided
@@ -72,4 +71,3 @@ export const saveBase64Images = async (
 
   return results;
 };
-

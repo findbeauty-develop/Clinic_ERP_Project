@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [returnExchanges, setReturnExchanges] = useState<ReturnExchange[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
-   const [notificationCount, setNotificationCount] = useState(4);
+   const [notificationCount, setNotificationCount] = useState("");
   const [stats, setStats] = useState<DashboardStats>({
     totalCompanies: 40,
     totalReceivables: 217800000,
@@ -477,11 +477,11 @@ export default function DashboardPage() {
     />
   </svg>
 
-  {notificationCount > 0 && (
+  {/* {notificationCount > 0 && (
     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
       {notificationCount}
     </span>
-  )}
+  )} */}
 </button>
       </div>
 

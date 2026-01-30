@@ -1,5 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma.service';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
+import { PrismaService } from "../../core/prisma.service";
 
 @Injectable()
 export class RejectedOrderService {
@@ -8,9 +12,15 @@ export class RejectedOrderService {
   /**
    * Create rejected order record when user confirms rejection
    */
-  async createRejectedOrder(tenantId: string, orderId: string, memberName: string) {
+  async createRejectedOrder(
+    tenantId: string,
+    orderId: string,
+    memberName: string
+  ) {
     if (!tenantId || !orderId || !memberName) {
-      throw new BadRequestException('Tenant ID, Order ID, and Member Name are required');
+      throw new BadRequestException(
+        "Tenant ID, Order ID, and Member Name are required"
+      );
     }
 
     // Find the order with items and supplier info
@@ -19,7 +29,7 @@ export class RejectedOrderService {
         where: {
           id: orderId,
           tenant_id: tenantId,
-          status: 'rejected',
+          status: "rejected",
         },
         include: {
           items: {
@@ -42,16 +52,16 @@ export class RejectedOrderService {
     }
 
     // Get supplier info
-    let companyName = '알 수 없음';
-    let managerName = '알 수 없음';
-    
+    let companyName = "알 수 없음";
+    let managerName = "알 수 없음";
+
     if (order.supplier_id) {
       const supplier = await this.prisma.executeWithRetry(async () => {
         return await (this.prisma as any).supplier.findUnique({
           where: { id: order.supplier_id },
           include: {
             managers: {
-              where: { status: 'ACTIVE' },
+              where: { status: "ACTIVE" },
               take: 1,
             },
           },
@@ -59,8 +69,8 @@ export class RejectedOrderService {
       });
 
       if (supplier) {
-        companyName = supplier.company_name || '알 수 없음';
-        managerName = supplier.managers?.[0]?.name || '알 수 없음';
+        companyName = supplier.company_name || "알 수 없음";
+        managerName = supplier.managers?.[0]?.name || "알 수 없음";
       }
     }
 
@@ -75,7 +85,7 @@ export class RejectedOrderService {
             order_no: order.order_no,
             company_name: companyName,
             manager_name: managerName,
-            product_name: item.product?.name || '알 수 없음',
+            product_name: item.product?.name || "알 수 없음",
             product_brand: item.product?.brand || null,
             qty: item.quantity,
             member_name: memberName,
@@ -93,7 +103,7 @@ export class RejectedOrderService {
    */
   async getRejectedOrders(tenantId: string) {
     if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
+      throw new BadRequestException("Tenant ID is required");
     }
 
     const rejectedOrders = await this.prisma.executeWithRetry(async () => {
@@ -102,7 +112,7 @@ export class RejectedOrderService {
           tenant_id: tenantId,
         },
         orderBy: {
-          created_at: 'desc',
+          created_at: "desc",
         },
       });
     });
@@ -126,4 +136,3 @@ export class RejectedOrderService {
     return count > 0;
   }
 }
-

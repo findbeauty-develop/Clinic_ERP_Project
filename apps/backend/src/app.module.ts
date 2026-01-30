@@ -21,26 +21,28 @@ import { CalendarModule } from "./modules/calendar/calendar.module";
 import { WeatherModule } from "./modules/weather/weather.module";
 import { SupportModule } from "./modules/support/support.module";
 import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
+import { CommonModule } from "./common/common.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       // Try multiple paths for .env file (local dev and Docker)
-      envFilePath: process.env.NODE_ENV === 'production' 
-    ? [
-        ".env.production",
-        "apps/backend/.env.production",
-        "../../apps/backend/.env.production",
-      ]
-    : [
-        ".env.local",        // ✅ Development uchun .env.local (priority)
-        ".env",              // ✅ Development uchun .env
-        "apps/backend/.env.local",
-        "apps/backend/.env",
-        "../../apps/backend/.env.local",
-        "../../apps/backend/.env",
-      ],
+      envFilePath:
+        process.env.NODE_ENV === "production"
+          ? [
+              ".env.production",
+              "apps/backend/.env.production",
+              "../../apps/backend/.env.production",
+            ]
+          : [
+              ".env.local", // ✅ Development uchun .env.local (priority)
+              ".env", // ✅ Development uchun .env
+              "apps/backend/.env.local",
+              "apps/backend/.env",
+              "../../apps/backend/.env.local",
+              "../../apps/backend/.env",
+            ],
       ignoreEnvFile: false,
       ignoreEnvVars: false, // Always read from process.env
       expandVariables: true,
@@ -69,6 +71,7 @@ import { PerformanceLoggerMiddleware } from "./common/middleware/performance-log
     CalendarModule,
     WeatherModule,
     SupportModule,
+    CommonModule, // ✅ Global monitoring va notification services
   ],
   providers: [
     // ✅ Global throttler guard (barcha endpoint'lar uchun)
@@ -86,8 +89,6 @@ import { PerformanceLoggerMiddleware } from "./common/middleware/performance-log
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Apply PerformanceLoggerMiddleware
-    consumer
-      .apply(PerformanceLoggerMiddleware)
-      .forRoutes("*");
+    consumer.apply(PerformanceLoggerMiddleware).forRoutes("*");
   }
 }

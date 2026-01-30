@@ -55,16 +55,13 @@ export class DataGoKrService {
       if (searchKeyword) {
         params.searchKeyword = searchKeyword;
       }
-      
 
       const response = await firstValueFrom(
         this.httpService.get(this.baseUrl, { params })
       );
 
-    
       // Handle XML response if JSON fails
       if (typeof response.data === "string") {
-       
         return this.parseXmlResponse(
           response.data,
           validPageNo,
@@ -72,7 +69,6 @@ export class DataGoKrService {
         );
       }
 
-     
       return this.formatResponse(response.data, validPageNo, validNumOfRows);
     } catch (error) {
       const errorMessage =
@@ -90,7 +86,7 @@ export class DataGoKrService {
   ): Promise<PressReleaseResponse> {
     try {
       const result = await parseStringPromise(xml);
-      
+
       const response = result.response;
 
       if (!response || !response.header || !response.header[0]) {
@@ -110,13 +106,8 @@ export class DataGoKrService {
       const itemsArray = body.items?.[0];
       const items = itemsArray?.item || [];
 
-      
-      
-
       // If items is not an array, make it an array
       const itemsList = Array.isArray(items) ? items : items ? [items] : [];
-
-      
 
       const pressReleases: PressRelease[] = itemsList.map(
         (item: any, index: number) => {
@@ -164,7 +155,6 @@ export class DataGoKrService {
             : item.pressDt || "";
 
           // Debug log to check if detailUrl is unique for each item
-          
 
           // 🆕 Extract attachments and find image
           const attachments = this.parseAttachments(item);
@@ -358,8 +348,6 @@ export class DataGoKrService {
     }
 
     try {
-     
-
       const response = await firstValueFrom(
         this.httpService.get(detailUrl, {
           timeout: 5000, // 5 second timeout

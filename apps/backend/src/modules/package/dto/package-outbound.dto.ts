@@ -44,4 +44,3 @@ export class PackageOutboundDto {
   @Type(() => PackageOutboundItemDto)
   items!: PackageOutboundItemDto[]; // 각 구성품의 출고 수량
 }
-

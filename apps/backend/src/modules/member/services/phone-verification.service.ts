@@ -1,6 +1,6 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../../core/prisma.service';
-import { MessageService } from './message.service';
+import { Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { PrismaService } from "../../../core/prisma.service";
+import { MessageService } from "./message.service";
 
 @Injectable()
 export class PhoneVerificationService {
@@ -10,21 +10,25 @@ export class PhoneVerificationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly messageService: MessageService,
+    private readonly messageService: MessageService
   ) {}
 
   private generateCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  async sendVerificationCode(phoneNumber: string): Promise<{ success: boolean; message: string }> {
-    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+  async sendVerificationCode(
+    phoneNumber: string
+  ): Promise<{ success: boolean; message: string }> {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
     if (cleanPhone.length < 10 || cleanPhone.length > 11) {
-      throw new BadRequestException('올바른 전화번호 형식을 입력하세요');
+      throw new BadRequestException("올바른 전화번호 형식을 입력하세요");
     }
 
     // Rate limiting: Check if code was sent in the last 1 minute
-    const oneMinuteAgo = new Date(Date.now() - this.RATE_LIMIT_MINUTES * 60 * 1000);
+    const oneMinuteAgo = new Date(
+      Date.now() - this.RATE_LIMIT_MINUTES * 60 * 1000
+    );
     const recentCode = await this.prisma.phoneVerificationCode.findFirst({
       where: {
         phone_number: cleanPhone,
@@ -33,7 +37,7 @@ export class PhoneVerificationService {
         },
       },
       orderBy: {
-        created_at: 'desc',
+        created_at: "desc",
       },
     });
 
@@ -45,7 +49,9 @@ export class PhoneVerificationService {
 
     // Generate code
     const code = this.generateCode();
-    const expiresAt = new Date(Date.now() + this.CODE_EXPIRY_MINUTES * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + this.CODE_EXPIRY_MINUTES * 60 * 1000
+    );
 
     // Invalidate previous unverified codes for this phone number
     await this.prisma.phoneVerificationCode.updateMany({
@@ -70,24 +76,28 @@ export class PhoneVerificationService {
     // Send SMS
     const message = `[${code}] 클리닉 등록 인증번호입니다.`;
     const smsSent = await this.messageService.sendSMS(cleanPhone, message);
-    
+
     if (!smsSent) {
       this.logger.error(`Failed to send SMS to ${cleanPhone}`);
-      throw new BadRequestException('인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      throw new BadRequestException(
+        "인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요."
+      );
     }
-
 
     return {
       success: true,
-      message: '인증번호가 전송되었습니다.',
+      message: "인증번호가 전송되었습니다.",
     };
   }
 
-  async verifyCode(phoneNumber: string, code: string): Promise<{ verified: boolean; success: boolean }> {
-    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-    
+  async verifyCode(
+    phoneNumber: string,
+    code: string
+  ): Promise<{ verified: boolean; success: boolean }> {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+
     if (!code || code.length !== 6) {
-      throw new BadRequestException('인증번호는 6자리 숫자입니다.');
+      throw new BadRequestException("인증번호는 6자리 숫자입니다.");
     }
 
     // Find the most recent unverified code for this phone number
@@ -97,7 +107,7 @@ export class PhoneVerificationService {
         verified: false,
       },
       orderBy: {
-        created_at: 'desc',
+        created_at: "desc",
       },
     });
 
@@ -121,7 +131,6 @@ export class PhoneVerificationService {
       data: { verified: true },
     });
 
-    
     return { verified: true, success: true };
   }
 }

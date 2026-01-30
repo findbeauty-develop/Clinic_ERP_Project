@@ -23,13 +23,16 @@ export class VerifyCertificateResponseDto {
   @ApiProperty({ description: "Raw OCR text" })
   rawText!: string;
 
-  @ApiProperty({ description: "Warnings about missing or invalid fields", type: [String] })
+  @ApiProperty({
+    description: "Warnings about missing or invalid fields",
+    type: [String],
+  })
   warnings!: string[];
 
   @ApiProperty({ description: "Uploaded file URL (if saved)", required: false })
   fileUrl?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: "Mapped data ready for RegisterClinicDto",
     required: false,
     example: {
@@ -41,8 +44,8 @@ export class VerifyCertificateResponseDto {
       doctorName: "정연호",
       licenseType: "의사면허",
       licenseNumber: "53132",
-      documentIssueNumber: "21132-21421-00430-04009"
-    }
+      documentIssueNumber: "21132-21421-00430-04009",
+    },
   })
   mappedData?: {
     name: string;
@@ -56,7 +59,7 @@ export class VerifyCertificateResponseDto {
     documentIssueNumber: string;
   };
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: "HIRA verification result",
     required: false,
     example: {
@@ -66,16 +69,16 @@ export class VerifyCertificateResponseDto {
         nameMatch: true,
         addressMatch: true,
         typeMatch: true,
-        dateMatch: false
+        dateMatch: false,
       },
       hiraData: {
         yadmNm: "닥터정리반의원",
         addr: "서울특별시 강남구 압구정로 320",
         clcdNm: "의원",
-        telno: "02-1234-5678"
+        telno: "02-1234-5678",
       },
-      warnings: []
-    }
+      warnings: [],
+    },
   })
   hiraVerification?: {
     isValid: boolean;
@@ -98,4 +101,3 @@ export class VerifyCertificateResponseDto {
     warnings: string[];
   };
 }
-

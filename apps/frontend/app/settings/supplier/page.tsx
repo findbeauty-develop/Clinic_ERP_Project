@@ -5,7 +5,6 @@ import Link from "next/link";
 import { getAccessToken } from "@/lib/api";
 import SupplierFormModal from "@/components/supplier-form-modal";
 
-
 interface Supplier {
   id: string;
   company_name: string;
@@ -343,4 +342,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-

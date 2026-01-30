@@ -27,7 +27,7 @@ export const getApiUrl = () => {
     // Browser'da: environment variable yoki window.location'dan HTTPS olish
     return (
       process.env.NEXT_PUBLIC_API_URL ||
-      `https://${window.location.hostname.replace('clinic.', 'api.')}`
+      `https://${window.location.hostname.replace("clinic.", "api.")}`
     );
   }
   // Server-side: environment variable yoki default HTTPS
@@ -41,16 +41,16 @@ const getCacheKey = (endpoint: string, options: RequestInit = {}): string => {
   const apiUrl = getApiUrl();
   const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${endpoint}`;
   const method = options.method || "GET";
-  
+
   // ✅ Normalize headers: ignore cache-busting headers for cache key generation
   // This ensures that requests with/without cache-busting headers use the same cache key
-  const headers = options.headers as Record<string, string> || {};
+  const headers = (options.headers as Record<string, string>) || {};
   const normalizedHeaders = {
-    Authorization: headers.Authorization || '',
-    'X-Tenant-Id': headers['X-Tenant-Id'] || '',
+    Authorization: headers.Authorization || "",
+    "X-Tenant-Id": headers["X-Tenant-Id"] || "",
     // Ignore Cache-Control, Pragma, and other cache-busting headers
   };
-  
+
   return `${method}:${url}:${JSON.stringify(normalizedHeaders)}`;
 };
 
@@ -58,13 +58,16 @@ const getCacheKey = (endpoint: string, options: RequestInit = {}): string => {
  * Clear the request cache (useful for cache invalidation)
  */
 export const clearCache = (endpoint?: string) => {
- 
   if (endpoint) {
     const apiUrl = getApiUrl();
     // Normalize endpoint - remove leading slash if present
-    const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    const url = endpoint.startsWith("http") ? endpoint : `${apiUrl}${normalizedEndpoint}`;
-    
+    const normalizedEndpoint = endpoint.startsWith("/")
+      ? endpoint
+      : `/${endpoint}`;
+    const url = endpoint.startsWith("http")
+      ? endpoint
+      : `${apiUrl}${normalizedEndpoint}`;
+
     // ✅ More aggressive cache clearing: match by URL pattern (with or without query params)
     const keysToDelete: string[] = [];
     for (const key of requestCache.keys()) {
@@ -75,8 +78,8 @@ export const clearCache = (endpoint?: string) => {
         // Match by base URL (without query params) or endpoint path
         const baseUrl = keyUrl.split("?")[0]; // Remove query params
         if (
-          baseUrl.includes(url.split("?")[0]) || 
-          baseUrl.includes(normalizedEndpoint) || 
+          baseUrl.includes(url.split("?")[0]) ||
+          baseUrl.includes(normalizedEndpoint) ||
           key.includes(normalizedEndpoint) ||
           key.includes(endpoint)
         ) {
@@ -84,12 +87,12 @@ export const clearCache = (endpoint?: string) => {
         }
       }
     }
-    
+
     // Delete matched keys
     keysToDelete.forEach((key) => {
       requestCache.delete(key);
     });
-    
+
     // Also clear any pending requests for this endpoint
     const pendingKeysToDelete: string[] = [];
     for (const key of pendingRequests.keys()) {
@@ -98,8 +101,8 @@ export const clearCache = (endpoint?: string) => {
         const keyUrl = keyParts.slice(1, -1).join(":");
         const baseUrl = keyUrl.split("?")[0];
         if (
-          baseUrl.includes(url.split("?")[0]) || 
-          baseUrl.includes(normalizedEndpoint) || 
+          baseUrl.includes(url.split("?")[0]) ||
+          baseUrl.includes(normalizedEndpoint) ||
           key.includes(normalizedEndpoint) ||
           key.includes(endpoint)
         ) {
@@ -196,7 +199,9 @@ const isTokenExpired = (expiry: number | null): boolean => {
  * Get access token (with automatic refresh)
  * @param skipLogout - Agar true bo'lsa, token yo'q bo'lganda logout qilmaslik (register page'lar uchun)
  */
-export const getAccessToken = async (skipLogout: boolean = false): Promise<string | null> => {
+export const getAccessToken = async (
+  skipLogout: boolean = false
+): Promise<string | null> => {
   // ✅ Agar access token mavjud va valid bo'lsa, qaytarish
   if (accessToken && !isTokenExpired(accessTokenExpiry)) {
     return accessToken;
@@ -217,7 +222,7 @@ export const getAccessToken = async (skipLogout: boolean = false): Promise<strin
   refreshPromise = (async () => {
     try {
       const refreshUrl = `${getApiUrl()}/iam/members/refresh`;
-      
+
       const response = await fetch(refreshUrl, {
         method: "POST",
         credentials: "include", // ✅ Cookie'ni yuborish
@@ -228,20 +233,23 @@ export const getAccessToken = async (skipLogout: boolean = false): Promise<strin
 
       if (response.ok) {
         const data = await response.json();
-        
+
         if (!data.access_token) {
-          console.error("[getAccessToken] Refresh response missing access_token:", data);
+          console.error(
+            "[getAccessToken] Refresh response missing access_token:",
+            data
+          );
           // Token yo'q bo'lsa, logout qilish (faqat skipLogout false bo'lsa)
           if (!skipLogout) {
             handleLogout();
           }
           return null;
         }
-        
+
         accessToken = data.access_token;
-        
+
         // ✅ Token expiry'ni hisoblash (15 minut default yoki response'dan)
-        const expiresIn = data.expires_in 
+        const expiresIn = data.expires_in
           ? data.expires_in * 1000 // seconds to milliseconds
           : 15 * 60 * 1000; // Default 15 minutes
         accessTokenExpiry = Date.now() + expiresIn;
@@ -250,10 +258,13 @@ export const getAccessToken = async (skipLogout: boolean = false): Promise<strin
         if (data.member) {
           memberData = data.member;
           tenantId = data.member.tenant_id;
-          
+
           // ✅ Backward compatibility: localStorage'ga ham saqlash (faqat member data)
           if (typeof window !== "undefined") {
-            localStorage.setItem("erp_member_data", JSON.stringify(data.member));
+            localStorage.setItem(
+              "erp_member_data",
+              JSON.stringify(data.member)
+            );
             localStorage.setItem("erp_tenant_id", data.member.tenant_id);
           }
         }
@@ -262,8 +273,12 @@ export const getAccessToken = async (skipLogout: boolean = false): Promise<strin
       } else {
         // Refresh token invalid yoki yo'q - faqat 401 bo'lsa logout qilish
         const errorData = await response.json().catch(() => ({}));
-        console.error("[getAccessToken] Token refresh failed:", response.status, errorData);
-        
+        console.error(
+          "[getAccessToken] Token refresh failed:",
+          response.status,
+          errorData
+        );
+
         // Faqat 401 (Unauthorized) bo'lsa logout qilish (faqat skipLogout false bo'lsa)
         // 429 (Too Many Requests) yoki boshqa error'lar uchun null qaytarish (retry mumkin)
         if (response.status === 401 && !skipLogout) {
@@ -300,7 +315,7 @@ export const setAccessToken = (token: string, expiresIn?: number) => {
 export const setMemberData = (data: any) => {
   memberData = data;
   tenantId = data?.tenant_id || null;
-  
+
   // ✅ Backward compatibility: localStorage'ga ham saqlash
   if (typeof window !== "undefined") {
     localStorage.setItem("erp_member_data", JSON.stringify(data));
@@ -325,11 +340,11 @@ export const getAuthToken = (): string | null => {
 export const getTenantId = (): string | null => {
   // ✅ Memory'dan qaytarish, agar yo'q bo'lsa localStorage'dan
   if (tenantId) return tenantId;
-  
+
   if (typeof window !== "undefined") {
     tenantId = localStorage.getItem("erp_tenant_id");
   }
-  
+
   return tenantId;
 };
 
@@ -339,7 +354,7 @@ export const getTenantId = (): string | null => {
 export const getMemberData = (): any | null => {
   // ✅ Memory'dan qaytarish, agar yo'q bo'lsa localStorage'dan
   if (memberData) return memberData;
-  
+
   if (typeof window !== "undefined") {
     const stored = localStorage.getItem("erp_member_data");
     if (stored) {
@@ -351,7 +366,7 @@ export const getMemberData = (): any | null => {
       }
     }
   }
-  
+
   return null;
 };
 
@@ -365,8 +380,6 @@ export const apiRequest = async (
   const apiUrl = getApiUrl();
   const token = await getAccessToken(); // ✅ Async token olish
   const tenantIdValue = getTenantId();
-
-  
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -475,12 +488,12 @@ export const apiPost = async <T = any>(
   // ✅ Handle empty responses gracefully
   const contentType = response.headers.get("content-type");
   const text = await response.text();
-  
+
   // Agar response bo'sh bo'lsa yoki JSON emas bo'lsa
   if (!text || text.trim() === "") {
     return {} as T;
   }
-  
+
   // Agar JSON bo'lsa, parse qilish
   if (contentType?.includes("application/json")) {
     try {
@@ -490,7 +503,7 @@ export const apiPost = async <T = any>(
       return {} as T;
     }
   }
-  
+
   // Boshqa hollarda text qaytarish
   return text as T;
 };
@@ -534,11 +547,13 @@ export const apiGet = async <T = any>(
   options: RequestInit = {}
 ): Promise<T> => {
   // ✅ Check if this is a force refresh request (has cache-busting headers)
-  const isForceRefresh = options.headers && (
-    (options.headers as Record<string, string>)["Cache-Control"]?.includes("no-cache") ||
-    (options.headers as Record<string, string>)["Pragma"] === "no-cache"
-  );
-  
+  const isForceRefresh =
+    options.headers &&
+    ((options.headers as Record<string, string>)["Cache-Control"]?.includes(
+      "no-cache"
+    ) ||
+      (options.headers as Record<string, string>)["Pragma"] === "no-cache");
+
   const cacheKey = getCacheKey(endpoint, { ...options, method: "GET" });
 
   // ✅ Skip cache check if force refresh
@@ -660,11 +675,11 @@ export const apiDelete = async <T = any>(
     // ✅ Also clear outbound cache since outbound page uses products
     clearCache("/outbound/products");
     clearCache("outbound/products");
-    
+
     // Set flag for inbound page refresh
     if (typeof window !== "undefined") {
       sessionStorage.setItem("inbound_force_refresh", "true");
-      
+
       // Extract product ID from endpoint (e.g., "/products/123" -> "123")
       const productIdMatch = endpoint.match(/\/products\/([^\/]+)/);
       if (productIdMatch) {

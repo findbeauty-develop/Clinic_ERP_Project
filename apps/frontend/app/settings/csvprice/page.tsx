@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 
 interface Product {
   id: string;
@@ -24,23 +24,24 @@ export default function BulkPricingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [showOnlyMissing, setShowOnlyMissing] = useState(true);
   const [editedPrices, setEditedPrices] = useState<
     Record<string, { purchasePrice?: string; salePrice?: string }>
   >({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
-  const apiUrl =
-    typeof window !== "undefined"
-      ? localStorage.getItem("api_url") || "https://api.jaclit.com"
-      : "https://api.jaclit.com";
+  // const apiUrl =
+  //   typeof window !== "undefined"
+  //     ? localStorage.getItem("api_url") || "https://api.jaclit.com"
+  //     : "https://api.jaclit.com";
 
   // Fetch products from API
   const fetchProducts = async () => {
     setLoading(true);
     try {
       const { apiGet } = await import("../../../lib/api");
-      const data = await apiGet(`${apiUrl}/products`);
+      const data = await apiGet(`/products`);
 
       // Map products and add first batch info
       const mappedProducts = (data || []).map((product: any) => ({
@@ -62,6 +63,15 @@ export default function BulkPricingPage() {
     fetchProducts();
   }, []);
 
+  // Debounce search query for better performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms debounce delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Filter logic
   const filteredProducts = useMemo(() => {
     let filtered = products;
@@ -76,8 +86,8 @@ export default function BulkPricingPage() {
       });
     }
 
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
           p.productName?.toLowerCase().includes(query) ||
@@ -88,7 +98,13 @@ export default function BulkPricingPage() {
     }
 
     return filtered;
-  }, [products, showOnlyMissing, searchQuery]);
+  }, [products, showOnlyMissing, debouncedSearchQuery]);
+
+  // Clear search function
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+  }, []);
 
   // Handle price change
   const handlePriceChange = (
@@ -120,7 +136,7 @@ export default function BulkPricingPage() {
 
     try {
       const { apiPut } = await import("../../../lib/api");
-      await apiPut(`${apiUrl}/products/${productId}`, {
+      await apiPut(`/products/${productId}`, {
         purchasePrice: prices.purchasePrice
           ? Number(prices.purchasePrice.replace(/,/g, ""))
           : null,
@@ -214,10 +230,40 @@ export default function BulkPricingPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="검색: 제품명, 브랜드, 바코드..."
-              className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-4 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:ring-blue-800"
+              placeholder="검색: 제품명, 브랜드, 바코드, 배치번호..."
+              className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-10 pr-10 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500 dark:focus:ring-blue-800"
             />
+            {searchQuery && (
+              <button
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                aria-label="검색 지우기"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
+          {searchQuery && (
+            <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              검색 결과:{" "}
+              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                {filteredProducts.length}
+              </span>
+              개 제품
+            </div>
+          )}
         </div>
 
         {/* Product List */}
@@ -282,18 +328,70 @@ export default function BulkPricingPage() {
                   {/* Product Info */}
                   <div className="col-span-1 md:col-span-4 flex flex-col gap-1">
                     <div className="font-medium text-slate-900 dark:text-white">
-                      {product.productName}
+                      {debouncedSearchQuery ? (
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: product.productName.replace(
+                              new RegExp(`(${debouncedSearchQuery})`, "gi"),
+                              '<mark class="bg-yellow-200 dark:bg-yellow-800">$1</mark>'
+                            ),
+                          }}
+                        />
+                      ) : (
+                        product.productName
+                      )}
                     </div>
                     <div className="text-sm text-slate-500 dark:text-slate-400">
-                      제조사: {product.brand}
+                      제조사:{" "}
+                      {debouncedSearchQuery ? (
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: product.brand.replace(
+                              new RegExp(`(${debouncedSearchQuery})`, "gi"),
+                              '<mark class="bg-yellow-200 dark:bg-yellow-800">$1</mark>'
+                            ),
+                          }}
+                        />
+                      ) : (
+                        product.brand
+                      )}
                       {product.qty !== undefined &&
                         product.qty > 0 &&
                         `  재고: ${product.qty}`}
-                      {product.unit}
+                      {product.unit && ` ${product.unit}`}
                     </div>
                     {product.batchNo && (
                       <div className="text-xs text-slate-400 dark:text-slate-500">
-                        배치: {product.batchNo}
+                        배치:{" "}
+                        {debouncedSearchQuery ? (
+                          <span
+                            dangerouslySetInnerHTML={{
+                              __html: product.batchNo.replace(
+                                new RegExp(`(${debouncedSearchQuery})`, "gi"),
+                                '<mark class="bg-yellow-200 dark:bg-yellow-800">$1</mark>'
+                              ),
+                            }}
+                          />
+                        ) : (
+                          product.batchNo
+                        )}
+                      </div>
+                    )}
+                    {product.barcode && (
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        바코드:{" "}
+                        {debouncedSearchQuery ? (
+                          <span
+                            dangerouslySetInnerHTML={{
+                              __html: product.barcode.replace(
+                                new RegExp(`(${debouncedSearchQuery})`, "gi"),
+                                '<mark class="bg-yellow-200 dark:bg-yellow-800">$1</mark>'
+                              ),
+                            }}
+                          />
+                        ) : (
+                          product.barcode
+                        )}
                       </div>
                     )}
                   </div>

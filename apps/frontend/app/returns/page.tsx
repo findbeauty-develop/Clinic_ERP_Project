@@ -618,7 +618,6 @@ export default function ReturnsPage() {
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     반납 담당자
                   </label>
-                  
                 </div>
                 <input
                   type="text"

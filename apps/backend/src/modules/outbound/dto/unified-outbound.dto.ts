@@ -69,4 +69,3 @@ export class UnifiedOutboundDto {
   @Type(() => UnifiedOutboundItemDto)
   items!: UnifiedOutboundItemDto[]; // 출고 예정 리스트
 }
-

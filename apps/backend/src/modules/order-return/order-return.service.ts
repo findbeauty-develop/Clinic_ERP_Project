@@ -147,14 +147,14 @@ export class OrderReturnService {
       // 4. ProductSupplier'larni olish (FAQAT supplier_id yo'q bo'lgan return'lar uchun)
       // ✅ Optimization: Faqat kerakli product'lar uchun query
       const productsNeedingSupplier = new Set<string>();
-      
+
       // Return'lar orasida supplier_id yo'q bo'lganlarni topish
       returns.forEach((r: any) => {
         if (!r.supplier_id && r.product_id) {
           productsNeedingSupplier.add(r.product_id);
         }
       });
-      
+
       // Outbound'lar orasida supplier_id yo'q bo'lganlarni topish
       outbounds.forEach((o: any) => {
         // Outbound'ning product_id'si bo'lsa va supplier_id yo'q bo'lsa
@@ -174,7 +174,7 @@ export class OrderReturnService {
         this.logger.debug(
           `🔍 [ProductSupplier Query] Querying for ${productsNeedingSupplier.size} products (out of ${returns.length} returns)`
         );
-        
+
         const productSuppliers = await (
           this.prisma as any
         ).productSupplier.findMany({
@@ -220,7 +220,7 @@ export class OrderReturnService {
         productSuppliers.forEach((ps: any) => {
           productSuppliersMap.set(ps.product_id, ps);
         });
-        
+
         this.logger.debug(
           `✅ [ProductSupplier Query] Found ${productSuppliers.length} product suppliers`
         );
@@ -656,7 +656,7 @@ export class OrderReturnService {
         } else if (productSupplier?.clinicSupplierManager) {
           // Manual supplier - send email/SMS notification directly (no platform API call)
           const clinicSupplierManager = productSupplier.clinicSupplierManager;
-          
+
           try {
             // Get clinic details
             const clinic = await this.prisma.executeWithRetry(async () => {
@@ -696,11 +696,13 @@ export class OrderReturnService {
             });
 
             // ✅ Product name'ni to'g'ri olish - avval product.name, keyin returnItem.product_name
-            const productName = (product?.name && product.name.trim() !== "") 
-              ? product.name 
-              : (returnItem.product_name && returnItem.product_name.trim() !== "") 
-                ? returnItem.product_name 
-                : "알 수 없음";
+            const productName =
+              product?.name && product.name.trim() !== ""
+                ? product.name
+                : returnItem.product_name &&
+                    returnItem.product_name.trim() !== ""
+                  ? returnItem.product_name
+                  : "알 수 없음";
             const returnQty = returnItem.return_quantity || 0;
             const totalRefund = (returnItem.unit_price || 0) * returnQty;
             const returnNo = returnItem.return_no;
@@ -749,12 +751,12 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
               ];
 
               // Template ID'ni environment variable'dan olish
-             const templateId = parseInt(
-  process.env.BREVO_PRODUCT_RETURN_TEMPLATE_ID || 
-  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || 
-  "0",
-  10
-);
+              const templateId = parseInt(
+                process.env.BREVO_PRODUCT_RETURN_TEMPLATE_ID ||
+                  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID ||
+                  "0",
+                10
+              );
 
               if (templateId > 0) {
                 await this.emailService.sendReturnNotificationEmailWithTemplate(
@@ -873,8 +875,9 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
             null;
         } else if (outbound?.product?.productSupplier?.clinicSupplierManager) {
           // Manual supplier - send email/SMS notification directly (no platform API call)
-          const clinicSupplierManager = outbound.product.productSupplier.clinicSupplierManager;
-          
+          const clinicSupplierManager =
+            outbound.product.productSupplier.clinicSupplierManager;
+
           try {
             // Get clinic details
             const clinic = await this.prisma.executeWithRetry(async () => {
@@ -926,11 +929,13 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
             }
 
             // ✅ Product name'ni to'g'ri olish
-            const productName = (product?.name && product.name.trim() !== "") 
-              ? product.name 
-              : (returnItem.product_name && returnItem.product_name.trim() !== "") 
-                ? returnItem.product_name 
-                : "알 수 없음";
+            const productName =
+              product?.name && product.name.trim() !== ""
+                ? product.name
+                : returnItem.product_name &&
+                    returnItem.product_name.trim() !== ""
+                  ? returnItem.product_name
+                  : "알 수 없음";
             const returnQty = returnItem.return_quantity || 0;
             const totalRefund = (returnItem.unit_price || 0) * returnQty;
             const returnNo = returnItem.return_no;
@@ -1065,8 +1070,8 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
       const imagesArray = Array.isArray(returnItem.images)
         ? returnItem.images
         : returnItem.images
-        ? [returnItem.images]
-        : [];
+          ? [returnItem.images]
+          : [];
 
       // Debug log for images
 
@@ -1270,11 +1275,12 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
             }
 
             const products = returnData.items.map((item: any) => ({
-              productName: (item.productName && item.productName.trim() !== "") 
-                ? item.productName 
-                : (productNameFromDB && productNameFromDB.trim() !== "") 
-                  ? productNameFromDB 
-                  : "알 수 없음", // ✅ Fallback qo'shish
+              productName:
+                item.productName && item.productName.trim() !== ""
+                  ? item.productName
+                  : productNameFromDB && productNameFromDB.trim() !== ""
+                    ? productNameFromDB
+                    : "알 수 없음", // ✅ Fallback qo'shish
               brand: item.brand,
               quantity: item.quantity,
               unit: productUnit,

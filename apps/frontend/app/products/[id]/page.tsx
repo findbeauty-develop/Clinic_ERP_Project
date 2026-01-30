@@ -294,7 +294,6 @@ export default function ProductDetailPage() {
                               detail: { productId: params.id },
                             })
                           );
-                         
                         }
 
                         alert("제품이 성공적으로 삭제되었습니다.");
@@ -1010,12 +1009,10 @@ function ProductEditForm({
         supplierSearchPhoneNumber
       );
 
-      
-
       // Natijalarni tekshirish
       if (results && results.length > 0) {
         // Supplier topildi - malumotlarni ko'rsatish
-       
+
         setSupplierViewMode("results");
         setPhoneSearchNoResults(false);
       } else {
@@ -1111,7 +1108,8 @@ function ProductEditForm({
       formData.append("file", file);
 
       const supplierApiUrl =
-        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "https://api-supplier.jaclit.com";
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL ||
+        "https://api-supplier.jaclit.com";
       const response = await fetch(
         `${supplierApiUrl}/supplier/manager/upload-certificate`,
         {
@@ -2104,7 +2102,7 @@ function ProductEditForm({
                 type="button"
                 onClick={() => {
                   // Table'dan search form'ga o'tish (2-rasm)
-                  
+
                   if (selectedSupplierDetails) {
                     // Input'larni to'ldirish
                     setSupplierSearchCompanyName(
@@ -2117,9 +2115,8 @@ function ProductEditForm({
                       selectedSupplierDetails.phoneNumber
                     );
                     // Search form'ni ko'rsatish
-                   
+
                     setSupplierViewMode("search");
-                   
                   }
                 }}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -2617,7 +2614,6 @@ function ProductEditForm({
               <button
                 type="button"
                 onClick={() => {
-                  
                   setShowNewSupplierModal(false);
                   setPendingSupplierPhone("");
                   setPhoneSearchNoResults(false);
@@ -2660,8 +2656,8 @@ function ProductEditForm({
                 <span className="font-medium">
                   공급업체 정보를 입력한 후, 페이지 하단의{" "}
                   <span className="text-green-600 dark:text-green-400 font-bold">
-  &quot;저장&quot;
-</span>{" "}
+                    &quot;저장&quot;
+                  </span>{" "}
                   버튼을 클릭하세요
                 </span>
               </div>
@@ -3098,7 +3094,7 @@ function ProductEditForm({
                   type="button"
                   onClick={() => {
                     // "직접 입력" button bosilganda, to'liq form modal'ni ochish
-                   
+
                     setShowNewSupplierConfirmModal(false);
                     setShowNewSupplierModal(true);
                   }}
@@ -3149,9 +3145,7 @@ function ProductEditForm({
         </button>
         <button
           type="submit"
-          onClick={(e) => {
-           
-          }}
+          onClick={(e) => {}}
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={loading}
         >

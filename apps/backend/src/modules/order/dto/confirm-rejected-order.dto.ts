@@ -33,4 +33,3 @@ export class ConfirmRejectedOrderDto {
   @Type(() => RejectedOrderItemDto)
   items!: RejectedOrderItemDto[];
 }
-

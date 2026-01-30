@@ -50,4 +50,3 @@ export class BulkOutboundDto {
   @Type(() => CreateOutboundDto)
   items!: CreateOutboundDto[];
 }
-

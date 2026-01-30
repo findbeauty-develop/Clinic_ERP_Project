@@ -11,9 +11,9 @@ import { existsSync } from "fs";
 
 async function bootstrap() {
   // ✅ Environment detection va logging (AppModule yaratilishidan oldin)
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const isProduction = nodeEnv === 'production';
-  
+  const nodeEnv = process.env.NODE_ENV || "development";
+  const isProduction = nodeEnv === "production";
+
   // ✅ Env file paths tekshirish
   const envFilePaths = isProduction
     ? [
@@ -29,22 +29,17 @@ async function bootstrap() {
         resolve(process.cwd(), "../../apps/backend/.env.local"),
         resolve(process.cwd(), "../../apps/backend/.env"),
       ];
-  
-  const foundEnvFile = envFilePaths.find(path => existsSync(path));
-  const envFileName = foundEnvFile 
-    ? foundEnvFile.replace(process.cwd(), '.').replace(/\\/g, '/')
-    : 'NOT FOUND';
-  
- 
- 
-  
+
+  const foundEnvFile = envFilePaths.find((path) => existsSync(path));
+  const envFileName = foundEnvFile
+    ? foundEnvFile.replace(process.cwd(), ".").replace(/\\/g, "/")
+    : "NOT FOUND";
+
   // ✅ Key environment variables status
   const dbUrl = process.env.DATABASE_URL;
-  const dbHost = dbUrl ? new URL(dbUrl).hostname : 'not set';
-  const corsOrigins = process.env.CORS_ORIGINS ? '✅ Set' : '❌ Not set';
-  const port = process.env.PORT || '3000';
-  
-
+  const dbHost = dbUrl ? new URL(dbUrl).hostname : "not set";
+  const corsOrigins = process.env.CORS_ORIGINS ? "✅ Set" : "❌ Not set";
+  const port = process.env.PORT || "3000";
 
   const app = await NestFactory.create(AppModule);
 
@@ -61,34 +56,46 @@ async function bootstrap() {
   // ✅ CORS configuration from environment variable
   // Production'da CORS_ORIGINS majburiy, development'da localhost fallback
   // isProduction already declared above
-  
+
   // Development'da localhost'da ishlayotgan bo'lsa, production'ga o'xshamaslik
-  const isLocalhost = process.env.PORT === "3000" || 
-                      process.env.PORT === undefined ||
-                      !process.env.CORS_ORIGINS;
-  
+  const isLocalhost =
+    process.env.PORT === "3000" ||
+    process.env.PORT === undefined ||
+    !process.env.CORS_ORIGINS;
+
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
-    : (isProduction && !isLocalhost)
-    ? (() => {
-        throw new Error(
-          "CORS_ORIGINS environment variable must be set in production mode"
-        );
-      })()
-    : ["https://clinic.jaclit.com", "https://supplier.jaclit.com", "http://localhost:3000", "http://localhost:3001", "http://localhost:3003"];
+    : isProduction && !isLocalhost
+      ? (() => {
+          throw new Error(
+            "CORS_ORIGINS environment variable must be set in production mode"
+          );
+        })()
+      : [
+          "https://clinic.jaclit.com",
+          "https://supplier.jaclit.com",
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://localhost:3003",
+        ];
 
   // Origin validation callback function (qo'shimcha xavfsizlik)
-  const originValidator = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  const originValidator = (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) => {
     // Preflight request'lar uchun origin undefined bo'lishi mumkin
     if (!origin) {
       return callback(null, true);
     }
-    
+
     // Production'da faqat allowed origins'ga ruxsat berish
     if (isProduction && !allowedOrigins.includes(origin)) {
-      return callback(new Error(`Origin ${origin} is not allowed by CORS policy`));
+      return callback(
+        new Error(`Origin ${origin} is not allowed by CORS policy`)
+      );
     }
-    
+
     // Development'da barcha origin'larga ruxsat (localhost fallback)
     callback(null, true);
   };
@@ -133,10 +140,10 @@ async function bootstrap() {
 
   // ✅ Health check endpoint (for Docker healthcheck)
   app.getHttpAdapter().get("/health", (req, res) => {
-    res.status(200).json({ 
-      status: "ok", 
+    res.status(200).json({
+      status: "ok",
       timestamp: new Date().toISOString(),
-      service: "clinic-backend"
+      service: "clinic-backend",
     });
   });
 
@@ -165,10 +172,10 @@ async function bootstrap() {
 
   const serverPort = Number(process.env.PORT) || 3000;
   await app.listen(serverPort);
-  
-  console.log('\n' + '='.repeat(60));
+
+  console.log("\n" + "=".repeat(60));
   console.log(`✅ Clinic Backend server is running on port ${serverPort}`);
-  console.log(`📌 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
-  console.log('='.repeat(60) + '\n');
+  console.log(`📌 Environment: ${isProduction ? "PRODUCTION" : "DEVELOPMENT"}`);
+  console.log("=".repeat(60) + "\n");
 }
 bootstrap();

@@ -23,8 +23,16 @@ import { RolesGuard } from "../../../common/guards/roles.guard";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReqUser } from "../../../common/decorators/req-user.decorator";
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { getSerialForImage, validMimeTypes } from "../../../common/utils/upload.utils";
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
+import {
+  getSerialForImage,
+  validMimeTypes,
+} from "../../../common/utils/upload.utils";
 import type { Request } from "express";
 
 @ApiTags("membership")
@@ -52,18 +60,21 @@ export class ClinicsController {
   }
 
   @Get("info")
-@UseGuards(JwtTenantGuard) // ✅ Faqat authentication, role check yo'q
-@ApiOperation({ summary: "Get clinic basic info (name and logo) for all authenticated users" })
-getClinicInfo(
-  @Tenant() tenantId: string,
-  @Query("tenantId") tenantQuery?: string
-) {
-  const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-  if (!resolvedTenantId) {
-    throw new BadRequestException("tenant_id is required");
+  @UseGuards(JwtTenantGuard) // ✅ Faqat authentication, role check yo'q
+  @ApiOperation({
+    summary:
+      "Get clinic basic info (name and logo) for all authenticated users",
+  })
+  getClinicInfo(
+    @Tenant() tenantId: string,
+    @Query("tenantId") tenantQuery?: string
+  ) {
+    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
+    if (!resolvedTenantId) {
+      throw new BadRequestException("tenant_id is required");
+    }
+    return this.service.getClinicInfo(resolvedTenantId);
   }
-  return this.service.getClinicInfo(resolvedTenantId);
-}
 
   @Post()
   @ApiOperation({ summary: "Register a clinic for the tenant" })
@@ -74,7 +85,8 @@ getClinicInfo(
     @ReqUser("id") userId: string
   ) {
     // Generate unique tenant_id if not provided (new clinic registration)
-    const resolvedTenantId = tenantId ?? dto.tenantId ?? this.generateUniqueTenantId();
+    const resolvedTenantId =
+      tenantId ?? dto.tenantId ?? this.generateUniqueTenantId();
     if (!resolvedTenantId) {
       throw new BadRequestException("tenant_id is required");
     }
@@ -97,7 +109,8 @@ getClinicInfo(
   @UseGuards(JwtTenantGuard)
   @ApiOperation({ summary: "Update clinic settings by tenant ID" })
   updateClinicSettings(
-    @Body() dto: { allow_company_search?: boolean; allow_info_disclosure?: boolean },
+    @Body()
+    dto: { allow_company_search?: boolean; allow_info_disclosure?: boolean },
     @Tenant() tenantId: string
   ) {
     if (!tenantId) {
@@ -116,14 +129,17 @@ getClinicInfo(
     @Query("tenantId") tenantQuery?: string
   ) {
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-    
+
     try {
-      const result = await this.service.updateClinicLogo(resolvedTenantId, dto.logoUrl);
+      const result = await this.service.updateClinicLogo(
+        resolvedTenantId,
+        dto.logoUrl
+      );
       return result;
     } catch (error) {
       console.error("Update logo service error:", {
         error,
-        message: (error instanceof Error) ? error.message : undefined,
+        message: error instanceof Error ? error.message : undefined,
         tenantId: resolvedTenantId,
         logoUrl: dto.logoUrl,
       });
@@ -158,7 +174,10 @@ getClinicInfo(
           file: Express.Multer.File,
           callback: (error: Error | null, destination: string) => void
         ) => {
-          const tenantId = (req as any).tenantId || (req.query?.tenantId as string) || "self-service-tenant";
+          const tenantId =
+            (req as any).tenantId ||
+            (req.query?.tenantId as string) ||
+            "self-service-tenant";
           const UPLOAD_ROOT = join(process.cwd(), "uploads");
           const targetDir = join(UPLOAD_ROOT, "clinic", tenantId);
           try {
@@ -182,10 +201,17 @@ getClinicInfo(
         file: Express.Multer.File,
         callback: (error: Error | null, acceptFile: boolean) => void
       ) => {
-        const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+        const validTypes = [
+          "image/jpeg",
+          "image/jpg",
+          "image/png",
+          "image/webp",
+        ];
         if (!validTypes.includes(file.mimetype)) {
           return callback(
-            new BadRequestException(`Invalid file type. Allowed types: ${validTypes.join(", ")}`),
+            new BadRequestException(
+              `Invalid file type. Allowed types: ${validTypes.join(", ")}`
+            ),
             false
           );
         }
@@ -218,9 +244,9 @@ getClinicInfo(
   }
 
   @Post("verify-certificate")
-  @ApiOperation({ 
+  @ApiOperation({
     summary: "Verify clinic certificate using OCR",
-    description: "Upload file directly or provide fileUrl from previous upload"
+    description: "Upload file directly or provide fileUrl from previous upload",
   })
   @ApiConsumes("multipart/form-data")
   @UseInterceptors(
@@ -233,12 +259,19 @@ getClinicInfo(
         // Allow file to be optional if fileUrl is provided
         if (!file && !req.query?.fileUrl) {
           return callback(
-            new BadRequestException("Either file or fileUrl query parameter is required"),
+            new BadRequestException(
+              "Either file or fileUrl query parameter is required"
+            ),
             false
           );
         }
         if (file) {
-          const validMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+          const validMimeTypes = [
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+          ];
           if (!validMimeTypes.includes(file.mimetype)) {
             return callback(
               new BadRequestException(
@@ -288,10 +321,14 @@ getClinicInfo(
         else if (ext === "webp") mimetype = "image/webp";
         else mimetype = "image/jpeg"; // default
       } catch (error) {
-        throw new BadRequestException(`Failed to read file from URL: ${fileUrl}`);
+        throw new BadRequestException(
+          `Failed to read file from URL: ${fileUrl}`
+        );
       }
     } else {
-      throw new BadRequestException("Either file or fileUrl query parameter is required");
+      throw new BadRequestException(
+        "Either file or fileUrl query parameter is required"
+      );
     }
 
     return this.service.verifyCertificate(buffer, resolvedTenantId, mimetype);
@@ -310,7 +347,10 @@ getClinicInfo(
           file: Express.Multer.File,
           callback: (error: Error | null, destination: string) => void
         ) => {
-          const tenantId = (req as any).tenantId || (req.query?.tenantId as string) || "self-service-tenant";
+          const tenantId =
+            (req as any).tenantId ||
+            (req.query?.tenantId as string) ||
+            "self-service-tenant";
           const UPLOAD_ROOT = join(process.cwd(), "uploads");
           const targetDir = join(UPLOAD_ROOT, "clinic", tenantId, "logo");
           try {
@@ -334,10 +374,17 @@ getClinicInfo(
         file: Express.Multer.File,
         callback: (error: Error | null, acceptFile: boolean) => void
       ) => {
-        const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+        const validTypes = [
+          "image/jpeg",
+          "image/jpg",
+          "image/png",
+          "image/webp",
+        ];
         if (!validTypes.includes(file.mimetype)) {
           return callback(
-            new BadRequestException(`Invalid file type. Allowed types: ${validTypes.join(", ")}`),
+            new BadRequestException(
+              `Invalid file type. Allowed types: ${validTypes.join(", ")}`
+            ),
             false
           );
         }
@@ -369,4 +416,3 @@ getClinicInfo(
     };
   }
 }
-

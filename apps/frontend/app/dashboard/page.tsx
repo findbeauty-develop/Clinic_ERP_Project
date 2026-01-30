@@ -33,11 +33,13 @@ export default function DashboardPage() {
   const [selectedCity, setSelectedCity] = useState("seoul");
   const [scheduleType, setScheduleType] = useState("프로젝트 일정");
 
-  const [particlePositions, setParticlePositions] = useState<Array<{
-    left: number;
-    top: number;
-    duration: number;
-  }>>([]);
+  const [particlePositions, setParticlePositions] = useState<
+    Array<{
+      left: number;
+      top: number;
+      duration: number;
+    }>
+  >([]);
 
   useEffect(() => {
     setParticlePositions(
@@ -51,7 +53,7 @@ export default function DashboardPage() {
 
   const monthInputValue = useMemo(() => {
     const date = selectedDate || currentDate;
-    const year =date.getFullYear();
+    const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     return `${year}-${month}`;
   }, [selectedDate, currentDate]);
@@ -408,12 +410,10 @@ export default function DashboardPage() {
         const response = await apiGet(
           `/api/calendar/holidays/${year}/${month}`
         );
-        
+
         if (response && response.holidays) {
-         
           setHolidays(response.holidays);
         } else {
-         
         }
       } catch (error) {
         setHolidays([]);
@@ -795,13 +795,13 @@ export default function DashboardPage() {
         </div>
       </div>
       {/* Quick Actions - After Banner, Before Main Content */}
-{/* <div className="mb-6">
+      {/* <div className="mb-6">
   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
     빠른 작업
   </h2>
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
     {/* 제품 가격 관리 Card */}
-    {/* <Link
+      {/* <Link
       href="/inventory/products/pricing"
       className="group bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all hover:scale-105 border border-gray-100 dark:border-gray-800"
     >
@@ -827,8 +827,8 @@ export default function DashboardPage() {
       </div>
     </Link> */}
 
-    {/* 협력업체 관리 Card */}
-    {/* <Link
+      {/* 협력업체 관리 Card */}
+      {/* <Link
       href="/suppliers"
       className="group bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all hover:scale-105 border border-gray-100 dark:border-gray-800"
     >
@@ -854,8 +854,8 @@ export default function DashboardPage() {
       </div>
     </Link> */}
 
-    {/* 재고 현황 Card */}
-    {/* <Link
+      {/* 재고 현황 Card */}
+      {/* <Link
       href="/inventory"
       className="group bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all hover:scale-105 border border-gray-100 dark:border-gray-800"
     >
@@ -881,8 +881,8 @@ export default function DashboardPage() {
       </div>
     </Link> */}
 
-    {/* 주문 관리 Card */}
-    {/* <Link
+      {/* 주문 관리 Card */}
+      {/* <Link
       href="/order"
       className="group bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all hover:scale-105 border border-gray-100 dark:border-gray-800"
     >
@@ -907,8 +907,8 @@ export default function DashboardPage() {
         </span>
       </div>
     </Link> */}
-  {/* </div>
-</div> */} 
+      {/* </div>
+</div> */}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 ">
@@ -943,12 +943,18 @@ export default function DashboardPage() {
                 </div> */}
               </div>
 
-             {/* News Tabs - Text-based with slashes */}
+              {/* News Tabs - Text-based with slashes */}
               <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 <div className="flex items-center gap-2 mr-8 text-3xl font-bold text-black dark:text-white py-2">
-                  <img src="/images/news.svg" alt="news" className="w-16 h-16" /> 
-                  <span className="text-3xl font-bold text-black dark:text-white">뉴스</span>
-                 </div>
+                  <img
+                    src="/images/news.svg"
+                    alt="news"
+                    className="w-16 h-16"
+                  />
+                  <span className="text-3xl font-bold text-black dark:text-white">
+                    뉴스
+                  </span>
+                </div>
                 {newsTabs.map((tab, index) => {
                   const isActive = currentNewsTab === tab;
                   return (
@@ -1011,7 +1017,10 @@ export default function DashboardPage() {
                         if (diffMins < 60) return `${diffMins}분 전`;
                         if (diffHours < 24) return `${diffHours}시간 전`;
                         if (diffDays < 7) return `${diffDays}일 전`;
-                        return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+                        return date.toLocaleDateString("ko-KR", {
+                          month: "short",
+                          day: "numeric",
+                        });
                       } catch {
                         return "";
                       }
@@ -1051,7 +1060,8 @@ export default function DashboardPage() {
                                   parent &&
                                   !parent.querySelector(".image-fallback")
                                 ) {
-                                  const fallback = document.createElement("div");
+                                  const fallback =
+                                    document.createElement("div");
                                   fallback.className =
                                     "image-fallback w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800";
                                   fallback.innerHTML = `
@@ -1090,20 +1100,22 @@ export default function DashboardPage() {
                               {article.title}
                             </h3>
                           </div>
-                          
+
                           <div className="flex flex-col gap-1 mt-auto">
                             {/* Source/Subtitle */}
                             <div className="flex items-center gap-2">
                               <div className="w-5 h-5 bg-black dark:bg-white rounded-full flex items-center justify-center flex-shrink-0">
                                 <span className="text-white dark:text-black text-[9px] font-bold">
-                                  {article.source?.charAt(0) || article.category?.charAt(0) || "N"}
+                                  {article.source?.charAt(0) ||
+                                    article.category?.charAt(0) ||
+                                    "N"}
                                 </span>
                               </div>
                               <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium truncate">
                                 {article.source || article.category || "뉴스"}
                               </p>
                             </div>
-                            
+
                             {/* Timestamp */}
                             {/* {(article.publishedDate || article.publishedAt) && (
                               <p className="text-[10px] text-gray-500 dark:text-gray-500">
@@ -1686,7 +1698,10 @@ export default function DashboardPage() {
                       key={product.id}
                       className="min-w-[33.333%] flex-shrink-0 cursor-pointer group"
                       style={{
-                        paddingRight: index < productRecommendations.length - 1 ? '0.5rem' : '0',
+                        paddingRight:
+                          index < productRecommendations.length - 1
+                            ? "0.5rem"
+                            : "0",
                       }}
                       onClick={() => {
                         // Handle product click
@@ -1791,7 +1806,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Messages/Notifications */}
-                 <div className="bg-gray-200 dark:bg-gray-800 rounded-2xl shadow-lg p-3 h-[340px] flex flex-col border border-gray-400 dark:border-gray-700 relative">
+          <div className="bg-gray-200 dark:bg-gray-800 rounded-2xl shadow-lg p-3 h-[340px] flex flex-col border border-gray-400 dark:border-gray-700 relative">
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2 shrink-0">
               쪽지함
             </h2>
@@ -1800,7 +1815,7 @@ export default function DashboardPage() {
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <div className="text-center">
                 <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
-                  아직 개발 중입니다.
+                  개발 중입니다
                 </p>
               </div>
             </div>

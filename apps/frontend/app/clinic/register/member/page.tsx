@@ -75,7 +75,7 @@ export default function ClinicMemberSetupPage() {
         // Get token from localStorage if available
         // ✅ getAccessToken() ishlatish (localStorage emas)
         // ✅ skipLogout: true - register page'da token yo'q bo'lsa logout qilmaslik
-        const token = await getAccessToken(true) || "";
+        const token = (await getAccessToken(true)) || "";
 
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
@@ -124,7 +124,6 @@ export default function ClinicMemberSetupPage() {
                   setOwnerPhoneNumber(ownerProfile.ownerPhoneNumber);
                 if (ownerProfile.ownerIdCardNumber)
                   setOwnerIdCardNumber(ownerProfile.ownerIdCardNumber);
-              
               } catch (err) {
                 console.error("Failed to parse owner profile", err);
               }
@@ -158,14 +157,19 @@ export default function ClinicMemberSetupPage() {
       try {
         const ownerProfile = JSON.parse(ownerProfileRaw);
         // Agar ownerAddress member_id formatida bo'lsa yoki noto'g'ri bo'lsa, o'chirish
-        if (ownerProfile.ownerAddress && 
-            (ownerProfile.ownerAddress.includes('@') || 
-             ownerProfile.ownerAddress.includes('owner') ||
-             ownerProfile.ownerAddress.match(/^[a-zA-Z0-9]+@/) ||
-             ownerProfile.ownerAddress === ownerProfile.ownerId ||
-             ownerProfile.ownerAddress === ownerProfile.memberId)) {
+        if (
+          ownerProfile.ownerAddress &&
+          (ownerProfile.ownerAddress.includes("@") ||
+            ownerProfile.ownerAddress.includes("owner") ||
+            ownerProfile.ownerAddress.match(/^[a-zA-Z0-9]+@/) ||
+            ownerProfile.ownerAddress === ownerProfile.ownerId ||
+            ownerProfile.ownerAddress === ownerProfile.memberId)
+        ) {
           delete ownerProfile.ownerAddress;
-          sessionStorage.setItem("erp_owner_profile", JSON.stringify(ownerProfile));
+          sessionStorage.setItem(
+            "erp_owner_profile",
+            JSON.stringify(ownerProfile)
+          );
         }
       } catch (err) {
         console.error("Failed to clean owner profile", err);
@@ -374,7 +378,6 @@ export default function ClinicMemberSetupPage() {
           <h1 className="text-3xl font-semibold text-slate-900 md:text-4xl">
             계정 만들기
           </h1>
-          
         </header>
 
         <nav className="mx-auto flex w-full max-w-2xl items-center justify-between text-sm text-slate-400">

@@ -1488,8 +1488,6 @@ export class OrderService {
       });
     });
 
-   
-
     // Notify supplier
     if (isPlatformSupplier) {
       // Platform supplier: Send webhook to supplier-backend to delete order
@@ -2193,20 +2191,21 @@ export class OrderService {
             );
 
             const templateId = parseInt(
-  process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
-  10
-);
+              process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
+              10
+            );
 
-            const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate(
-  supplierEmail,
-  templateId, // ✅ Brevo template ID
-  finalClinicName,
-  order.order_no,
-  order.total_amount,
-  totalQuantity,
-  finalClinicManagerName,
-  products
-);
+            const emailSent =
+              await this.emailService.sendOrderNotificationEmailWithTemplate(
+                supplierEmail,
+                templateId, // ✅ Brevo template ID
+                finalClinicName,
+                order.order_no,
+                order.total_amount,
+                totalQuantity,
+                finalClinicManagerName,
+                products
+              );
           } else {
             this.logger.warn(
               `No email address found for manual supplier ${order.supplier_id}`
@@ -2279,17 +2278,19 @@ export class OrderService {
             const errorText = await response
               .text()
               .catch(() => "Unknown error");
-            
+
             // ✅ ERROR LOG QO'SHISH
             this.logger.error(
               `❌ Supplier backend API error: ${response.status} ${response.statusText}`
             );
             this.logger.error(`   Error response: ${errorText}`);
-            this.logger.error(`   Order data: ${JSON.stringify({
-              orderNo: supplierOrderData.orderNo,
-              supplierTenantId: supplierOrderData.supplierTenantId,
-              itemsCount: supplierOrderData.items.length
-            })}`);
+            this.logger.error(
+              `   Order data: ${JSON.stringify({
+                orderNo: supplierOrderData.orderNo,
+                supplierTenantId: supplierOrderData.supplierTenantId,
+                itemsCount: supplierOrderData.items.length,
+              })}`
+            );
           } else {
             const result: any = await response.json();
 
@@ -2563,7 +2564,6 @@ export class OrderService {
         await Promise.all(smsPromises);
       } catch (error: any) {
         // Log error but don't fail the order creation
-        
       }
 
       // Send Email notification to supplier manager
@@ -2598,36 +2598,34 @@ export class OrderService {
             0
           );
 
+          const templateId = parseInt(
+            process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
+            10
+          );
 
-         const templateId = parseInt(
-  process.env.BREVO_ORDER_NOTIFICATION_TEMPLATE_ID || "1",
-  10
-);
-
-const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate(
-  supplierEmail,
-  templateId, // ✅ Brevo template ID
-  finalClinicName,
-  order.order_no,
-  order.total_amount,
-  totalQuantity,
-  clinicManagerName,
-  products
-);
-
-         
+          const emailSent =
+            await this.emailService.sendOrderNotificationEmailWithTemplate(
+              supplierEmail,
+              templateId, // ✅ Brevo template ID
+              finalClinicName,
+              order.order_no,
+              order.total_amount,
+              totalQuantity,
+              clinicManagerName,
+              products
+            );
 
           const emailSource = supplierManager?.email1
             ? "SupplierManager.email1"
             : supplierManager?.email2
-            ? "SupplierManager.email2"
-            : supplierWithEmail?.company_email
-            ? "Supplier.company_email"
-            : clinicSupplierManager?.company_email
-            ? "ClinicSupplierManager.company_email"
-            : clinicSupplierManager?.email1
-            ? "ClinicSupplierManager.email1"
-            : "ClinicSupplierManager.email2";
+              ? "SupplierManager.email2"
+              : supplierWithEmail?.company_email
+                ? "Supplier.company_email"
+                : clinicSupplierManager?.company_email
+                  ? "ClinicSupplierManager.company_email"
+                  : clinicSupplierManager?.email1
+                    ? "ClinicSupplierManager.email1"
+                    : "ClinicSupplierManager.email2";
         } else {
           this.logger.warn(
             `No email address found for supplier ${order.supplier_id} (checked SupplierManager.email1, SupplierManager.email2, Supplier.company_email, ClinicSupplierManager.company_email, ClinicSupplierManager.email1, ClinicSupplierManager.email2), skipping email notification`
@@ -2768,8 +2766,8 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
         status === "supplier_confirmed"
           ? "✅ Supplier confirmed"
           : status === "rejected"
-          ? "❌ Supplier rejected"
-          : `📋 Status updated: ${status}`;
+            ? "❌ Supplier rejected"
+            : `📋 Status updated: ${status}`;
 
       const adjustmentCount = adjustments?.length || 0;
       const adjustmentInfo =
@@ -3752,8 +3750,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
     try {
       const { type, original_order_no, clinic_tenant_id, orders } = dto;
 
-    
-
       if (type !== "order_split") {
         throw new BadRequestException("Invalid webhook type");
       }
@@ -3933,8 +3929,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
         }
       });
 
-      
-
       // Clear cache
       await this.clearPendingInboundCache(clinic_tenant_id);
 
@@ -3955,8 +3949,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
    * Partial inbound processing - split order into completed and remaining items
    */
   async partialInbound(orderId: string, tenantId: string, dto: any) {
-    
-
     try {
       return await this.prisma.$transaction(async (tx: any) => {
         // Get original order with items
@@ -3970,8 +3962,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
         if (!originalOrder) {
           throw new Error(`Order ${orderId} not found`);
         }
-
-        
 
         // Map inbounded items by item ID for quick lookup
         const inboundedItemsMap = new Map(
@@ -3989,8 +3979,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
             remainingItems.push(item);
           }
         }
-
-        
 
         if (inboundedItems.length === 0) {
           throw new Error("No items to inbound");
@@ -4031,8 +4019,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
           },
         });
 
-       
-
         // Create remaining order if there are remaining items
         let remainingOrder = null;
         if (remainingItems.length > 0) {
@@ -4063,8 +4049,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
               },
             },
           });
-
-          
         }
 
         // Archive original order
@@ -4078,8 +4062,6 @@ const emailSent = await this.emailService.sendOrderNotificationEmailWithTemplate
             updated_at: new Date(),
           },
         });
-
-        
 
         // Clear cache
         await this.clearPendingInboundCache(tenantId);

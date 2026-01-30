@@ -8,16 +8,18 @@ export class SupabaseService {
 
   constructor(private configService: ConfigService) {
     // Try ConfigService first, then fallback to process.env
-    const supabaseUrl = 
-      this.configService.get<string>("SUPABASE_URL") || 
+    const supabaseUrl =
+      this.configService.get<string>("SUPABASE_URL") ||
       process.env.SUPABASE_URL;
-    
-    const supabaseKey = 
-      this.configService.get<string>("SUPABASE_SERVICE_ROLE_KEY") || 
+
+    const supabaseKey =
+      this.configService.get<string>("SUPABASE_SERVICE_ROLE_KEY") ||
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables");
+      throw new Error(
+        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables"
+      );
     }
 
     this.client = createClient(supabaseUrl, supabaseKey);
@@ -31,4 +33,3 @@ export class SupabaseService {
     return this.auth.getUser(token);
   }
 }
-

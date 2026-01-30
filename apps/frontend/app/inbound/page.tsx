@@ -111,7 +111,7 @@ export default function InboundPage() {
   const [selectedCategory, setSelectedCategory] = useState("전체 카테고리");
   const [selectedStatus, setSelectedStatus] = useState("전체 상태");
   const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
-    const [showCSVImportModal, setShowCSVImportModal] = useState(false);
+  const [showCSVImportModal, setShowCSVImportModal] = useState(false);
 
   // Fetch products for "빠른 입고" tab - memoized to prevent duplicate requests
   const fetchProducts = useCallback(
@@ -204,7 +204,6 @@ export default function InboundPage() {
 
       // Use ref to get current activeTab value (avoid closure issues)
       const currentActiveTab = activeTabRef.current;
-      
 
       if (!productId) {
         console.warn("[Inbound] No productId in event detail");
@@ -215,7 +214,7 @@ export default function InboundPage() {
       // Don't check activeTab - we want to update state regardless of tab
       setProducts((prevProducts) => {
         const filtered = prevProducts.filter((p) => p.id !== productId);
-        
+
         return filtered;
       });
 
@@ -229,7 +228,7 @@ export default function InboundPage() {
       if (currentActiveTab === "quick") {
         try {
           const { apiGet } = await import("../../lib/api");
-          
+
           const freshData = await apiGet<any[]>(
             `${apiUrl}/products?_t=${Date.now()}`,
             {
@@ -239,8 +238,6 @@ export default function InboundPage() {
               },
             }
           );
-
-          
 
           // Update state with fresh data from API
           const formatImageUrl = (
@@ -272,7 +269,6 @@ export default function InboundPage() {
           );
 
           setProducts(formattedProducts);
-         
         } catch (err) {
           console.error(
             "[Inbound] Failed to refresh products after deletion",
@@ -511,14 +507,14 @@ export default function InboundPage() {
           <div className="flex flex-wrap items-center gap-3">
             {/* CSV 등록 button hide */}
             <div className="flex gap-3">
-            <button
-              onClick={() => setShowCSVImportModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            > 
-              <span className="text-xm">📦</span>
-              CSV 입고
-            </button>
-          </div>
+              <button
+                onClick={() => setShowCSVImportModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              >
+                <span className="text-xm">📦</span>
+                CSV 입고
+              </button>
+            </div>
             <Link
               href="/inbound/new"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-sky-600 hover:to-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
@@ -1019,7 +1015,6 @@ const ProductCard = memo(function ProductCard({
               )}
               {product.managerName && (
                 <span className="inline-flex items-center gap-1">
-                  
                   {product.managerName}
                 </span>
               )}
@@ -1028,8 +1023,6 @@ const ProductCard = memo(function ProductCard({
                   직책: {product.managerPosition}
                 </span>
               )}
-
-             
             </div>
           </div>
         </div>
@@ -1250,12 +1243,7 @@ interface CSVImportModalProps {
   onImport: () => void;
 }
 
-
-function CSVImportModal({
-  isOpen,
-  onClose,
-  onImport,
-}: CSVImportModalProps) {
+function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2555,7 +2543,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Update order status to completed only if not partial
       if (!isPartial) {
         try {
-          
           await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
         } catch (completeError: any) {
           console.error(`Failed to complete order:`, completeError);
@@ -2606,8 +2593,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     const { order, items } = modalData;
 
-    
-
     // Filter items that have sufficient quantity
     const validItems = order.items.filter((item: any) => {
       const edited = editedItems[item.id];
@@ -2615,8 +2600,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
       const inboundQty = edited?.quantity || 0;
       return inboundQty >= confirmedQty;
     });
-
-   
 
     if (validItems.length === 0) {
       alert("입고 가능한 제품이 없습니다.");

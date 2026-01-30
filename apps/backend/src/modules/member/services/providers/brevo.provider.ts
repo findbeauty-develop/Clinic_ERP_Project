@@ -62,7 +62,6 @@ export class BrevoProvider implements IEmailProvider {
       const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
 
       if (result.response.statusCode === 201) {
-        
         return true;
       } else {
         this.logger.warn(
@@ -101,10 +100,10 @@ export class BrevoProvider implements IEmailProvider {
         name: this.fromName || undefined,
       };
       sendSmtpEmail.to = [{ email: to }];
-      
+
       // ✅ Template ID'ni belgilash
       sendSmtpEmail.templateId = templateId;
-      
+
       // ✅ Template parametrlarini yuborish (agar mavjud bo'lsa)
       if (templateParams && Object.keys(templateParams).length > 0) {
         sendSmtpEmail.params = templateParams;
@@ -113,7 +112,9 @@ export class BrevoProvider implements IEmailProvider {
       const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
 
       if (result.response.statusCode === 201) {
-        this.logger.log(`✅ Brevo template email sent successfully to ${to} using template ${templateId}`);
+        this.logger.log(
+          `✅ Brevo template email sent successfully to ${to} using template ${templateId}`
+        );
         return true;
       } else {
         this.logger.warn(

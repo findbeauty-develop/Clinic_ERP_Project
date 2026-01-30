@@ -67,7 +67,10 @@ export default function ClinicRegisterPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
-  const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com", []);
+  const apiUrl = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
+    []
+  );
 
   useEffect(() => {
     const loadToken = async () => {
@@ -153,7 +156,7 @@ export default function ClinicRegisterPage() {
         // Register page'da authentication ixtiyoriy (yangi registration uchun token yo'q bo'lishi mumkin)
         // ✅ skipLogout: true - register page'da token yo'q bo'lsa logout qilmaslik
         const token = await getAccessToken(true);
-        
+
         if (!token) {
           // Token yo'q - bu normal (yangi registration)
           // Edit mode'da ham token bo'lmasligi mumkin, shuning uchun faqat sessionStorage'dan ma'lumotlarni ishlatamiz
@@ -166,7 +169,7 @@ export default function ClinicRegisterPage() {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
           credentials: "include", // Cookie'ni yuborish
         });
@@ -943,7 +946,6 @@ export default function ClinicRegisterPage() {
             </div>
 
             <div className="md:col-span-2 flex flex-col items-end gap-2">
-              
               <button
                 type="submit"
                 disabled={loading || (!isCertificateVerified && !clinicId)}

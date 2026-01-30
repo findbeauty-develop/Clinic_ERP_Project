@@ -8,12 +8,12 @@ export class SupplierRepository {
   /**
    * Primary search: companyName + supplierName (manager name)
    * STRICT RULE: Only returns suppliers that have APPROVED trade relationship (ClinicSupplierLink) with the tenant
-   * 
+   *
    * Logic:
    * - If no APPROVED ClinicSupplierLink exists → return empty array (no results)
    * - If APPROVED link exists → filter suppliers by companyName and managerName
    * - This ensures suppliers without trade relationship don't appear in primary search
-   * 
+   *
    * IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
    * - One Supplier can have multiple SupplierManagers
    * - Each SupplierManager can have separate trade relationships with clinics
@@ -80,7 +80,7 @@ export class SupplierRepository {
     // STEP 4: Build where clause - ONLY search within approved suppliers
     // The id filter is the PRIMARY and MANDATORY filter - MUST be applied
     const approvedIdsArray = Array.from(approvedSupplierIds);
-    
+
     // Build base conditions - id filter is ALWAYS required
     const baseConditions: any[] = [
       {
@@ -173,11 +173,11 @@ export class SupplierRepository {
   /**
    * Fallback search by phone number - finds suppliers registered on platform OR created by clinic
    * Used when primary search (companyName + managerName) returns no results
-   * 
+   *
    * Searches:
    * 1. SupplierManager (self-registered suppliers, status = ACTIVE)
    * 2. ClinicSupplierManager (clinic-created suppliers for this tenant)
-   * 
+   *
    * When clinic finds a supplier and approves, ClinicSupplierLink is created
    */
   async searchSuppliersByPhone(phoneNumber: string, tenantId?: string) {
@@ -189,7 +189,7 @@ export class SupplierRepository {
 
     // Clean phone number: remove spaces, dashes, parentheses for better matching
     const cleanPhoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, "").trim();
-    
+
     if (!cleanPhoneNumber) {
       return [];
     }
@@ -222,7 +222,10 @@ export class SupplierRepository {
 
     // Collect supplier IDs from SupplierManager
     supplierManagers.forEach((m: any) => {
-      if (m.supplier && (m.supplier.status === "ACTIVE" || m.supplier.status === "MANUAL_ONLY")) {
+      if (
+        m.supplier &&
+        (m.supplier.status === "ACTIVE" || m.supplier.status === "MANUAL_ONLY")
+      ) {
         supplierIds.add(m.supplier.id);
       }
     });
@@ -268,50 +271,51 @@ export class SupplierRepository {
     }
 
     // Return suppliers from Supplier table (platform-registered suppliers)
-    const suppliersFromPlatform = supplierIds.size > 0
-      ? await prisma.supplier.findMany({
-          where: {
-            id: {
-              in: Array.from(supplierIds),
-            },
-          },
-          include: {
-            managers: {
-              where: {
-                OR: [
-                  {
-                    phone_number: {
-                      contains: phoneNumber,
-                      mode: "insensitive",
-                    },
-                  },
-                  {
-                    phone_number: {
-                      contains: cleanPhoneNumber,
-                      mode: "insensitive",
-                    },
-                  },
-                ],
-                status: "ACTIVE",
-              },
-              select: {
-                id: true,
-                manager_id: true,
-                name: true,
-                position: true,
-                phone_number: true,
-                email1: true,
-                manager_address: true,
-                responsible_products: true,
-                status: true,
+    const suppliersFromPlatform =
+      supplierIds.size > 0
+        ? await prisma.supplier.findMany({
+            where: {
+              id: {
+                in: Array.from(supplierIds),
               },
             },
-          },
-          orderBy: {
-            created_at: "desc",
-          },
-        })
-      : [];
+            include: {
+              managers: {
+                where: {
+                  OR: [
+                    {
+                      phone_number: {
+                        contains: phoneNumber,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      phone_number: {
+                        contains: cleanPhoneNumber,
+                        mode: "insensitive",
+                      },
+                    },
+                  ],
+                  status: "ACTIVE",
+                },
+                select: {
+                  id: true,
+                  manager_id: true,
+                  name: true,
+                  position: true,
+                  phone_number: true,
+                  email1: true,
+                  manager_address: true,
+                  responsible_products: true,
+                  status: true,
+                },
+              },
+            },
+            orderBy: {
+              created_at: "desc",
+            },
+          })
+        : [];
 
     // ✅ ClinicSupplierManager ma'lumotlarini Supplier format'iga o'girish
     const clinicSuppliers = clinicManagersWithoutLink.map((cm: any) => ({

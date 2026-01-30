@@ -34,4 +34,3 @@ export class CreatePackageDto {
   @Type(() => CreatePackageItemDto)
   items!: CreatePackageItemDto[]; // 구성 제품들
 }
-

@@ -120,7 +120,7 @@ export class ReturnService {
     this.logger.debug(
       `🔍 [getAvailableProducts] Starting query for tenant: ${tenantId}`
     );
-    
+
     const products = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).product.findMany({
         where: {
@@ -297,7 +297,7 @@ export class ReturnService {
       .filter((p: any) => p !== null);
 
     // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
-    
+
     this.logger.debug(
       `📦 [getAvailableProducts] Processed ${products.length} products → ${availableProducts.length} available for return`
     );
@@ -929,9 +929,10 @@ ${footer}`;
           const clinicName = clinic?.name || "알 수 없음";
           const clinicManagerName = returnRecord.manager_name || "알 수 없음";
           // ✅ Product name'ni to'g'ri olish - avval product.name, keyin fallback
-          const productName = (product?.name && product.name.trim() !== "") 
-            ? product.name 
-            : "알 수 없음";
+          const productName =
+            product?.name && product.name.trim() !== ""
+              ? product.name
+              : "알 수 없음";
           const returnQty = returnRecord.return_qty || 0;
           const totalRefund = returnRecord.total_refund || 0;
 
@@ -1144,9 +1145,10 @@ ${footer}`;
         clinicManagerName: clinicManagerName,
         items: [
           {
-            productName: (product?.name && product.name.trim() !== "") 
-              ? product.name 
-              : "알 수 없음",
+            productName:
+              product?.name && product.name.trim() !== ""
+                ? product.name
+                : "알 수 없음",
             brand: product?.brand || "",
             quantity: returnRecord.return_qty,
             returnType: returnType,
@@ -1247,9 +1249,10 @@ ${footer}`;
 
           if (managersToNotify.length > 0) {
             // ✅ Product name'ni to'g'ri olish
-            const productName = (product?.name && product.name.trim() !== "") 
-              ? product.name 
-              : "알 수 없음";
+            const productName =
+              product?.name && product.name.trim() !== ""
+                ? product.name
+                : "알 수 없음";
             const returnQty = returnRecord.return_qty || 0;
             const totalRefund = returnRecord.total_refund || 0;
 
@@ -1345,11 +1348,11 @@ ${footer}`;
 
                       // Template ID'ni environment variable'dan olish
                       const templateId = parseInt(
-  process.env.BREVO_EMPTY_BOX_RETURN_TEMPLATE_ID || 
-  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || 
-  "0",
-  10
-);
+                        process.env.BREVO_EMPTY_BOX_RETURN_TEMPLATE_ID ||
+                          process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID ||
+                          "0",
+                        10
+                      );
 
                       if (templateId > 0) {
                         // Template ishlatish
@@ -1437,8 +1440,6 @@ ${footer}`;
     }>;
   }) {
     try {
-     
-
       // Process each unreturned item
       for (const item of dto.unreturnedItems) {
         // Find the Return record(s) that match this product and batch
@@ -1482,8 +1483,6 @@ ${footer}`;
                   },
                 });
               });
-
-           
 
               remainingUnreturned -= qtyToReduce;
             }

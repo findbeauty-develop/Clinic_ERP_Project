@@ -9,7 +9,12 @@ import {
   UseGuards,
   BadRequestException,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { SupplierService } from "../services/supplier.service";
 import { SearchSupplierDto } from "../dto/search-supplier.dto";
 import { CreateSupplierManualDto } from "../dto/create-supplier-manual.dto";
@@ -97,14 +102,15 @@ export class SupplierController {
     @Body() dto: CreateSupplierManualDto,
     @Tenant() tenantId: string
   ) {
-
-    
     if (!dto.companyName || !dto.businessNumber) {
       throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
     }
 
-    const result = await this.supplierService.createOrUpdateSupplierManual(dto, tenantId);
-  
+    const result = await this.supplierService.createOrUpdateSupplierManual(
+      dto,
+      tenantId
+    );
+
     return result;
   }
 
@@ -140,14 +146,20 @@ export class SupplierController {
       throw new BadRequestException("공급업체 ID는 필수입니다");
     }
 
-    return this.supplierService.approveTradeLink(tenantId, supplierId, managerId, supplierManagerId);
+    return this.supplierService.approveTradeLink(
+      tenantId,
+      supplierId,
+      managerId,
+      supplierManagerId
+    );
   }
 
   @Get("clinic-managers")
   @UseGuards(JwtTenantGuard)
   @ApiOperation({
     summary: "Get all clinic supplier managers",
-    description: "Returns all ClinicSupplierManager records for the current tenant",
+    description:
+      "Returns all ClinicSupplierManager records for the current tenant",
   })
   async getClinicManagers(@Tenant() tenantId: string) {
     if (!tenantId) {
@@ -161,7 +173,8 @@ export class SupplierController {
   @UseGuards(JwtTenantGuard)
   @ApiOperation({
     summary: "담당자 삭제 (Delete contact/manager)",
-    description: "ClinicSupplierManager'ni 삭제합니다. SupplierManager는 삭제할 수 없습니다.",
+    description:
+      "ClinicSupplierManager'ni 삭제합니다. SupplierManager는 삭제할 수 없습니다.",
   })
   async deleteManager(
     @Param("managerId") managerId: string,
@@ -177,7 +190,8 @@ export class SupplierController {
   @Get("clinics")
   @ApiOperation({
     summary: "Supplier manager'ga bog'langan clinic'larni olish",
-    description: "Supplier manager ID bo'yicha clinic ma'lumotlarini qaytaradi (supplier-frontend uchun)",
+    description:
+      "Supplier manager ID bo'yicha clinic ma'lumotlarini qaytaradi (supplier-frontend uchun)",
   })
   @ApiQuery({
     name: "supplierManagerId",
@@ -185,7 +199,9 @@ export class SupplierController {
     type: String,
     description: "Supplier Manager ID",
   })
-  async getClinicsForSupplier(@Query("supplierManagerId") supplierManagerId: string) {
+  async getClinicsForSupplier(
+    @Query("supplierManagerId") supplierManagerId: string
+  ) {
     if (!supplierManagerId) {
       throw new BadRequestException("supplierManagerId is required");
     }
@@ -203,9 +219,14 @@ export class SupplierController {
     @Body("memo") memo: string
   ) {
     if (!tenantId || !supplierManagerId) {
-      throw new BadRequestException("tenantId and supplierManagerId are required");
+      throw new BadRequestException(
+        "tenantId and supplierManagerId are required"
+      );
     }
-    return this.supplierService.updateClinicMemo(tenantId, supplierManagerId, memo);
+    return this.supplierService.updateClinicMemo(
+      tenantId,
+      supplierManagerId,
+      memo
+    );
   }
 }
-

@@ -7,7 +7,7 @@ export default function KoreanClockWidget() {
   useEffect(() => {
     setMounted(true);
     setTime(new Date());
-    
+
     const timer = setInterval(() => {
       setTime(new Date());
     }, 1000);

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { ClinicsRepository } from "../repositories/clinics.repository";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
@@ -34,19 +39,18 @@ export class ClinicsService {
     } = dto;
 
     // Check for duplicate clinic (same name and document_issue_number)
-    const existingClinic = await this.repository.findByDocumentIssueNumberAndName(
-      recognized.documentIssueNumber,
-      recognized.name
-    );
+    const existingClinic =
+      await this.repository.findByDocumentIssueNumberAndName(
+        recognized.documentIssueNumber,
+        recognized.name
+      );
 
     if (existingClinic) {
-      throw new BadRequestException(
-        `이미 등록된 클리닉입니다.`
-      );
+      throw new BadRequestException(`이미 등록된 클리닉입니다.`);
     }
     if (!recognized.englishName?.trim()) {
-  throw new BadRequestException("영어이름 입력부탁드립니다");
-}
+      throw new BadRequestException("영어이름 입력부탁드립니다");
+    }
 
     const documentUrls = recognized.documentImageUrls ?? [];
     const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
@@ -80,7 +84,10 @@ export class ClinicsService {
    */
   async updateClinicSettings(
     tenantId: string,
-    settings: { allow_company_search?: boolean; allow_info_disclosure?: boolean }
+    settings: {
+      allow_company_search?: boolean;
+      allow_info_disclosure?: boolean;
+    }
   ) {
     const clinics = await this.repository.findByTenant(tenantId);
     if (clinics.length === 0) {
@@ -89,7 +96,7 @@ export class ClinicsService {
 
     // Update the first clinic (should be only one per tenant)
     const clinic = clinics[0] as any;
-    
+
     // Preserve existing values - only update fields that are provided
     const updateData: any = {
       updated_at: new Date(),
@@ -102,7 +109,7 @@ export class ClinicsService {
       // Preserve existing value
       updateData.allow_company_search = clinic.allow_company_search ?? false;
     }
-    
+
     if (settings.allow_info_disclosure !== undefined) {
       updateData.allow_info_disclosure = settings.allow_info_disclosure;
     } else {
@@ -132,16 +139,15 @@ export class ClinicsService {
     }
 
     // Check for duplicate clinic (same name and document_issue_number) excluding current clinic
-    const duplicateClinic = await this.repository.findByDocumentIssueNumberAndNameExcludingId(
-      recognized.documentIssueNumber,
-      recognized.name,
-      id
-    );
+    const duplicateClinic =
+      await this.repository.findByDocumentIssueNumberAndNameExcludingId(
+        recognized.documentIssueNumber,
+        recognized.name,
+        id
+      );
 
     if (duplicateClinic) {
-      throw new BadRequestException(
-        `이미 등록된 클리닉입니다.`
-      );
+      throw new BadRequestException(`이미 등록된 클리닉입니다.`);
     }
 
     // Process new images (base64) and keep existing URLs
@@ -149,10 +155,12 @@ export class ClinicsService {
     const newBase64Images = documentUrls.filter((url) =>
       url.startsWith("data:")
     );
-    const existingUrls = documentUrls.filter(
-      (url) => !url.startsWith("data:")
+    const existingUrls = documentUrls.filter((url) => !url.startsWith("data:"));
+    const storedNewUrls = await saveBase64Images(
+      "clinic",
+      newBase64Images,
+      tenantId
     );
-    const storedNewUrls = await saveBase64Images("clinic", newBase64Images, tenantId);
     const allUrls = [...existingUrls, ...storedNewUrls];
 
     return this.repository.update(
@@ -194,15 +202,16 @@ export class ClinicsService {
         const UPLOAD_ROOT = join(process.cwd(), "uploads");
         const categoryDir = join(UPLOAD_ROOT, "clinic", tenantId);
         await fs.mkdir(categoryDir, { recursive: true });
-        
+
         // Determine file extension from mimetype
         let extension = ".jpg"; // default
         if (mimetype) {
           if (mimetype === "image/png") extension = ".png";
-          else if (mimetype === "image/jpeg" || mimetype === "image/jpg") extension = ".jpg";
+          else if (mimetype === "image/jpeg" || mimetype === "image/jpg")
+            extension = ".jpg";
           else if (mimetype === "image/webp") extension = ".webp";
         }
-        
+
         const filename = `${uuidv4()}${extension}`;
         const filePath = join(categoryDir, filename);
         await fs.writeFile(filePath, buffer);
@@ -236,7 +245,7 @@ export class ClinicsService {
         rawText: "",
         warnings: [
           "OCR 서비스에 연결할 수 없습니다. Google Cloud Vision API 설정을 확인해주세요.",
-          error instanceof Error ? error.message : "Unknown OCR error"
+          error instanceof Error ? error.message : "Unknown OCR error",
         ],
         fileUrl: fileUrl || undefined,
         hiraVerification: {
@@ -254,12 +263,15 @@ export class ClinicsService {
     }
 
     // Step 3: Parse fields from OCR text
-    const fields = this.certificateParserService.parseKoreanClinicCertificate(rawText);
+    const fields =
+      this.certificateParserService.parseKoreanClinicCertificate(rawText);
 
     // Step 4: Validate required fields
     const requiredFields = ["clinicName", "address", "doctorName"];
     const missingFields = requiredFields.filter(
-      (field) => !fields[field as keyof typeof fields] || fields[field as keyof typeof fields] === ""
+      (field) =>
+        !fields[field as keyof typeof fields] ||
+        fields[field as keyof typeof fields] === ""
     );
 
     // Step 5: HIRA verification (MANDATORY if clinic name is available)
@@ -283,7 +295,9 @@ export class ClinicsService {
             typeMatch: false,
             dateMatch: false,
           },
-          warnings: [`HIRA verification failed: ${typeof error === 'object' && error !== null && 'message' in error ? (error as any).message : 'Unknown error'}`],
+          warnings: [
+            `HIRA verification failed: ${typeof error === "object" && error !== null && "message" in error ? (error as any).message : "Unknown error"}`,
+          ],
         };
       }
     } else {
@@ -297,7 +311,7 @@ export class ClinicsService {
           typeMatch: false,
           dateMatch: false,
         },
-        warnings: ['Clinic name is required for HIRA verification'],
+        warnings: ["Clinic name is required for HIRA verification"],
       };
     }
 
@@ -308,11 +322,11 @@ export class ClinicsService {
 
     // Step 7: Calculate combined confidence
     let confidence = ocrValid ? 0.8 : 0.2;
-    
+
     // If HIRA verification succeeded, combine confidence scores
     if (hiraVerification && hiraVerification.isValid) {
       // Weighted average: 40% OCR, 60% HIRA
-      confidence = (confidence * 0.4) + (hiraVerification.confidence * 0.6);
+      confidence = confidence * 0.4 + hiraVerification.confidence * 0.6;
     } else if (hiraVerification && !hiraVerification.isValid) {
       // If HIRA verification failed, set confidence to 0
       confidence = 0;
@@ -325,9 +339,18 @@ export class ClinicsService {
     }
 
     // Check for other optional but important fields
-    const optionalFields = ["clinicType", "department", "openDate", "doctorLicenseNo", "licenseType"];
+    const optionalFields = [
+      "clinicType",
+      "department",
+      "openDate",
+      "doctorLicenseNo",
+      "licenseType",
+    ];
     optionalFields.forEach((field) => {
-      if (!fields[field as keyof typeof fields] || fields[field as keyof typeof fields] === "") {
+      if (
+        !fields[field as keyof typeof fields] ||
+        fields[field as keyof typeof fields] === ""
+      ) {
         warnings.push(`Missing optional field: ${field}`);
       }
     });
@@ -339,8 +362,14 @@ export class ClinicsService {
 
     // Add specific error message if HIRA verification failed
     if (hiraVerification && !hiraVerification.isValid) {
-      if (hiraVerification.warnings.some(w => w.includes('not found in HIRA database'))) {
-        warnings.push('이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요.');
+      if (
+        hiraVerification.warnings.some((w) =>
+          w.includes("not found in HIRA database")
+        )
+      ) {
+        warnings.push(
+          "이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요."
+        );
       }
     }
 
@@ -350,7 +379,9 @@ export class ClinicsService {
       category: fields.clinicType || "",
       location: fields.address || "",
       medicalSubjects: fields.department || "", // Can be comma-separated
-      openDate: fields.openDate ? `${fields.openDate.substring(0, 4)}-${fields.openDate.substring(4, 6)}-${fields.openDate.substring(6, 8)}` : undefined, // Convert YYYYMMDD to YYYY-MM-DD for DTO
+      openDate: fields.openDate
+        ? `${fields.openDate.substring(0, 4)}-${fields.openDate.substring(4, 6)}-${fields.openDate.substring(6, 8)}`
+        : undefined, // Convert YYYYMMDD to YYYY-MM-DD for DTO
       doctorName: fields.doctorName || undefined,
       licenseType: fields.licenseType || "의사면허", // Use extracted license type or default
       licenseNumber: fields.doctorLicenseNo || "",
@@ -375,16 +406,18 @@ export class ClinicsService {
       rawText: fields.rawText,
       warnings,
       fileUrl: fileUrl || undefined,
-      hiraVerification: hiraVerification ? {
-        isValid: hiraVerification.isValid,
-        confidence: hiraVerification.confidence,
-        matches: hiraVerification.matches,
-        hiraData: hiraVerification.hiraData,
-        warnings: hiraVerification.warnings,
-      } : undefined,
+      hiraVerification: hiraVerification
+        ? {
+            isValid: hiraVerification.isValid,
+            confidence: hiraVerification.confidence,
+            matches: hiraVerification.matches,
+            hiraData: hiraVerification.hiraData,
+            warnings: hiraVerification.warnings,
+          }
+        : undefined,
     };
   }
-  
+
   async updateClinicLogo(tenantId: string, logoUrl: string) {
     const clinic = await this.repository.findByTenant(tenantId);
     if (!clinic || clinic.length === 0) {
@@ -406,23 +439,23 @@ export class ClinicsService {
 
     return {
       success: true,
-      logo_url: (updatedClinic as Clinic & { logo_url: string | null }).logo_url,
+      logo_url: (updatedClinic as Clinic & { logo_url: string | null })
+        .logo_url,
       message: "로고가 성공적으로 업데이트되었습니다.",
     };
   }
 
   async getClinicInfo(tenantId: string) {
-  const clinics = await this.repository.findByTenant(tenantId);
-  if (!clinics || clinics.length === 0) {
-    return null;
-  }
-  
-  const clinic = clinics[0];
-  // ✅ Faqat name va logo_url qaytarish
-  return {
-    name: clinic.name,
-    logo_url: (clinic as any).logo_url ?? null,
-  };
-}
-}
+    const clinics = await this.repository.findByTenant(tenantId);
+    if (!clinics || clinics.length === 0) {
+      return null;
+    }
 
+    const clinic = clinics[0];
+    // ✅ Faqat name va logo_url qaytarish
+    return {
+      name: clinic.name,
+      logo_url: (clinic as any).logo_url ?? null,
+    };
+  }
+}

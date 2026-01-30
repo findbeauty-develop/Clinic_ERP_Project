@@ -50,8 +50,9 @@ export default function SupplierFormModal({
   const [ocrProcessing, setOcrProcessing] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.jaclit.com";
-const supplierApiUrl =
-  process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "https://api-supplier.jaclit.com";
+  const supplierApiUrl =
+    process.env.NEXT_PUBLIC_SUPPLIER_API_URL ||
+    "https://api-supplier.jaclit.com";
 
   useEffect(() => {
     if (supplier) {

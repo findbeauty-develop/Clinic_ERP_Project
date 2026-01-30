@@ -338,8 +338,6 @@ function OutboundPageContent() {
       const customEvent = event as CustomEvent<{ productId: string }>;
       const { productId } = customEvent.detail;
 
-     
-
       if (!productId) {
         console.warn("[Outbound] No productId in event detail");
         return;
@@ -348,7 +346,7 @@ function OutboundPageContent() {
       // ✅ Always remove product from local state immediately (optimistic update)
       setProducts((prevProducts) => {
         const filtered = prevProducts.filter((p) => p.id !== productId);
-        
+
         return filtered;
       });
 
@@ -368,7 +366,6 @@ function OutboundPageContent() {
       if (!isPackageMode) {
         try {
           await fetchProducts(true);
-          
         } catch (err) {
           console.error(
             "[Outbound] Failed to refresh products after deletion",

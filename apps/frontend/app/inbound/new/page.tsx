@@ -847,7 +847,8 @@ export default function InboundNewPage() {
 
       // Use supplier-backend API for certificate upload with OCR and verification
       const supplierApiUrl =
-        process.env.NEXT_PUBLIC_SUPPLIER_API_URL || "https://api-supplier.jaclit.com";
+        process.env.NEXT_PUBLIC_SUPPLIER_API_URL ||
+        "https://api-supplier.jaclit.com";
       const response = await fetch(
         `${supplierApiUrl}/supplier/manager/upload-certificate`,
         {
@@ -3003,7 +3004,6 @@ export default function InboundNewPage() {
               <input
                 type="text"
                 value={selectedManager}
-                
                 onChange={(e) => setSelectedManager(e.target.value)}
                 placeholder="담당자 이름 입력"
                 className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"

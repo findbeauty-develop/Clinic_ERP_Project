@@ -24,7 +24,6 @@ export class PerformanceLoggerMiddleware implements NestMiddleware {
 
       // Log all requests in development
       if (process.env.NODE_ENV === "development" && duration > 500) {
-        
       }
     });
 

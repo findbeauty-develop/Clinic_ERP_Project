@@ -282,13 +282,21 @@ export class ReturnRepository {
       let supplierManagerPosition: string | null = null;
 
       if (returnItem.product?.productSupplier?.clinicSupplierManager) {
-        const clinicSupplierManager = returnItem.product.productSupplier.clinicSupplierManager;
-        
+        const clinicSupplierManager =
+          returnItem.product.productSupplier.clinicSupplierManager;
+
         // If linked to platform supplier, use platform supplier info
         if (clinicSupplierManager.linkedManager?.supplier) {
-          supplierName = clinicSupplierManager.linkedManager.supplier.company_name || null;
-          supplierManagerName = clinicSupplierManager.linkedManager.name || clinicSupplierManager.name || null;
-          supplierManagerPosition = clinicSupplierManager.linkedManager.position || clinicSupplierManager.position || null;
+          supplierName =
+            clinicSupplierManager.linkedManager.supplier.company_name || null;
+          supplierManagerName =
+            clinicSupplierManager.linkedManager.name ||
+            clinicSupplierManager.name ||
+            null;
+          supplierManagerPosition =
+            clinicSupplierManager.linkedManager.position ||
+            clinicSupplierManager.position ||
+            null;
         } else {
           // Otherwise use clinic supplier manager info (manual supplier)
           supplierName = clinicSupplierManager.company_name || null;

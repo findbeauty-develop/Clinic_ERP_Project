@@ -71,7 +71,7 @@ export default function ReturnsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(10); // Items per page
-   const [notificationCount, setNotificationCount] = useState(4);
+   const [notificationCount, setNotificationCount] = useState("");
 
   // Fetch notifications
   const fetchNotifications = async (page: number = currentPage) => {
@@ -316,11 +316,11 @@ export default function ReturnsPage() {
     />
   </svg>
 
-  {notificationCount > 0 && (
+  {/* {notificationCount > 0 && (
     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
       {notificationCount}
     </span>
-  )}
+  )} */}
 </button></div>
       </div>
       

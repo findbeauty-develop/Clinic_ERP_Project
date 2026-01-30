@@ -6,21 +6,21 @@ const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] 
 
 export class CreateSupplierManualDto {
   @ApiProperty({
-        description: "회사명 (Company name)",
-        example: "ABC 제약회사",
-    })
-    @IsString()
-    companyName!: string;
+    description: "회사명 (Company name)",
+    example: "ABC 제약회사",
+  })
+  @IsString()
+  companyName!: string;
 
   @ApiProperty({
-        description: "사업자 등록번호 (Business registration number)",
-        example: "123-45-67890",
-    })
-    @IsString()
-    @Matches(/^\d{3}-\d{2}-\d{5}$/, {
-        message: "사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)",
-    })
-    businessNumber!: string;
+    description: "사업자 등록번호 (Business registration number)",
+    example: "123-45-67890",
+  })
+  @IsString()
+  @Matches(/^\d{3}-\d{2}-\d{5}$/, {
+    message: "사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)",
+  })
+  businessNumber!: string;
 
   @ApiProperty({
     description: "회사 전화번호 (Company phone number)",
@@ -87,8 +87,8 @@ export class CreateSupplierManualDto {
   })
   @IsString()
   @IsOptional()
-  @IsIn(JOB_TITLES, { 
-    message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" 
+  @IsIn(JOB_TITLES, {
+    message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다",
   })
   position?: string;
 
@@ -109,8 +109,4 @@ export class CreateSupplierManualDto {
   @IsString()
   @IsOptional()
   memo?: string;
-
 }
-
-
-

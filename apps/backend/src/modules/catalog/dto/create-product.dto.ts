@@ -6,4 +6,3 @@ export class CreateProductDto {
   @IsString() uom!: string;
   @IsOptional() @IsString() barcode?: string;
 }
-

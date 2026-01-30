@@ -36,4 +36,3 @@ export class CreateReturnDto {
   @Type(() => CreateReturnItemDto)
   items!: CreateReturnItemDto[]; // 반납할 제품 목록
 }
-

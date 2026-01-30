@@ -881,7 +881,6 @@ export class ProductsService {
       dto.currentStock !== undefined
         ? dto.currentStock
         : existing.current_stock;
-    
 
     // ✅ Update inbound_qty ONLY if user explicitly changed the stock field
     // If currentStock is different from existing, user edited it manually on edit page
@@ -891,7 +890,6 @@ export class ProductsService {
     const newInboundQty = stockWasChanged
       ? dto.currentStock
       : (existing as any).inbound_qty;
-   
 
     await this.prisma.$transaction(
       async (tx: any) => {
@@ -962,7 +960,6 @@ export class ProductsService {
             supplier.company_name;
 
           if (!hasSupplierData) {
-            
           } else {
             // Supplier ma'lumotlari bo'lsa, ClinicSupplierManager'ni yangilash
             if (supplier.contact_name || supplier.contact_phone) {
@@ -1295,7 +1292,6 @@ export class ProductsService {
         const outboundService = this.outboundService as any;
         if (outboundService.invalidateProductsCache) {
           outboundService.invalidateProductsCache(tenantId);
-          
         }
       } catch (error) {
         console.warn(
@@ -2072,7 +2068,6 @@ export class ProductsService {
                   if (supplier) {
                     supplierId = supplier.id;
                     supplierName = supplier.company_name;
-                    
                   } else {
                     this.logger.warn(
                       `📞 No supplier found for phone: ${row.contact_phone}`

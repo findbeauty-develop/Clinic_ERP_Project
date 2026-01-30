@@ -10,9 +10,11 @@ export class GoogleVisionService {
     try {
       // Google Cloud Vision client will use GOOGLE_APPLICATION_CREDENTIALS env var
       this.client = new ImageAnnotatorClient();
-  
     } catch (error) {
-      this.logger.error("Failed to initialize Google Cloud Vision client", error);
+      this.logger.error(
+        "Failed to initialize Google Cloud Vision client",
+        error
+      );
       // Client will be null, methods will handle this gracefully
     }
   }
@@ -25,7 +27,9 @@ export class GoogleVisionService {
   async extractTextFromBuffer(buffer: Buffer): Promise<string> {
     if (!this.client) {
       this.logger.error("Google Cloud Vision client is not initialized");
-      throw new Error("Google Cloud Vision service is not available. Please check GOOGLE_APPLICATION_CREDENTIALS environment variable.");
+      throw new Error(
+        "Google Cloud Vision service is not available. Please check GOOGLE_APPLICATION_CREDENTIALS environment variable."
+      );
     }
 
     try {
@@ -43,12 +47,12 @@ export class GoogleVisionService {
       const fullTextAnnotation = detections[0];
       const extractedText = fullTextAnnotation.description || "";
 
-     
       return extractedText;
     } catch (error) {
       this.logger.error("Error during OCR text extraction", error);
-      throw new Error(`Failed to extract text from image: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Failed to extract text from image: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
 }
-

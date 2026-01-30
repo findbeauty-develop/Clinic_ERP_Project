@@ -52,4 +52,3 @@ export class ProductsController {
     return this.service.update(id, dto, tenantId);
   }
 }
-

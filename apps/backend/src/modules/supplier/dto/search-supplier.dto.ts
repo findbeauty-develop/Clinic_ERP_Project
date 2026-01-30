@@ -29,4 +29,3 @@ export class SearchSupplierDto {
   @IsOptional()
   managerName?: string;
 }
-
