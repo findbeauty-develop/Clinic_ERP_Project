@@ -8,7 +8,7 @@ export class KakaoProvider implements IMessageProvider {
 
   constructor(private configService: ConfigService) {}
 
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical?: boolean): Promise<boolean> {
     // KakaoTalk Business API SMS'ni qo'llab-quvvatlamaydi
     this.logger.warn("KakaoTalk Business API does not support SMS");
     return false;

@@ -26,7 +26,7 @@ export class CoolSMSProvider implements IMessageProvider {
     return `HMAC-SHA256 ApiKey=${apiKey}, Date=${date}, Salt=${salt}, Signature=${signature}`;
   }
 
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical?: boolean): Promise<boolean> {
     try {
       const apiKey = this.configService.get<string>("COOLSMS_API_KEY");
       const apiSecret = this.configService.get<string>("COOLSMS_API_SECRET");

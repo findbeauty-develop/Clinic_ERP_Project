@@ -8,7 +8,7 @@ export class TwilioProvider implements IMessageProvider {
 
   constructor(private configService: ConfigService) {}
 
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical?: boolean): Promise<boolean> {
     try {
       const accountSid = this.configService.get<string>("TWILIO_ACCOUNT_SID");
       const authToken = this.configService.get<string>("TWILIO_AUTH_TOKEN");

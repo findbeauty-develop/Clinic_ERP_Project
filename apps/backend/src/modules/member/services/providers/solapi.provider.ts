@@ -2,16 +2,20 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IMessageProvider } from "../message-provider.interface";
 import { SolapiMessageService } from "solapi";
+import { TelegramNotificationService } from "src/common/services/telegram-notification.service";
 
 @Injectable()
 export class SolapiProvider implements IMessageProvider {
   private readonly logger = new Logger(SolapiProvider.name);
   private messageService: SolapiMessageService | null = null;
-
+  private telegramService: TelegramNotificationService;
+  
+  
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>("SOLAPI_API_KEY");
     const apiSecret = this.configService.get<string>("SOLAPI_API_SECRET");
-
+    this.telegramService = new TelegramNotificationService(this.configService);
+    
     if (apiKey && apiSecret) {
       try {
         this.messageService = new SolapiMessageService(apiKey, apiSecret);
@@ -24,7 +28,7 @@ export class SolapiProvider implements IMessageProvider {
     }
   }
 
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical: boolean = false): Promise<boolean> {
     try {
       if (!this.messageService) {
         this.logger.warn("Solapi message service not initialized");
@@ -77,7 +81,17 @@ export class SolapiProvider implements IMessageProvider {
         return false;
       }
     } catch (error: any) {
-      this.logger.error(`Solapi SMS failed`);
+      this.logger.error(`Solapi SMS failed: ${error?.message || "Unknown error"}`);
+
+      // ✅ Telegram notification for critical SMS failures
+      if (isCritical && process.env.NODE_ENV === "production") {
+        await this.telegramService.sendSystemAlert(
+          "SMS Service Failure",
+          `Solapi SMS failed: ${error?.message || "Unknown error"}\nTo: ${phoneNumber}\nMessage length: ${message.length} chars`
+        ).catch((err) => {
+          this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+        });
+      }
 
       // Error'ning barcha property'larini ko'rsatish
       if (error) {

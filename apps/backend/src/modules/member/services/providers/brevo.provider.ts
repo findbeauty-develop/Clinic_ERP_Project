@@ -3,6 +3,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IEmailProvider } from "../email-provider.interface";
 import * as SibApiV3Sdk from "@sendinblue/client";
+import { TelegramNotificationService } from "src/common/services/telegram-notification.service";
 
 @Injectable()
 export class BrevoProvider implements IEmailProvider {
@@ -10,12 +11,16 @@ export class BrevoProvider implements IEmailProvider {
   private apiInstance: SibApiV3Sdk.TransactionalEmailsApi | null = null;
   private fromEmail: string | null = null;
   private fromName: string | null = null;
+  private telegramService: TelegramNotificationService;
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>("BREVO_API_KEY");
     const fromEmail = this.configService.get<string>("BREVO_FROM_EMAIL");
     const fromName =
       this.configService.get<string>("BREVO_FROM_NAME") || "Clinic ERP";
+    this.telegramService = new TelegramNotificationService(this.configService);
+
+
 
     if (apiKey && fromEmail) {
       try {
@@ -78,6 +83,17 @@ export class BrevoProvider implements IEmailProvider {
           `Brevo Error Details: ${JSON.stringify(error.response.body)}`
         );
       }
+      
+      // ✅ Telegram notification for critical email failures in production
+      if (process.env.NODE_ENV === "production") {
+        await this.telegramService.sendSystemAlert(
+          "Email Service Failure",
+          `Brevo email service error: ${error?.message || "Unknown error"}\nTo: ${to}\nSubject: ${subject}`
+        ).catch((err) => {
+          this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+        });
+      }
+      
       return false;
     }
   }
@@ -126,6 +142,14 @@ export class BrevoProvider implements IEmailProvider {
       this.logger.error(
         `Brevo template email failed: ${error?.message || "Unknown error"}`
       );
+
+      if (process.env.NODE_ENV === "production") {
+        await this.telegramService.sendSystemAlert(
+          "Brevo Email Failed",
+          `Brevo template email failed: ${error.message}`
+        );
+      }
+
       if (error?.response?.body) {
         this.logger.error(
           `Brevo Error Details: ${JSON.stringify(error.response.body)}`

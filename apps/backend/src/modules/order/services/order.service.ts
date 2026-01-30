@@ -16,6 +16,7 @@ import { SearchProductsQueryDto } from "../dto/search-products-query.dto";
 import { MessageService } from "../../member/services/message.service";
 import { EmailService } from "../../member/services/email.service";
 import { CacheManager } from "../../../common/cache";
+import { TelegramNotificationService } from "src/common/services/telegram-notification.service";
 
 @Injectable()
 export class OrderService {
@@ -30,7 +31,8 @@ export class OrderService {
     private readonly prisma: PrismaService,
     private readonly orderRepository: OrderRepository,
     private readonly messageService: MessageService,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly telegramService: TelegramNotificationService
   ) {
     this.productsForOrderCache = new CacheManager({
       maxSize: 100,
@@ -800,44 +802,58 @@ export class OrderService {
       );
 
       // ✅ STEP 2: Create order with appropriate status
-      const order = await this.prisma.$transaction(async (tx: any) => {
-        const order = await (tx as any).order.create({
-          data: {
-            tenant_id: tenantId,
-            order_no: orderNo,
-            status: initialStatus, // ✅ Dynamic status
-            supplier_id: supplierId !== "unknown" ? supplierId : null,
-            total_amount: group.totalAmount,
-            expected_delivery_date: dto.expectedDeliveryDate
-              ? new Date(dto.expectedDeliveryDate)
-              : null,
-            confirmed_at: isManualSupplier ? new Date() : null, // ✅ Auto-confirm timestamp
-            created_by: createdBy ?? null,
-            memo: supplierMemo,
-            clinic_manager_name: dto.clinicManagerName || null,
-          },
+      let order: any;
+      try {
+        order = await this.prisma.$transaction(async (tx: any) => {
+          const order = await (tx as any).order.create({
+            data: {
+              tenant_id: tenantId,
+              order_no: orderNo,
+              status: initialStatus, // ✅ Dynamic status
+              supplier_id: supplierId !== "unknown" ? supplierId : null,
+              total_amount: group.totalAmount,
+              expected_delivery_date: dto.expectedDeliveryDate
+                ? new Date(dto.expectedDeliveryDate)
+                : null,
+              confirmed_at: isManualSupplier ? new Date() : null, // ✅ Auto-confirm timestamp
+              created_by: createdBy ?? null,
+              memo: supplierMemo,
+              clinic_manager_name: dto.clinicManagerName || null,
+            },
+          });
+
+          // Order items yaratish
+          await Promise.all(
+            group.items.map((item: any) =>
+              (tx as any).orderItem.create({
+                data: {
+                  tenant_id: tenantId,
+                  order_id: order.id,
+                  product_id: item.productId,
+                  batch_id: item.batchId ?? null,
+                  quantity: item.quantity,
+                  unit_price: item.unitPrice,
+                  total_price: item.totalPrice,
+                  memo: item.memo ?? null,
+                },
+              })
+            )
+          );
+
+          return order;
         });
-
-        // Order items yaratish
-        await Promise.all(
-          group.items.map((item: any) =>
-            (tx as any).orderItem.create({
-              data: {
-                tenant_id: tenantId,
-                order_id: order.id,
-                product_id: item.productId,
-                batch_id: item.batchId ?? null,
-                quantity: item.quantity,
-                unit_price: item.unitPrice,
-                total_price: item.totalPrice,
-                memo: item.memo ?? null,
-              },
-            })
-          )
-        );
-
-        return order;
-      });
+      } catch (transactionError: any) {
+        // ✅ Telegram notification for transaction rollback
+        if (process.env.NODE_ENV === "production") {
+          await this.telegramService.sendSystemAlert(
+            "Transaction Rollback",
+            `Order creation transaction failed: ${transactionError?.message || "Unknown error"}\nOrder No: ${orderNo}\nTenant: ${tenantId}\nTotal Amount: ${group.totalAmount.toLocaleString()}원`
+          ).catch((err) => {
+            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+          });
+        }
+        throw transactionError; // Re-throw to let caller handle
+      }
 
       createdOrders.push(
         await this.orderRepository.findById(order.id, tenantId)
@@ -2633,18 +2649,35 @@ export class OrderService {
         }
       } catch (emailError: any) {
         // Log error but don't fail the order creation
-
         this.logger.error(
           `Failed to send email notification to supplier: ${
             emailError?.message || "Unknown error"
           }`
         );
+
+        // ✅ Telegram notification for high-value orders (>1M won)
+        if (process.env.NODE_ENV === "production" && order.total_amount > 1000000) {
+          await this.telegramService.sendSystemAlert(
+            "High-Value Order Email Failed",
+            `Order ${order.order_no} (${order.total_amount.toLocaleString()}원) email notification failed: ${emailError?.message || "Unknown error"}`
+          ).catch((err) => {
+            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+          });
+        }
       }
     } catch (error: any) {
       this.logger.error(
         `Error sending order to supplier-backend: ${error.message}`,
         error.stack
       );
+
+      if (process.env.NODE_ENV === "production") {
+        await this.telegramService.sendErrorAlert(error, {
+          url:`/orders/${order.id}`,
+          method: "POST",
+          tenantId: tenantId
+        });
+      }
       // Don't throw - order already created in clinic DB, supplier notification is optional
     }
   }
@@ -3648,6 +3681,7 @@ export class OrderService {
         this.logger.error(
           `Failed to notify supplier-backend of order completion: ${error.message}`
         );
+
         // Don't throw - order is already completed in clinic DB
       }
     }
@@ -3700,14 +3734,34 @@ export class OrderService {
         this.logger.error(
           `Failed to notify supplier-backend of completion: ${response.status} ${errorText}`
         );
-      } else {
+        
+        // ✅ Telegram notification for supplier-backend communication failures
+        if (process.env.NODE_ENV === "production") {
+          await this.telegramService.sendSystemAlert(
+            "Supplier Notification Failed",
+            `Order ${orderNo} completion notification failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`
+          ).catch((err) => {
+            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+          });
+        }
       }
     } catch (error: any) {
       this.logger.error(
         `Error notifying supplier-backend of completion: ${error.message}`,
         error.stack
       );
-      throw error;
+      
+      // ✅ Telegram notification for supplier-backend communication failures
+      if (process.env.NODE_ENV === "production") {
+        await this.telegramService.sendSystemAlert(
+          "Supplier Notification Failed",
+          `Order ${orderNo} completion notification failed: ${error.message}`
+        ).catch((err) => {
+          this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+        });
+      }
+      
+      // Don't throw - order is already completed in clinic DB
     }
   }
 

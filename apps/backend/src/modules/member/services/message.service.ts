@@ -47,9 +47,9 @@ export class MessageService {
   /**
    * Send SMS using the configured provider
    */
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical: boolean = false): Promise<boolean> {
     try {
-      const smsSent = await this.provider.sendSMS(phoneNumber, message);
+      const smsSent = await this.provider.sendSMS(phoneNumber, message, isCritical);
       if (smsSent) {
       } else {
         this.logger.warn(`Failed to send SMS to ${phoneNumber}`);
@@ -77,8 +77,9 @@ export class MessageService {
   ): Promise<{ smsSent: boolean; kakaoSent: boolean }> {
     const message = this.formatMemberCredentialsMessage(clinicName, members);
 
+    // ✅ Member credentials - critical SMS
     const [smsSent, kakaoSent] = await Promise.all([
-      this.provider.sendSMS(phoneNumber, message).catch(() => false),
+      this.provider.sendSMS(phoneNumber, message, true).catch(() => false), // isCritical = true
       this.provider.sendKakaoTalk(phoneNumber, message).catch(() => false),
     ]);
 
@@ -164,7 +165,9 @@ export class MessageService {
     );
 
     try {
-      const smsSent = await this.provider.sendSMS(phoneNumber, message);
+      // ✅ Order notifications - critical SMS (high-value orders)
+      const isCritical = totalAmount > 1000000; // 1M won dan katta
+      const smsSent = await this.provider.sendSMS(phoneNumber, message, isCritical);
       if (smsSent) {
       } else {
         this.logger.warn(

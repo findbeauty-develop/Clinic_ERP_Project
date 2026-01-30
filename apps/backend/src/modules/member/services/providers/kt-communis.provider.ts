@@ -21,7 +21,7 @@ export class KTCommunisProvider implements IMessageProvider {
     );
   }
 
-  async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
+  async sendSMS(phoneNumber: string, message: string, isCritical?: boolean): Promise<boolean> {
     try {
       if (!this.apiKey || !this.apiSecret || !this.fromNumber) {
         this.logger.warn("KT Communis credentials not configured");
