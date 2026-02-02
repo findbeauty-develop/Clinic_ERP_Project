@@ -32,31 +32,36 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService
   ) {
     // Supabase storage monitoring configuration
-    this.planLimitGB = this.configService.get<number>("SUPABASE_PLAN_LIMIT_GB") || 8; // Default: 8GB for Pro plan
-    this.warningThreshold = this.configService.get<number>("DB_SIZE_WARNING_THRESHOLD") || 0.8; // 80%
-    this.criticalThreshold = this.configService.get<number>("DB_SIZE_CRITICAL_THRESHOLD") || 0.9; // 90%
+    const planLimitGBConfig = this.configService.get<string | number>("SUPABASE_PLAN_LIMIT_GB");
+    this.planLimitGB = planLimitGBConfig ? Number(planLimitGBConfig) : 8; // Default: 8GB for Pro plan
+    
+    const warningThresholdConfig = this.configService.get<string | number>("DB_SIZE_WARNING_THRESHOLD");
+    this.warningThreshold = warningThresholdConfig ? Number(warningThresholdConfig) : 0.8; // 80%
+    
+    const criticalThresholdConfig = this.configService.get<string | number>("DB_SIZE_CRITICAL_THRESHOLD");
+    this.criticalThreshold = criticalThresholdConfig ? Number(criticalThresholdConfig) : 0.9; // 90%
   }
 
   onModuleInit() {
-//   const isProduction = process.env.NODE_ENV === "production";
-//   const intervalMs = isProduction 
-//     ? this.healthCheckIntervalMs  // 5 minut production'da
-//     : 1 * 60 * 1000; // 1 minut development'da (test uchun)
+  const isProduction = process.env.NODE_ENV === "production";
+  const intervalMs = isProduction 
+    ? this.healthCheckIntervalMs  // 5 minut production'da
+    : 1 * 60 * 1000; // 1 minut development'da (test uchun)
 
-//   this.logger.log("Starting health check monitoring...");
+  this.logger.log("Starting health check monitoring...");
   
-//   this.healthCheckInterval = setInterval(() => {
-//     this.performHealthCheck().catch((error) => {
-//       this.logger.error(`Health check error: ${error.message}`);
-//     });
-//   }, intervalMs);
+  this.healthCheckInterval = setInterval(() => {
+    this.performHealthCheck().catch((error) => {
+      this.logger.error(`Health check error: ${error.message}`);
+    });
+  }, intervalMs);
 
-//   // Dastlabki health check (30 sekunddan keyin)
-//   setTimeout(() => {
-//     this.performHealthCheck().catch((error) => {
-//       this.logger.error(`Initial health check error: ${error.message}`);
-//     });
-//   }, 30000);
+  // Dastlabki health check (30 sekunddan keyin)
+  setTimeout(() => {
+    this.performHealthCheck().catch((error) => {
+      this.logger.error(`Initial health check error: ${error.message}`);
+    });
+  }, 30000);
 }
 
   onModuleDestroy() {
@@ -218,7 +223,96 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Get database storage size information (public method for API endpoints)
+   * Works in both development and production
+   */
+  async getDatabaseSizeInfo(): Promise<{
+    sizeBytes: number;
+    sizeMB: number;
+    sizeGB: number;
+    sizePretty: string;
+    usagePercentage: number;
+    planLimitGB: number;
+    topTables: Array<{ table_name: string; size_pretty: string; size_mb: number }>;
+    status: 'ok' | 'warning' | 'critical';
+  }> {
+    try {
+      // Get current database size in bytes
+      const sizeResult = await this.prisma.$queryRaw<Array<{ size: bigint }>>`
+        SELECT pg_database_size(current_database()) as size
+      `;
+      
+      const sizeInBytes = Number(sizeResult[0]?.size || 0);
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      const sizeInGB = sizeInMB / 1024;
+      const usagePercentage = (sizeInGB / this.planLimitGB) * 100;
+
+      // Get top 5 largest tables
+      // Using c.oid instead of string concatenation to properly handle quoted identifiers
+      const tableSizes = await this.prisma.$queryRaw<Array<{
+        table_name: string;
+        size_bytes: bigint;
+        size_pretty: string;
+      }>>`
+        SELECT 
+          nspname || '.' || relname AS table_name,
+          pg_size_pretty(pg_total_relation_size(c.oid)) AS size_pretty,
+          pg_total_relation_size(c.oid) AS size_bytes
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE nspname = 'public' 
+          AND c.relkind = 'r'
+        ORDER BY pg_total_relation_size(c.oid) DESC
+        LIMIT 5
+      `;
+
+      // Determine status
+      let status: 'ok' | 'warning' | 'critical' = 'ok';
+      if (sizeInGB >= (this.planLimitGB * this.criticalThreshold)) {
+        status = 'critical';
+      } else if (sizeInGB >= (this.planLimitGB * this.warningThreshold)) {
+        status = 'warning';
+      }
+
+      // Also trigger notification if in production
+      const shouldNotify = 
+        process.env.NODE_ENV === "production" && 
+        process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true";
+      
+      if (shouldNotify) {
+        // Trigger notification check (but don't wait for it)
+        this.checkDatabaseSize().catch((error) => {
+          this.logger.error(`Failed to send database size notification: ${error.message}`);
+        });
+      }
+
+      return {
+        sizeBytes: sizeInBytes,
+        sizeMB: parseFloat(sizeInMB.toFixed(2)),
+        sizeGB: parseFloat(sizeInGB.toFixed(2)),
+        sizePretty: `${sizeInGB.toFixed(2)} GB`,
+        usagePercentage: parseFloat(usagePercentage.toFixed(1)),
+        planLimitGB: this.planLimitGB,
+        topTables: tableSizes.map(t => {
+          const sizeBytes = Number(t.size_bytes);
+          const sizeMB = sizeBytes / (1024 * 1024);
+          return {
+            table_name: t.table_name,
+            size_pretty: t.size_pretty,
+            size_mb: parseFloat(sizeMB.toFixed(2)),
+          };
+        }),
+        status: status,
+      };
+    } catch (error: any) {
+      this.logger.error(`Database size check failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Check database storage size and send alerts if thresholds are exceeded
+   * Private method - only sends notifications in production
    */
   private async checkDatabaseSize(): Promise<void> {
     const shouldNotify = 
@@ -243,7 +337,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       this.lastSizeCheck = new Date();
 
       // Get top 5 largest tables for cleanup recommendations
-      // Using pg_class instead of pg_tables to properly handle quoted identifiers (PascalCase table names)
+      // Using pg_class with c.oid instead of string concatenation to properly handle quoted identifiers (PascalCase table names)
       const tableSizes = await this.prisma.$queryRaw<Array<{
         table_name: string;
         size_mb: number;
@@ -251,13 +345,13 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       }>>`
         SELECT 
           nspname || '.' || relname AS table_name,
-          pg_size_pretty(pg_total_relation_size(nspname||'.'||relname)) AS size_pretty,
-          pg_total_relation_size(nspname||'.'||relname)::bigint / (1024 * 1024) AS size_mb
+          pg_size_pretty(pg_total_relation_size(c.oid)) AS size_pretty,
+          pg_total_relation_size(c.oid)::bigint / (1024 * 1024) AS size_mb
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE nspname = 'public' 
           AND c.relkind = 'r'
-        ORDER BY pg_total_relation_size(nspname||'.'||relname) DESC
+        ORDER BY pg_total_relation_size(c.oid) DESC
         LIMIT 5
       `;
 

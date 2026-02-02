@@ -49,7 +49,7 @@ const navItems = [
   },
   {
     href: "/inbound",
-    label: "입고 관리",
+    label: "입고",
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -69,7 +69,7 @@ const navItems = [
   },
   {
     href: "/outbound",
-    label: "제품 출고",
+    label: "출고",
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -89,7 +89,7 @@ const navItems = [
   },
   {
     href: "/returns",
-    label: "반납 관리",
+    label: "반납",
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -107,29 +107,9 @@ const navItems = [
       </svg>
     ),
   },
-  {
-    href: "/order-returns",
-    label: "반품",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-        className="h-5 w-5"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
-        />
-      </svg>
-    ),
-  },
-  {
+   {
     href: "/order",
-    label: "주문 관리",
+    label: "주문",
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -147,6 +127,27 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    href: "/order-returns",
+    label: "반품 및 교환",
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+        className="h-5 w-5"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
+        />
+      </svg>
+    ),
+  },
+ 
   // {
   //   label: "CSV 입고",
   //   isDropdown: true,
