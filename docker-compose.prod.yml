@@ -9,7 +9,7 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - ./apps/backend/.env.production
+      - ./apps/backend/.env
     environment:
       - NODE_ENV=production 
       - SUPPLIER_BACKEND_URL=http://supplier-erp-backend-prod:3002
@@ -45,7 +45,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=https://api.jaclit.com
     env_file:
-      - ./apps/frontend/.env.production
+      - ./apps/frontend/.env
     depends_on:
       - backend
     networks:
@@ -59,7 +59,7 @@ services:
     ports:
       - "3002:3002"
     env_file:
-      - ./apps/supplier-backend/.env.production
+      - ./apps/supplier-backend/.env
     environment:
       - NODE_ENV=production 
       # ✅ Docker network ichida container nomi ishlatiladi
@@ -97,7 +97,7 @@ services:
       - NEXT_PUBLIC_API_URL=https://api-supplier.jaclit.com
       - NEXT_PUBLIC_CLINIC_BACKEND_URL=https://api.jaclit.com
     env_file:
-      - ./apps/supplier-frontend/.env.production
+      - ./apps/supplier-frontend/.env
     depends_on:
       - supplier-backend
     networks:
@@ -154,6 +154,23 @@ services:
       timeout: 10s
       retries: 3
 
+  # PostgreSQL Exporter (Database Metrics - Port 9187)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=${POSTGRES_EXPORTER_DATA_SOURCE_NAME}
+    ports:
+      - "9187:9187"
+    networks:
+      - clinic-erp-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Grafana (Visualization - Port 3004)
   grafana:
     image: grafana/grafana:latest
@@ -161,12 +178,23 @@ services:
     restart: unless-stopped
     ports:
       - "3004:3000"
+
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
       - GF_INSTALL_PLUGINS=grafana-clock-panel
       - GF_SERVER_ROOT_URL=http://localhost:3004
       - GF_USERS_ALLOW_SIGN_UP=false
+
+      # SMTP sozlamalari (Email alert'lar uchun)
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=smtp-relay.brevo.com:587
+      - GF_SMTP_USER=apikey
+      - GF_SMTP_PASSWORD=${BREVO_SMTP_KEY}
+      - GF_SMTP_FROM_ADDRESS=noreply@jaclit.com
+      - GF_SMTP_FROM_NAME=Grafana Alerts
+      - GF_SMTP_SKIP_VERIFY=true
+      - GF_SMTP_STARTTLS_POLICY=OpportunisticStartTLS
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-provisioning:/etc/grafana/provisioning
