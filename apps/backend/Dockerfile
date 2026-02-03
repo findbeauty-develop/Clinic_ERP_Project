@@ -16,7 +16,10 @@ RUN pnpm install --no-frozen-lockfile
 FROM deps AS builder
 ENV NODE_ENV=production
 COPY . .
-RUN pnpm --filter @erp/backend exec prisma generate
+# Prisma generate'ni to'g'ri working directory'da ishga tushirish
+WORKDIR /workspace/apps/backend
+RUN pnpm exec prisma generate
+WORKDIR /workspace
 RUN pnpm --filter @erp/backend build
 
 FROM node:20-bullseye AS runner
@@ -38,4 +41,3 @@ COPY --from=builder /workspace/pnpm-workspace.yaml ./
 WORKDIR /app/apps/backend
 EXPOSE 3000
 CMD node dist/main.js
-
