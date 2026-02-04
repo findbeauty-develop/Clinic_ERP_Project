@@ -1,7 +1,8 @@
 import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
-import { APP_GUARD, APP_FILTER } from "@nestjs/core";
+import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
+import { PrometheusInterceptor } from "./common/interceptors/prometheus.interceptor";
 import { PrismaModule } from "./core/prisma.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { IamModule } from "./modules/iam/iam.module";
@@ -83,6 +84,11 @@ import { CommonModule } from "./common/common.module";
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+    // ✅ Global Prometheus interceptor (API metrics uchun)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PrometheusInterceptor,
     },
   ],
 })

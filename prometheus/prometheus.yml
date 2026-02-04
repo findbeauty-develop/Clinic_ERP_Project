@@ -43,3 +43,14 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 30s
 
+  # Backend API Metrics
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['backend:3000']
+        labels:
+          instance: 'clinic-erp-backend'
+          job: 'api'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 15s
+

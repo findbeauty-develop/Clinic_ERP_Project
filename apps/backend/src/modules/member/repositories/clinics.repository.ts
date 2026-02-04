@@ -1,23 +1,23 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
-import { Clinic } from "@prisma/client";
+import { Clinic, Prisma } from "../../../../node_modules/.prisma/client-backend";
 
 @Injectable()
 export class ClinicsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(data: any) {
+  create(data: Prisma.ClinicCreateInput): Promise<Clinic> {
     return this.prisma.clinic.create({ data });
   }
 
-  findByTenant(tenantId: string) {
+  findByTenant(tenantId: string): Promise<Clinic[]> {
     return this.prisma.clinic.findMany({
       where: { tenant_id: tenantId },
       orderBy: { created_at: "desc" },
     });
   }
 
-  findById(id: string, tenantId: string) {
+  findById(id: string, tenantId: string): Promise<Clinic | null> {
     return this.prisma.clinic.findFirst({
       where: { id, tenant_id: tenantId },
     });
@@ -38,7 +38,10 @@ export class ClinicsRepository {
     });
   }
 
-  findByDocumentIssueNumberAndName(documentIssueNumber: string, name: string) {
+  findByDocumentIssueNumberAndName(
+    documentIssueNumber: string,
+    name: string
+  ): Promise<Clinic | null> {
     return this.prisma.clinic.findFirst({
       where: {
         document_issue_number: documentIssueNumber,
@@ -51,7 +54,7 @@ export class ClinicsRepository {
     documentIssueNumber: string,
     name: string,
     excludeId: string
-  ) {
+  ): Promise<Clinic | null> {
     return this.prisma.clinic.findFirst({
       where: {
         document_issue_number: documentIssueNumber,

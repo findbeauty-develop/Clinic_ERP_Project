@@ -4,11 +4,13 @@ import { TelegramNotificationService } from "./services/telegram-notification.se
 import { MonitoringService } from "./services/monitoring.service";
 import { PrismaModule } from "../core/prisma.module";
 import { MonitoringController } from "./controllers/monitoring.controller";
+import { MetricsController } from "./controllers/metrics.controller";
+import { CommonPrometheusModule } from "./prometheus.module";
 
 @Global()
 @Module({
-  imports: [ConfigModule, PrismaModule],
-  controllers: [MonitoringController],
+  imports: [ConfigModule, PrismaModule, CommonPrometheusModule],
+  controllers: [MonitoringController, MetricsController],
   providers: [TelegramNotificationService, MonitoringService],
   exports: [TelegramNotificationService, MonitoringService],
 })

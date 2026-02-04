@@ -14,7 +14,7 @@ import { HiraService } from "../../hira/services/hira.service";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { v4 as uuidv4 } from "uuid";
-import { Clinic } from "@prisma/client";
+import { Clinic } from "../../../../node_modules/.prisma/client-backend";
 
 @Injectable()
 export class ClinicsService {

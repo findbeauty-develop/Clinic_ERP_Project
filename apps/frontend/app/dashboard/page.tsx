@@ -4,10 +4,10 @@ import KoreanClockWidget from "@/components/watch";
 import { apiGet } from "@/lib/api";
 import { duration } from "html2canvas/dist/types/css/property-descriptors/duration";
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-export default function DashboardPage() {
+function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [currentBannerSlide, setCurrentBannerSlide] = useState(0);
@@ -1857,5 +1857,26 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Loading fallback component
+function DashboardLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading dashboard...</p>
+      </div>
+    </div>
+  );
+}
+
+// Main component - Suspense bilan o'rab olish
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardContent />
+    </Suspense>
   );
 }
