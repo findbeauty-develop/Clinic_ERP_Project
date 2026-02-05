@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  HttpException,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
@@ -46,12 +47,8 @@ export class SecurityInterceptor implements NestInterceptor {
         error: (err) => {
           // Track failed login attempts
           if (isLoginEndpoint && method === 'POST') {
-            // Check if it's an authentication error
-            if (
-              err.status === 401 ||
-              err.message?.includes('Invalid') ||
-              err.message?.includes('Unauthorized')
-            ) {
+            // Check if it's an authentication error (401 Unauthorized)
+            if (err instanceof HttpException && err.getStatus() === 401) {
               failedLoginAttempts.inc({
                 ip: clientIp,
                 endpoint: routePath,
@@ -59,8 +56,19 @@ export class SecurityInterceptor implements NestInterceptor {
             }
           }
         },
+      }),
+      catchError((err) => {
+        // Track failed login attempts in catchError as well
+        if (isLoginEndpoint && method === 'POST') {
+          if (err instanceof HttpException && err.getStatus() === 401) {
+            failedLoginAttempts.inc({
+              ip: clientIp,
+              endpoint: routePath,
+            });
+          }
+        }
+        throw err;
       })
     );
   }
 }
-
