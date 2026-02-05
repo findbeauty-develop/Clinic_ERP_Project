@@ -1,4 +1,4 @@
-version: "3.8"
+
 
 services:
   # Clinic Backend (Port 3000)
@@ -132,27 +132,34 @@ services:
       retries: 3
 
   # Node Exporter (Server Metrics - Port 9100)
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    restart: unless-stopped
-    ports:
-      - "9100:9100"
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|boot|run|media|mnt|snap)($$|/)'
-    networks:
-      - clinic-erp-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # node-exporter:
+  #   image: prom/node-exporter:latest
+  #   container_name: node-exporter
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9100:9100"
+  #   volumes:
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #     - /:/rootfs:ro
+  #   command:
+  #     - '--path.procfs=/host/proc'
+  #     - '--path.sysfs=/host/sys'
+  #     - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|boot|run|media|mnt|snap)($$|/)'
+  #     - '--log.level=warn'
+  #   networks:
+  #     - clinic-erp-network
+  #   logging:  # ✅ Log rotation qo'shish
+  #     driver: "local"
+  #     options:
+  #       max-size: "5m"
+  #       max-file: "2"
+  #       compress: "true"  
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # PostgreSQL Exporter (Database Metrics - Port 9187)
   postgres-exporter:
@@ -161,6 +168,10 @@ services:
     restart: unless-stopped
     environment:
       - DATA_SOURCE_NAME=${POSTGRES_EXPORTER_DATA_SOURCE_NAME}
+      - PG_EXPORTER_DISABLE_DEFAULT_METRICS=true
+    command:
+      - '--disable-settings-metrics' 
+
     ports:
       - "9187:9187"
     networks:
@@ -193,8 +204,7 @@ services:
       - GF_SMTP_PASSWORD=${BREVO_SMTP_KEY}
       - GF_SMTP_FROM_ADDRESS=noreply@jaclit.com
       - GF_SMTP_FROM_NAME=Grafana Alerts
-      - GF_SMTP_SKIP_VERIFY=true
-      - GF_SMTP_STARTTLS_POLICY=OpportunisticStartTLS
+      - GF_SMTP_SKIP_VERIFY=true      - GF_SMTP_STARTTLS_POLICY=OpportunisticStartTLS
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-provisioning:/etc/grafana/provisioning

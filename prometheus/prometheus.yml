@@ -23,15 +23,15 @@ scrape_configs:
         labels:
           instance: 'prometheus'
 
-  # Node Exporter (Server Metrics - EC2 Infrastructure)
-  - job_name: 'node-exporter'
-    static_configs:
-      - targets: ['172.31.36.223:9100']  # EC2'ning private IP'si
-        labels:
-          instance: 'ec2-server'
-          job: 'infrastructure'
-    scrape_interval: 30s
-    scrape_timeout: 30s
+  # # Node Exporter (Server Metrics - EC2 Infrastructure)
+  # - job_name: 'node-exporter'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']  # EC2'ning private IP'si
+  #       labels:
+  #         instance: 'ec2-server'
+  #         job: 'infrastructure'
+  #   scrape_interval: 300s
+  #   scrape_timeout: 30s
 
   # PostgreSQL Exporter (Database Metrics - Supabase)
   - job_name: 'postgres-exporter'
@@ -41,7 +41,7 @@ scrape_configs:
           instance: 'supabase-database'
           job: 'database'
     scrape_interval: 30s
-    scrape_timeout: 30s
+    scrape_timeout: 25s
 
   # Backend API Metrics
   - job_name: 'backend'
@@ -52,5 +52,5 @@ scrape_configs:
           job: 'api'
     metrics_path: '/metrics'
     scrape_interval: 15s
-    scrape_timeout: 15s
+    scrape_timeout: 10s
 
