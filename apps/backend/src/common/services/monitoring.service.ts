@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../core/prisma.service";
 import { TelegramNotificationService } from "./telegram-notification.service";
+import { Gauge } from "prom-client";
 
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
@@ -25,6 +26,32 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private lastWarningSent: Date | null = null;
   private lastCriticalSent: Date | null = null;
   private readonly sizeCheckCooldown = 60 * 60 * 1000; // 1 hour cooldown between alerts
+
+  // Cost monitoring metrics (Prometheus)
+  private databaseSizeGB = new Gauge({
+    name: 'database_size_gb',
+    help: 'Database size in GB',
+    labelNames: ['status'],
+  });
+
+  private databaseUsagePercentage = new Gauge({
+    name: 'database_usage_percentage',
+    help: 'Database usage percentage of plan limit',
+  });
+
+  private databaseGrowthRateGBPerDay = new Gauge({
+    name: 'database_growth_rate_gb_per_day',
+    help: 'Database growth rate in GB per day',
+  });
+
+  private databaseDaysUntilLimit = new Gauge({
+    name: 'database_days_until_limit',
+    help: 'Estimated days until database reaches limit',
+  });
+
+  // Storage for growth rate calculation
+  private sizeHistory: Array<{ timestamp: Date; sizeGB: number }> = [];
+  private readonly maxHistorySize = 30; // Keep last 30 measurements
 
   constructor(
     private readonly prisma: PrismaService,
@@ -235,6 +262,8 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     planLimitGB: number;
     topTables: Array<{ table_name: string; size_pretty: string; size_mb: number }>;
     status: 'ok' | 'warning' | 'critical';
+    growthRateGBPerDay: number;
+    daysUntilLimit: number | null;
   }> {
     try {
       // Get current database size in bytes
@@ -274,6 +303,46 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         status = 'warning';
       }
 
+      // Update Prometheus metrics for cost monitoring
+      this.databaseSizeGB.set({ status }, sizeInGB);
+      this.databaseUsagePercentage.set(usagePercentage);
+
+      // Calculate growth rate and projection
+      const now = new Date();
+      this.sizeHistory.push({ timestamp: now, sizeGB: sizeInGB });
+      
+      // Keep only last N measurements
+      if (this.sizeHistory.length > this.maxHistorySize) {
+        this.sizeHistory = this.sizeHistory.slice(-this.maxHistorySize);
+      }
+
+      // Calculate growth rate (GB per day)
+      let growthRateGBPerDay = 0;
+      let daysUntilLimit = Infinity;
+      
+      if (this.sizeHistory.length >= 2) {
+        const oldest = this.sizeHistory[0];
+        const newest = this.sizeHistory[this.sizeHistory.length - 1];
+        const daysDiff = (newest.timestamp.getTime() - oldest.timestamp.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (daysDiff > 0) {
+          const sizeDiff = newest.sizeGB - oldest.sizeGB;
+          growthRateGBPerDay = sizeDiff / daysDiff;
+          
+          // Calculate days until limit
+          const remainingGB = this.planLimitGB - sizeInGB;
+          if (growthRateGBPerDay > 0) {
+            daysUntilLimit = remainingGB / growthRateGBPerDay;
+          } else if (growthRateGBPerDay < 0) {
+            daysUntilLimit = Infinity; // Shrinking, no limit concern
+          }
+        }
+      }
+
+      // Update Prometheus metrics
+      this.databaseGrowthRateGBPerDay.set(growthRateGBPerDay);
+      this.databaseDaysUntilLimit.set(daysUntilLimit === Infinity ? -1 : daysUntilLimit);
+
       // Also trigger notification if in production
       const shouldNotify = 
         process.env.NODE_ENV === "production" && 
@@ -303,6 +372,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           };
         }),
         status: status,
+        // Cost monitoring data
+        growthRateGBPerDay: parseFloat(growthRateGBPerDay.toFixed(4)),
+        daysUntilLimit: daysUntilLimit === Infinity ? null : parseFloat(daysUntilLimit.toFixed(1)),
       };
     } catch (error: any) {
       this.logger.error(`Database size check failed: ${error.message}`);

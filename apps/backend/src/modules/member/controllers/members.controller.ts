@@ -9,6 +9,7 @@ import {
   Req,
   Res,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
@@ -24,6 +25,7 @@ import { MemberLoginDto } from "../dto/member-login.dto";
 import { MessageService } from "../services/message.service";
 import { SendMembersCredentialsDto } from "../dto/send-members-credentials.dto";
 import { PhoneVerificationService } from "../services/phone-verification.service";
+import { SecurityInterceptor } from "../../../common/interceptors/security.interceptor";
 
 @ApiTags("membership")
 @ApiBearerAuth()
@@ -64,6 +66,7 @@ export class MembersController {
   }
 
   @Post("login")
+  @UseInterceptors(SecurityInterceptor) // ✅ Security metrics tracking
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // ✅ 5 requests per minute (brute force himoya)
   @ApiOperation({ summary: "Login member by member_id and password" })
   async login(@Body() dto: MemberLoginDto, @Res() res: Response) {
