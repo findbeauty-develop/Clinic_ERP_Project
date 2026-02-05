@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiUrl } from "../../lib/api";
 
@@ -11,6 +11,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // ✅ Double request'ni oldini olish uchun ref
+  const isSubmittingRef = useRef(false);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -26,13 +28,25 @@ export default function LoginPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    
+    // ✅ Double request'ni oldini olish
+    if (isSubmittingRef.current || loading) {
+      console.warn("[Login] Request already in progress, ignoring duplicate submit");
+      return;
+    }
+
     if (!memberId.trim() || !password.trim()) {
       window.alert("Please enter both ID and password.");
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
+    
     try {
+      const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`[Login] Starting login request: ${requestId}`);
+      
       const response = await fetch(`${apiUrl}/iam/members/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,6 +64,7 @@ export default function LoginPage() {
       }
 
       const result = await response.json();
+      console.log(`[Login] ✅ Login successful: ${requestId}`);
 
       // ✅ Token'ni memory'da saqlash (localStorage emas)
       if (typeof window !== "undefined") {
@@ -70,6 +85,7 @@ export default function LoginPage() {
       // Agar mustChangePassword true bo'lsa, password change modal ochish
       if (result.member?.mustChangePassword) {
         setShowPasswordChangeModal(true);
+        isSubmittingRef.current = false; // ✅ Reset qilish
         return; // Dashboard'ga o'tmaslik
       }
 
@@ -79,11 +95,13 @@ export default function LoginPage() {
         window.location.href = next; // "/dashboard" yoki ?next=... bo'lsa o'sha
       }
     } catch (error) {
+      console.error(`[Login] ❌ Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       window.alert(
         error instanceof Error ? error.message : "ID or Password is incorrect"
       );
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false; // ✅ Reset qilish
     }
   };
 
