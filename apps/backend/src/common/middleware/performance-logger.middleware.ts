@@ -11,6 +11,10 @@ export class PerformanceLoggerMiddleware implements NestMiddleware {
     const { method, originalUrl, ip } = req;
     const clientIp = ip || req.headers['x-forwarded-for'] || 'unknown';
 
+    // ✅ Store original URL in request for attack detection (before NestJS normalization)
+    // This is critical for path traversal detection
+    (req as any).__originalUrl = originalUrl || req.url;
+
     // ✅ Login request'lar uchun maxsus logging (double request'ni aniqlash uchun)
     const isLoginEndpoint = originalUrl.includes('/iam/members/login') && method === 'POST';
     if (isLoginEndpoint) {

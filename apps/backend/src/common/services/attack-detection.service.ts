@@ -35,6 +35,10 @@ export class AttackDetectionService {
   private readonly ddosWindow: number; // milliseconds
   private readonly cleanupInterval: number; // milliseconds
 
+  // ✅ Whitelist configuration
+  private readonly whitelistedIPs: string[];
+  private readonly whitelistedUserAgents: string[];
+
   constructor(private readonly configService: ConfigService) {
     // Configuration from environment variables
     this.bruteForceThreshold = Number(this.configService.get('ATTACK_BRUTE_FORCE_THRESHOLD')) || 5; // 5 failed logins
@@ -43,8 +47,62 @@ export class AttackDetectionService {
     this.ddosWindow = Number(this.configService.get('ATTACK_DDOS_WINDOW')) || 60 * 1000; // 1 minute
     this.cleanupInterval = Number(this.configService.get('ATTACK_CLEANUP_INTERVAL')) || 60 * 60 * 1000; // 1 hour
 
+    // ✅ Whitelist configuration from environment variables
+    const whitelistIPsEnv = this.configService.get<string>('ATTACK_WHITELIST_IPS') || '';
+    this.whitelistedIPs = [
+      '127.0.0.1',
+      'localhost',
+      '::1',
+      '::ffff:127.0.0.1',
+      '172.18.0.1', // Docker network gateway
+      '172.18.0.4', // Prometheus container (common)
+      '172.18.0.5', // Grafana container (common)
+      ...whitelistIPsEnv.split(',').map(ip => ip.trim()).filter(ip => ip.length > 0),
+    ];
+
+    const whitelistUAsEnv = this.configService.get<string>('ATTACK_WHITELIST_USER_AGENTS') || '';
+    this.whitelistedUserAgents = [
+      'Prometheus',
+      'Grafana',
+      'Go-http-client',
+      'node-fetch',
+      ...whitelistUAsEnv.split(',').map(ua => ua.trim()).filter(ua => ua.length > 0),
+    ];
+
+    this.logger.log(`[AttackDetection] Whitelist configured: ${this.whitelistedIPs.length} IPs, ${this.whitelistedUserAgents.length} User-Agents`);
+
     // Cleanup old entries periodically
     setInterval(() => this.cleanup(), this.cleanupInterval);
+  }
+
+  /**
+   * Check if IP is whitelisted (internal services)
+   */
+  private isWhitelistedIP(ip: string): boolean {
+    if (!ip) return false;
+    
+    // Remove IPv6 prefix if present
+    const cleanIP = ip.replace('::ffff:', '');
+    
+    // Check exact match or partial match
+    return this.whitelistedIPs.some(whitelisted => {
+      const cleanWhitelisted = whitelisted.replace('::ffff:', '');
+      return cleanIP === cleanWhitelisted || 
+             cleanIP.includes(cleanWhitelisted) || 
+             ip.includes(whitelisted) ||
+             // Docker network range check
+             (cleanIP.startsWith('172.18.0.') && cleanWhitelisted.startsWith('172.18.0.'));
+    });
+  }
+
+  /**
+   * Check if user agent is whitelisted (internal services)
+   */
+  private isWhitelistedUserAgent(userAgent: string | undefined): boolean {
+    if (!userAgent) return false;
+    return this.whitelistedUserAgents.some(whitelisted => 
+      userAgent.includes(whitelisted)
+    );
   }
 
   /**
@@ -111,18 +169,82 @@ export class AttackDetectionService {
 
   /**
    * Detect path traversal attempts
+   * Checks both URL path and query string parameters
    */
-  detectPathTraversal(url: string): AttackDetectionResult {
+  detectPathTraversal(url: string, bodyOrQuery?: any): AttackDetectionResult {
+    if (!url) {
+      return { isAttack: false, attackType: null, severity: 'low', details: '', confidence: 0 };
+    }
+
     const pathTraversalPatterns = [
       /\.\.\/|\.\.\\/g,
-      /\.\.%2F|\.\.%5C/i,
+      /\.\.%2[Ff]|\.\.%5[Cc]/i, // ✅ Case-insensitive encoded
       /\.\.\/\.\.\/|\.\.\\\.\.\\/g,
       /\/\.\.\/|\\\.\.\\/g,
-      /\.\.%252F|\.\.%255C/i,
+      /\.\.%25[2][Ff]|\.\.%25[5][Cc]/i, // ✅ Double-encoded case-insensitive
+      // ✅ Encoded patterns (case-insensitive)
+      /%2[Ee]%2[Ee]%2[Ff]|%2[Ee]%2[Ee]%5[Cc]/i,
+      /%25[2][Ee]%25[2][Ee]%25[2][Ff]|%25[2][Ee]%25[2][Ee]%25[5][Cc]/i,
+      // ✅ Triple-encoded patterns
+      /%25[2][5][2][Ee]%25[2][5][2][Ee]%25[2][5][2][Ff]/i,
+      // ✅ Simple patterns (most common)
+      /\.\.%2F/i, // Direct match for ..%2F
+      /%2E%2E%2F/i, // Direct match for %2E%2E%2F
+      /%252E%252E%252F/i, // Direct match for %252E%252E%252F
     ];
 
+    // ✅ Combine URL and body/query params for detection
+    let searchString = url;
+    
+    // ✅ Add body/query params to search string
+    if (bodyOrQuery) {
+      try {
+        const bodyString = JSON.stringify(bodyOrQuery);
+        searchString += ' ' + bodyString;
+      } catch (e) {
+        // If JSON.stringify fails, try toString
+        searchString += ' ' + String(bodyOrQuery);
+      }
+    }
+
+    // ✅ Check both original URL and decoded versions
+    try {
+      // Try to decode URL to check for encoded patterns
+      const decodedUrl = decodeURIComponent(url);
+      searchString = searchString + ' ' + decodedUrl; // Check both encoded and decoded
+      
+      // Also try double decode
+      try {
+        const doubleDecoded = decodeURIComponent(decodedUrl);
+        searchString += ' ' + doubleDecoded;
+      } catch (e) {
+        // Ignore double decode errors
+      }
+    } catch (e) {
+      // If decode fails, just use original searchString
+    }
+
+    // ✅ Production'da ham log ko'rinishi uchun warn level'da log qo'shamiz
+    // ✅ bodyOrQuery'ni ham tekshirish kerak
+    const bodyString = bodyOrQuery ? JSON.stringify(bodyOrQuery) : '';
+    const combinedString = url + ' ' + bodyString;
+    const hasSuspiciousPattern = combinedString.includes('%2F') || 
+                                combinedString.includes('../') || 
+                                combinedString.includes('..%') ||
+                                combinedString.includes('%2E%2E') ||
+                                combinedString.includes('..\\');
+    
+    if (hasSuspiciousPattern) {
+      this.logger.warn(`[PathTraversal] Checking URL: ${url.substring(0, 150)}`);
+      this.logger.warn(`[PathTraversal] Body/Query: ${bodyString.substring(0, 200)}`);
+      this.logger.warn(`[PathTraversal] Search string preview: ${searchString.substring(0, 300)}`);
+    }
+
     for (const pattern of pathTraversalPatterns) {
-      if (pattern.test(url)) {
+      if (pattern.test(searchString)) {
+        // ✅ Production'da ham log ko'rinishi uchun warn level'da log
+        this.logger.warn(`[PathTraversal] ✅ Pattern matched: ${pattern.toString()} in URL: ${url.substring(0, 100)}`);
+        
         return {
           isAttack: true,
           attackType: AttackType.PATH_TRAVERSAL,
@@ -221,6 +343,11 @@ export class AttackDetectionService {
    * Detect DDoS attacks (too many requests from same IP)
    */
   detectDDoS(ip: string): AttackDetectionResult {
+    // ✅ Skip DDoS detection for whitelisted IPs
+    if (this.isWhitelistedIP(ip)) {
+      return { isAttack: false, attackType: null, severity: 'low', details: '', confidence: 0 };
+    }
+
     const now = Date.now();
     const attackData = this.ipAttackCounts.get(ip) || { count: 0, firstSeen: now, lastSeen: now };
 
@@ -286,27 +413,36 @@ export class AttackDetectionService {
   ): AttackDetectionResult[] {
     const results: AttackDetectionResult[] = [];
 
-    // 1. SQL Injection detection
+    // ✅ Skip detection for whitelisted IPs and user agents (except for SQL/XSS/Path traversal which are content-based)
+    const isWhitelisted = this.isWhitelistedIP(ip) || this.isWhitelistedUserAgent(userAgent);
+
+    // 1. SQL Injection detection (always check - content-based)
     const sqlResult = this.detectSQLInjection(url, body);
     if (sqlResult.isAttack) results.push(sqlResult);
 
-    // 2. XSS detection
+    // 2. XSS detection (always check - content-based)
     const xssResult = this.detectXSS(url, body);
     if (xssResult.isAttack) results.push(xssResult);
 
-    // 3. Path traversal detection
-    const pathResult = this.detectPathTraversal(url);
+    // 3. Path traversal detection (always check - content-based)
+    // ✅ Pass both URL and body/query params for path traversal detection
+    const pathResult = this.detectPathTraversal(url, body);
     if (pathResult.isAttack) results.push(pathResult);
 
     // 4. Suspicious user agent detection
     const uaResult = this.detectSuspiciousUserAgent(userAgent);
     if (uaResult.isAttack) results.push(uaResult);
 
-    // 5. Brute force detection
+    // 5. Brute force detection (✅ ALWAYS check - login attacks are critical even from whitelisted IPs)
     const bruteResult = this.detectBruteForce(ip, isFailedLogin);
     if (bruteResult.isAttack) results.push(bruteResult);
 
-    // 6. DDoS detection
+    // ✅ Skip rate-based detection for whitelisted IPs/User-Agents (DDoS only)
+    if (isWhitelisted) {
+      return results; // Return content-based and brute force attacks, but skip DDoS
+    }
+
+    // 6. DDoS detection (skip for whitelisted IPs)
     const ddosResult = this.detectDDoS(ip);
     if (ddosResult.isAttack) results.push(ddosResult);
 

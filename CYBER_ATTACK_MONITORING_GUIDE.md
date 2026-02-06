@@ -49,7 +49,13 @@ ATTACK_BRUTE_FORCE_WINDOW=900000        # 15 minutes (milliseconds)
 ATTACK_DDOS_THRESHOLD=100               # 100 requests = DDoS
 ATTACK_DDOS_WINDOW=60000                # 1 minute (milliseconds)
 ATTACK_CLEANUP_INTERVAL=3600000         # 1 hour (milliseconds)
+
+# ✅ Whitelist Configuration (Internal services - Prometheus, Grafana, etc.)
+ATTACK_WHITELIST_IPS=172.18.0.1,172.18.0.4,172.18.0.5  # Comma-separated IP addresses
+ATTACK_WHITELIST_USER_AGENTS=Prometheus,Grafana,Go-http-client  # Comma-separated User-Agents
 ```
+
+**Eslatma**: Whitelist IP'lar va User-Agent'lar attack detection'dan exclude qilinadi. Bu Prometheus va Grafana kabi internal service'lar uchun zarur.
 
 ---
 

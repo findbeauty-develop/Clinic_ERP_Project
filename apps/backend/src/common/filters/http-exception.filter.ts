@@ -9,11 +9,14 @@ import {
 import { Request, Response } from "express";
 import { TelegramNotificationService } from "../services/telegram-notification.service";
 import { ConfigService } from "@nestjs/config";
+import { AttackDetectionService, AttackType } from "../services/attack-detection.service";
+import { attackTotal } from '../metrics/attack-metrics';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
   private telegramService: TelegramNotificationService | null = null;
+  private attackDetectionService: AttackDetectionService | null = null;
 
   private getTelegramService(): TelegramNotificationService | null {
     // Lazy initialization to avoid circular dependencies
@@ -27,6 +30,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     }
     return this.telegramService;
+  }
+
+  private getAttackDetectionService(): AttackDetectionService | null {
+    // Lazy initialization to avoid circular dependencies
+    if (!this.attackDetectionService) {
+      try {
+        const configService = new ConfigService();
+        this.attackDetectionService = new AttackDetectionService(configService);
+      } catch (error) {
+        this.logger.warn("Failed to initialize Attack Detection service");
+        return null;
+      }
+    }
+    return this.attackDetectionService;
   }
 
   catch(exception: unknown, host: ArgumentsHost) {
@@ -83,6 +100,55 @@ export class HttpExceptionFilter implements ExceptionFilter {
       params: sanitizedRequest.params,
       headers: this.sanitizeHeaders(request.headers),
     };
+
+    // ✅ Attack detection (404 va boshqa error'lar uchun ham)
+    const attackService = this.getAttackDetectionService();
+    if (attackService) {
+      try {
+        const originalUrl = (request as any).__originalUrl || request.url;
+        const fullUrl = originalUrl;
+        const requestData = {
+          ...(request.body || {}),
+          ...(request.query || {}),
+        };
+        // ✅ Ensure clientIp is always a string
+        const forwardedFor = request.headers['x-forwarded-for'];
+        const clientIp = request.ip || 
+                        (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor) || 
+                        'unknown';
+        const userAgent = typeof request.headers['user-agent'] === 'string' 
+                         ? request.headers['user-agent'] 
+                         : undefined;
+
+        const attackResults = attackService.detectAttack(
+          clientIp,
+          fullUrl,
+          request.method,
+          requestData,
+          userAgent,
+          status,
+          false
+        );
+
+        // Log detected attacks and update metrics
+        attackResults.forEach(result => {
+          if (result.isAttack && result.attackType) {
+            this.logger.warn(
+              `🚨 [CYBER ATTACK] ${result.attackType.toUpperCase()} detected from ${clientIp} on ${request.method} ${request.url} - Severity: ${result.severity} - ${result.details}`
+            );
+            
+            // ✅ Update Prometheus metrics
+            attackTotal.inc({
+              attack_type: result.attackType,
+              severity: result.severity,
+              ip: clientIp.substring(0, 50), // Limit IP length
+            });
+          }
+        });
+      } catch (error) {
+        this.logger.warn(`Failed to detect attacks in exception filter: ${error}`);
+      }
+    }
 
     if (status === HttpStatus.NOT_FOUND) {
       // ✅ Static file'lar (image, CSS, JS) uchun 404 log qilmaslik

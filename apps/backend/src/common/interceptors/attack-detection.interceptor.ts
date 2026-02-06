@@ -8,37 +8,8 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
-import { Counter, Gauge, register } from 'prom-client';
 import { AttackDetectionService, AttackType } from '../services/attack-detection.service';
-
-// Prometheus metrics for attack detection
-const attackTotal = new Counter({
-  name: 'cyber_attacks_total',
-  help: 'Total number of detected cyber attacks',
-  labelNames: ['attack_type', 'severity', 'ip'],
-  registers: [register],
-});
-
-const attackRate = new Gauge({
-  name: 'cyber_attack_rate_per_minute',
-  help: 'Current attack rate per minute',
-  labelNames: ['attack_type'],
-  registers: [register],
-});
-
-const activeAttacks = new Gauge({
-  name: 'active_cyber_attacks',
-  help: 'Number of active attacks in the last 5 minutes',
-  labelNames: ['attack_type', 'severity'],
-  registers: [register],
-});
-
-const suspiciousIPs = new Gauge({
-  name: 'suspicious_ips_count',
-  help: 'Number of suspicious IP addresses',
-  labelNames: ['attack_type'],
-  registers: [register],
-});
+import { attackTotal, activeAttacks, suspiciousIPs } from '../metrics/attack-metrics';
 
 @Injectable()
 export class AttackDetectionInterceptor implements NestInterceptor {
@@ -54,10 +25,28 @@ export class AttackDetectionInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
-    const { method, route, url, body, headers, ip } = request;
+    const { method, route, url, body, headers, ip, query, originalUrl } = request;
     const routePath = route?.path || url?.split('?')[0] || 'unknown';
+    
+    // ✅ Get original URL (before normalization) for path traversal detection
+    // Middleware'da saqlangan original URL'ni olish
+    const rawOriginalUrl = (request as any).__originalUrl || 
+                          (request as any).originalUrl || 
+                          originalUrl || 
+                          url || 
+                          routePath;
+    
+    // ✅ Full URL with query string for attack detection
+    // Use rawOriginalUrl for path traversal, but regular url for other detections
+    const fullUrl = rawOriginalUrl;
     const clientIp = ip || headers['x-forwarded-for'] || 'unknown';
     const userAgent = headers['user-agent'];
+
+    // ✅ Combine body and query params for attack detection
+    const requestData = {
+      ...(body || {}),
+      ...(query || {}),
+    };
 
     // Check if this is a login endpoint
     const isLoginEndpoint = 
@@ -70,12 +59,27 @@ export class AttackDetectionInterceptor implements NestInterceptor {
       this.logAttack(ddosResult, clientIp, routePath, method);
     }
 
-    // Detect other attack patterns
+    // ✅ Check for suspicious path patterns
+    const requestDataString = JSON.stringify(requestData);
+    const fullUrlString = fullUrl + ' ' + requestDataString;
+    const hasSuspiciousPathPattern = fullUrlString.includes('%2F') || 
+                                     fullUrlString.includes('../') || 
+                                     fullUrlString.includes('..%') ||
+                                     fullUrlString.includes('%2E%2E') ||
+                                     fullUrlString.includes('..\\');
+    
+    // ✅ Only log if suspicious pattern detected (to reduce log noise)
+    if (hasSuspiciousPathPattern) {
+      this.logger.warn(`[AttackDetection] 🔍 Checking path traversal - Full URL: ${fullUrl}`);
+      this.logger.warn(`[AttackDetection] Request data: ${requestDataString.substring(0, 200)}`);
+    }
+
+    // Detect other attack patterns (use fullUrl for SQL/XSS detection)
     const attackResults = this.attackDetectionService.detectAttack(
       clientIp,
-      routePath,
+      fullUrl, // ✅ Use full URL with query string
       method,
-      body || {},
+      requestData, // ✅ Include both body and query params
       userAgent,
       200, // Will be updated after response
       false // Will be updated if login fails
@@ -98,15 +102,15 @@ export class AttackDetectionInterceptor implements NestInterceptor {
       catchError((err) => {
         const statusCode = err instanceof HttpException ? err.getStatus() : 500;
         
-        // Check for failed login
-        const isFailedLogin = isLoginEndpoint && method === 'POST' && (statusCode === 401 || statusCode === 403);
+        // Check for failed login (401, 403, or 429 rate limit)
+        const isFailedLogin = isLoginEndpoint && method === 'POST' && (statusCode === 401 || statusCode === 403 || statusCode === 429);
         
         // Re-detect attacks with actual status code and failed login flag
         const finalAttackResults = this.attackDetectionService.detectAttack(
           clientIp,
-          routePath,
+          fullUrl, // ✅ Use full URL with query string
           method,
-          body || {},
+          requestData, // ✅ Include both body and query params
           userAgent,
           statusCode,
           isFailedLogin
