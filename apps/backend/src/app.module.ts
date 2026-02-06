@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrometheusInterceptor } from "./common/interceptors/prometheus.interceptor";
+import { AttackDetectionInterceptor } from "./common/interceptors/attack-detection.interceptor";
 import { PrismaModule } from "./core/prisma.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { IamModule } from "./modules/iam/iam.module";
@@ -89,6 +90,11 @@ import { CommonModule } from "./common/common.module";
     {
       provide: APP_INTERCEPTOR,
       useClass: PrometheusInterceptor,
+    },
+    // ✅ Global Attack Detection interceptor (Cyber attack monitoring uchun)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AttackDetectionInterceptor,
     },
   ],
 })
