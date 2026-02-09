@@ -58,6 +58,20 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 - ✅ **Swagger/OpenAPI** - API documentation endpoint
 - ✅ **Bearer Auth** - Swagger'da authentication support
 
+### 8. Security Headers (Helmet.js)
+- ✅ **Helmet.js** - Security headers middleware implement qilingan
+- ✅ **Content Security Policy (CSP)** - XSS himoyasi
+- ✅ **HSTS** - HTTPS'ga majbur qilish (1 year, includeSubDomains, preload)
+- ✅ **X-Frame-Options** - Clickjacking himoyasi (DENY)
+- ✅ **X-Content-Type-Options** - MIME type sniffing himoyasi
+- ✅ **X-XSS-Protection** - Browser XSS filter
+- ✅ **Referrer-Policy** - Referrer ma'lumotlarini boshqarish
+- ✅ **Cross-Origin Policies** - COEP, COOP, CORP sozlangan
+
+**Fayllar:**
+- ✅ `apps/backend/src/main.ts` (Line 47-89)
+- ✅ `apps/supplier-backend/src/main.ts` (Line 62-104)
+
 ---
 
 #### 1. Token Storage Security
@@ -154,6 +168,21 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 **Fayllar:**
 - `/etc/nginx/sites-available/clinic-erp` (yangi)
 
+#### 8. Server Security (EC2/Firewall)
+**Qilish kerak:**
+- ✅ UFW yoki Security Group sozlash
+- ✅ Faqat 80, 443, 22 portlar ochiq
+- ✅ 3000-3003 portlar yopiq (Nginx orqali)
+- ✅ SSH faqat trusted IP'dan
+
+
+#### 11. Environment Variables Security
+**Qilish kerak:**
+- ✅ `.gitignore`'da `.env*` fayllar borligini tekshirish
+- ✅ `NEXT_PUBLIC_*` faqat public ma'lumotlar
+- ✅ Service role key frontend'da yo'qligini tekshirish
+- ✅ Docker secrets yoki AWS Secrets Manager
+
 ---
 
 ## ❌ QILISH KERAK BO'LGAN ISHLAR (TODO)
@@ -197,23 +226,6 @@ Bu dokument mavjud security features va qilish kerak bo'lgan security ishlarni o
 
 ---
 
-### 🟡 IMPORTANT (Production'da tavsiya etiladi)
-
-#### 8. Server Security (EC2/Firewall)
-**Qilish kerak:**
-- [ ] UFW yoki Security Group sozlash
-- [ ] Faqat 80, 443, 22 portlar ochiq
-- [ ] 3000-3003 portlar yopiq (Nginx orqali)
-- [ ] SSH faqat trusted IP'dan
-
-**Commands:**
-```bash
-sudo ufw enable
-sudo ufw allow from YOUR_TRUSTED_IP to any port 22
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw default deny incoming
-```
 
 ---
 
@@ -238,23 +250,8 @@ USING (tenant_id = current_setting('app.tenant_id', true));
 
 ---
 
-#### 11. Environment Variables Security
-**Qilish kerak:**
-- [ ] `.gitignore`'da `.env*` fayllar borligini tekshirish
-- [ ] `NEXT_PUBLIC_*` faqat public ma'lumotlar
-- [ ] Service role key frontend'da yo'qligini tekshirish
-- [ ] Docker secrets yoki AWS Secrets Manager
 
-**Tekshirish:**
-```bash
-# .gitignore tekshirish
-grep -r "\.env" .gitignore
 
-# Frontend'da service role key qidirish
-grep -r "SERVICE_ROLE" apps/frontend/
-```
-
----
 
 #### 12. File Upload Security
 **Qilish kerak:**

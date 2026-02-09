@@ -20,6 +20,7 @@ import { TelegramWebhookController } from "./controllers/telegram-webhook.contro
     MonitoringController,
     MetricsController,
     AttackDetectionController, // ✅ Attack detection controller
+    TelegramWebhookController, // ✅ Telegram webhook controller
   ],
   providers: [
     TelegramNotificationService,
@@ -36,7 +37,6 @@ import { TelegramWebhookController } from "./controllers/telegram-webhook.contro
     SupabaseService, // ✅ Export SupabaseService
     JwtTenantGuard, // ✅ Export JwtTenantGuard
     RolesGuard, // ✅ Export RolesGuard
-    TelegramWebhookController
   ],
 })
 export class CommonModule {}

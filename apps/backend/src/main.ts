@@ -6,6 +6,7 @@ import * as bodyParser from "body-parser";
 import * as express from "express";
 import * as compression from "compression";
 import * as cookieParser from "cookie-parser";
+import * as helmet from "helmet";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 
@@ -42,6 +43,45 @@ async function bootstrap() {
   const port = process.env.PORT || "3000";
 
   const app = await NestFactory.create(AppModule);
+
+  // ✅ Helmet.js - Security Headers (CRITICAL)
+  app.use(
+    helmet.default({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for Swagger UI
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for Swagger UI
+          imgSrc: ["'self'", "data:", "https:"],
+          fontSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'"],
+          frameSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          workerSrc: ["'self'"],
+          childSrc: ["'self'"],
+          formAction: ["'self'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'none'"], // Prevent clickjacking
+        },
+      },
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true,
+      },
+      xFrameOptions: { action: "deny" }, // Prevent clickjacking
+      xContentTypeOptions: true, // Prevent MIME type sniffing (noSniff)
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+      crossOriginEmbedderPolicy: false, // Disable for compatibility
+      crossOriginOpenerPolicy: { policy: "same-origin" },
+      crossOriginResourcePolicy: { policy: "same-origin" },
+      originAgentCluster: true,
+      permittedCrossDomainPolicies: false,
+      // Disable DNS prefetch
+      dnsPrefetchControl: true,
+    })
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -151,16 +191,16 @@ async function bootstrap() {
 
   if (!isProduction) {
     try {
-      const cfg = new DocumentBuilder()
-        .setTitle("ERP API")
-        .setVersion("0.1.0")
-        .addBearerAuth()
-        .build();
-      const doc = SwaggerModule.createDocument(app, cfg);
-      SwaggerModule.setup("docs", app, doc);
-      app.getHttpAdapter().get("/docs-json", (req, res) => {
-        res.json(doc);
-      });
+  const cfg = new DocumentBuilder()
+    .setTitle("ERP API")
+    .setVersion("0.1.0")
+    .addBearerAuth()
+    .build();
+  const doc = SwaggerModule.createDocument(app, cfg);
+  SwaggerModule.setup("docs", app, doc);
+  app.getHttpAdapter().get("/docs-json", (req, res) => {
+    res.json(doc);
+  });
       console.log("Swagger documentation available at /docs");
     } catch (error: any) {
       console.warn("Swagger setup failed:", error?.message || String(error));

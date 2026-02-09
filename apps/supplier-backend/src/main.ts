@@ -4,6 +4,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import * as bodyParser from "body-parser";
 import * as express from "express";
+import * as helmet from "helmet";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 
@@ -59,6 +60,46 @@ async function bootstrap() {
   }
   
   const app = await NestFactory.create(AppModule);
+
+  // ✅ Helmet.js - Security Headers (CRITICAL)
+  app.use(
+    helmet.default({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for Swagger UI
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for Swagger UI
+          imgSrc: ["'self'", "data:", "https:"],
+          fontSrc: ["'self'", "data:", "https:"],
+          connectSrc: ["'self'"],
+          frameSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          workerSrc: ["'self'"],
+          childSrc: ["'self'"],
+          formAction: ["'self'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'none'"], // Prevent clickjacking
+        },
+      },
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true,
+      },
+      xFrameOptions: { action: "deny" }, // Prevent clickjacking
+      xContentTypeOptions: true, // Prevent MIME type sniffing (noSniff)
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+      crossOriginEmbedderPolicy: false, // Disable for compatibility
+      crossOriginOpenerPolicy: { policy: "same-origin" },
+      crossOriginResourcePolicy: { policy: "same-origin" },
+      originAgentCluster: true,
+      permittedCrossDomainPolicies: false,
+      // Disable DNS prefetch
+      dnsPrefetchControl: true,
+    })
+  );
+
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // ✅ CORS configuration from environment variable
