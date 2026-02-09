@@ -437,18 +437,18 @@ export class AttackDetectionService {
     const bruteResult = this.detectBruteForce(ip, isFailedLogin);
     if (bruteResult.isAttack) results.push(bruteResult);
 
-    // ✅ Skip rate-based detection for whitelisted IPs/User-Agents (DDoS only)
-    if (isWhitelisted) {
-      return results; // Return content-based and brute force attacks, but skip DDoS
-    }
-
-    // 6. DDoS detection (skip for whitelisted IPs)
-    const ddosResult = this.detectDDoS(ip);
-    if (ddosResult.isAttack) results.push(ddosResult);
-
-    // 7. Unauthorized access detection
+    // 6. Unauthorized access detection (✅ ALWAYS check - security-critical, even from whitelisted IPs)
     const unauthResult = this.detectUnauthorizedAccess(statusCode);
     if (unauthResult.isAttack) results.push(unauthResult);
+
+    // ✅ Skip rate-based detection for whitelisted IPs/User-Agents (DDoS only)
+    if (isWhitelisted) {
+      return results; // Return content-based, brute force, and unauthorized access attacks, but skip DDoS
+    }
+
+    // 7. DDoS detection (skip for whitelisted IPs)
+    const ddosResult = this.detectDDoS(ip);
+    if (ddosResult.isAttack) results.push(ddosResult);
 
     return results;
   }

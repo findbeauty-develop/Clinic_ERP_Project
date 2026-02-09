@@ -11,6 +11,7 @@ import { MonitoringController } from "./controllers/monitoring.controller";
 import { MetricsController } from "./controllers/metrics.controller";
 import { AttackDetectionController } from "./controllers/attack-detection.controller";
 import { CommonPrometheusModule } from "./prometheus.module";
+import { TelegramWebhookController } from "./controllers/telegram-webhook.controller";
 
 @Global()
 @Module({
@@ -35,6 +36,7 @@ import { CommonPrometheusModule } from "./prometheus.module";
     SupabaseService, // ✅ Export SupabaseService
     JwtTenantGuard, // ✅ Export JwtTenantGuard
     RolesGuard, // ✅ Export RolesGuard
+    TelegramWebhookController
   ],
 })
 export class CommonModule {}
