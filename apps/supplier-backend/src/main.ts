@@ -69,7 +69,7 @@ async function bootstrap() {
           defaultSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for Swagger UI
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for Swagger UI
-          imgSrc: ["'self'", "data:", "https:"],
+          imgSrc: ["'self'", "data:", "https:", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003"],
           fontSrc: ["'self'", "data:", "https:"],
           connectSrc: ["'self'"],
           frameSrc: ["'self'"],
@@ -92,7 +92,7 @@ async function bootstrap() {
       referrerPolicy: { policy: "strict-origin-when-cross-origin" },
       crossOriginEmbedderPolicy: false, // Disable for compatibility
       crossOriginOpenerPolicy: { policy: "same-origin" },
-      crossOriginResourcePolicy: { policy: "same-origin" },
+      crossOriginResourcePolicy: false, // ✅ Disable CORP - image'lar uchun (uploads)
       originAgentCluster: true,
       permittedCrossDomainPolicies: false,
       // Disable DNS prefetch
@@ -188,7 +188,34 @@ async function bootstrap() {
 
   // Static file serving for uploads
   const uploadsDir = join(process.cwd(), "uploads");
-  app.use("/uploads", express.static(uploadsDir));
+  app.use("/uploads", express.static(uploadsDir, {
+    setHeaders: (res, path) => {
+      // ✅ CORS header'larini qo'shish - image'lar uchun
+      const allowedOrigins = process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+        : [
+            "https://clinic.jaclit.com",
+            "https://supplier.jaclit.com",
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:3003",
+          ];
+      
+      // Request origin'ni tekshirish
+      const requestOrigin = (res as any).req?.headers?.origin;
+      if (requestOrigin && (allowedOrigins.includes(requestOrigin) || !isProduction)) {
+        res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+      } else if (!isProduction) {
+        // Development'da barcha origin'larga ruxsat
+        res.setHeader("Access-Control-Allow-Origin", "*");
+      }
+      
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    },
+  }));
 
   // ✅ Health check endpoint (for Docker healthcheck)
   app.getHttpAdapter().get("/health", (req, res) => {

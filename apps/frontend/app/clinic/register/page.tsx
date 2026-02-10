@@ -332,14 +332,15 @@ export default function ClinicRegisterPage() {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const response = await fetch(
-        `${apiUrl}/iam/members/clinics/verify-certificate`,
-        {
-          method: "POST",
-          headers,
-          body: formData,
-        }
-      );
+     const response = await fetch(
+      `${apiUrl}/iam/members/clinics/verify-certificate`,
+      {
+        method: "POST",
+        headers, // ✅ Faqat Authorization header
+        body: formData, // ✅ FormData - browser Content-Type'ni o'zi qo'shadi
+        credentials: "include", // ✅ Cookie'lar uchun
+      }
+    );
 
       if (!response.ok) {
         // 500 error yoki boshqa server error
