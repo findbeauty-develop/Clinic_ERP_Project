@@ -7,6 +7,8 @@ import {
   Post,
   Put,
   Query,
+  Req,
+  SetMetadata,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -23,6 +25,8 @@ import { RolesGuard } from "../../../common/guards/roles.guard";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReqUser } from "../../../common/decorators/req-user.decorator";
+import { SupabaseService } from "../../../common/supabase.service";
+import { JwtPayload, verify } from "jsonwebtoken";
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -40,23 +44,95 @@ import type { Request } from "express";
 @Controller("iam/members/clinics")
 // @UseGuards(JwtTenantGuard, RolesGuard) TODO: Create guard for clinic register
 export class ClinicsController {
-  constructor(private readonly service: ClinicsService) {}
+  constructor(
+    private readonly service: ClinicsService,
+    private readonly supabaseService: SupabaseService
+  ) {}
 
   @Get()
-  @UseGuards(JwtTenantGuard, RolesGuard)
-  @Roles("owner")
-  @ApiOperation({ summary: "Retrieve clinics for the tenant (owner only)" })
-  getClinics(
-    @Tenant() tenantId: string,
+  @SetMetadata("skipJwtGuard", true) // ✅ JWT guard'ni optional qilish - registration flow uchun
+  @ApiOperation({ 
+    summary: "Retrieve clinics for the tenant (public with tenantId query param, or authenticated)" 
+  })
+  async getClinics(
+    @Req() req: Request,
     @Query("tenantId") tenantQuery?: string
   ) {
-    // For registration flow, use tenantId from query parameter
-    // For authenticated users, tenantId comes from JWT token via @Tenant() decorator
-    const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-    if (!resolvedTenantId) {
-      throw new BadRequestException("tenant_id is required");
+    // ✅ Security: Manual token validation - agar token bo'lsa, validate qilish
+    const auth = (req.headers.authorization as string) || undefined;
+    if (auth?.startsWith("Bearer ")) {
+      const token = auth.split(" ")[1];
+      
+      try {
+        // Try Supabase first
+        const { data, error } = await this.supabaseService.getUser(token);
+        if (!error && data?.user) {
+          let tenantId = (data.user.user_metadata as any)?.tenant_id;
+          if (!tenantId) {
+            tenantId = (req.headers["x-tenant-id"] as string) || undefined;
+          }
+          
+          if (tenantId) {
+            // Authenticated user - faqat o'z tenant'ini ko'ra oladi
+            (req as any).user = {
+              id: data.user.id,
+              email: data.user.email,
+              roles: (data.user.user_metadata as any)?.roles ?? [],
+            };
+            (req as any).tenantId = tenantId;
+            return this.service.getClinics(tenantId);
+          }
+        }
+      } catch (supabaseError) {
+        // Fallback to local JWT verification
+        const secret =
+          process.env.MEMBER_JWT_SECRET ??
+          process.env.SUPABASE_JWT_SECRET ??
+          process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        if (secret) {
+          try {
+            const payload = verify(token, secret) as JwtPayload & {
+              tenant_id?: string;
+              tenantId?: string;
+              roles?: string[];
+              member_id?: string;
+            };
+            
+            let tenantId = payload.tenant_id ?? payload.tenantId;
+            if (!tenantId) {
+              tenantId = (req.headers["x-tenant-id"] as string) || undefined;
+            }
+            
+            if (tenantId) {
+              // Authenticated user - faqat o'z tenant'ini ko'ra oladi
+              (req as any).user = {
+                id: (payload.sub as string) ?? payload.member_id ?? "member",
+                member_id: payload.member_id,
+                email: (payload as any)?.email ?? null,
+                roles: payload.roles ?? [],
+                tenant_id: tenantId,
+                clinic_name: (payload as any)?.clinic_name,
+                must_change_password: (payload as any)?.must_change_password,
+              };
+              (req as any).tenantId = tenantId;
+              return this.service.getClinics(tenantId);
+            }
+          } catch (jwtError) {
+            // Invalid token - fall through to registration flow
+          }
+        }
+      }
     }
-    return this.service.getClinics(resolvedTenantId);
+    
+    // ✅ Registration flow - query parameter'dan tenantId olish
+    // Token yo'q yoki invalid bo'lsa, faqat query parameter'dan tenantId olish
+    if (!tenantQuery) {
+      throw new BadRequestException("tenant_id query parameter is required for registration flow");
+    }
+    
+    // Registration flow uchun query parameter'dan kelgan tenantId'ni ishlatish
+    return this.service.getClinics(tenantQuery);
   }
 
   @Get("info")

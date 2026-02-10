@@ -113,16 +113,8 @@ export default function ClinicRegisterSuccessPage() {
         const parsedOwner = JSON.parse(ownerRaw) as OwnerProfile;
         const parsedMembers = JSON.parse(membersRaw) as CreatedMember[];
 
-        // ✅ Debug: Log members to check if owner password is present
-        console.log("Parsed members:", parsedMembers);
-        const ownerMember = parsedMembers.find(
-          (m) =>
-            m.role === "owner" || m.role === "owner1" || m.role === "소유자"
-        );
-        if (ownerMember) {
-          console.log("Owner member:", ownerMember);
-          console.log("Owner password:", ownerMember.password);
-        }
+      
+    
 
         setClinic(parsedClinic);
         setOwner(parsedOwner);

@@ -27,12 +27,15 @@ export class AttackDetectionService {
   // IP-based attack tracking (in-memory, production'da Redis ishlatish tavsiya etiladi)
   private readonly ipAttackCounts = new Map<string, { count: number; firstSeen: number; lastSeen: number }>();
   private readonly ipFailedLogins = new Map<string, { count: number; firstSeen: number; lastSeen: number }>();
+  private readonly ipUnauthorizedAccess = new Map<string, { count: number; firstSeen: number; lastSeen: number }>();
   
   // Configuration
   private readonly bruteForceThreshold: number;
   private readonly bruteForceWindow: number; // milliseconds
   private readonly ddosThreshold: number;
   private readonly ddosWindow: number; // milliseconds
+  private readonly unauthorizedAccessThreshold: number; // ✅ Rate-based detection threshold
+  private readonly unauthorizedAccessWindow: number; // ✅ Rate-based detection window (milliseconds)
   private readonly cleanupInterval: number; // milliseconds
 
   // ✅ Whitelist configuration
@@ -45,6 +48,8 @@ export class AttackDetectionService {
     this.bruteForceWindow = Number(this.configService.get('ATTACK_BRUTE_FORCE_WINDOW')) || 15 * 60 * 1000; // 15 minutes
     this.ddosThreshold = Number(this.configService.get('ATTACK_DDOS_THRESHOLD')) || 100; // 100 requests
     this.ddosWindow = Number(this.configService.get('ATTACK_DDOS_WINDOW')) || 60 * 1000; // 1 minute
+    this.unauthorizedAccessThreshold = Number(this.configService.get('ATTACK_UNAUTHORIZED_ACCESS_THRESHOLD')) || 10; // ✅ 10 marta 403
+    this.unauthorizedAccessWindow = Number(this.configService.get('ATTACK_UNAUTHORIZED_ACCESS_WINDOW')) || 5 * 60 * 1000; // ✅ 5 minut
     this.cleanupInterval = Number(this.configService.get('ATTACK_CLEANUP_INTERVAL')) || 60 * 60 * 1000; // 1 hour
 
     // ✅ Whitelist configuration from environment variables
@@ -385,8 +390,48 @@ export class AttackDetectionService {
   /**
    * Detect unauthorized access attempts
    */
-  detectUnauthorizedAccess(statusCode: number): AttackDetectionResult {
+  detectUnauthorizedAccess(statusCode: number, ip?: string): AttackDetectionResult {
     if (statusCode === 401 || statusCode === 403) {
+      // ✅ Rate-based detection - faqat ko'p marta takrorlangan 403'larni attack sifatida qabul qilish
+      // Bu false positive'larni kamaytiradi (normal user'lar role yetarli emas bo'lganda)
+      if (ip && statusCode === 403) {
+        const now = Date.now();
+        const key = `unauth_${ip}`;
+        
+        if (!this.ipUnauthorizedAccess.has(key)) {
+          // Birinchi marta 403 - attack emas (normal xavfsizlik behavior'i)
+          this.ipUnauthorizedAccess.set(key, { count: 1, firstSeen: now, lastSeen: now });
+          return { isAttack: false, attackType: null, severity: 'low', details: '', confidence: 0 };
+        }
+        
+        const record = this.ipUnauthorizedAccess.get(key)!;
+        
+        // Window ichidami?
+        if (now - record.firstSeen <= this.unauthorizedAccessWindow) {
+          record.count++;
+          record.lastSeen = now;
+          
+          // Threshold'dan oshib ketganmi?
+          if (record.count >= this.unauthorizedAccessThreshold) {
+            return {
+              isAttack: true,
+              attackType: AttackType.UNAUTHORIZED_ACCESS,
+              severity: 'medium',
+              details: `Repeated unauthorized access attempts: ${record.count} times in ${Math.round((now - record.firstSeen) / 1000)}s`,
+              confidence: 80,
+            };
+          }
+          
+          // Hali threshold'dan kam - attack emas
+          return { isAttack: false, attackType: null, severity: 'low', details: '', confidence: 0 };
+        } else {
+          // Window o'tib ketgan - yangi window boshlash
+          this.ipUnauthorizedAccess.set(key, { count: 1, firstSeen: now, lastSeen: now });
+          return { isAttack: false, attackType: null, severity: 'low', details: '', confidence: 0 };
+        }
+      }
+      
+      // 401 yoki 403 (lekin rate-based check yo'q yoki IP yo'q) - attack sifatida qabul qilish
       return {
         isAttack: true,
         attackType: AttackType.UNAUTHORIZED_ACCESS,
@@ -438,7 +483,8 @@ export class AttackDetectionService {
     if (bruteResult.isAttack) results.push(bruteResult);
 
     // 6. Unauthorized access detection (✅ ALWAYS check - security-critical, even from whitelisted IPs)
-    const unauthResult = this.detectUnauthorizedAccess(statusCode);
+    // ✅ Rate-based detection - faqat ko'p marta takrorlangan 403'larni attack sifatida qabul qilish
+    const unauthResult = this.detectUnauthorizedAccess(statusCode, ip);
     if (unauthResult.isAttack) results.push(unauthResult);
 
     // ✅ Skip rate-based detection for whitelisted IPs/User-Agents (DDoS only)
@@ -476,7 +522,7 @@ export class AttackDetectionService {
    */
   private cleanup(): void {
     const now = Date.now();
-    const maxAge = Math.max(this.bruteForceWindow, this.ddosWindow) * 2;
+    const maxAge = Math.max(this.bruteForceWindow, this.ddosWindow, this.unauthorizedAccessWindow) * 2;
 
     // Cleanup IP attack counts
     for (const [ip, data] of this.ipAttackCounts.entries()) {
@@ -492,7 +538,14 @@ export class AttackDetectionService {
       }
     }
 
-    this.logger.debug(`[AttackDetection] Cleanup completed. Active IPs: ${this.ipAttackCounts.size}, Failed logins: ${this.ipFailedLogins.size}`);
+    // ✅ Cleanup unauthorized access tracking
+    for (const [key, data] of this.ipUnauthorizedAccess.entries()) {
+      if (now - data.lastSeen > maxAge) {
+        this.ipUnauthorizedAccess.delete(key);
+      }
+    }
+
+    this.logger.debug(`[AttackDetection] Cleanup completed. Active IPs: ${this.ipAttackCounts.size}, Failed logins: ${this.ipFailedLogins.size}, Unauthorized access: ${this.ipUnauthorizedAccess.size}`);
   }
 }
 
