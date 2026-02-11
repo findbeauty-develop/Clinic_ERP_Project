@@ -2682,11 +2682,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
 
       // ✅ Call partial inbound API - item'ning bir qismini inbound qilish, qolgan qismini order'da qoldirish
-      const inboundedItems = validItems.map((item: any) => ({
-        itemId: item.id,
-        productId: item.productId || item.product_id, // ✅ productId yoki product_id
-        inboundQty: editedItems[item.id]?.quantity || 0, // ✅ 입고수량 (80ta yoki 100ta)
-      }));
+      const inboundedItems = validItems.map((item: any) => {
+        const inboundQty = editedItems[item.id]?.quantity || 0;
+        
+        // ✅ Debug log
+        console.log(`[Partial Inbound] Item ${item.id} (${item.productName || item.productId}): inboundQty=${inboundQty}, originalQty=${item.confirmedQuantity || item.orderedQuantity || item.quantity}`);
+        
+        return {
+          itemId: item.id,
+          productId: item.productId || item.product_id, // ✅ productId yoki product_id
+          inboundQty: inboundQty, // ✅ 입고수량 (80ta yoki 100ta)
+        };
+      });
+
+      // ✅ Debug: inboundedItems ni ko'rsatish
+      console.log('[Partial Inbound] InboundedItems:', inboundedItems);
 
       const result = await apiPost(
         `${apiUrl}/order/${order.orderId}/partial-inbound`,

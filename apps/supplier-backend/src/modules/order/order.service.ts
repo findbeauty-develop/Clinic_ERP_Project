@@ -457,13 +457,13 @@ export class OrderService {
    * Mark order as completed when clinic processes inbound
    */
   async markOrderCompleted(dto: any) {
-    const { orderNo, supplierTenantId, clinicTenantId, completedAt } = dto;
+    const { orderNo, supplierTenantId, clinicTenantId, completedAt, inboundItems } = dto;
 
     if (!orderNo) {
       throw new BadRequestException("Order number is required");
     }
 
-    // Find order by order_no
+    // Find order by order_no with items
     const where: any = {
       order_no: orderNo,
     };
@@ -478,6 +478,9 @@ export class OrderService {
 
     const order = await (this.prisma as any).supplierOrder.findFirst({
       where,
+      include: {
+        items: true,
+      },
     });
 
     if (!order) {
@@ -488,22 +491,205 @@ export class OrderService {
     }
 
     this.logger.log(
-      `Found order ${orderNo} (id: ${order.id}), current status: ${order.status}, updating to completed`
+      `Found order ${orderNo} (id: ${order.id}), current status: ${order.status}`
     );
 
-    // Update status to completed
+    // ✅ YANGI: inboundItems bo'lsa, qaysi item'lar qancha inbound qilinganligini tekshirish
+    let allItemsCompleted = true;
+    let newStatus = "completed";
+
+    if (inboundItems && inboundItems.length > 0) {
+      this.logger.log(
+        `📦 Processing ${inboundItems.length} inbound items for order ${orderNo} (total items: ${order.items.length})`
+      );
+
+      // ✅ Debug: inboundItems ni ko'rsatish
+      this.logger.debug(
+        `   InboundItems: ${inboundItems.map((ii: any) => `itemId=${ii.itemId}, productId=${ii.productId}, inbound=${ii.inboundQuantity}, original=${ii.originalQuantity}`).join('; ')}`
+      );
+      this.logger.debug(
+        `   OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}, quantity=${item.quantity}`).join('; ')}`
+      );
+
+      // ✅ Har bir item uchun inbound quantity'ni tekshirish
+      // ✅ Muammo: inboundItem.itemId clinic side'dagi OrderItem.id bo'lishi mumkin
+      // ✅ Yechim: Avval itemId orqali, keyin productId orqali match qilish
+      let itemsProcessed = 0;
+      let itemsFullyInbound = 0;
+      let itemsPartiallyInbound = 0;
+      let itemsNotInbound = 0;
+      
+      // ✅ Arrays for splitting the order
+      const fullyInboundedItems: any[] = [];
+      const partiallyInboundedItems: any[] = [];
+
+      for (const item of order.items) {
+        itemsProcessed++;
+        
+        // ✅ 1. Avval itemId orqali topish (agar clinic side'dagi OrderItem.id bo'lsa)
+        let inboundItem = inboundItems.find((ii: any) => ii.itemId === item.id);
+        
+        // ✅ 2. Agar topilmasa, productId orqali topish
+        if (!inboundItem && item.product_id) {
+          inboundItem = inboundItems.find((ii: any) => ii.productId === item.product_id);
+        }
+        
+        if (inboundItem) {
+          const inboundQty = inboundItem.inboundQuantity || 0;
+          const originalQty = inboundItem.originalQuantity || item.quantity;
+          
+          this.logger.log(
+            `   Item ${item.id} (productId: ${item.product_id}): inbound=${inboundQty}, original=${originalQty}, current=${item.quantity}`
+          );
+
+          // ✅ Agar hali ham qolgan quantity bor bo'lsa, allItemsCompleted = false
+          if (inboundQty < originalQty) {
+            allItemsCompleted = false;
+            itemsPartiallyInbound++;
+            partiallyInboundedItems.push({
+              item,
+              inboundQty,
+              originalQty,
+              remainingQty: originalQty - inboundQty,
+            });
+            
+            this.logger.log(
+              `   📦 Item ${item.id}: partially inbound (${inboundQty}/${originalQty}, ${originalQty - inboundQty} remaining)`
+            );
+          } else if (inboundQty >= originalQty) {
+            // ✅ To'liq inbound qilingan
+            itemsFullyInbound++;
+            fullyInboundedItems.push({
+              item,
+              inboundQty,
+              originalQty,
+            });
+            
+            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${inboundQty}/${originalQty})`);
+          }
+        } else {
+          // ✅ Item inbound qilinmagan, allItemsCompleted = false
+          allItemsCompleted = false;
+          itemsNotInbound++;
+          this.logger.warn(`   ⚠️ Item ${item.id} (productId: ${item.product_id}): not found in inboundItems`);
+        }
+      }
+      
+      // ✅ Order split qilish - agar to'liq va qisman inbound qilingan item'lar bo'lsa
+      if (fullyInboundedItems.length > 0 && (partiallyInboundedItems.length > 0 || itemsNotInbound > 0)) {
+        this.logger.log(`📦 Order split needed: ${fullyInboundedItems.length} fully inbound, ${partiallyInboundedItems.length} partially inbound`);
+        
+        // ✅ 1. Yangi "completed order" yaratish - to'liq inbound qilingan item'lar uchun
+        const completedOrderNo = `${orderNo}-C`;
+        
+        const completedOrderItems = fullyInboundedItems.map((fi: any) => ({
+          tenant_id: order.tenant_id,
+          product_id: fi.item.product_id,
+          product_name: fi.item.product_name, // ✅ Required field
+          brand: fi.item.brand,
+          quantity: fi.inboundQty,
+          unit_price: fi.item.unit_price,
+          total_price: fi.item.unit_price * fi.inboundQty,
+          unit: fi.item.unit,
+        }));
+        
+        const completedOrder = await (this.prisma as any).supplierOrder.create({
+          data: {
+            tenant_id: order.tenant_id,
+            supplier_tenant_id: order.supplier_tenant_id, // ✅ Required field
+            supplier_manager_id: order.supplier_manager_id, // ✅ Required field for filtering
+            order_no: completedOrderNo,
+            clinic_id: order.clinic_id,
+            clinic_tenant_id: order.clinic_tenant_id, // ✅ For clinic info
+            clinic_name: order.clinic_name, // ✅ Clinic name
+            clinic_manager_name: order.clinic_manager_name, // ✅ Manager name
+            status: "completed",
+            total_amount: completedOrderItems.reduce((sum: number, item: any) => sum + item.total_price, 0),
+            items: {
+              create: completedOrderItems,
+            },
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
+        
+        this.logger.log(`✅ Created completed order: ${completedOrderNo} with ${completedOrderItems.length} items`);
+        
+        // ✅ 2. Original order'dan to'liq inbound qilingan item'larni DELETE qilish
+        for (const fi of fullyInboundedItems) {
+          await (this.prisma as any).supplierOrderItem.delete({
+            where: { id: fi.item.id },
+          });
+        }
+        
+        // ✅ 3. Original order'da qolgan item'larni yangilash (quantity)
+        for (const pi of partiallyInboundedItems) {
+          await (this.prisma as any).supplierOrderItem.update({
+            where: { id: pi.item.id },
+            data: {
+              quantity: pi.remainingQty,
+              updated_at: new Date(),
+            },
+          });
+          
+          this.logger.log(
+            `   ✅ Updated item ${pi.item.id}: quantity ${pi.item.quantity} → ${pi.remainingQty} (${pi.inboundQty} inbound, ${pi.remainingQty} remaining)`
+          );
+        }
+        
+        // ✅ 4. Original order status → confirmed (qolgan item'lar uchun)
+        newStatus = "confirmed";
+        this.logger.log(`✅ Order split completed: ${completedOrderNo} (completed), ${orderNo} (confirmed with remaining items)`);
+      } else if (fullyInboundedItems.length > 0 && partiallyInboundedItems.length === 0 && itemsNotInbound === 0) {
+        // ✅ Barcha item'lar to'liq inbound qilingan
+        newStatus = "completed";
+        this.logger.log(`✅ All items completed for order ${orderNo}`);
+      } else if (partiallyInboundedItems.length > 0 || itemsNotInbound > 0) {
+        // ✅ Faqat qisman inbound qilingan item'lar
+        for (const pi of partiallyInboundedItems) {
+          await (this.prisma as any).supplierOrderItem.update({
+            where: { id: pi.item.id },
+            data: {
+              quantity: pi.remainingQty,
+              updated_at: new Date(),
+            },
+          });
+          
+          this.logger.log(
+            `   ✅ Updated item ${pi.item.id}: quantity ${pi.item.quantity} → ${pi.remainingQty} (${pi.inboundQty} inbound, ${pi.remainingQty} remaining)`
+          );
+        }
+        
+        newStatus = "confirmed";
+        this.logger.log(`⚠️ Some items remaining for order ${orderNo} → status: confirmed`);
+      }
+
+      // ✅ Debug: Summary
+      this.logger.log(
+        `📊 Summary: processed=${itemsProcessed}, fullyInbound=${itemsFullyInbound}, partiallyInbound=${itemsPartiallyInbound}, notInbound=${itemsNotInbound}`
+      );
+    } else {
+      // ✅ inboundItems yo'q bo'lsa, eski logika (barcha item'lar to'liq inbound)
+      newStatus = "completed";
+      this.logger.log(`✅ No inboundItems provided, assuming all items completed for order ${orderNo}`);
+    }
+
+    // Update status
     const updated = await (this.prisma as any).supplierOrder.update({
       where: { id: order.id },
       data: {
-        status: "completed",
+        status: newStatus,
         updated_at: new Date(),
+      },
+      include: {
+        items: true,
       },
     });
 
-    this.logger.log(`Order ${orderNo} marked as completed in supplier-backend`);
+    this.logger.log(`Order ${orderNo} marked as ${newStatus} in supplier-backend`);
     return {
       success: true,
-      message: "Order marked as completed",
+      message: `Order marked as ${newStatus}`,
       order: this.formatOrder(updated),
     };
   }

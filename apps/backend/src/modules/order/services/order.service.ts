@@ -2760,6 +2760,106 @@ export class OrderService {
         },
       });
 
+      // ✅ YANGI: Update OrderItem'lar quantity va price'ni adjustments dan yangilash
+      if (status === "supplier_confirmed" && adjustments && adjustments.length > 0) {
+        this.logger.log(
+          `📦 Processing ${adjustments.length} adjustments for order ${orderNo}`
+        );
+        
+        // ✅ Debug: updatedItems va order.items ni ko'rsatish
+        if (updatedItems && updatedItems.length > 0) {
+          this.logger.debug(
+            `   UpdatedItems from supplier: ${updatedItems.map((item: any) => `itemId=${item.itemId}, productName=${item.productName}, brand=${item.brand}, unitPrice=${item.unitPrice}`).join('; ')}`
+          );
+        }
+        this.logger.debug(
+          `   OrderItems in clinic: ${order.items.map((item: any) => `id=${item.id}, productName=${item.product?.name}, brand=${item.product?.brand}, unitPrice=${item.unit_price}`).join('; ')}`
+        );
+        
+        for (const adjustment of adjustments) {
+          this.logger.debug(
+            `   Adjustment: itemId=${adjustment.itemId}, productId=${adjustment.productId}, actualQuantity=${adjustment.actualQuantity}, actualPrice=${adjustment.actualPrice}`
+          );
+          
+          // ✅ Muammo: adjustment.itemId supplier side'dagi SupplierOrderItem.id bo'lishi mumkin
+          // ✅ Yechim: updatedItems dan foydalanish - supplier side'dagi item'ni topish, keyin uning ma'lumotlari orqali clinic side'dagi OrderItem ni topish
+          let orderItem = null;
+          
+          // ✅ 1. Avval itemId orqali topish (agar clinic side'dagi OrderItem.id bo'lsa)
+          orderItem = order.items.find(
+            (item: any) => item.id === adjustment.itemId
+          );
+
+          // ✅ 2. Agar topilmasa, updatedItems dan supplier side'dagi item'ni topish
+          if (!orderItem && updatedItems) {
+            const supplierItem = updatedItems.find(
+              (item: any) => item.itemId === adjustment.itemId
+            );
+            
+            if (supplierItem) {
+              // ✅ Supplier side'dagi item ma'lumotlari orqali clinic side'dagi OrderItem ni topish
+              // productName, brand, quantity (original), unitPrice orqali match qilish
+              orderItem = order.items.find((item: any) => {
+                const product = item.product;
+                return (
+                  product?.name === supplierItem.productName &&
+                  product?.brand === supplierItem.brand &&
+                  item.unit_price === supplierItem.unitPrice
+                );
+              });
+              
+              if (!orderItem) {
+                // ✅ Agar hali ham topilmasa, faqat productName va unitPrice orqali
+                orderItem = order.items.find((item: any) => {
+                  const product = item.product;
+                  return (
+                    product?.name === supplierItem.productName &&
+                    item.unit_price === supplierItem.unitPrice
+                  );
+                });
+              }
+            }
+          }
+
+          // ✅ 3. Agar hali ham topilmasa, productId orqali topish (agar mos kelsa)
+          if (!orderItem && adjustment.productId) {
+            orderItem = order.items.find(
+              (item: any) => item.product_id === adjustment.productId
+            );
+          }
+
+          if (orderItem) {
+            // ✅ actualQuantity va actualPrice dan yangilash
+            const oldQuantity = orderItem.quantity;
+            const oldUnitPrice = orderItem.unit_price;
+            const newQuantity = adjustment.actualQuantity ?? orderItem.quantity;
+            const newUnitPrice = adjustment.actualPrice ?? orderItem.unit_price;
+            const newTotalPrice = newQuantity * newUnitPrice;
+
+            await (this.prisma as any).orderItem.update({
+              where: { id: orderItem.id },
+              data: {
+                quantity: newQuantity, // ✅ 80ta (eski 100ta o'rniga)
+                unit_price: newUnitPrice, // ✅ Yangi price (agar o'zgarsa)
+                total_price: newTotalPrice, // ✅ Yangi total (80 * price)
+                updated_at: new Date(),
+              },
+            });
+
+            this.logger.log(
+              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): quantity ${oldQuantity} → ${newQuantity}, price ${oldUnitPrice} → ${newUnitPrice}`
+            );
+          } else {
+            this.logger.warn(
+              `⚠️ Could not find OrderItem with itemId=${adjustment.itemId} or productId=${adjustment.productId}`
+            );
+            this.logger.warn(
+              `   Available OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}`).join(', ')}`
+            );
+          }
+        }
+      }
+
       // If rejected, update item memos with rejection reasons
       if (status === "rejected" && updatedItems) {
         for (const updatedItem of updatedItems) {
@@ -3621,12 +3721,15 @@ export class OrderService {
       throw new BadRequestException("Order ID and Tenant ID are required");
     }
 
-    // Find order
+    // Find order with items
     const order = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findFirst({
         where: {
           id: orderId,
           tenant_id: tenantId,
+        },
+        include: {
+          items: true,
         },
       });
     });
@@ -3677,10 +3780,19 @@ export class OrderService {
           const supplierTenantId =
             clinicSupplierManager.linkedManager.supplier.tenant_id;
 
+          // ✅ Prepare inboundItems - barcha item'lar to'liq inbound qilingan
+          const inboundItems = order.items.map((item: any) => ({
+            itemId: item.id,
+            productId: item.product_id, // ✅ Product ID for matching in supplier side
+            inboundQuantity: item.quantity, // ✅ To'liq inbound
+            originalQuantity: item.quantity,
+          }));
+
           await this.notifySupplierOrderCompleted(
             order.order_no,
             supplierTenantId,
-            tenantId
+            tenantId,
+            inboundItems // ✅ Inbound items ma'lumotlari
           );
         } else {
           this.logger.warn(
@@ -3701,14 +3813,16 @@ export class OrderService {
 
   /**
    * Notify supplier-backend that order has been completed (inbound processed)
-   * @param orderNo - Order number
+   * @param orderNo - Order number (may have -P or -C suffix from partial inbound)
    * @param supplierTenantId - Supplier's tenant_id (not supplier.id)
    * @param clinicTenantId - Clinic's tenant_id
+   * @param inboundItems - Array of items with inbound quantities (optional, for partial inbound)
    */
   private async notifySupplierOrderCompleted(
     orderNo: string,
     supplierTenantId: string,
-    clinicTenantId: string
+    clinicTenantId: string,
+    inboundItems?: Array<{ itemId: string; productId: string; inboundQuantity: number; originalQuantity: number }>
   ) {
     try {
       const supplierApiUrl =
@@ -3722,6 +3836,16 @@ export class OrderService {
         return;
       }
 
+      // ✅ Muammo: Partial inbound qilganda order -P (pending) yoki -C (completed) suffix bilan bo'linadi
+      // ✅ Yechim: Original order number'ni topish - suffix'ni olib tashlash
+      const originalOrderNo = orderNo.replace(/-[PC]$/, ''); // ✅ -P yoki -C ni olib tashlash
+      
+      if (originalOrderNo !== orderNo) {
+        this.logger.log(
+          `📦 Split order detected: ${orderNo} → ${originalOrderNo} (removed suffix)`
+        );
+      }
+
       const response = await fetch(
         `${supplierApiUrl}/supplier/orders/complete`,
         {
@@ -3731,10 +3855,11 @@ export class OrderService {
             "x-api-key": apiKey,
           },
           body: JSON.stringify({
-            orderNo,
+            orderNo: originalOrderNo, // ✅ Original order number'ni yuborish
             supplierTenantId,
             clinicTenantId,
             completedAt: new Date().toISOString(),
+            inboundItems, // ✅ Qaysi item'lar qancha inbound qilinganligi
           }),
         }
       );
@@ -4192,6 +4317,94 @@ export class OrderService {
 
         // Clear cache
         await this.clearPendingInboundCache(tenantId);
+
+        // ✅ Notify supplier-backend about partial inbound
+        if (originalOrder.supplier_id) {
+          try {
+            // Get supplier's tenant_id from ClinicSupplierManager -> linkedManager -> supplier
+            const clinicSupplierManager = await this.prisma.executeWithRetry(
+              async () => {
+                return await (this.prisma as any).clinicSupplierManager.findUnique({
+                  where: { id: originalOrder.supplier_id },
+                  include: {
+                    linkedManager: {
+                      select: {
+                        supplier: {
+                          select: {
+                            tenant_id: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                });
+              }
+            );
+
+            if (clinicSupplierManager?.linkedManager?.supplier?.tenant_id) {
+              const supplierTenantId =
+                clinicSupplierManager.linkedManager.supplier.tenant_id;
+
+              // ✅ Prepare inboundItems - qaysi item'lar qancha inbound qilinganligi
+              // ✅ MUAMMO: Original order items'ni ko'rib chiqish, lekin faqat completedOrder item'larini yuborish kerak
+              // ✅ YECHIM: completedOrder item'larini ko'rib chiqish va original order'da qaysi item'lar to'liq inbound qilinganligini topish
+              const inboundItems: Array<{
+                itemId: string;
+                productId: string;
+                inboundQuantity: number;
+                originalQuantity: number;
+              }> = [];
+
+              this.logger.log(
+                `📦 [PARTIAL INBOUND] Preparing inboundItems for order ${originalOrder.order_no}`
+              );
+
+              // ✅ completedOrder item'larini ko'rib chiqish
+              // Bu item'lar to'liq inbound qilingan (100ta yoki 80ta, lekin original quantity'ga teng yoki kichik)
+              for (const completedItem of completedOrderItems) {
+                // ✅ Original order'dan item'ni topish
+                const originalItem = originalOrder.items.find(
+                  (item: any) => item.product_id === completedItem.product_id
+                );
+
+                if (originalItem) {
+                  const inboundQty = completedItem.quantity; // ✅ completedOrder'dagi quantity (to'liq inbound)
+                  const originalQty = originalItem.quantity; // ✅ Original quantity
+                  
+                  this.logger.debug(
+                    `   CompletedItem: productId=${completedItem.product_id}, inboundQty=${inboundQty}, originalQty=${originalQty}`
+                  );
+                  
+                  inboundItems.push({
+                    itemId: originalItem.id, // ✅ Original OrderItem.id
+                    productId: originalItem.product_id,
+                    inboundQuantity: inboundQty, // ✅ To'liq inbound qilingan quantity
+                    originalQuantity: originalQty, // ✅ Original quantity
+                  });
+                }
+              }
+
+              this.logger.log(
+                `📦 [PARTIAL INBOUND] Prepared ${inboundItems.length} inboundItems: ${inboundItems.map((ii: any) => `itemId=${ii.itemId}, productId=${ii.productId}, inbound=${ii.inboundQuantity}, original=${ii.originalQuantity}`).join('; ')}`
+              );
+
+              // ✅ Original order number'ni yuborish (suffix'siz)
+              const originalOrderNo = originalOrder.order_no;
+
+              await this.notifySupplierOrderCompleted(
+                originalOrderNo,
+                supplierTenantId,
+                tenantId,
+                inboundItems // ✅ Partial inbound items ma'lumotlari
+              );
+            }
+          } catch (error: any) {
+            this.logger.error(
+              `Failed to notify supplier-backend of partial inbound: ${error.message}`
+            );
+            // Don't throw - order is already processed
+          }
+        }
 
         return {
           success: true,
