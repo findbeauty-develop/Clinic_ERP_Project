@@ -4033,24 +4033,51 @@ export class OrderService {
           throw new Error(`Order ${orderId} not found`);
         }
 
-        // Map inbounded items by item ID for quick lookup
-        const inboundedItemsMap = new Map(
-          dto.inboundedItems.map((item: any) => [item.itemId, item])
+        // ✅ Map inbounded items by item ID with inbound quantity
+        const inboundedItemsMap = new Map<string, number>(
+          dto.inboundedItems.map((item: any) => [
+            item.itemId,
+            typeof item.inboundQty === 'number' ? item.inboundQty : 0,
+          ])
         );
 
-        // Separate items into inbounded and remaining
-        const inboundedItems = [];
+        // ✅ Separate items into fully inbounded, partially inbounded, and remaining
+        const fullyInboundedItems = [];
+        const partiallyInboundedItems: Array<{
+          id: string;
+          product_id: string;
+          quantity: number;
+          unit_price: number;
+          total_price: number;
+          unit: string;
+          inboundQty: number;
+          remainingQty: number;
+        }> = [];
         const remainingItems = [];
 
         for (const item of originalOrder.items) {
-          if (inboundedItemsMap.has(item.id)) {
-            inboundedItems.push(item);
+          const inboundQty = inboundedItemsMap.get(item.id);
+          
+          if (inboundQty !== undefined && inboundQty !== null && typeof inboundQty === 'number') {
+            // Item inbound qilinmoqda
+            if (inboundQty >= item.quantity) {
+              // ✅ To'liq inbound
+              fullyInboundedItems.push(item);
+            } else if (inboundQty > 0) {
+              // ✅ Qisman inbound - bir qismi inbound, qolgani order'da qoladi
+              partiallyInboundedItems.push({
+                ...item,
+                inboundQty,
+                remainingQty: item.quantity - inboundQty,
+              });
+            }
           } else {
+            // Item inbound qilinmaydi - to'liq qoladi
             remainingItems.push(item);
           }
         }
 
-        if (inboundedItems.length === 0) {
+        if (fullyInboundedItems.length === 0 && partiallyInboundedItems.length === 0) {
           throw new Error("No items to inbound");
         }
 
@@ -4058,16 +4085,39 @@ export class OrderService {
         const timestamp = Date.now().toString().slice(-12);
         const completedOrderNo = `${originalOrder.order_no}-C`; // Completed
         const remainingOrderNo =
-          remainingItems.length > 0 ? `${originalOrder.order_no}-P` : null; // Pending
+          (remainingItems.length > 0 || partiallyInboundedItems.length > 0)
+            ? `${originalOrder.order_no}-P`
+            : null; // Pending
 
-        // Create completed order (inbounded items)
+        // ✅ Create completed order (fully inbounded + partially inbounded items)
+        const completedOrderItems = [
+          // Fully inbounded items
+          ...fullyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            unit: item.unit,
+          })),
+          // Partially inbounded items (faqat inbound qilingan qismi)
+          ...partiallyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            quantity: item.inboundQty, // ✅ Faqat inbound qilingan qismi (80ta)
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.inboundQty, // ✅ Yangi total_price
+            unit: item.unit,
+          })),
+        ];
+
         const completedOrder = await tx.order.create({
           data: {
             tenant_id: tenantId,
             order_no: completedOrderNo,
             supplier_id: originalOrder.supplier_id,
             status: "completed",
-            total_amount: inboundedItems.reduce(
+            total_amount: completedOrderItems.reduce(
               (sum, item) => sum + item.total_price,
               0
             ),
@@ -4077,28 +4127,42 @@ export class OrderService {
             created_at: new Date(),
             updated_at: new Date(),
             items: {
-              create: inboundedItems.map((item) => ({
-                tenant_id: tenantId,
-                product_id: item.product_id,
-                quantity: item.quantity,
-                unit_price: item.unit_price,
-                total_price: item.total_price,
-                unit: item.unit,
-              })),
+              create: completedOrderItems,
             },
           },
         });
 
-        // Create remaining order if there are remaining items
+        // ✅ Create remaining order if there are remaining items
         let remainingOrder = null;
-        if (remainingItems.length > 0) {
+        const remainingOrderItems = [
+          // Fully remaining items
+          ...remainingItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            unit: item.unit,
+          })),
+          // Partially remaining items (qolgan qismi)
+          ...partiallyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            quantity: item.remainingQty, // ✅ Qolgan qismi (20ta)
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.remainingQty, // ✅ Yangi total_price
+            unit: item.unit,
+          })),
+        ];
+
+        if (remainingOrderItems.length > 0) {
           remainingOrder = await tx.order.create({
             data: {
               tenant_id: tenantId,
               order_no: remainingOrderNo!,
               supplier_id: originalOrder.supplier_id,
               status: "supplier_confirmed",
-              total_amount: remainingItems.reduce(
+              total_amount: remainingOrderItems.reduce(
                 (sum, item) => sum + item.total_price,
                 0
               ),
@@ -4108,14 +4172,7 @@ export class OrderService {
               created_at: new Date(),
               updated_at: new Date(),
               items: {
-                create: remainingItems.map((item) => ({
-                  tenant_id: tenantId,
-                  product_id: item.product_id,
-                  quantity: item.quantity,
-                  unit_price: item.unit_price,
-                  total_price: item.total_price,
-                  unit: item.unit,
-                })),
+                create: remainingOrderItems,
               },
             },
           });
@@ -4141,18 +4198,18 @@ export class OrderService {
           completedOrder: {
             id: completedOrder.id,
             orderNo: completedOrderNo,
-            itemCount: inboundedItems.length,
+            itemCount: completedOrderItems.length,
           },
           remainingOrder: remainingOrder
             ? {
                 id: remainingOrder.id,
                 orderNo: remainingOrderNo,
-                itemCount: remainingItems.length,
+                itemCount: remainingOrderItems.length,
               }
             : null,
           message: remainingOrder
-            ? `${inboundedItems.length}개 제품 입고 완료. ${remainingItems.length}개 제품은 재입고 대기 중입니다.`
-            : `${inboundedItems.length}개 제품 입고 완료.`,
+            ? `${completedOrderItems.length}개 제품 입고 완료. ${remainingOrderItems.length}개 제품은 재입고 대기 중입니다.`
+            : `${completedOrderItems.length}개 제품 입고 완료.`,
         };
       });
     } catch (error: any) {

@@ -2591,15 +2591,26 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const handlePartialInbound = async () => {
     if (!modalData) return;
 
-    const { order, items } = modalData;
+    const { order } = modalData;
 
-    // Filter items that have sufficient quantity
+    // ✅ Muammo: Faqat modalData.items (insufficient items) dan foydalanilmoqda
+    // ✅ Yechim: order.items dan barcha item'larni ko'rib chiqish
+    // ✅ editedItems da quantity > 0 bo'lgan barcha item'larni qabul qilish
+    
+    // ✅ Order'dan barcha item'larni ko'rib chiqish (qisman va to'liq inbound qilinadigan item'lar ham)
     const validItems = order.items.filter((item: any) => {
       const edited = editedItems[item.id];
-      const confirmedQty = item.confirmedQuantity || item.orderedQuantity;
       const inboundQty = edited?.quantity || 0;
-      return inboundQty >= confirmedQty;
+      return inboundQty > 0; // ✅ Barcha inbound qilinadigan item'lar (Product A 80ta, Product B 100ta)
     });
+
+    // ✅ Debug: validItems ni ko'rsatish
+    console.log('[Partial Inbound] Valid items:', validItems.map((item: any) => ({
+      id: item.id,
+      productId: item.productId || item.product_id,
+      productName: item.productName,
+      inboundQty: editedItems[item.id]?.quantity || 0,
+    })));
 
     if (validItems.length === 0) {
       alert("입고 가능한 제품이 없습니다.");
@@ -2624,6 +2635,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
         const inboundQty = editedItem?.quantity || 0;
 
         if (inboundQty <= 0) continue;
+
+        // ✅ Get productId from item (productId or product_id)
+        const productId = item.productId || item.product_id;
+        if (!productId) {
+          console.error(`[Partial Inbound] Product ID not found for item ${item.id}`);
+          continue;
+        }
 
         // Get expiry info from product
         const expiryMonths = item.expiryMonths;
@@ -2658,16 +2676,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
         // Create batch
         await apiPost<any>(
-          `${apiUrl}/products/${item.productId}/batches`,
+          `${apiUrl}/products/${productId}/batches`,
           batchPayload
         );
       }
 
-      // Call partial inbound API to split the order
+      // ✅ Call partial inbound API - item'ning bir qismini inbound qilish, qolgan qismini order'da qoldirish
       const inboundedItems = validItems.map((item: any) => ({
         itemId: item.id,
-        productId: item.productId,
-        inboundQty: editedItems[item.id]?.quantity || 0,
+        productId: item.productId || item.product_id, // ✅ productId yoki product_id
+        inboundQty: editedItems[item.id]?.quantity || 0, // ✅ 입고수량 (80ta yoki 100ta)
       }));
 
       const result = await apiPost(
@@ -2679,15 +2697,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
         }
       );
 
-      const processedCount = validItems.length;
-      const remainingCount = order.items.length - validItems.length;
+      // ✅ Calculate remaining quantity - order.items dan barcha item'larni ko'rib chiqish
+      const totalRemainingQty = order.items.reduce((sum: number, item: any) => {
+        const edited = editedItems[item.id];
+        const confirmedQty = item.confirmedQuantity || item.orderedQuantity || item.ordered || 0;
+        const inboundQty = edited?.quantity || 0;
+        const remaining = confirmedQty - inboundQty;
+        return sum + (remaining > 0 ? remaining : 0); // ✅ Faqat qolgan miqdor (20ta)
+      }, 0);
 
-      if (remainingCount > 0) {
+      if (totalRemainingQty > 0) {
         alert(
-          `${processedCount}개 제품이 입고되었습니다.\n${remainingCount}개 제품은 재입고 대기 중입니다.`
+          `${validItems.length}개 제품이 입고되었습니다.\n${totalRemainingQty}개 제품은 재입고 대기 중입니다.`
         );
       } else {
-        alert(`${processedCount}개 제품이 입고되었습니다.`);
+        alert(`${validItems.length}개 제품이 입고되었습니다.`);
       }
 
       onRefresh();
