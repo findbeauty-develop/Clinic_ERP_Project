@@ -56,21 +56,29 @@ WHERE ordered_quantity IS NULL;
 ALTER TABLE "OrderItem" 
 ALTER COLUMN "ordered_quantity" SET NOT NULL;
 
--- Step 9: Make confirmed_quantity NOT NULL
--- For any remaining NULL values, set to ordered_quantity
+-- Step 9: Make confirmed_quantity NULLABLE (supplier hali tasdiqlamagan bo'lishi mumkin)
+-- For orders not yet confirmed by supplier, set to NULL
+UPDATE "OrderItem" oi
+SET confirmed_quantity = NULL
+FROM "Order" o
+WHERE oi.order_id = o.id 
+  AND o.status IN ('draft', 'pending');
+
+-- For confirmed orders, ensure value exists
 UPDATE "OrderItem" 
 SET confirmed_quantity = ordered_quantity 
-WHERE confirmed_quantity IS NULL;
-
-ALTER TABLE "OrderItem" 
-ALTER COLUMN "confirmed_quantity" SET NOT NULL;
+WHERE confirmed_quantity IS NULL 
+  AND order_id IN (
+    SELECT id FROM "Order" 
+    WHERE status NOT IN ('draft', 'pending')
+  );
 
 -- Step 10: Drop backup column
 ALTER TABLE "OrderItem" 
 DROP COLUMN "quantity_backup";
 
 -- Step 11: Add comment for documentation
-COMMENT ON COLUMN "OrderItem"."ordered_quantity" IS 'Clinic order qilgan miqdor (dastlabki, o\''zgarmas)';
-COMMENT ON COLUMN "OrderItem"."confirmed_quantity" IS 'Supplier tasdiqlagan miqdor (supplier adjustment)';
-COMMENT ON COLUMN "OrderItem"."inbound_quantity" IS 'Clinic inbound qilgan miqdor (haqiqiy inbound, partial bo\''lishi mumkin)';
+COMMENT ON COLUMN "OrderItem"."ordered_quantity" IS 'Clinic order qilgan miqdor (dastlabki, o''zgarmas)';
+COMMENT ON COLUMN "OrderItem"."confirmed_quantity" IS 'Supplier tasdiqlagan miqdor (nullable - supplier confirm qilmaguncha null)';
+COMMENT ON COLUMN "OrderItem"."inbound_quantity" IS 'Clinic inbound qilgan miqdor (haqiqiy inbound, partial bo''lishi mumkin)';
 

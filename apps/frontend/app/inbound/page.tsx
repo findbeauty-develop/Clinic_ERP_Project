@@ -3330,11 +3330,7 @@ const OrderCard = memo(function OrderCard({
                   </div>
                   {(isSupplierConfirmed || isRejected) && (
                     <div className="mt-1 flex flex-wrap gap-2">
-                      {item.quantityReason && (
-                        <span className="text-xs text-rose-600 dark:text-rose-400">
-                          ⚠ 수량 변경: {item.quantityReason}
-                        </span>
-                      )}
+                      
                       {item.priceReason && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
                           💰 가격 변경: {item.priceReason}
@@ -3373,12 +3369,16 @@ const OrderCard = memo(function OrderCard({
                       />
                       <span className="text-sm text-slate-400">|</span>
                       <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {item.orderedQuantity}개
+                        {item.confirmedQuantity}개
                       </span>
                     </div>
                     {(isSupplierConfirmed || isRejected) && hasQtyChange && (
                       <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                        공급업체 조정: {item.confirmedQuantity}개
+                        요청 수량: {item.orderedQuantity ?? item.confirmedQuantity}개 {item.quantityReason && (
+                        <span className="text-xs text-rose-600 dark:text-rose-400">
+                          (⚠ 수량 변경: {item.quantityReason})
+                        </span>
+                      )}
                       </p>
                     )}
                   </div>

@@ -728,7 +728,7 @@ export class ReturnService {
       // Send webhook to clinic-backend
       try {
         const clinicBackendUrl =
-          process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+          process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
         // Supplier sends its own API key to clinic-backend for authentication
         const supplierApiKey =
           process.env.SUPPLIER_BACKEND_API_KEY ||
@@ -818,7 +818,7 @@ export class ReturnService {
   private async sendAcceptWebhookToClinic(request: any): Promise<void> {
     try {
       const clinicBackendUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const supplierApiKey =
         process.env.SUPPLIER_BACKEND_API_KEY ||
         process.env.API_KEY_SECRET ||
@@ -912,7 +912,7 @@ export class ReturnService {
   }): Promise<void> {
     try {
       const clinicBackendUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const supplierApiKey =
         process.env.SUPPLIER_BACKEND_API_KEY ||
         process.env.API_KEY_SECRET ||

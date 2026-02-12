@@ -413,7 +413,7 @@ model OrderItem {
   
   // ✅ Quantity fields - clear semantics
   ordered_quantity   Int       // Clinic order qilgan (dastlabki, o'zgarmas)
-  confirmed_quantity Int       // Supplier tasdiqlagan (supplier adjustment)
+  confirmed_quantity Int?      // Supplier tasdiqlagan (supplier adjustment) - nullable until confirmed
   inbound_quantity   Int?      // Clinic inbound qilgan (haqiqiy inbound)
   
   unit_price         Int

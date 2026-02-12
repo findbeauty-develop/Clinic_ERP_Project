@@ -831,9 +831,9 @@ export class OrderService {
                   order_id: order.id,
                   product_id: item.productId,
                   batch_id: item.batchId ?? null,
-                  ordered_quantity: item.quantity,    // ✅ Clinic order qilgan (o'zgarmas)
-                  confirmed_quantity: item.quantity,  // ✅ Supplier confirms (dastlab bir xil)
-                  inbound_quantity: null,             // ✅ Hali inbound qilinmagan
+                  ordered_quantity: item.quantity,      // ✅ Clinic order qilgan (o'zgarmas)
+                  confirmed_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier auto-confirm, platform supplier null
+                  inbound_quantity: null,               // ✅ Hali inbound qilinmagan
                   unit_price: item.unitPrice,
                   total_price: item.totalPrice,
                   memo: item.memo ?? null,
@@ -1388,10 +1388,10 @@ export class OrderService {
         brand: item.product?.brand || "",
         batchId: item.batch_id,
         batchNo: item.batch?.batch_no || null,
-        orderedQuantity: item.ordered_quantity,           // ✅ Clinic order qilgan (o'zgarmas)
-        confirmedQuantity: item.confirmed_quantity,       // ✅ Supplier tasdiqlagan
-        inboundQuantity: item.inbound_quantity,           // ✅ Clinic inbound qilgan
-        pendingQuantity: item.confirmed_quantity - (item.inbound_quantity || 0), // ✅ Qolgan
+        orderedQuantity: item.ordered_quantity,      // ✅ Clinic order qilgan (o'zgarmas)
+        confirmedQuantity: item.confirmed_quantity ?? 0, // ✅ Supplier tasdiqlagan (null bo'lsa 0)
+        inboundQuantity: item.inbound_quantity,      // ✅ Clinic inbound qilgan
+        pendingQuantity: (item.confirmed_quantity ?? 0) - (item.inbound_quantity || 0), // ✅ Qolgan
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
         memo: item.memo || null,
@@ -3403,10 +3403,10 @@ export class OrderService {
           productName: item.product?.name || "제품",
           brand: item.product?.brand || "",
           unit: item.product?.unit || "EA",
-          orderedQuantity: item.quantity, // Original order quantity
-          confirmedQuantity: adjustment?.actualQuantity || item.quantity, // Supplier confirmed
-          orderedPrice: item.unit_price, // Original price
-          confirmedPrice: adjustment?.actualPrice || item.unit_price, // Supplier confirmed
+          orderedQuantity: item.ordered_quantity,                              // ✅ Original order quantity (o'zgarmas)
+          confirmedQuantity: adjustment?.actualQuantity || item.confirmed_quantity || item.ordered_quantity, // ✅ Supplier confirmed (fallback)
+          orderedPrice: item.unit_price,                                       // Original price
+          confirmedPrice: adjustment?.actualPrice || item.unit_price,          // Supplier confirmed
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
           // Product-level expiry defaults

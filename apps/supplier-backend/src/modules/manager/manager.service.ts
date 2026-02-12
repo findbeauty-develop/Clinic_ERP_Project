@@ -1209,7 +1209,7 @@ export class ManagerService {
    */
   async getClinicsForSupplier(supplierManagerId: string) {
     const clinicBackendUrl =
-      process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+      process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
     const apiKey =
       process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -1251,7 +1251,7 @@ export class ManagerService {
     memo: string | null
   ) {
     const clinicBackendUrl =
-      process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+      process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
     const apiKey =
       process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 

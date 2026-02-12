@@ -38,7 +38,9 @@ export class OrderService {
       product_name: item.productName,
       brand: item.brand || null,
       batch_no: item.batchNo || null,
-      quantity: item.quantity,
+      received_order_quantity: item.quantity, // ✅ Clinic order qilgan (o'zgarmas)
+      confirmed_quantity: null,               // ✅ NULL - supplier hali confirm qilmagan!
+      inbound_quantity: null,                 // ✅ Hali inbound qilinmagan
       unit_price: item.unitPrice,
       total_price: item.totalPrice,
       memo: item.memo || null,
@@ -216,12 +218,12 @@ export class OrderService {
           if (item) {
             // Build memo with change reasons
             let itemMemo = item.memo || "";
-            if (adjustment.actualQuantity !== item.quantity) {
+            if (adjustment.actualQuantity !== item.confirmed_quantity) {
               const reason = adjustment.quantityChangeReason || "미지정";
               const note = adjustment.quantityChangeNote
                 ? ` (${adjustment.quantityChangeNote})`
                 : "";
-              itemMemo += `\n[수량 변경: ${item.quantity}→${adjustment.actualQuantity}, 사유: ${reason}${note}]`;
+              itemMemo += `\n[수량 변경: ${item.confirmed_quantity}→${adjustment.actualQuantity}, 사유: ${reason}${note}]`;
             }
             if (adjustment.actualPrice !== item.unit_price) {
               const reason = adjustment.priceChangeReason || "미지정";
@@ -234,7 +236,8 @@ export class OrderService {
             await tx.supplierOrderItem.update({
               where: { id: adjustment.itemId },
               data: {
-                quantity: adjustment.actualQuantity,
+                // received_order_quantity: UNCHANGED - O'zgarmas!
+                confirmed_quantity: adjustment.actualQuantity, // ✅ Supplier adjustment
                 unit_price: adjustment.actualPrice,
                 total_price: adjustment.actualQuantity * adjustment.actualPrice,
                 memo: itemMemo.trim(),
@@ -325,7 +328,7 @@ export class OrderService {
   private async notifyClinicBackend(order: any, adjustments: any[]) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000"; // ✅ Local dev default
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -356,7 +359,7 @@ export class OrderService {
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
-          quantity: item.quantity,
+          quantity: item.confirmed_quantity, // ✅ Supplier confirmed quantity
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
           memo: item.memo,
@@ -399,7 +402,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const apiKey =
         process.env.CLINIC_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -420,7 +423,7 @@ export class OrderService {
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
-          quantity: item.quantity,
+          quantity: item.confirmed_quantity, // ✅ Supplier confirmed quantity
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
           memo: item.memo,
@@ -492,7 +495,7 @@ export class OrderService {
       `Found order ${orderNo} (id: ${order.id}), current status: ${order.status}`
     );
 
-    // ✅ YANGI: inboundItems bo'lsa, qaysi item'lar qancha inbound qilinganligini tekshirish
+    // ✅ REFACTORED: No split orders - update inbound_quantity directly
     let allItemsCompleted = true;
     let newStatus = "completed";
 
@@ -506,24 +509,11 @@ export class OrderService {
         `   InboundItems: ${inboundItems.map((ii: any) => `itemId=${ii.itemId}, productId=${ii.productId}, inbound=${ii.inboundQuantity}, original=${ii.originalQuantity}`).join('; ')}`
       );
       this.logger.debug(
-        `   OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}, quantity=${item.quantity}`).join('; ')}`
+        `   OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}, confirmed=${item.confirmed_quantity}, inbound=${item.inbound_quantity}`).join('; ')}`
       );
 
-      // ✅ Har bir item uchun inbound quantity'ni tekshirish
-      // ✅ Muammo: inboundItem.itemId clinic side'dagi OrderItem.id bo'lishi mumkin
-      // ✅ Yechim: Avval itemId orqali, keyin productId orqali match qilish
-      let itemsProcessed = 0;
-      let itemsFullyInbound = 0;
-      let itemsPartiallyInbound = 0;
-      let itemsNotInbound = 0;
-      
-      // ✅ Arrays for splitting the order
-      const fullyInboundedItems: any[] = [];
-      const partiallyInboundedItems: any[] = [];
-
+      // ✅ Update each item's inbound_quantity (no splitting)
       for (const item of order.items) {
-        itemsProcessed++;
-        
         // ✅ 1. Avval itemId orqali topish (agar clinic side'dagi OrderItem.id bo'lsa)
         let inboundItem = inboundItems.find((ii: any) => ii.itemId === item.id);
         
@@ -533,137 +523,43 @@ export class OrderService {
         }
         
         if (inboundItem) {
-          const inboundQty = inboundItem.inboundQuantity || 0;
-          const originalQty = inboundItem.originalQuantity || item.quantity;
+          const newInboundQty = inboundItem.inboundQuantity || 0;
+          const currentInboundQty = item.inbound_quantity || 0;
+          const totalInboundQty = currentInboundQty + newInboundQty; // ✅ Accumulate inbound
           
           this.logger.log(
-            `   Item ${item.id} (productId: ${item.product_id}): inbound=${inboundQty}, original=${originalQty}, current=${item.quantity}`
+            `   Item ${item.id} (productId: ${item.product_id}): current_inbound=${currentInboundQty}, new_inbound=${newInboundQty}, total_inbound=${totalInboundQty}, confirmed=${item.confirmed_quantity}`
           );
 
-          // ✅ Agar hali ham qolgan quantity bor bo'lsa, allItemsCompleted = false
-          if (inboundQty < originalQty) {
+          // ✅ Update inbound_quantity
+          await (this.prisma as any).supplierOrderItem.update({
+            where: { id: item.id },
+            data: {
+              inbound_quantity: totalInboundQty, // ✅ Total inbound (80 or 100)
+              updated_at: new Date(),
+            },
+          });
+
+          // ✅ Check if item is fully inbound
+          if (totalInboundQty < item.confirmed_quantity) {
             allItemsCompleted = false;
-            itemsPartiallyInbound++;
-            partiallyInboundedItems.push({
-              item,
-              inboundQty,
-              originalQty,
-              remainingQty: originalQty - inboundQty,
-            });
-            
             this.logger.log(
-              `   📦 Item ${item.id}: partially inbound (${inboundQty}/${originalQty}, ${originalQty - inboundQty} remaining)`
+              `   📦 Item ${item.id}: partially inbound (${totalInboundQty}/${item.confirmed_quantity}, ${item.confirmed_quantity - totalInboundQty} remaining)`
             );
-          } else if (inboundQty >= originalQty) {
-            // ✅ To'liq inbound qilingan
-            itemsFullyInbound++;
-            fullyInboundedItems.push({
-              item,
-              inboundQty,
-              originalQty,
-            });
-            
-            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${inboundQty}/${originalQty})`);
+          } else {
+            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${totalInboundQty}/${item.confirmed_quantity})`);
           }
         } else {
-          // ✅ Item inbound qilinmagan, allItemsCompleted = false
+          // ✅ Item inbound qilinmagan
           allItemsCompleted = false;
-          itemsNotInbound++;
           this.logger.warn(`   ⚠️ Item ${item.id} (productId: ${item.product_id}): not found in inboundItems`);
         }
       }
-      
-      // ✅ Order split qilish - agar to'liq va qisman inbound qilingan item'lar bo'lsa
-      if (fullyInboundedItems.length > 0 && (partiallyInboundedItems.length > 0 || itemsNotInbound > 0)) {
-        this.logger.log(`📦 Order split needed: ${fullyInboundedItems.length} fully inbound, ${partiallyInboundedItems.length} partially inbound`);
-        
-        // ✅ 1. Yangi "completed order" yaratish - to'liq inbound qilingan item'lar uchun
-        const completedOrderNo = `${orderNo}-C`;
-        
-        const completedOrderItems = fullyInboundedItems.map((fi: any) => ({
-          tenant_id: order.tenant_id,
-          product_id: fi.item.product_id,
-          product_name: fi.item.product_name, // ✅ Required field
-          brand: fi.item.brand,
-          quantity: fi.inboundQty,
-          unit_price: fi.item.unit_price,
-          total_price: fi.item.unit_price * fi.inboundQty,
-        }));
-        
-        const completedOrder = await (this.prisma as any).supplierOrder.create({
-          data: {
-            tenant_id: order.tenant_id,
-            supplier_tenant_id: order.supplier_tenant_id, // ✅ Required field
-            supplier_manager_id: order.supplier_manager_id, // ✅ Required field for filtering
-            order_no: completedOrderNo,
-            clinic_id: order.clinic_id,
-            clinic_tenant_id: order.clinic_tenant_id, // ✅ For clinic info
-            clinic_name: order.clinic_name, // ✅ Clinic name
-            clinic_manager_name: order.clinic_manager_name, // ✅ Manager name
-            status: "completed",
-            total_amount: completedOrderItems.reduce((sum: number, item: any) => sum + item.total_price, 0),
-            items: {
-              create: completedOrderItems,
-            },
-            created_at: new Date(),
-            updated_at: new Date(),
-          },
-        });
-        
-        this.logger.log(`✅ Created completed order: ${completedOrderNo} with ${completedOrderItems.length} items`);
-        
-        // ✅ 2. Original order'dan to'liq inbound qilingan item'larni DELETE qilish
-        for (const fi of fullyInboundedItems) {
-          await (this.prisma as any).supplierOrderItem.delete({
-            where: { id: fi.item.id },
-          });
-        }
-        
-        // ✅ 3. Original order'da qolgan item'larni yangilash (quantity)
-        for (const pi of partiallyInboundedItems) {
-          await (this.prisma as any).supplierOrderItem.update({
-            where: { id: pi.item.id },
-            data: {
-              quantity: pi.remainingQty,
-              updated_at: new Date(),
-            },
-          });
-          
-          this.logger.log(
-            `   ✅ Updated item ${pi.item.id}: quantity ${pi.item.quantity} → ${pi.remainingQty} (${pi.inboundQty} inbound, ${pi.remainingQty} remaining)`
-          );
-        }
-        
-        // ✅ 4. Original order status → confirmed (qolgan item'lar uchun)
-        newStatus = "confirmed";
-        this.logger.log(`✅ Order split completed: ${completedOrderNo} (completed), ${orderNo} (confirmed with remaining items)`);
-      } else if (fullyInboundedItems.length > 0 && partiallyInboundedItems.length === 0 && itemsNotInbound === 0) {
-        // ✅ Barcha item'lar to'liq inbound qilingan
-        newStatus = "completed";
-        this.logger.log(`✅ All items completed for order ${orderNo}`);
-      } else if (partiallyInboundedItems.length > 0 || itemsNotInbound > 0) {
-        // ✅ Faqat qisman inbound qilingan item'lar
-        for (const pi of partiallyInboundedItems) {
-          await (this.prisma as any).supplierOrderItem.update({
-            where: { id: pi.item.id },
-            data: {
-              quantity: pi.remainingQty,
-              updated_at: new Date(),
-            },
-          });
-          
-          this.logger.log(
-            `   ✅ Updated item ${pi.item.id}: quantity ${pi.item.quantity} → ${pi.remainingQty} (${pi.inboundQty} inbound, ${pi.remainingQty} remaining)`
-          );
-        }
-        
-        newStatus = "confirmed";
-        this.logger.log(`⚠️ Some items remaining for order ${orderNo} → status: confirmed`);
-      }
 
-      // ✅ Debug: Summary
+      // ✅ Set order status based on all items
+      newStatus = allItemsCompleted ? "completed" : "confirmed";
       this.logger.log(
-        `📊 Summary: processed=${itemsProcessed}, fullyInbound=${itemsFullyInbound}, partiallyInbound=${itemsPartiallyInbound}, notInbound=${itemsNotInbound}`
+        `📊 Order ${orderNo}: ${allItemsCompleted ? 'All items completed' : 'Some items pending'} → status: ${newStatus}`
       );
     } else {
       // ✅ inboundItems yo'q bo'lsa, eski logika (barcha item'lar to'liq inbound)
@@ -886,7 +782,9 @@ export class OrderService {
             product_name: item.product_name,
             brand: item.brand,
             batch_no: item.batch_no,
-            quantity: item.quantity,
+            received_order_quantity: item.received_order_quantity, // ✅ Original
+            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
+            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
             unit_price: item.unit_price,
             total_price: item.total_price,
             memo: item.memo,
@@ -903,7 +801,9 @@ export class OrderService {
             product_name: item.product_name,
             brand: item.brand,
             batch_no: item.batch_no,
-            quantity: item.quantity,
+            received_order_quantity: item.received_order_quantity, // ✅ Original
+            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
+            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
             unit_price: item.unit_price,
             total_price: item.total_price,
             memo: item.memo,
@@ -1102,7 +1002,9 @@ export class OrderService {
             product_name: item.product_name,
             brand: item.brand,
             batch_no: item.batch_no,
-            quantity: item.quantity,
+            received_order_quantity: item.received_order_quantity, // ✅ Original
+            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
+            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
             unit_price: item.unit_price,
             total_price: item.total_price,
             memo: `[거절 사유: ${reason}]`,
@@ -1119,7 +1021,9 @@ export class OrderService {
             product_name: item.product_name,
             brand: item.brand,
             batch_no: item.batch_no,
-            quantity: item.quantity,
+            received_order_quantity: item.received_order_quantity, // ✅ Original
+            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
+            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
             unit_price: item.unit_price,
             total_price: item.total_price,
             memo: item.memo,
@@ -1185,7 +1089,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -1209,8 +1113,9 @@ export class OrderService {
             total_amount: acceptedOrder.total_amount,
             items: acceptedOrder.items.map((i: any) => ({
               product_name: i.product_name,
-              quantity: i.quantity,
+              quantity: i.confirmed_quantity, // ✅ Supplier confirmed
               total_price: i.total_price,
+              product_id: i.product_id,
             })),
           },
           {
@@ -1219,8 +1124,9 @@ export class OrderService {
             total_amount: remainingOrder.total_amount,
             items: remainingOrder.items.map((i: any) => ({
               product_name: i.product_name,
-              quantity: i.quantity,
+              quantity: i.confirmed_quantity, // ✅ Supplier confirmed
               total_price: i.total_price,
+              product_id: i.product_id,
             })),
           },
         ],
@@ -1260,7 +1166,7 @@ export class OrderService {
   ) {
     try {
       const clinicApiUrl =
-        process.env.CLINIC_BACKEND_URL || "https://api.jaclit.com";
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
       const apiKey =
         process.env.SUPPLIER_BACKEND_API_KEY || process.env.API_KEY_SECRET;
 
@@ -1284,7 +1190,7 @@ export class OrderService {
             total_amount: rejectedOrder.total_amount,
             items: rejectedOrder.items.map((i: any) => ({
               product_name: i.product_name,
-              quantity: i.quantity,
+              quantity: i.confirmed_quantity, // ✅ Supplier confirmed
               total_price: i.total_price,
               product_id: i.product_id,
             })),
@@ -1295,7 +1201,7 @@ export class OrderService {
             total_amount: remainingOrder.total_amount,
             items: remainingOrder.items.map((i: any) => ({
               product_name: i.product_name,
-              quantity: i.quantity,
+              quantity: i.confirmed_quantity, // ✅ Supplier confirmed
               total_price: i.total_price,
               product_id: i.product_id,
             })),
@@ -1349,7 +1255,10 @@ export class OrderService {
       productName: item.product_name,
       brand: item.brand,
       batchNo: item.batch_no,
-      quantity: item.quantity,
+      receivedOrderQuantity: item.received_order_quantity,                    // ✅ Clinic order qilgan (o'zgarmas)
+      confirmedQuantity: item.confirmed_quantity ?? item.received_order_quantity, // ✅ Fallback if null
+      inboundQuantity: item.inbound_quantity,                                  // ✅ Clinic inbound qilgan
+      quantity: item.received_order_quantity,                                  // ✅ Backward compatibility - display용
       unitPrice: item.unit_price,
       totalPrice: item.total_price,
       memo: item.memo,

@@ -10,7 +10,10 @@ type SupplierOrderItem = {
   brand?: string | null;
   unit?: string | null;
   batchNo?: string | null;
-  quantity: number;
+  receivedOrderQuantity?: number; // ✅ Clinic order qilgan miqdor (backend'dan keladi)
+  confirmedQuantity?: number;     // ✅ Supplier tasdiqlagan miqdor
+  inboundQuantity?: number;       // ✅ Clinic inbound qilgan miqdor
+  quantity: number;               // ✅ Display용 (receivedOrderQuantity yoki confirmedQuantity)
   unitPrice: number;
   totalPrice: number;
   memo?: string | null;
@@ -348,7 +351,13 @@ export default function OrdersPage() {
                   </span>
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
-                <div className="text-slate-500">{item.quantity}개</div>
+                <div className="text-slate-500">
+                  {/* ✅ Show confirmed quantity for confirmed/completed orders in all tabs */}
+                  {((activeTab === "confirmed" || (activeTab === "all" && (order.status === "confirmed" || order.status === "completed"))) && 
+                    item.confirmedQuantity !== undefined)
+                    ? `${item.confirmedQuantity}개`
+                    : `${item.quantity}개`}
+                </div>
                 {isRejected ? (
                   <div className="text-right text-slate-400 text-xs">
                     {rejectionReason || "거절 사유 없음"}
@@ -633,7 +642,12 @@ export default function OrdersPage() {
                       <div className="truncate text-slate-500">
                         {item.brand || "-"}
                       </div>
-                      <div className="text-right">{item.quantity}게</div>
+                      <div className="text-right">
+                        {/* ✅ Show confirmed quantity for confirmed/completed orders */}
+                        {(detailOrder.status === "confirmed" || detailOrder.status === "completed") && item.confirmedQuantity !== undefined
+                          ? `${item.confirmedQuantity}게`
+                          : `${item.quantity}게`}
+                      </div>
                       {detailOrder.status === "rejected" ? (
                         <div className="text-right text-slate-400 text-xs">
                           {rejectionReason || "거절 사유 없음"}
