@@ -150,12 +150,6 @@ model SupplierOrder {
   order_date          DateTime  @default(now())
   created_at          DateTime  @default(now())
   updated_at          DateTime?
-  
-  // Split order fields
-  original_order_id   String? // If this is a split order, points to original
-  is_split_order      Boolean   @default(false) // True if this order was created from a split
-  split_sequence      Int? // 1, 2, 3... for split orders
-  split_reason        String? // Why was this order split
 
   items SupplierOrderItem[]
 
@@ -164,7 +158,6 @@ model SupplierOrder {
   @@index([clinic_tenant_id])
   @@index([status])
   @@index([order_date])
-  @@index([original_order_id])
 }
 
 // Clinic → Supplier order items
@@ -174,7 +167,6 @@ model SupplierOrderItem {
   product_id   String?
   product_name String
   brand        String?
-  unit         String? 
   batch_no     String?
   quantity     Int
   unit_price   Int

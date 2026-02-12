@@ -38,7 +38,6 @@ export class OrderService {
       product_name: item.productName,
       brand: item.brand || null,
       batch_no: item.batchNo || null,
-      unit: item.unit || null,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       total_price: item.totalPrice,
@@ -357,7 +356,6 @@ export class OrderService {
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
-          unit: item.unit,
           quantity: item.quantity,
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
@@ -590,7 +588,6 @@ export class OrderService {
           quantity: fi.inboundQty,
           unit_price: fi.item.unit_price,
           total_price: fi.item.unit_price * fi.inboundQty,
-          unit: fi.item.unit,
         }));
         
         const completedOrder = await (this.prisma as any).supplierOrder.create({
@@ -1351,7 +1348,6 @@ export class OrderService {
       productId: item.product_id,
       productName: item.product_name,
       brand: item.brand,
-      unit: item.unit,
       batchNo: item.batch_no,
       quantity: item.quantity,
       unitPrice: item.unit_price,

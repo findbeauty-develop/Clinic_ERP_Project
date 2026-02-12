@@ -1849,11 +1849,15 @@ export default function OrderPage() {
                                   {!isRejected && (
                                     <>
                                       <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                        <span>입고수량: {item.quantity}</span>
+                                        <span>주문수량: {item.orderedQuantity}개</span>
                                         <span className="text-slate-400">
                                           |
                                         </span>
-                                        <span>{item.quantity}개</span>
+                                        <span>확정수량: {item.confirmedQuantity}개</span>
+                                        <span className="text-slate-400">
+                                          |
+                                        </span>
+                                        <span>입고수량: {item.inboundQuantity || 0}개</span>
                                       </div>
                                       <div className="text-sm text-slate-600 dark:text-slate-400">
                                         단가 {item.unitPrice.toLocaleString()}

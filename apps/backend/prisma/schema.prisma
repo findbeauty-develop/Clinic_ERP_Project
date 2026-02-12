@@ -404,21 +404,26 @@ model Order {
 }
 
 model OrderItem {
-  id          String    @id @default(uuid())
-  tenant_id   String
-  order_id    String
-  product_id  String
-  batch_id    String?
-  unit        String? 
-  quantity    Int
-  unit_price  Int
-  total_price Int
-  memo        String?
-  created_at  DateTime  @default(now())
-  updated_at  DateTime?
-  batch       Batch?    @relation(fields: [batch_id], references: [id])
-  order       Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  product     Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  id                 String    @id @default(uuid())
+  tenant_id          String
+  order_id           String
+  product_id         String
+  batch_id           String?
+  unit               String? 
+  
+  // ✅ Quantity fields - clear semantics
+  ordered_quantity   Int       // Clinic order qilgan (dastlabki, o'zgarmas)
+  confirmed_quantity Int       // Supplier tasdiqlagan (supplier adjustment)
+  inbound_quantity   Int?      // Clinic inbound qilgan (haqiqiy inbound)
+  
+  unit_price         Int
+  total_price        Int
+  memo               String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime?
+  batch              Batch?    @relation(fields: [batch_id], references: [id])
+  order              Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([order_id])

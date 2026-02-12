@@ -831,7 +831,9 @@ export class OrderService {
                   order_id: order.id,
                   product_id: item.productId,
                   batch_id: item.batchId ?? null,
-                  quantity: item.quantity,
+                  ordered_quantity: item.quantity,    // ✅ Clinic order qilgan (o'zgarmas)
+                  confirmed_quantity: item.quantity,  // ✅ Supplier confirms (dastlab bir xil)
+                  inbound_quantity: null,             // ✅ Hali inbound qilinmagan
                   unit_price: item.unitPrice,
                   total_price: item.totalPrice,
                   memo: item.memo ?? null,
@@ -1386,7 +1388,10 @@ export class OrderService {
         brand: item.product?.brand || "",
         batchId: item.batch_id,
         batchNo: item.batch?.batch_no || null,
-        quantity: item.quantity,
+        orderedQuantity: item.ordered_quantity,           // ✅ Clinic order qilgan (o'zgarmas)
+        confirmedQuantity: item.confirmed_quantity,       // ✅ Supplier tasdiqlagan
+        inboundQuantity: item.inbound_quantity,           // ✅ Clinic inbound qilgan
+        pendingQuantity: item.confirmed_quantity - (item.inbound_quantity || 0), // ✅ Qolgan
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
         memo: item.memo || null,
@@ -2830,24 +2835,26 @@ export class OrderService {
 
           if (orderItem) {
             // ✅ actualQuantity va actualPrice dan yangilash
-            const oldQuantity = orderItem.quantity;
+            const oldConfirmedQuantity = orderItem.confirmed_quantity;
             const oldUnitPrice = orderItem.unit_price;
-            const newQuantity = adjustment.actualQuantity ?? orderItem.quantity;
+            const newConfirmedQuantity = adjustment.actualQuantity ?? orderItem.confirmed_quantity;
             const newUnitPrice = adjustment.actualPrice ?? orderItem.unit_price;
-            const newTotalPrice = newQuantity * newUnitPrice;
+            const newTotalPrice = newConfirmedQuantity * newUnitPrice;
 
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
-                quantity: newQuantity, // ✅ 80ta (eski 100ta o'rniga)
+                // ordered_quantity: UNCHANGED ✅ - Dastlabki order o'zgarmas
+                confirmed_quantity: newConfirmedQuantity, // ✅ Supplier adjustment (80ta)
+                // inbound_quantity: UNCHANGED ✅ - Hali inbound qilinmagan
                 unit_price: newUnitPrice, // ✅ Yangi price (agar o'zgarsa)
-                total_price: newTotalPrice, // ✅ Yangi total (80 * price)
+                total_price: newTotalPrice, // ✅ Yangi total (confirmed_quantity * price)
                 updated_at: new Date(),
               },
             });
 
             this.logger.log(
-              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): quantity ${oldQuantity} → ${newQuantity}, price ${oldUnitPrice} → ${newUnitPrice}`
+              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, price ${oldUnitPrice} → ${newUnitPrice}, ordered_quantity & inbound_quantity UNCHANGED`
             );
           } else {
             this.logger.warn(
@@ -3594,7 +3601,9 @@ export class OrderService {
             select: {
               id: true,
               product_id: true,
-              quantity: true,
+              ordered_quantity: true,    // ✅ Dastlabki order
+              confirmed_quantity: true,  // ✅ Supplier tasdiqlagan
+              inbound_quantity: true,    // ✅ Clinic inbound qilgan
               unit_price: true,
               total_price: true,
               memo: true, // ✅ Include item memo for rejection reasons
@@ -3784,9 +3793,24 @@ export class OrderService {
           const inboundItems = order.items.map((item: any) => ({
             itemId: item.id,
             productId: item.product_id, // ✅ Product ID for matching in supplier side
-            inboundQuantity: item.quantity, // ✅ To'liq inbound
-            originalQuantity: item.quantity,
+            inboundQuantity: item.confirmed_quantity, // ✅ To'liq inbound (supplier confirmed quantity)
+            originalQuantity: item.ordered_quantity,  // ✅ Dastlabki order quantity
           }));
+
+          // ✅ Update inbound_quantity for all items (to'liq inbound)
+          await this.prisma.executeWithRetry(async () => {
+            return await Promise.all(
+              order.items.map((item: any) =>
+                (this.prisma as any).orderItem.update({
+                  where: { id: item.id },
+                  data: {
+                    inbound_quantity: item.confirmed_quantity, // ✅ To'liq inbound
+                    updated_at: new Date(),
+                  },
+                })
+              )
+            );
+          });
 
           await this.notifySupplierOrderCompleted(
             order.order_no,
@@ -4171,7 +4195,8 @@ export class OrderService {
         const partiallyInboundedItems: Array<{
           id: string;
           product_id: string;
-          quantity: number;
+          ordered_quantity: number;      // ✅ Dastlabki order
+          confirmed_quantity: number;    // ✅ Supplier tasdiqlagan
           unit_price: number;
           total_price: number;
           unit: string;
@@ -4185,7 +4210,8 @@ export class OrderService {
           
           if (inboundQty !== undefined && inboundQty !== null && typeof inboundQty === 'number') {
             // Item inbound qilinmoqda
-            if (inboundQty >= item.quantity) {
+            // ✅ confirmed_quantity bilan taqqoslash (supplier tasdiqlagan miqdor)
+            if (inboundQty >= item.confirmed_quantity) {
               // ✅ To'liq inbound
               fullyInboundedItems.push(item);
             } else if (inboundQty > 0) {
@@ -4193,7 +4219,7 @@ export class OrderService {
               partiallyInboundedItems.push({
                 ...item,
                 inboundQty,
-                remainingQty: item.quantity - inboundQty,
+                remainingQty: item.confirmed_quantity - inboundQty, // ✅ confirmed_quantity - inbound
               });
             }
           } else {
@@ -4220,7 +4246,9 @@ export class OrderService {
           ...fullyInboundedItems.map((item) => ({
             tenant_id: tenantId,
             product_id: item.product_id,
-            quantity: item.quantity,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: item.confirmed_quantity,    // ✅ To'liq inbound
             unit_price: item.unit_price,
             total_price: item.total_price,
             unit: item.unit,
@@ -4229,7 +4257,9 @@ export class OrderService {
           ...partiallyInboundedItems.map((item) => ({
             tenant_id: tenantId,
             product_id: item.product_id,
-            quantity: item.inboundQty, // ✅ Faqat inbound qilingan qismi (80ta)
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: item.inboundQty,            // ✅ Haqiqiy inbound (80ta)
             unit_price: item.unit_price,
             total_price: item.unit_price * item.inboundQty, // ✅ Yangi total_price
             unit: item.unit,
@@ -4264,7 +4294,9 @@ export class OrderService {
           ...remainingItems.map((item) => ({
             tenant_id: tenantId,
             product_id: item.product_id,
-            quantity: item.quantity,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: null,                       // ✅ Hali inbound qilinmagan
             unit_price: item.unit_price,
             total_price: item.total_price,
             unit: item.unit,
@@ -4273,7 +4305,9 @@ export class OrderService {
           ...partiallyInboundedItems.map((item) => ({
             tenant_id: tenantId,
             product_id: item.product_id,
-            quantity: item.remainingQty, // ✅ Qolgan qismi (20ta)
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.remainingQty,        // ✅ Qolgan confirmed qty (20ta)
+            inbound_quantity: null,                       // ✅ Hali inbound qilinmagan
             unit_price: item.unit_price,
             total_price: item.unit_price * item.remainingQty, // ✅ Yangi total_price
             unit: item.unit,
@@ -4368,8 +4402,8 @@ export class OrderService {
                 );
 
                 if (originalItem) {
-                  const inboundQty = completedItem.quantity; // ✅ completedOrder'dagi quantity (to'liq inbound)
-                  const originalQty = originalItem.quantity; // ✅ Original quantity
+                  const inboundQty = completedItem.inbound_quantity; // ✅ completedOrder'dagi inbound_quantity
+                  const originalQty = originalItem.ordered_quantity;   // ✅ originalOrder'dagi ordered_quantity
                   
                   this.logger.debug(
                     `   CompletedItem: productId=${completedItem.product_id}, inboundQty=${inboundQty}, originalQty=${originalQty}`
@@ -4379,7 +4413,7 @@ export class OrderService {
                     itemId: originalItem.id, // ✅ Original OrderItem.id
                     productId: originalItem.product_id,
                     inboundQuantity: inboundQty, // ✅ To'liq inbound qilingan quantity
-                    originalQuantity: originalQty, // ✅ Original quantity
+                    originalQuantity: originalQty, // ✅ Original ordered quantity
                   });
                 }
               }
