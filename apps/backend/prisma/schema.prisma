@@ -415,6 +415,7 @@ model OrderItem {
   ordered_quantity   Int       // Clinic order qilgan (dastlabki, o'zgarmas)
   confirmed_quantity Int?      // Supplier tasdiqlagan (supplier adjustment) - nullable until confirmed
   inbound_quantity   Int?      // Clinic inbound qilgan (haqiqiy inbound)
+  pending_quantity   Int?      // ✅ Qolgan (confirmed - inbound) - denormalized for performance
   
   unit_price         Int
   total_price        Int

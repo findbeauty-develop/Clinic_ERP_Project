@@ -337,11 +337,11 @@ export class ProductsService {
 
     const createdProductFromTransaction = await this.prisma.$transaction(
       async (tx: any) => {
-        const resolvedStatus =
-          dto.status ?? (dto.isActive === false ? "단종" : "활성");
-        const resolvedIsActive =
-          dto.isActive ??
-          (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
+      const resolvedStatus =
+        dto.status ?? (dto.isActive === false ? "단종" : "활성");
+      const resolvedIsActive =
+        dto.isActive ??
+        (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
 
         // ✅ NEW: Find or create ClinicSupplierManager
         let clinicSupplierManagerId: string;
@@ -375,25 +375,25 @@ export class ProductsService {
           clinicSupplierManagerId = defaultSupplier.id;
         }
 
-        const product = await tx.product.create({
-          data: {
-            tenant_id: tenantId,
-            name: dto.name,
-            brand: dto.brand,
-            barcode: dto.barcode,
-            image_url: imageUrl,
-            category: dto.category,
+      const product = await tx.product.create({
+        data: {
+          tenant_id: tenantId,
+          name: dto.name,
+          brand: dto.brand,
+          barcode: dto.barcode,
+          image_url: imageUrl,
+          category: dto.category,
             storage: dto.storage ?? null, // 보관 위치 (Storage location)
-            status: resolvedStatus,
-            is_active: resolvedIsActive,
-            unit: dto.unit ?? null,
+          status: resolvedStatus,
+          is_active: resolvedIsActive,
+          unit: dto.unit ?? null,
             purchase_price: dto.purchasePrice ?? null, // Default/fallback price
-            sale_price: dto.salePrice ?? null,
-            current_stock: dto.currentStock ?? 0,
-            min_stock: dto.minStock ?? 0,
-            capacity_per_product: dto.capacityPerProduct ?? null,
-            capacity_unit: dto.capacityUnit ?? null,
-            usage_capacity: dto.usageCapacity ?? null,
+          sale_price: dto.salePrice ?? null,
+          current_stock: dto.currentStock ?? 0,
+          min_stock: dto.minStock ?? 0,
+          capacity_per_product: dto.capacityPerProduct ?? null,
+          capacity_unit: dto.capacityUnit ?? null,
+          usage_capacity: dto.usageCapacity ?? null,
             // Product-level expiry defaults
             expiry_months: dto.expiryMonths ?? null,
             expiry_unit: dto.expiryUnit ?? null,
@@ -406,18 +406,18 @@ export class ProductsService {
             packaging_from_unit: dto.packagingFromUnit ?? null,
             packaging_to_quantity: dto.packagingToQuantity ?? null,
             packaging_to_unit: dto.packagingToUnit ?? null,
-            returnPolicy: dto.returnPolicy
-              ? {
-                  create: {
-                    tenant_id: tenantId,
-                    is_returnable: dto.returnPolicy.is_returnable,
-                    refund_amount: dto.returnPolicy.refund_amount ?? 0,
-                    return_storage: dto.returnPolicy.return_storage ?? null,
-                    note: dto.returnPolicy.note ?? null,
-                  },
-                }
-              : undefined,
-          } as any,
+          returnPolicy: dto.returnPolicy
+            ? {
+                create: {
+                  tenant_id: tenantId,
+                  is_returnable: dto.returnPolicy.is_returnable,
+                  refund_amount: dto.returnPolicy.refund_amount ?? 0,
+                  return_storage: dto.returnPolicy.return_storage ?? null,
+                  note: dto.returnPolicy.note ?? null,
+                },
+              }
+            : undefined,
+        } as any,
           include: {
             returnPolicy: true,
             batches: true,
@@ -488,43 +488,43 @@ export class ProductsService {
           });
         }
 
-        // Create batches
-        if (dto.initial_batches?.length) {
-          for (const batch of dto.initial_batches) {
-            // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
-            const batchNo =
-              batch.batch_no ||
-              (await this.generateBatchNo(product.id, tenantId, tx));
+      // Create batches
+      if (dto.initial_batches?.length) {
+        for (const batch of dto.initial_batches) {
+          // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
+          const batchNo =
+            batch.batch_no ||
+            (await this.generateBatchNo(product.id, tenantId, tx));
 
-            await tx.batch.create({
-              data: {
-                tenant_id: tenantId,
-                product_id: product.id,
-                batch_no: batchNo,
-                qty: batch.qty, // 입고 수량 (Inbound quantity)
+          await tx.batch.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: product.id,
+              batch_no: batchNo,
+              qty: batch.qty, // 입고 수량 (Inbound quantity)
                 inbound_qty: batch.qty, // ✅ Original qty from inbound (immutable)
                 unit: product.unit ?? null, // ✅ Copy unit from product
                 min_stock: product.min_stock, // ✅ Copy min_stock from product (immutable, can be 0, null, or any number)
-                expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
-                expiry_unit: batch.expiry_unit ?? null,
-                manufacture_date: batch.manufacture_date
-                  ? new Date(batch.manufacture_date)
-                  : null, // 제조일 (Manufacture date)
-                storage: batch.storage ?? null, // 보관 위치 (Storage location)
-                purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
-                inbound_manager: (batch as any).inbound_manager ?? null, // 입고 담당자 (Inbound manager)
-                sale_price: batch.sale_price ?? null,
-                expiry_date: batch.expiry_date
-                  ? new Date(batch.expiry_date)
-                  : null,
+              expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
+              expiry_unit: batch.expiry_unit ?? null,
+              manufacture_date: batch.manufacture_date
+                ? new Date(batch.manufacture_date)
+                : null, // 제조일 (Manufacture date)
+              storage: batch.storage ?? null, // 보관 위치 (Storage location)
+              purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
+              inbound_manager: (batch as any).inbound_manager ?? null, // 입고 담당자 (Inbound manager)
+              sale_price: batch.sale_price ?? null,
+              expiry_date: batch.expiry_date
+                ? new Date(batch.expiry_date)
+                : null,
                 alert_days:
                   batch.alert_days && batch.alert_days.trim() !== ""
                     ? batch.alert_days
                     : product.alert_days && product.alert_days.trim() !== ""
                       ? product.alert_days
                       : null,
-              } as any,
-            });
+            } as any,
+          });
           }
 
           // ✅ Set Product's inbound_qty from first batch (one-time only)
@@ -533,15 +533,15 @@ export class ProductsService {
             await tx.product.update({
               where: { id: product.id },
               data: { inbound_qty: firstBatchQty },
-            });
-          }
+          });
         }
+      }
 
-        // Return product with all related data
+      // Return product with all related data
         const productWithRelations = await tx.product.findUnique({
-          where: { id: product.id },
-          include: {
-            returnPolicy: true,
+        where: { id: product.id },
+        include: {
+          returnPolicy: true,
             batches: {
               select: {
                 id: true,
@@ -568,8 +568,8 @@ export class ProductsService {
                 },
               },
             },
-          },
-        });
+        },
+      });
 
         return productWithRelations;
       },
@@ -703,7 +703,7 @@ export class ProductsService {
       // 1. Products va batches
       this.prisma.executeWithRetry(async () => {
         return await (this.prisma.product.findMany as any)({
-          where: { tenant_id: tenantId },
+        where: { tenant_id: tenantId },
           select: {
             id: true,
             name: true,
@@ -725,7 +725,7 @@ export class ProductsService {
             expiry_unit: true,
             alert_days: true,
             created_at: true,
-            batches: {
+          batches: {
               select: {
                 id: true,
                 batch_no: true,
@@ -740,12 +740,12 @@ export class ProductsService {
                 alert_days: true,
                 created_at: true,
               },
-              orderBy: { created_at: "desc" },
+            orderBy: { created_at: "desc" },
               // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
-            },
           },
-          orderBy: { created_at: "desc" },
-        });
+        },
+        orderBy: { created_at: "desc" },
+      });
       }),
 
       // 2. ReturnPolicies (parallel)
@@ -828,6 +828,13 @@ export class ProductsService {
       };
     });
 
+    // 🔍 DEBUG LOG - First 3 products
+    if (formattedProducts.length > 0) {
+      this.logger.log(`[getAllProducts] First 3 products currentStock:`, 
+        formattedProducts.slice(0, 3).map((p: any) => `${p.productName}: ${p.currentStock}`)
+      );
+    }
+
     // Cache'ga saqlash
     this.setCachedData(tenantId, formattedProducts);
 
@@ -893,26 +900,26 @@ export class ProductsService {
 
     await this.prisma.$transaction(
       async (tx: any) => {
-        await tx.product.update({
-          where: { id },
-          data: {
-            name: dto.name ?? existing.name,
-            brand: dto.brand ?? existing.brand,
-            barcode: dto.barcode ?? existing.barcode,
-            image_url: imageUrl,
-            category: dto.category ?? existing.category,
-            status: resolvedStatus,
-            is_active: resolvedIsActive,
-            unit: dto.unit ?? existing.unit,
-            purchase_price: dto.purchasePrice ?? existing.purchase_price,
-            sale_price: dto.salePrice ?? existing.sale_price,
+      await tx.product.update({
+        where: { id },
+        data: {
+          name: dto.name ?? existing.name,
+          brand: dto.brand ?? existing.brand,
+          barcode: dto.barcode ?? existing.barcode,
+          image_url: imageUrl,
+          category: dto.category ?? existing.category,
+          status: resolvedStatus,
+          is_active: resolvedIsActive,
+          unit: dto.unit ?? existing.unit,
+          purchase_price: dto.purchasePrice ?? existing.purchase_price,
+          sale_price: dto.salePrice ?? existing.sale_price,
             current_stock: newCurrentStock, // Use the computed value
             inbound_qty: newInboundQty, // ✅ Update ONLY if user manually edited stock
             min_stock:
               dto.minStock !== undefined ? dto.minStock : existing.min_stock, // Allow 0
             capacity_per_product:
               dto.capacityPerProduct ?? (existing as any).capacity_per_product,
-            capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
+          capacity_unit: dto.capacityUnit ?? (existing as any).capacity_unit,
             usage_capacity:
               dto.usageCapacity ?? (existing as any).usage_capacity,
             ...(dto.storage !== undefined && { storage: dto.storage }), // Update storage (allows null)
@@ -923,31 +930,31 @@ export class ProductsService {
             ...(dto.expiryDate !== undefined && {
               expiry_date: dto.expiryDate ? new Date(dto.expiryDate) : null,
             }), // Update expiry date (allows null)
-          } as any,
-        });
+        } as any,
+      });
 
-        if (dto.returnPolicy) {
-          await tx.returnPolicy.upsert({
-            where: { product_id: id },
-            update: {
-              is_returnable: dto.returnPolicy.is_returnable,
-              refund_amount:
-                dto.returnPolicy.refund_amount ??
-                existing.returnPolicy?.refund_amount ??
-                0,
-              return_storage: dto.returnPolicy.return_storage ?? null,
-              note: dto.returnPolicy.note ?? null,
-            },
-            create: {
-              tenant_id: tenantId,
-              product_id: id,
-              is_returnable: dto.returnPolicy.is_returnable,
-              refund_amount: dto.returnPolicy.refund_amount ?? 0,
-              return_storage: dto.returnPolicy.return_storage ?? null,
-              note: dto.returnPolicy.note ?? null,
-            },
-          });
-        }
+      if (dto.returnPolicy) {
+        await tx.returnPolicy.upsert({
+          where: { product_id: id },
+          update: {
+            is_returnable: dto.returnPolicy.is_returnable,
+            refund_amount:
+              dto.returnPolicy.refund_amount ??
+              existing.returnPolicy?.refund_amount ??
+              0,
+            return_storage: dto.returnPolicy.return_storage ?? null,
+            note: dto.returnPolicy.note ?? null,
+          },
+          create: {
+            tenant_id: tenantId,
+            product_id: id,
+            is_returnable: dto.returnPolicy.is_returnable,
+            refund_amount: dto.returnPolicy.refund_amount ?? 0,
+            return_storage: dto.returnPolicy.return_storage ?? null,
+            note: dto.returnPolicy.note ?? null,
+          },
+        });
+      }
 
         // ✅ ClinicSupplierManager table'ni yangilash va ProductSupplier'ni yangilash
         if (dto.suppliers && dto.suppliers.length > 0) {
@@ -1041,7 +1048,7 @@ export class ProductsService {
 
                 const newClinicSupplierManager =
                   await tx.clinicSupplierManager.create({
-                    data: {
+            data: {
                       tenant_id: tenantId,
                       company_name: supplier.company_name || "공급업체 없음",
                       business_number: supplier.business_number || null,
@@ -1070,8 +1077,8 @@ export class ProductsService {
               await tx.productSupplier.upsert({
                 where: {
                   tenant_id_product_id: {
-                    tenant_id: tenantId,
-                    product_id: id,
+              tenant_id: tenantId,
+              product_id: id,
                   },
                 },
                 create: {
@@ -1080,9 +1087,9 @@ export class ProductsService {
                   clinic_supplier_manager_id: clinicSupplierManagerId,
                   purchase_price:
                     supplier.purchase_price ?? dto.purchasePrice ?? null,
-                  moq: supplier.moq ?? null,
-                  lead_time_days: supplier.lead_time_days ?? null,
-                  note: supplier.note ?? null,
+              moq: supplier.moq ?? null,
+              lead_time_days: supplier.lead_time_days ?? null,
+              note: supplier.note ?? null,
                 },
                 update: {
                   clinic_supplier_manager_id: clinicSupplierManagerId,
@@ -1158,46 +1165,46 @@ export class ProductsService {
             await tx.productSupplier.update({
               where: { id: existingProductSupplier.id },
               data: { purchase_price: dto.purchasePrice },
-            });
-          }
-        }
-
-        if (dto.initial_batches) {
-          await tx.batch.deleteMany({
-            where: { product_id: id, tenant_id: tenantId },
           });
+        }
+      }
 
-          for (const batch of dto.initial_batches) {
-            // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
-            const batchNo =
-              batch.batch_no || (await this.generateBatchNo(id, tenantId, tx));
+      if (dto.initial_batches) {
+        await tx.batch.deleteMany({
+          where: { product_id: id, tenant_id: tenantId },
+        });
 
-            await tx.batch.create({
-              data: {
-                tenant_id: tenantId,
-                product_id: id,
-                batch_no: batchNo,
-                qty: batch.qty, // 입고 수량 (Inbound quantity)
-                expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
-                expiry_unit: batch.expiry_unit ?? null,
-                manufacture_date: batch.manufacture_date
-                  ? new Date(batch.manufacture_date)
-                  : null, // 제조일 (Manufacture date)
-                storage: batch.storage ?? null, // 보관 위치 (Storage location)
-                purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
-                inbound_manager: batch.inbound_manager ?? null, // 입고 담당자 (Inbound manager)
-                sale_price: batch.sale_price ?? null,
-                expiry_date: batch.expiry_date
-                  ? new Date(batch.expiry_date)
-                  : null,
+        for (const batch of dto.initial_batches) {
+          // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
+          const batchNo =
+            batch.batch_no || (await this.generateBatchNo(id, tenantId, tx));
+
+          await tx.batch.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: id,
+              batch_no: batchNo,
+              qty: batch.qty, // 입고 수량 (Inbound quantity)
+              expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
+              expiry_unit: batch.expiry_unit ?? null,
+              manufacture_date: batch.manufacture_date
+                ? new Date(batch.manufacture_date)
+                : null, // 제조일 (Manufacture date)
+              storage: batch.storage ?? null, // 보관 위치 (Storage location)
+              purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
+              inbound_manager: batch.inbound_manager ?? null, // 입고 담당자 (Inbound manager)
+              sale_price: batch.sale_price ?? null,
+              expiry_date: batch.expiry_date
+                ? new Date(batch.expiry_date)
+                : null,
                 alert_days:
                   batch.alert_days && batch.alert_days.trim() !== ""
                     ? batch.alert_days
                     : null,
-              } as any,
-            });
-          }
+            } as any,
+          });
         }
+      }
       },
       {
         timeout: 60000, // 60 seconds
@@ -1265,16 +1272,16 @@ export class ProductsService {
 
     await this.prisma.$transaction(
       async (tx: any) => {
-        await tx.batch.deleteMany({
-          where: { product_id: id, tenant_id: tenantId },
-        });
+      await tx.batch.deleteMany({
+        where: { product_id: id, tenant_id: tenantId },
+      });
         await tx.productSupplier.deleteMany({
-          where: { product_id: id, tenant_id: tenantId },
-        });
-        await tx.returnPolicy.deleteMany({
-          where: { product_id: id, tenant_id: tenantId },
-        });
-        await tx.product.delete({ where: { id } });
+        where: { product_id: id, tenant_id: tenantId },
+      });
+      await tx.returnPolicy.deleteMany({
+        where: { product_id: id, tenant_id: tenantId },
+      });
+      await tx.product.delete({ where: { id } });
       },
       {
         timeout: 60000, // 60 seconds
@@ -1355,19 +1362,19 @@ export class ProductsService {
     // Formatlash: 유효기간 ni yaratish (expiry_date yoki expiry_months + expiry_unit)
     return batches.map((batch: any) => ({
       id: batch.id,
-      batch_no: batch.batch_no,
-      유효기간: batch.expiry_date
+        batch_no: batch.batch_no,
+        유효기간: batch.expiry_date
         ? batch.expiry_date.toISOString().split("T")[0]
-        : batch.expiry_months && batch.expiry_unit
+          : batch.expiry_months && batch.expiry_unit
           ? `${batch.expiry_months} ${batch.expiry_unit}`
           : null,
-      보관위치: batch.storage ?? null,
+        보관위치: batch.storage ?? null,
       "입고 수량": batch.qty, // ✅ Current stock (for display in inbound page)
       inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
       unit: batch.unit ?? null,
       min_stock: batch.min_stock ?? null, // ✅ Minimum stock from product (immutable)
       purchase_price: batch.purchase_price ?? null, // ✅ 구매가 (Purchase price)
-      created_at: batch.created_at,
+        created_at: batch.created_at,
       // Raw fields for batch copying (입고 대기 page uchun)
       expiry_months: batch.expiry_months,
       expiry_unit: batch.expiry_unit,
@@ -1403,8 +1410,8 @@ export class ProductsService {
 
     return this.prisma.$transaction(
       async (tx: any) => {
-        // Avtomatik batch_no yaratish
-        const batchNo = await this.generateBatchNo(productId, tenantId, tx);
+      // Avtomatik batch_no yaratish
+      const batchNo = await this.generateBatchNo(productId, tenantId, tx);
 
         // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price, min_stock uchun)
         const product = await tx.product.findFirst({
@@ -1424,18 +1431,18 @@ export class ProductsService {
           throw new NotFoundException("Product not found");
         }
 
-        // Batch yaratish
+      // Batch yaratish
         // ✅ min_stock: Product'dan olish (0 yoki null bo'lsa ham, product'ning qiymatini saqlash)
         // product.min_stock qiymatini to'g'ridan-to'g'ri ishlatish (0 ham to'g'ri qiymat)
         const productMinStock = product.min_stock;
 
         // Debug: Product'ning min_stock'ini log qilish
 
-        const batch = await tx.batch.create({
-          data: {
-            tenant_id: tenantId,
-            product_id: productId,
-            batch_no: batchNo,
+      const batch = await tx.batch.create({
+        data: {
+          tenant_id: tenantId,
+          product_id: productId,
+          batch_no: batchNo,
             qty: dto.qty,
             inbound_qty: dto.qty, // ✅ Original qty from inbound (immutable)
             unit: (product as any)?.unit ?? null, // ✅ Copy unit from product
@@ -1450,8 +1457,8 @@ export class ProductsService {
               dto.expiry_unit !== undefined
                 ? dto.expiry_unit
                 : ((product as any)?.expiry_unit ?? null),
-            manufacture_date: dto.manufacture_date
-              ? new Date(dto.manufacture_date)
+          manufacture_date: dto.manufacture_date
+            ? new Date(dto.manufacture_date)
               : null,
             // 보관 위치: DTO'dan yoki Product level'dan (fallback)
             storage: dto.storage ?? (product as any)?.storage ?? null,
@@ -1459,11 +1466,11 @@ export class ProductsService {
             inbound_manager: dto.inbound_manager ?? null,
             // ✅ Sale price: DTO'dan yoki Product level'dan (fallback)
             sale_price: dto.sale_price ?? (product as any)?.sale_price ?? null,
-            expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
+          expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
             // ✅ Alert days: DTO'dan yoki Product level'dan (fallback)
             alert_days: dto.alert_days ?? (product as any)?.alert_days ?? null,
-          } as any,
-        });
+        } as any,
+      });
 
         // Debug: Yaratilgan batch'ning min_stock'ini log qilish
 
@@ -1481,18 +1488,23 @@ export class ProductsService {
           });
         }
 
-        // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
-        const totalStock = await tx.batch.aggregate({
-          where: { product_id: productId, tenant_id: tenantId },
-          _sum: { qty: true },
-        });
+      // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
+      const totalStock = await tx.batch.aggregate({
+        where: { product_id: productId, tenant_id: tenantId },
+        _sum: { qty: true },
+      });
 
-        await tx.product.update({
-          where: { id: productId },
-          data: {
-            current_stock: totalStock._sum.qty ?? 0,
-          } as any,
-        });
+        const newCurrentStock = totalStock._sum.qty ?? 0;
+        
+        // 🔍 DEBUG LOG
+        this.logger.log(`[UPDATE CURRENT_STOCK] Product ${productId}: ${newCurrentStock} (from ${await tx.batch.count({ where: { product_id: productId, tenant_id: tenantId } })} batches)`);
+
+      await tx.product.update({
+        where: { id: productId },
+        data: {
+            current_stock: newCurrentStock,
+        } as any,
+      });
 
         // Return the created batch directly (with batch_no)
         return batch;
@@ -1506,10 +1518,10 @@ export class ProductsService {
     // ✅ Optimized: Update product in cache to reflect new batch
     // Fetch product with updated batches and relations
     const updatedProduct = await this.prisma.product.findUnique({
-      where: { id: productId },
-      include: {
-        returnPolicy: true,
-        batches: {
+        where: { id: productId },
+        include: {
+          returnPolicy: true,
+          batches: {
           select: {
             id: true,
             batch_no: true,
@@ -1519,7 +1531,7 @@ export class ProductsService {
             alert_days: true,
             created_at: true,
           },
-          orderBy: { created_at: "desc" },
+            orderBy: { created_at: "desc" },
           take: 1,
         },
         productSupplier: {
@@ -1535,8 +1547,8 @@ export class ProductsService {
             },
           },
         },
-      },
-    });
+        },
+      });
 
     if (updatedProduct) {
       this.addProductToCache(tenantId, updatedProduct);
@@ -1579,18 +1591,18 @@ export class ProductsService {
         return `${random9Digits}-${sequenceNumber}`;
       }
 
-      // Product'ning mavjud batch'lari sonini topish
-      const existingBatchesCount = await tx.batch.count({
-        where: { product_id: productId, tenant_id: tenantId },
-      });
+    // Product'ning mavjud batch'lari sonini topish
+    const existingBatchesCount = await tx.batch.count({
+      where: { product_id: productId, tenant_id: tenantId },
+    });
 
-      // Keyingi tartib raqamini hisoblash (001, 002, 003, ...)
-      const sequenceNumber = (existingBatchesCount + 1)
-        .toString()
-        .padStart(3, "0");
+    // Keyingi tartib raqamini hisoblash (001, 002, 003, ...)
+    const sequenceNumber = (existingBatchesCount + 1)
+      .toString()
+      .padStart(3, "0");
 
-      // Formatlash: {random9digit}-{3digitSequence}
-      return `${random9Digits}-${sequenceNumber}`;
+    // Formatlash: {random9digit}-{3digitSequence}
+    return `${random9Digits}-${sequenceNumber}`;
     } catch (error: any) {
       // ✅ Fallback: if transaction fails, use regular prisma client
       console.error(

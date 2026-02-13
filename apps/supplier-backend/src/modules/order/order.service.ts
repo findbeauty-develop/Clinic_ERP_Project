@@ -135,6 +135,17 @@ export class OrderService {
       where.status = status;
     }
 
+    // ✅ Build include for items based on status
+    // For "confirmed" tab: only show pending items
+    // For "all" tab: show pending items for confirmed orders, all items for others
+    let itemsInclude: any = true;  // Default: show all items
+    
+    if (status === "confirmed") {
+      // ✅ "클리닉 확인중" tab: faqat pending item'lar
+      // ⏸️ TODO: After migration, use database filter: pending_quantity > 0
+      itemsInclude = true; // Temporarily fetch all, filter in memory
+    }
+
     const [total, orders] = await Promise.all([
       (this.prisma as any).supplierOrder.count({ where }),
       (this.prisma as any).supplierOrder.findMany({
@@ -142,16 +153,70 @@ export class OrderService {
         orderBy: { order_date: "desc" },
         skip,
         take: limit,
-        include: { items: true },
+        include: { 
+          items: itemsInclude,
+          // ✅ No clinic relation - clinic_name and clinic_manager_name are direct fields
+        },
       }),
     ]);
 
+    // ✅ For "all" tab: Only show orders with at least one inbounded item
+    // For "confirmed" tab: Show pending items only
+    let processedOrders = orders;
+    
+    if (status === "all") {
+      // ✅ "주문 내역": Faqat inbound qilingan order'lar
+      processedOrders = orders
+        .map((order: any) => ({
+          ...order,
+          items: order.items.filter((item: any) => {
+            const inboundQty = item.inbound_quantity || 0;
+            return inboundQty > 0; // ✅ Faqat inbound qilingan item'lar
+          }),
+        }))
+        .filter((order: any) => order.items.length > 0); // ✅ Hech qanday inbound bo'lmagan order'larni o'chirish
+        
+    } else if (status === "confirmed") {
+      // ✅ "클리닉 확인중": Faqat pending item'lar
+      processedOrders = orders.map((order: any) => ({
+        ...order,
+        items: order.items.filter((item: any) => {
+          const confirmedQty = item.confirmed_quantity || item.received_order_quantity;
+          const inboundQty = item.inbound_quantity || 0;
+          return inboundQty < confirmedQty; // ✅ Runtime pending check
+        }),
+      }));
+    }
+    
+    // ✅ Filter out orders with no items
+    const filteredOrders = processedOrders.filter((order: any) => order.items.length > 0);
+
+    this.logger.log(
+      `📊 [listOrdersForManager] status=${status}, total_fetched=${orders.length}, after_filter=${filteredOrders.length}`
+    );
+    
+    // ✅ DEBUG: Log order statuses for "all" tab
+    if (status === "all" || status === "confirmed") {
+      filteredOrders.forEach((order: any) => {
+        this.logger.debug(
+          `   Order ${order.order_no}: status=${order.status}, items=${order.items.length}`
+        );
+        // ✅ DEBUG: Log first item's quantities
+        if (order.items.length > 0) {
+          const firstItem = order.items[0];
+          this.logger.debug(
+            `      First item: confirmed=${firstItem.confirmed_quantity}, inbound=${firstItem.inbound_quantity}, pending_calc=${(firstItem.confirmed_quantity || firstItem.received_order_quantity || 0) - (firstItem.inbound_quantity || 0)}`
+          );
+        }
+      });
+    }
+
     return {
-      total,
+      total: filteredOrders.length,  // ✅ Return filtered count
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
-      orders: orders.map(this.formatOrder),
+      totalPages: Math.ceil(filteredOrders.length / limit),
+      orders: filteredOrders.map(this.formatOrder),
     };
   }
 
@@ -526,28 +591,30 @@ export class OrderService {
           const newInboundQty = inboundItem.inboundQuantity || 0;
           const currentInboundQty = item.inbound_quantity || 0;
           const totalInboundQty = currentInboundQty + newInboundQty; // ✅ Accumulate inbound
+          const confirmedQty = item.confirmed_quantity || item.received_order_quantity;
           
           this.logger.log(
-            `   Item ${item.id} (productId: ${item.product_id}): current_inbound=${currentInboundQty}, new_inbound=${newInboundQty}, total_inbound=${totalInboundQty}, confirmed=${item.confirmed_quantity}`
+            `   Item ${item.id} (productId: ${item.product_id}): current_inbound=${currentInboundQty}, new_inbound=${newInboundQty}, total_inbound=${totalInboundQty}, confirmed=${confirmedQty}`
           );
 
-          // ✅ Update inbound_quantity
+          // ✅ Update inbound_quantity (pending_quantity will be calculated on read)
           await (this.prisma as any).supplierOrderItem.update({
             where: { id: item.id },
             data: {
               inbound_quantity: totalInboundQty, // ✅ Total inbound (80 or 100)
+              // pending_quantity: confirmedQty - totalInboundQty, // ⏸️ TODO: Apply migration first!
               updated_at: new Date(),
             },
           });
 
           // ✅ Check if item is fully inbound
-          if (totalInboundQty < item.confirmed_quantity) {
+          if (totalInboundQty < confirmedQty) {
             allItemsCompleted = false;
             this.logger.log(
-              `   📦 Item ${item.id}: partially inbound (${totalInboundQty}/${item.confirmed_quantity}, ${item.confirmed_quantity - totalInboundQty} remaining)`
+              `   📦 Item ${item.id}: partially inbound (${totalInboundQty}/${confirmedQty}, ${confirmedQty - totalInboundQty} remaining)`
             );
           } else {
-            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${totalInboundQty}/${item.confirmed_quantity})`);
+            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${totalInboundQty}/${confirmedQty})`);
           }
         } else {
           // ✅ Item inbound qilinmagan
@@ -1233,35 +1300,53 @@ export class OrderService {
     }
   }
 
-  private formatOrder = (order: any) => ({
-    id: order.id,
-    orderNo: order.order_no,
-    status: order.status,
-    totalAmount: order.total_amount,
-    memo: order.memo,
-    orderDate: order.order_date,
-    clinic: {
-      tenantId: order.clinic_tenant_id,
-      name: order.clinic_name,
-      managerName: order.clinic_manager_name,
-    },
-    supplier: {
-      tenantId: order.supplier_tenant_id,
-      managerId: order.supplier_manager_id,
-    },
-    items: (order.items || []).map((item: any) => ({
-      id: item.id,
-      productId: item.product_id,
-      productName: item.product_name,
-      brand: item.brand,
-      batchNo: item.batch_no,
-      receivedOrderQuantity: item.received_order_quantity,                    // ✅ Clinic order qilgan (o'zgarmas)
-      confirmedQuantity: item.confirmed_quantity ?? item.received_order_quantity, // ✅ Fallback if null
-      inboundQuantity: item.inbound_quantity,                                  // ✅ Clinic inbound qilgan
-      quantity: item.received_order_quantity,                                  // ✅ Backward compatibility - display용
-      unitPrice: item.unit_price,
-      totalPrice: item.total_price,
-      memo: item.memo,
-    })),
-  });
+  private formatOrder = (order: any) => {
+    const formattedItems = (order.items || []).map((item: any) => {
+      const confirmedQty = item.confirmed_quantity ?? item.received_order_quantity;
+      const inboundQty = item.inbound_quantity || 0;
+      const pendingQty = Math.max(0, confirmedQty - inboundQty); // ✅ Runtime calculation
+      
+      return {
+        id: item.id,
+        productId: item.product_id,
+        productName: item.product_name,
+        brand: item.brand,
+        batchNo: item.batch_no,
+        receivedOrderQuantity: item.received_order_quantity,  // ✅ Clinic order qilgan (o'zgarmas)
+        confirmedQuantity: confirmedQty,                      // ✅ Supplier tasdiqlagan
+        inboundQuantity: inboundQty,                          // ✅ Clinic inbound qilgan
+        pendingQuantity: pendingQty,                          // ✅ Qolgan (runtime calculated)
+        quantity: pendingQty,                                 // ✅ Display용 - pending quantity
+        unitPrice: item.unit_price,
+        totalPrice: item.total_price,
+        memo: item.memo,
+      };
+    });
+
+    // ✅ DEBUG: Log formatted items
+    if (formattedItems.length > 0) {
+      this.logger.debug(
+        `   [formatOrder] Order ${order.order_no}: Item[0] quantity=${formattedItems[0].quantity}, pending=${formattedItems[0].pendingQuantity}`
+      );
+    }
+
+    return {
+      id: order.id,
+      orderNo: order.order_no,
+      status: order.status,
+      totalAmount: order.total_amount,
+      memo: order.memo,
+      orderDate: order.order_date,
+      clinic: {
+        tenantId: order.clinic_tenant_id,
+        name: order.clinic_name,
+        managerName: order.clinic_manager_name,
+      },
+      supplier: {
+        tenantId: order.supplier_tenant_id,
+        managerId: order.supplier_manager_id,
+      },
+      items: formattedItems,
+    };
+  };
 }

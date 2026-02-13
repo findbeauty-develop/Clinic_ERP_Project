@@ -13,6 +13,7 @@ type SupplierOrderItem = {
   receivedOrderQuantity?: number; // ✅ Clinic order qilgan miqdor (backend'dan keladi)
   confirmedQuantity?: number;     // ✅ Supplier tasdiqlagan miqdor
   inboundQuantity?: number;       // ✅ Clinic inbound qilgan miqdor
+  pendingQuantity?: number;       // ✅ Qolgan (confirmed - inbound) - denormalized
   quantity: number;               // ✅ Display용 (receivedOrderQuantity yoki confirmedQuantity)
   unitPrice: number;
   totalPrice: number;
@@ -264,6 +265,15 @@ export default function OrdersPage() {
         </span>
       );
     }
+    
+    // Show "일부 입고" badge for confirmed orders with inbound in "주문 내역" tab
+    if (status === "confirmed" && showWarehouseBadge) {
+      return (
+        <span className="rounded-full px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-700">
+          일부 입고
+        </span>
+      );
+    }
 
     const label = statusLabels[status] || status;
     const color =
@@ -352,9 +362,9 @@ export default function OrdersPage() {
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">
-                  {/* ✅ Show confirmed quantity for confirmed/completed orders in all tabs */}
-                  {((activeTab === "confirmed" || (activeTab === "all" && (order.status === "confirmed" || order.status === "completed"))) && 
-                    item.confirmedQuantity !== undefined)
+                  {/* ✅ "all" tab: confirmed/completed order'lar uchun confirmedQuantity */}
+                  {/* ✅ "confirmed" tab: pending quantity (item.quantity) */}
+                  {(activeTab === "all" && (order.status === "confirmed" || order.status === "completed") && item.confirmedQuantity !== undefined)
                     ? `${item.confirmedQuantity}개`
                     : `${item.quantity}개`}
                 </div>
@@ -643,10 +653,11 @@ export default function OrdersPage() {
                         {item.brand || "-"}
                       </div>
                       <div className="text-right">
-                        {/* ✅ Show confirmed quantity for confirmed/completed orders */}
-                        {(detailOrder.status === "confirmed" || detailOrder.status === "completed") && item.confirmedQuantity !== undefined
-                          ? `${item.confirmedQuantity}게`
-                          : `${item.quantity}게`}
+                        {/* ✅ "주문 내역" (all) tab: Show inbound quantity if available */}
+                        {/* ✅ "클리닉 확인중" (confirmed) tab: Show pending quantity */}
+                        {activeTab === "all" && item.inboundQuantity !== undefined && item.inboundQuantity > 0
+                          ? `${item.inboundQuantity}개`  // ✅ 20개 (inbound)
+                          : `${item.quantity}개`}        // ✅ 10개 (pending)
                       </div>
                       {detailOrder.status === "rejected" ? (
                         <div className="text-right text-slate-400 text-xs">

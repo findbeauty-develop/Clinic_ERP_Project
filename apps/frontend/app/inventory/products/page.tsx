@@ -660,14 +660,14 @@ function ProductCard({
               )}
               {product.managerName && (
                 <span className="inline-flex items-center gap-1">
-                  {product.managerName}
+                  {product.managerName} {product.managerPosition}
                 </span>
               )}
-              {product.managerPosition && (
+              {/* {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
-                  직책: {product.managerPosition}
+                  직함:
                 </span>
-              )}
+              )} */}
             </div>
           </div>
         </div>

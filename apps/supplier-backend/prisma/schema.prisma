@@ -169,10 +169,11 @@ model SupplierOrderItem {
   brand        String?
   batch_no     String?
   
-  // ✅ 3 DISTINCT QUANTITY FIELDS (Supplier Perspective)
+  // ✅ 4 DISTINCT QUANTITY FIELDS (Supplier Perspective)
   received_order_quantity Int   // Supplier qabul qilgan order miqdori (clinic order) - O'ZGARMAS!
   confirmed_quantity      Int?  // Supplier tasdiqlagan miqdor (supplier adjustment) - NULLABLE
   inbound_quantity        Int?  // Clinic inbound qilgan miqdor (actual received by clinic) - NULLABLE
+  pending_quantity        Int?  // ✅ Qolgan (confirmed - inbound) - denormalized for performance
   
   unit_price   Int
   total_price  Int

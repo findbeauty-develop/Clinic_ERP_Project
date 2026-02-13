@@ -3226,17 +3226,11 @@ export class OrderService {
         where: {
           tenant_id: tenantId,
           status: {
-            in: ["pending", "supplier_confirmed", "pending_inbound", "rejected"], // ✅ Added pending_inbound
+            in: ["pending", "supplier_confirmed", "rejected"],
           },
         },
         include: {
           items: {
-            where: {
-              // ✅ DATABASE FILTER: Faqat pending item'lar (no runtime calculation!)
-              pending_quantity: {
-                gt: 0,
-              },
-            },
             include: {
               product: {
                 select: {
@@ -3326,18 +3320,10 @@ export class OrderService {
       });
     }
 
-    // ✅ NO MORE RUNTIME FILTERING! Database already filtered by pending_quantity > 0
-    // Filter out orders with no pending items (already done by Prisma)
-    const filteredOrders = orders.filter((order: any) => order.items.length > 0);
-
-    this.logger.log(
-      `📊 [getPendingInboundOrders] Found ${filteredOrders.length} orders with pending items (database filtered)`
-    );
-
     // Group by supplier
     const grouped: Record<string, any> = {};
 
-    for (const order of filteredOrders) {
+    for (const order of orders) {
       const supplierId = order.supplier_id || "unknown";
 
       if (!grouped[supplierId]) {
@@ -3419,8 +3405,6 @@ export class OrderService {
           unit: item.product?.unit || "EA",
           orderedQuantity: item.ordered_quantity,                              // ✅ Original order quantity (o'zgarmas)
           confirmedQuantity: adjustment?.actualQuantity || item.confirmed_quantity || item.ordered_quantity, // ✅ Supplier confirmed (fallback)
-          inboundQuantity: item.inbound_quantity || 0,                         // ✅ Already inbound
-          pendingQuantity: (item.confirmed_quantity || item.ordered_quantity) - (item.inbound_quantity || 0), // ✅ Remaining (20ta)
           orderedPrice: item.unit_price,                                       // Original price
           confirmedPrice: adjustment?.actualPrice || item.unit_price,          // Supplier confirmed
           quantityReason: adjustment?.quantityChangeReason || null,
@@ -4207,69 +4191,164 @@ export class OrderService {
           ])
         );
 
-        let allItemsFullyInbound = true;
-        const inboundItems: Array<{
-          itemId: string;
-          productId: string;
-          inboundQuantity: number;
-          originalQuantity: number;
+        // ✅ Separate items into fully inbounded, partially inbounded, and remaining
+        const fullyInboundedItems = [];
+        const partiallyInboundedItems: Array<{
+          id: string;
+          product_id: string;
+          ordered_quantity: number;      // ✅ Dastlabki order
+          confirmed_quantity: number;    // ✅ Supplier tasdiqlagan
+          unit_price: number;
+          total_price: number;
+          unit: string;
+          inboundQty: number;
+          remainingQty: number;
         }> = [];
+        const remainingItems = [];
 
-        // ✅ Update each item's inbound_quantity
         for (const item of originalOrder.items) {
           const inboundQty = inboundedItemsMap.get(item.id);
           
-          if (inboundQty !== undefined && inboundQty !== null && typeof inboundQty === 'number' && inboundQty > 0) {
-            const currentInboundQty = item.inbound_quantity || 0;
-            const totalInboundQty = currentInboundQty + inboundQty;
-            const confirmedQty = item.confirmed_quantity || item.ordered_quantity;
-
-            // ✅ SIMPLE UPDATE - no split, with pending_quantity!
-            await tx.orderItem.update({
-              where: { id: item.id },
-              data: {
-                inbound_quantity: totalInboundQty,
-                pending_quantity: confirmedQty - totalInboundQty, // ✅ Denormalized for performance
-                updated_at: new Date(),
-              },
-            });
-
-            // Check if this item is fully inbound
-            if (totalInboundQty < confirmedQty) {
-              allItemsFullyInbound = false;
+          if (inboundQty !== undefined && inboundQty !== null && typeof inboundQty === 'number') {
+            // Item inbound qilinmoqda
+            // ✅ confirmed_quantity bilan taqqoslash (supplier tasdiqlagan miqdor)
+            if (inboundQty >= item.confirmed_quantity) {
+              // ✅ To'liq inbound
+              fullyInboundedItems.push(item);
+            } else if (inboundQty > 0) {
+              // ✅ Qisman inbound - bir qismi inbound, qolgani order'da qoladi
+              partiallyInboundedItems.push({
+                ...item,
+                inboundQty,
+                remainingQty: item.confirmed_quantity - inboundQty, // ✅ confirmed_quantity - inbound
+              });
             }
-
-            inboundItems.push({
-              itemId: item.id,
-              productId: item.product_id,
-              inboundQuantity: inboundQty,
-              originalQuantity: item.confirmed_quantity,
-            });
-
-            this.logger.log(
-              `✅ Item ${item.id}: inbound ${inboundQty}, total ${totalInboundQty}/${item.confirmed_quantity}`
-            );
+          } else {
+            // Item inbound qilinmaydi - to'liq qoladi
+            remainingItems.push(item);
           }
         }
 
-        if (inboundItems.length === 0) {
+        if (fullyInboundedItems.length === 0 && partiallyInboundedItems.length === 0) {
           throw new Error("No items to inbound");
         }
 
-        // ✅ Update order status based on inbound completion
-        const newStatus = allItemsFullyInbound ? "completed" : "pending_inbound";
-        
-        await tx.order.update({
-          where: { id: originalOrder.id },
+        // Generate new order numbers
+        const timestamp = Date.now().toString().slice(-12);
+        const completedOrderNo = `${originalOrder.order_no}-C`; // Completed
+        const remainingOrderNo =
+          (remainingItems.length > 0 || partiallyInboundedItems.length > 0)
+            ? `${originalOrder.order_no}-P`
+            : null; // Pending
+
+        // ✅ Create completed order (fully inbounded + partially inbounded items)
+        const completedOrderItems = [
+          // Fully inbounded items
+          ...fullyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: item.confirmed_quantity,    // ✅ To'liq inbound
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            unit: item.unit,
+          })),
+          // Partially inbounded items (faqat inbound qilingan qismi)
+          ...partiallyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: item.inboundQty,            // ✅ Haqiqiy inbound (80ta)
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.inboundQty, // ✅ Yangi total_price
+            unit: item.unit,
+          })),
+        ];
+
+        const completedOrder = await tx.order.create({
           data: {
-            status: newStatus,
+            tenant_id: tenantId,
+            order_no: completedOrderNo,
+            supplier_id: originalOrder.supplier_id,
+            status: "completed",
+            total_amount: completedOrderItems.reduce(
+              (sum, item) => sum + item.total_price,
+              0
+            ),
+            order_date: originalOrder.order_date,
+            created_by: originalOrder.created_by,
+            clinic_manager_name: originalOrder.clinic_manager_name,
+            created_at: new Date(),
             updated_at: new Date(),
+            items: {
+              create: completedOrderItems,
+            },
           },
         });
 
-        this.logger.log(
-          `📊 Order ${originalOrder.order_no}: ${inboundItems.length} items inbound, status: ${newStatus}`
-        );
+        // ✅ Create remaining order if there are remaining items
+        let remainingOrder = null;
+        const remainingOrderItems = [
+          // Fully remaining items
+          ...remainingItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan
+            inbound_quantity: null,                       // ✅ Hali inbound qilinmagan
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            unit: item.unit,
+          })),
+          // Partially remaining items (qolgan qismi)
+          ...partiallyInboundedItems.map((item) => ({
+            tenant_id: tenantId,
+            product_id: item.product_id,
+            ordered_quantity: item.ordered_quantity,      // ✅ Dastlabki order (100ta - o'zgarmas)
+            confirmed_quantity: item.confirmed_quantity,  // ✅ Supplier tasdiqlagan (100ta - o'zgarmas!)
+            inbound_quantity: item.inboundQty,            // ✅ Allaqachon inbound qilingan (80ta)
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.remainingQty, // ✅ Qolgan qismning narxi (20ta * price)
+            unit: item.unit,
+          })),
+        ];
+
+        if (remainingOrderItems.length > 0) {
+          remainingOrder = await tx.order.create({
+            data: {
+              tenant_id: tenantId,
+              order_no: remainingOrderNo!,
+              supplier_id: originalOrder.supplier_id,
+              status: "supplier_confirmed",
+              total_amount: remainingOrderItems.reduce(
+                (sum, item) => sum + item.total_price,
+                0
+              ),
+              order_date: originalOrder.order_date,
+              created_by: originalOrder.created_by,
+              clinic_manager_name: originalOrder.clinic_manager_name,
+              created_at: new Date(),
+              updated_at: new Date(),
+              items: {
+                create: remainingOrderItems,
+              },
+            },
+          });
+        }
+
+        // Archive original order
+        await tx.order.update({
+          where: { id: originalOrder.id },
+          data: {
+            status: "archived",
+            memo: remainingOrder
+              ? `Split into ${completedOrderNo} (completed) and ${remainingOrderNo} (pending)`
+              : `Completed as ${completedOrderNo}`,
+            updated_at: new Date(),
+          },
+        });
 
         // Clear cache
         await this.clearPendingInboundCache(tenantId);
@@ -4277,7 +4356,7 @@ export class OrderService {
         // ✅ Notify supplier-backend about partial inbound
         if (originalOrder.supplier_id) {
           try {
-            // Get supplier's tenant_id
+            // Get supplier's tenant_id from ClinicSupplierManager -> linkedManager -> supplier
             const clinicSupplierManager = await this.prisma.executeWithRetry(
               async () => {
                 return await (this.prisma as any).clinicSupplierManager.findUnique({
@@ -4301,32 +4380,84 @@ export class OrderService {
               const supplierTenantId =
                 clinicSupplierManager.linkedManager.supplier.tenant_id;
 
+              // ✅ Prepare inboundItems - qaysi item'lar qancha inbound qilinganligi
+              // ✅ MUAMMO: Original order items'ni ko'rib chiqish, lekin faqat completedOrder item'larini yuborish kerak
+              // ✅ YECHIM: completedOrder item'larini ko'rib chiqish va original order'da qaysi item'lar to'liq inbound qilinganligini topish
+              const inboundItems: Array<{
+                itemId: string;
+                productId: string;
+                inboundQuantity: number;
+                originalQuantity: number;
+              }> = [];
+
+              this.logger.log(
+                `📦 [PARTIAL INBOUND] Preparing inboundItems for order ${originalOrder.order_no}`
+              );
+
+              // ✅ completedOrder item'larini ko'rib chiqish
+              // Bu item'lar to'liq inbound qilingan (100ta yoki 80ta, lekin original quantity'ga teng yoki kichik)
+              for (const completedItem of completedOrderItems) {
+                // ✅ Original order'dan item'ni topish
+                const originalItem = originalOrder.items.find(
+                  (item: any) => item.product_id === completedItem.product_id
+                );
+
+                if (originalItem) {
+                  const inboundQty = completedItem.inbound_quantity; // ✅ completedOrder'dagi inbound_quantity
+                  const originalQty = originalItem.ordered_quantity;   // ✅ originalOrder'dagi ordered_quantity
+                  
+                  this.logger.debug(
+                    `   CompletedItem: productId=${completedItem.product_id}, inboundQty=${inboundQty}, originalQty=${originalQty}`
+                  );
+                  
+                  inboundItems.push({
+                    itemId: originalItem.id, // ✅ Original OrderItem.id
+                    productId: originalItem.product_id,
+                    inboundQuantity: inboundQty, // ✅ To'liq inbound qilingan quantity
+                    originalQuantity: originalQty, // ✅ Original ordered quantity
+                  });
+                }
+              }
+
+              this.logger.log(
+                `📦 [PARTIAL INBOUND] Prepared ${inboundItems.length} inboundItems: ${inboundItems.map((ii: any) => `itemId=${ii.itemId}, productId=${ii.productId}, inbound=${ii.inboundQuantity}, original=${ii.originalQuantity}`).join('; ')}`
+              );
+
+              // ✅ Original order number'ni yuborish (suffix'siz)
+              const originalOrderNo = originalOrder.order_no;
+
               await this.notifySupplierOrderCompleted(
-                originalOrder.order_no,
+                originalOrderNo,
                 supplierTenantId,
                 tenantId,
-                inboundItems
+                inboundItems // ✅ Partial inbound items ma'lumotlari
               );
             }
-          } catch (notifyError: any) {
-            this.logger.warn(
-              `⚠️  Failed to notify supplier about partial inbound: ${notifyError.message}`
+          } catch (error: any) {
+            this.logger.error(
+              `Failed to notify supplier-backend of partial inbound: ${error.message}`
             );
-            // Don't throw - inbound should succeed even if notification fails
+            // Don't throw - order is already processed
           }
         }
 
         return {
           success: true,
-          order: {
-            id: originalOrder.id,
-            orderNo: originalOrder.order_no,
-            status: newStatus,
-            itemCount: inboundItems.length,
+          completedOrder: {
+            id: completedOrder.id,
+            orderNo: completedOrderNo,
+            itemCount: completedOrderItems.length,
           },
-          message: allItemsFullyInbound
-            ? `${inboundItems.length}개 제품 입고 완료.`
-            : `${inboundItems.length}개 제품 부분 입고 완료. 나머지는 대기 중입니다.`,
+          remainingOrder: remainingOrder
+            ? {
+                id: remainingOrder.id,
+                orderNo: remainingOrderNo,
+                itemCount: remainingOrderItems.length,
+              }
+            : null,
+          message: remainingOrder
+            ? `${completedOrderItems.length}개 제품 입고 완료. ${remainingOrderItems.length}개 제품은 재입고 대기 중입니다.`
+            : `${completedOrderItems.length}개 제품 입고 완료.`,
         };
       });
     } catch (error: any) {

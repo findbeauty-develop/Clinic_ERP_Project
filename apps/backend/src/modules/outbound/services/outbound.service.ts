@@ -1808,9 +1808,14 @@ export class OutboundService {
       _sum: { qty: true },
     });
 
+    const newCurrentStock = totalStock._sum.qty ?? 0;
+    
+    // 🔍 DEBUG LOG
+    console.log(`[OUTBOUND - UPDATE CURRENT_STOCK] Product ${productId}: ${newCurrentStock} (after outbound ${outboundQty})`);
+
     await tx.product.update({
       where: { id: productId },
-      data: { current_stock: totalStock._sum.qty ?? 0 },
+      data: { current_stock: newCurrentStock },
     });
   }
 

@@ -87,6 +87,7 @@ export default function InboundPage() {
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false); // ✅ Optimistic UI
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -172,6 +173,9 @@ export default function InboundPage() {
             ),
           })
         );
+
+        // 🔍 DEBUG LOG - Check currentStock in frontend
+        
 
         setProducts(formattedProducts);
       } catch (err) {
@@ -349,18 +353,24 @@ export default function InboundPage() {
   }, [activeTab, fetchProducts]);
 
   // Fetch pending orders function - memoized to prevent duplicate requests
-  const fetchPendingOrders = useCallback(async () => {
+  const fetchPendingOrders = useCallback(async (forceRefresh = false) => {
     if (activeTab !== "pending") return;
 
-    // Check cache first
-    const cached = pendingOrdersCacheRef.current;
-    if (cached && Date.now() - cached.timestamp < PENDING_ORDERS_CACHE_TTL) {
-      setPendingOrders(cached.data);
-      setLoading(false);
-      return;
+    // ✅ FORCE CLEAR CACHE: Always clear cache on component mount or refresh
+    if (forceRefresh) {
+      pendingOrdersCacheRef.current = null; // ✅ Clear cache
+      setIsRefreshing(true);
+    } else {
+      // Check cache first (only if not force refresh)
+      const cached = pendingOrdersCacheRef.current;
+      if (cached && Date.now() - cached.timestamp < PENDING_ORDERS_CACHE_TTL) {
+        setPendingOrders(cached.data);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
     }
 
-    setLoading(true);
     setError(null);
     try {
       const { apiGet } = await import("../../lib/api");
@@ -381,6 +391,8 @@ export default function InboundPage() {
         supplierGroup.orders?.forEach((order: any) => {
           flatOrders.push({
             ...order,
+            id: order.id || order.orderId, // ✅ Ensure id exists (backend should have it)
+            orderId: order.id, // ✅ ADD: Map id to orderId for backward compatibility
             supplierName: supplierGroup.supplierName,
             managerName: supplierGroup.managerName,
             managerPosition: supplierGroup.managerPosition,
@@ -388,6 +400,15 @@ export default function InboundPage() {
           });
         });
       });
+
+      // ✅ DEBUG: Log first order to check structure
+      if (flatOrders.length > 0) {
+        console.log('[fetchPendingOrders] First order structure:', {
+          id: flatOrders[0].id,
+          orderId: flatOrders[0].orderId,
+          orderNo: flatOrders[0].orderNo,
+        });
+      }
 
       setPendingOrders(flatOrders);
       // Update cache
@@ -399,7 +420,11 @@ export default function InboundPage() {
       console.error("Failed to load pending orders", err);
       setError("입고 대기 주문을 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (forceRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [apiUrl, activeTab]);
 
@@ -659,12 +684,13 @@ export default function InboundPage() {
             <PendingOrdersList
               orders={pendingOrders}
               loading={loading}
+              isRefreshing={isRefreshing}
               error={error}
               apiUrl={apiUrl}
               onRefresh={() => {
                 // Clear cache before refresh
                 pendingOrdersCacheRef.current = null;
-                fetchPendingOrders();
+                fetchPendingOrders(true); // ✅ Pass forceRefresh=true
               }}
             />
           )}
@@ -1020,7 +1046,7 @@ const ProductCard = memo(function ProductCard({
               )}
               {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
-                  직책: {product.managerPosition}
+                  직함: {product.managerPosition}
                 </span>
               )}
             </div>
@@ -2255,12 +2281,14 @@ function PencilIcon({ className }: { className?: string }) {
 const PendingOrdersList = memo(function PendingOrdersList({
   orders,
   loading,
+  isRefreshing,
   error,
   apiUrl,
   onRefresh,
 }: {
   orders: any[];
   loading: boolean;
+  isRefreshing?: boolean;
   error: string | null;
   apiUrl: string;
   onRefresh: () => void;
@@ -2593,9 +2621,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     const { order } = modalData;
 
-    // ✅ Muammo: Faqat modalData.items (insufficient items) dan foydalanilmoqda
-    // ✅ Yechim: order.items dan barcha item'larni ko'rib chiqish
-    // ✅ editedItems da quantity > 0 bo'lgan barcha item'larni qabul qilish
+    // ✅ DEBUG: Check order.id before API call
+    console.log('[Partial Inbound] Order data:', {
+      id: order.id,
+      orderId: order.orderId,
+      orderNo: order.orderNo,
+    });
+
+    if (!order.id && !order.orderId) {
+      console.error('[Partial Inbound] ERROR: No order ID found!');
+      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      return;
+    }
+
+    // ✅ Use orderId as fallback if id is missing
+    const orderIdToUse = order.id || order.orderId;
     
     // ✅ Order'dan barcha item'larni ko'rib chiqish (qisman va to'liq inbound qilinadigan item'lar ham)
     const validItems = order.items.filter((item: any) => {
@@ -2697,31 +2737,40 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       // ✅ Debug: inboundedItems ni ko'rsatish
       console.log('[Partial Inbound] InboundedItems:', inboundedItems);
+      console.log('[Partial Inbound] Order ID to use:', orderIdToUse);
 
       const result = await apiPost(
-        `${apiUrl}/order/${order.orderId}/partial-inbound`,
+        `${apiUrl}/order/${orderIdToUse}/partial-inbound`, // ✅ Use fallback ID
         {
-          orderId: order.orderId,
           inboundedItems,
           inboundManager,
         }
       );
 
-      // ✅ Calculate remaining quantity - order.items dan barcha item'larni ko'rib chiqish
+      // ✅ FIXED: Calculate remaining quantity correctly
+      // remaining = confirmedQty - (already inbound) - (new inbound)
       const totalRemainingQty = order.items.reduce((sum: number, item: any) => {
         const edited = editedItems[item.id];
-        const confirmedQty = item.confirmedQuantity || item.orderedQuantity || item.ordered || 0;
-        const inboundQty = edited?.quantity || 0;
-        const remaining = confirmedQty - inboundQty;
-        return sum + (remaining > 0 ? remaining : 0); // ✅ Faqat qolgan miqdor (20ta)
+        const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+        const alreadyInbound = item.inboundQuantity || 0; // ✅ Already inbound from database
+        const newInbound = edited?.quantity || 0; // ✅ New inbound from user input
+        const totalInbound = alreadyInbound + newInbound; // ✅ Total inbound
+        const remaining = confirmedQty - totalInbound; // ✅ Real remaining
+        return sum + (remaining > 0 ? remaining : 0);
       }, 0);
+
+      // ✅ Better alert messages
+      const inboundProductNames = validItems.map((item: any) => item.productName).join(", ");
+      const totalInboundQty = validItems.reduce((sum: number, item: any) => 
+        sum + (editedItems[item.id]?.quantity || 0), 0
+      );
 
       if (totalRemainingQty > 0) {
         alert(
-          `${validItems.length}개 제품이 입고되었습니다.\n${totalRemainingQty}개 제품은 재입고 대기 중입니다.`
+          `${inboundProductNames}\n${totalInboundQty}개 입고 완료되었습니다.\n남은 ${totalRemainingQty}개 제품은 재입고 대기 중입니다.`
         );
       } else {
-        alert(`${validItems.length}개 제품이 입고되었습니다.`);
+        alert(`${inboundProductNames}\n남은 ${totalInboundQty}개 입고 완료되었습니다.`);
       }
 
       onRefresh();
@@ -2920,12 +2969,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
         {/* 🆕 Manual Refresh Button */}
         <button
           onClick={onRefresh}
-          disabled={loading}
+          disabled={loading || isRefreshing}
           className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="주문 목록 새로고침"
         >
           <svg
-            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -2979,7 +3028,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                일부 상품의 입고 수량이 부족합니다
+                {(() => {
+                  // ✅ FIXED: Check based on order.items' inboundQuantity (database), not editedItems
+                  // Agar biror item allaqachon partial inbound qilingan bo'lsa (inboundQuantity > 0 va < confirmedQuantity)
+                  const hasPartialInbound = modalData.order.items.some((item: any) => {
+                    const inboundQty = item.inboundQuantity || 0;
+                    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+                    return inboundQty > 0 && inboundQty < confirmedQty;
+                  });
+                  
+                  // Agar partial inbound bo'lmasa (birinchi marta shortage) → Ikki button
+                  // Agar partial inbound bo'lsa (qolgan pending) → Bitta button
+                  return hasPartialInbound
+                    ? "입고 처리" // "Inbound Processing" - qolgan pending
+                    : "일부 상품의 입고 수량이 부족합니다"; // Birinchi marta shortage
+                })()}
               </h2>
               <button
                 onClick={() => setShowInboundModal(false)}
@@ -3004,9 +3067,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
             {/* Body - Description */}
             <div className="mb-6">
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-                부족한 수량은 추후 재입고 예정인가요?
-                <br />
-                재입고가 어려운 경우, 반품 절차를 통해 처리됩니다.
+                {(() => {
+                  // ✅ Same logic for description
+                  const hasPartialInbound = modalData.order.items.some((item: any) => {
+                    const inboundQty = item.inboundQuantity || 0;
+                    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+                    return inboundQty > 0 && inboundQty < confirmedQty;
+                  });
+                  
+                  return hasPartialInbound
+                    ? "입고 처리를 진행하시겠습니까?" // Qolgan pending
+                    : (
+                        <>
+                          부족한 수량은 추후 재입고 예정인가요?
+                          <br />
+                          재입고가 어려운 경우, 반품 절차를 통해 처리됩니다.
+                        </>
+                      );
+                })()}
               </p>
 
               {/* Product Table */}
@@ -3072,18 +3150,47 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
             {/* Footer - Action Buttons */}
             <div className="flex gap-3 justify-end">
-              <button
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors"
-                onClick={handlePartialInbound}
-              >
-                재입고 예정
-              </button>
-              <button
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                onClick={navigateToReturns}
-              >
-                반품 및 교환 진행
-              </button>
+              {(() => {
+                // ✅ FIXED: Check if any item has partial inbound already (database state)
+                const hasPartialInbound = modalData.order.items.some((item: any) => {
+                  const inboundQty = item.inboundQuantity || 0;
+                  const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+                  return inboundQty > 0 && inboundQty < confirmedQty;
+                });
+
+                // ✅ Agar partial inbound bo'lsa → Qolgan pending → Bitta "입고 완료" button
+                if (hasPartialInbound) {
+                  return (
+                    <button
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                      onClick={handlePartialInbound}
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      입고 완료
+                    </button>
+                  );
+                }
+
+                // ✅ Partial inbound yo'q → Birinchi marta shortage → Ikki button
+                return (
+                  <>
+                    <button
+                      className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors"
+                      onClick={handlePartialInbound}
+                    >
+                      재입고 예정
+                    </button>
+                    <button
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                      onClick={navigateToReturns}
+                    >
+                      반품 및 교환 진행
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -3369,7 +3476,7 @@ const OrderCard = memo(function OrderCard({
                       />
                       <span className="text-sm text-slate-400">|</span>
                       <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {item.confirmedQuantity}개
+                        {item.pendingQuantity ?? item.confirmedQuantity}개
                       </span>
                     </div>
                     {(isSupplierConfirmed || isRejected) && hasQtyChange && (

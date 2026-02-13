@@ -1537,7 +1537,7 @@ export default function OrderPage() {
                       order.managerName ||
                       "담당자";
 
-                    // Badge logic based on order status (priority: completed > cancelled > rejected > supplier_confirmed > pending)
+                    // Badge logic based on order status (priority: completed > cancelled > rejected > pending_inbound > supplier_confirmed > pending)
                     const isCompleted =
                       order.status === "completed" ||
                       order.status === "inbound_completed";
@@ -1547,16 +1547,23 @@ export default function OrderPage() {
                       !isCompleted &&
                       !isCancelled &&
                       order.status === "rejected";
+                    const isPendingInbound =
+                      !isCompleted &&
+                      !isCancelled &&
+                      !isRejected &&
+                      order.status === "pending_inbound";
                     const isSupplierConfirmed =
                       !isCompleted &&
                       !isCancelled &&
                       !isRejected &&
+                      !isPendingInbound &&
                       (order.status === "supplier_confirmed" ||
                         order.status === "confirmed");
                     const isPending =
                       !isCompleted &&
                       !isCancelled &&
                       !isRejected &&
+                      !isPendingInbound &&
                       !isSupplierConfirmed &&
                       order.status === "pending";
 
@@ -1670,6 +1677,27 @@ export default function OrderPage() {
                             {isPending && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
                                 주문 요청
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                            )}
+                            {isPendingInbound && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-orange-400 bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:border-orange-400 dark:text-orange-400">
+                                일부 입고
                                 {order.supplierDetails?.isPlatformSupplier && (
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"

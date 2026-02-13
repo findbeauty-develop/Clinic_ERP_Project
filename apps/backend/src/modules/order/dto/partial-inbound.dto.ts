@@ -1,4 +1,4 @@
-import { IsString, IsArray, ValidateNested, IsNumber } from "class-validator";
+import { IsString, IsArray, ValidateNested, IsNumber, IsOptional } from "class-validator";
 import { Type } from "class-transformer";
 
 class PartialInboundItemDto {
@@ -14,7 +14,8 @@ class PartialInboundItemDto {
 
 export class PartialInboundDto {
   @IsString()
-  orderId!: string;
+  @IsOptional() // ✅ Optional - orderId URL'dan keladi
+  orderId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
