@@ -104,7 +104,7 @@ export default function InboundPage() {
     data: any[];
     timestamp: number;
   } | null>(null);
-  const PENDING_ORDERS_CACHE_TTL = 5000; // 10 seconds for faster updates
+  const PENDING_ORDERS_CACHE_TTL = 0; // ✅ DISABLED: No cache for real-time updates
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -356,18 +356,10 @@ export default function InboundPage() {
   const fetchPendingOrders = useCallback(async (forceRefresh = false) => {
     if (activeTab !== "pending") return;
 
-    // ✅ FORCE CLEAR CACHE: Always clear cache on component mount or refresh
+    // ✅ NO CACHE: Always fetch fresh data
     if (forceRefresh) {
-      pendingOrdersCacheRef.current = null; // ✅ Clear cache
       setIsRefreshing(true);
     } else {
-      // Check cache first (only if not force refresh)
-      const cached = pendingOrdersCacheRef.current;
-      if (cached && Date.now() - cached.timestamp < PENDING_ORDERS_CACHE_TTL) {
-        setPendingOrders(cached.data);
-        setLoading(false);
-        return;
-      }
       setLoading(true);
     }
 
@@ -411,11 +403,7 @@ export default function InboundPage() {
       }
 
       setPendingOrders(flatOrders);
-      // Update cache
-      pendingOrdersCacheRef.current = {
-        data: flatOrders,
-        timestamp: Date.now(),
-      };
+      // ✅ NO CACHE: Don't store in cache
     } catch (err) {
       console.error("Failed to load pending orders", err);
       setError("입고 대기 주문을 불러오지 못했습니다.");
@@ -2362,7 +2350,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
   };
 
   const handleProcessOrder = async (order: any) => {
-    // Debug log
+    // ✅ DEBUG: Check order ID
+    console.log('[handleProcessOrder] Order data:', {
+      id: order.id,
+      orderId: order.orderId,
+      orderNo: order.orderNo,
+    });
+
+    // ✅ Use id or orderId as fallback
+    const orderIdToUse = order.id || order.orderId;
+
+    if (!orderIdToUse) {
+      console.error('[handleProcessOrder] ERROR: No order ID found!');
+      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      return;
+    }
 
     // Validation checks first
     // ✅ getAccessToken() ishlatish (localStorage emas)
@@ -2439,7 +2441,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
     itemsToProcess: any[],
     isPartial: boolean = false
   ) => {
-    setProcessing(order.orderId);
+    // ✅ Use id or orderId as fallback
+    const orderIdToUse = order.id || order.orderId;
+
+    if (!orderIdToUse) {
+      console.error('[processInboundOrder] ERROR: No order ID found!', order);
+      alert('주문 정보가 올바르지 않습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    setProcessing(orderIdToUse);
     try {
       // ✅ getAccessToken() ishlatish (localStorage emas)
       const token = await getAccessToken();
@@ -2447,13 +2458,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       if (!token || !tenantId) {
         alert("로그인이 필요합니다.");
-        return;
-      }
-
-      // Validate orderId
-      if (!order.orderId) {
-        console.error("Order ID is missing:", order);
-        alert("주문 정보가 올바르지 않습니다. 페이지를 새로고침해주세요.");
         return;
       }
 
@@ -2554,7 +2558,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       if (returnItems.length > 0) {
         try {
           await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
-            orderId: order.orderId,
+            orderId: orderIdToUse, // ✅ FIXED: Use orderIdToUse
             orderNo: order.orderNo,
             items: returnItems,
             inboundManager: inboundManager, // Add inbound manager
@@ -2571,7 +2575,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Update order status to completed only if not partial
       if (!isPartial) {
         try {
-          await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+          await apiPost(`${apiUrl}/order/${orderIdToUse}/complete`, {}); // ✅ FIXED: Use orderIdToUse
         } catch (completeError: any) {
           console.error(`Failed to complete order:`, completeError);
           throw new Error(
@@ -2790,8 +2794,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     const { order } = modalData;
 
+    // ✅ DEBUG: Check order ID
+    console.log('[navigateToReturns] Order data:', {
+      id: order.id,
+      orderId: order.orderId,
+      orderNo: order.orderNo,
+    });
+
+    if (!order.id && !order.orderId) {
+      console.error('[navigateToReturns] ERROR: No order ID found!');
+      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      return;
+    }
+
+    // ✅ Use id or orderId as fallback
+    const orderIdToUse = order.id || order.orderId;
+
     setShowInboundModal(false);
-    setProcessing(order.orderId);
+    setProcessing(orderIdToUse);
 
     try {
       const { apiPost } = await import("../../lib/api");
@@ -2903,14 +2923,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
       if (returnItems.length > 0) {
         try {
           await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
-            orderId: order.orderId,
+            orderId: orderIdToUse, // ✅ FIXED: Use orderIdToUse
             orderNo: order.orderNo,
             items: returnItems,
             inboundManager: inboundManager,
           });
 
           // Mark order as completed
-          await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+          await apiPost(`${apiUrl}/order/${orderIdToUse}/complete`, {});
 
           // Navigate to order-returns page
           alert(
@@ -3481,7 +3501,7 @@ const OrderCard = memo(function OrderCard({
                     </div>
                     {(isSupplierConfirmed || isRejected) && hasQtyChange && (
                       <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                        요청 수량: {item.orderedQuantity ?? item.confirmedQuantity}개 {item.quantityReason && (
+                        요청 수량: {item.orderedQuantity}개 {item.quantityReason && (
                         <span className="text-xs text-rose-600 dark:text-rose-400">
                           (⚠ 수량 변경: {item.quantityReason})
                         </span>

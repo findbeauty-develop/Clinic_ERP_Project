@@ -36,14 +36,14 @@ export class OrderService {
   ) {
     this.productsForOrderCache = new CacheManager({
       maxSize: 100,
-      ttl: 5000, // 30 seconds
+      ttl: 0, // 30 seconds
       cleanupInterval: 60000,
       name: "OrderService:Products",
     });
 
     this.pendingInboundCache = new CacheManager({
       maxSize: 100,
-      ttl: 5000, // 5 seconds - for real-time updates
+      ttl: 0, // ✅ DISABLED: No cache for real-time updates
       cleanupInterval: 60000,
       name: "OrderService:PendingInbound",
     });
@@ -834,6 +834,7 @@ export class OrderService {
                   ordered_quantity: item.quantity,      // ✅ Clinic order qilgan (o'zgarmas)
                   confirmed_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier auto-confirm, platform supplier null
                   inbound_quantity: null,               // ✅ Hali inbound qilinmagan
+                  pending_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier: confirmed = pending, Platform: null until confirmed
                   unit_price: item.unitPrice,
                   total_price: item.totalPrice,
                   memo: item.memo ?? null,
@@ -2847,6 +2848,7 @@ export class OrderService {
                 // ordered_quantity: UNCHANGED ✅ - Dastlabki order o'zgarmas
                 confirmed_quantity: newConfirmedQuantity, // ✅ Supplier adjustment (80ta)
                 // inbound_quantity: UNCHANGED ✅ - Hali inbound qilinmagan
+                pending_quantity: newConfirmedQuantity, // ✅ Pending = confirmed (supplier adjusted)
                 unit_price: newUnitPrice, // ✅ Yangi price (agar o'zgarsa)
                 total_price: newTotalPrice, // ✅ Yangi total (confirmed_quantity * price)
                 updated_at: new Date(),
@@ -2854,7 +2856,7 @@ export class OrderService {
             });
 
             this.logger.log(
-              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, price ${oldUnitPrice} → ${newUnitPrice}, ordered_quantity & inbound_quantity UNCHANGED`
+              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, pending_quantity → ${newConfirmedQuantity}, price ${oldUnitPrice} → ${newUnitPrice}`
             );
           } else {
             this.logger.warn(
@@ -3232,10 +3234,11 @@ export class OrderService {
         include: {
           items: {
             where: {
-              // ✅ DATABASE FILTER: Faqat pending item'lar (no runtime calculation!)
-              pending_quantity: {
-                gt: 0,
-              },
+              // ✅ FIXED: Show items with pending_quantity > 0 OR null (for old orders)
+              OR: [
+                { pending_quantity: { gt: 0 } },
+                { pending_quantity: null },
+              ],
             },
             include: {
               product: {
@@ -3821,6 +3824,7 @@ export class OrderService {
                   where: { id: item.id },
                   data: {
                     inbound_quantity: item.confirmed_quantity, // ✅ To'liq inbound
+                    pending_quantity: 0, // ✅ No pending after full inbound
                     updated_at: new Date(),
                   },
                 })

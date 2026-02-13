@@ -185,7 +185,9 @@ export class OrderController {
    */
   @Get("pending-inbound")
   @UseGuards(JwtTenantGuard)
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-cache, no-store, must-revalidate") // ✅ NO CACHE
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({
     summary: "Get orders ready for inbound (supplier confirmed)",
   })
