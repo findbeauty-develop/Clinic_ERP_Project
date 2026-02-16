@@ -186,23 +186,19 @@ const ReturnCard = memo(function ReturnCard({
   const [confirming, setConfirming] = useState(false);
   const [memo, setMemo] = useState(returnItem.memo || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
-  const [returnType, setReturnType] = useState(returnItem.return_type || "");
+  const [returnType, setReturnType] = useState("");
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
-
-  // Price modal state
-  const [showPriceModal, setShowPriceModal] = useState(false);
-  const [modalPrices, setModalPrices] = useState({
-    purchasePrice: "",
-    salePrice: "",
-  });
 
   // Get return manager name from backend response (for display in non-editable tabs)
   const managerName = returnItem.returnManagerName || "";
 
-  const isOrderReturn = returnType?.includes("주문");
-  const isDefectiveReturn = returnType?.includes("불량");
+  // ✅ FIX: Check dropdown visibility based on backend return_type, not state
+  const isOrderReturn = returnItem.return_type?.includes("주문");
+  const isDefectiveReturn = returnItem.return_type?.includes("불량");
   const showReturnTypeDropdown = isOrderReturn || isDefectiveReturn;
+  
+  // Check selected values from state
   const isExchange = returnType?.includes("교환");
   const isReturn = returnType?.includes("반품");
   const isProcessingTab = activeTab === "in-progress";
@@ -262,21 +258,7 @@ const ReturnCard = memo(function ReturnCard({
   };
 
   const handleProcessReturn = async () => {
-    // Check if product has prices (refund_amount is purchase_price, need sale_price too)
-    const hasRefundAmount = returnItem.refund_amount && returnItem.refund_amount > 0;
-    const hasSalePrice = returnItem.sale_price && returnItem.sale_price > 0;
-
-    if (!hasRefundAmount || !hasSalePrice) {
-      // Show price modal if prices are missing
-      setModalPrices({
-        purchasePrice: hasRefundAmount ? String(returnItem.refund_amount) : "",
-        salePrice: hasSalePrice ? String(returnItem.sale_price) : "",
-      });
-      setShowPriceModal(true);
-      return;
-    }
-
-    // Continue with normal processing if prices exist
+    // Continue with normal processing
     await processReturn();
   };
 
@@ -313,46 +295,6 @@ const ReturnCard = memo(function ReturnCard({
       onRefresh();
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const handleSavePrices = async () => {
-    if (!modalPrices.purchasePrice || !modalPrices.salePrice) {
-      alert("구매가와 판매가를 모두 입력하세요");
-      return;
-    }
-
-    const purchasePrice = Number(modalPrices.purchasePrice.replace(/,/g, ""));
-    const salePrice = Number(modalPrices.salePrice.replace(/,/g, ""));
-
-    if (purchasePrice <= 0 || salePrice <= 0) {
-      alert("가격은 0보다 커야 합니다");
-      return;
-    }
-
-    try {
-      // Update product prices globally
-      const { apiPut } = await import("../../lib/api");
-      await apiPut(`${apiUrl}/products/${returnItem.product_id}`, {
-        purchasePrice: purchasePrice,
-        salePrice: salePrice,
-      });
-
-      // Update returnItem with new prices
-      returnItem.refund_amount = purchasePrice;
-      returnItem.sale_price = salePrice;
-
-      // Close modal and proceed with return processing
-      setShowPriceModal(false);
-      setModalPrices({ purchasePrice: "", salePrice: "" });
-
-      alert("가격이 저장되었습니다");
-
-      // Continue with return processing
-      await processReturn();
-    } catch (error) {
-      console.error("Failed to save prices:", error);
-      alert("가격 저장에 실패했습니다");
     }
   };
 
@@ -483,21 +425,19 @@ const ReturnCard = memo(function ReturnCard({
           </div>
           <div className="flex items-center gap-3">
             {isProcessingTabWithInputs && showReturnTypeDropdown ? (
-              <div className="relative">
-                사유 선택:{" "}
+              <div className="relative inline-block">
                 <select
                   value={returnType}
                   onChange={(e) => handleReturnTypeChange(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-3 py-1 pr-8 text-sm text-slate-700 appearance-none cursor-pointer hover:border-sky-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                  className="appearance-none rounded-lg border-2 border-slate-300 bg-white px-4 py-2 pr-10 text-sm font-medium text-slate-700 cursor-pointer hover:border-sky-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:focus:border-sky-500 dark:focus:ring-sky-800 transition-all"
                   style={{
-                    color: returnType === "" ? "#94a3b8" : "#334155",
+                    color: returnType === "" ? "#94a3b8" : "#1e293b",
+                    minWidth: "140px",
                   }}
                 >
-                  {returnType === "" && (
-                    <option value="" disabled>
-                      사유 선택*
-                    </option>
-                  )}
+                  <option value="" disabled>
+                    사유 선택*
+                  </option>
                   {isOrderReturn ? (
                     <>
                       <option value="주문|교환">주문 | 교환</option>
@@ -510,9 +450,9 @@ const ReturnCard = memo(function ReturnCard({
                     </>
                   )}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                   <svg
-                    className="h-4 w-4 text-slate-500"
+                    className="h-5 w-5 text-slate-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -869,167 +809,6 @@ const ReturnCard = memo(function ReturnCard({
                   님
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Price Entry Modal */}
-      {showPriceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-2xl shadow-xl">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                가격 설정
-              </h3>
-              <button
-                onClick={() => {
-                  setShowPriceModal(false);
-                  setModalPrices({ purchasePrice: "", salePrice: "" });
-                }}
-                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-2xl leading-none"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Content - All in One Row */}
-            <div className="p-6 space-y-4">
-              {/* Warning */}
-              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <div className="flex gap-2 text-xs text-yellow-800 dark:text-yellow-300">
-                  <span className="flex-shrink-0">⚠️</span>
-                  <div>
-                    가격 정보가 없습니다. 설정 시 제품에 저장되며 이후
-                    반품/교환에도 적용됩니다.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between w-full gap-4">
-                {/* Product Info */}
-                <div className="flex-shrink-0 p-3">
-                  <div className="font-medium text-slate-900 dark:text-white text-sm">
-                    {returnItem.product_name || "알 수 없음"}
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {returnItem.brand || ""}
-                  </div>
-                </div>
-
-                {/* Price Inputs - Horizontal */}
-                <div className="flex gap-3">
-                  <div className="w-56">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      구매가*
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={
-                          modalPrices.purchasePrice
-                            ? Number(modalPrices.purchasePrice).toLocaleString(
-                                "ko-KR"
-                              )
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/,/g, "");
-                          if (value === "" || /^\d+$/.test(value)) {
-                            setModalPrices((prev) => ({
-                              ...prev,
-                              purchasePrice: value,
-                            }));
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const salePriceInput = document.getElementById(
-                              "sale-price-input-return"
-                            );
-                            if (salePriceInput) {
-                              salePriceInput.focus();
-                            }
-                          }
-                        }}
-                        placeholder="구매가 입력"
-                        className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
-                        autoFocus
-                      />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        원
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="w-56">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      판매가*
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        id="sale-price-input-return"
-                        type="text"
-                        value={
-                          modalPrices.salePrice
-                            ? Number(modalPrices.salePrice).toLocaleString(
-                                "ko-KR"
-                              )
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/,/g, "");
-                          if (value === "" || /^\d+$/.test(value)) {
-                            setModalPrices((prev) => ({
-                              ...prev,
-                              salePrice: value,
-                            }));
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleSavePrices();
-                          } else if (e.key === "Escape") {
-                            setShowPriceModal(false);
-                            setModalPrices({
-                              purchasePrice: "",
-                              salePrice: "",
-                            });
-                          }
-                        }}
-                        placeholder="판매가 입력"
-                        className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
-                      />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        원
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 px-6 pb-6 justify-end">
-              <button
-                onClick={() => {
-                  setShowPriceModal(false);
-                  setModalPrices({ purchasePrice: "", salePrice: "" });
-                }}
-                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium transition"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleSavePrices}
-                disabled={!modalPrices.purchasePrice || !modalPrices.salePrice}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition"
-              >
-                저장 후 반품 처리
-              </button>
             </div>
           </div>
         </div>
