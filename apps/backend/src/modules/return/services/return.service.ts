@@ -174,6 +174,11 @@ export class ReturnService {
             },
           },
           outbounds: {
+            where: {
+              // ✅ FILTER: Don't include damaged (파손) or defective (불량) outbounds
+              is_damaged: false,
+              is_defective: false,
+            },
             select: {
               id: true,
               batch_id: true,
@@ -181,6 +186,8 @@ export class ReturnService {
               outbound_qty: true,
               outbound_date: true,
               manager_name: true,
+              is_damaged: true, // ✅ ADD: For debugging
+              is_defective: true, // ✅ ADD: For debugging
             },
           },
         },
@@ -194,6 +201,16 @@ export class ReturnService {
 
     const availableProducts = products
       .map((product: any) => {
+        // ✅ DEBUG: Log product outbounds
+        const damagedOrDefective = (product.outbounds || []).filter(
+          (o: any) => o.is_damaged || o.is_defective
+        );
+        if (damagedOrDefective.length > 0) {
+          this.logger.warn(
+            `⚠️ [getAvailableProducts] Product ${product.id} has ${damagedOrDefective.length} damaged/defective outbounds (should be filtered out by query)`
+          );
+        }
+
         // Chiqarilgan jami miqdor
         const totalOutbound = (product.outbounds || []).reduce(
           (sum: number, outbound: any) => sum + (outbound.outbound_qty || 0),

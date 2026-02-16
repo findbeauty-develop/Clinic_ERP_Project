@@ -8,22 +8,23 @@ export default function OrderReturnsPage() {
   >("processing");
   const [returns, setReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [members, setMembers] = useState<any[]>([]);
+  // ✅ REMOVED: members state - not used and requires "owner" role
 
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL || "https://api.jaclit.com",
     []
   );
 
-  const fetchMembers = useCallback(async () => {
-    try {
-      const { apiGet } = await import("../../lib/api");
-      const data = await apiGet<any[]>(`${apiUrl}/iam/members`);
-      setMembers(data || []);
-    } catch (err) {
-      // Silent error handling
-    }
-  }, [apiUrl]);
+  // ✅ REMOVED: fetchMembers - not used and requires "owner" role
+  // const fetchMembers = useCallback(async () => {
+  //   try {
+  //     const { apiGet } = await import("../../lib/api");
+  //     const data = await apiGet<any[]>(`${apiUrl}/iam/members`);
+  //     setMembers(data || []);
+  //   } catch (err) {
+  //     // Silent error handling
+  //   }
+  // }, [apiUrl]);
 
   const fetchReturns = useCallback(async () => {
     const statusMap = {
@@ -48,11 +49,11 @@ export default function OrderReturnsPage() {
   }, [apiUrl, activeTab]);
 
   useEffect(() => {
-    // Parallel fetching - ikkala request bir vaqtda
-    Promise.all([fetchReturns(), fetchMembers()]).catch(() => {
+    // ✅ REMOVED: fetchMembers - not used and requires "owner" role
+    fetchReturns().catch(() => {
       // Silent error handling
     });
-  }, [fetchReturns, fetchMembers]);
+  }, [fetchReturns]);
 
   const formatReturnType = (returnType: string) => {
     if (returnType.includes("불량") && returnType.includes("교환"))
@@ -153,7 +154,6 @@ export default function OrderReturnsPage() {
               <ReturnCard
                 key={returnItem.id}
                 returnItem={returnItem}
-                members={members}
                 onRefresh={() => {
                   fetchReturns();
                 }}
@@ -175,7 +175,6 @@ export default function OrderReturnsPage() {
 
 const ReturnCard = memo(function ReturnCard({
   returnItem,
-  members,
   onRefresh,
   onRemove,
   apiUrl,

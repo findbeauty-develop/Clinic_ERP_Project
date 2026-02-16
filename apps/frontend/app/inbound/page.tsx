@@ -2302,6 +2302,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     [memberInfo]
   );
 
+  // ✅ ADD: State for inbound managers per order
+  const [inboundManagers, setInboundManagers] = useState<Record<string, string>>({});
+
   // Initialize edited items when orders change - optimized with useMemo
   const initialEditedItems = useMemo(() => {
     const initialEdits: Record<string, any> = {};
@@ -2322,6 +2325,27 @@ const PendingOrdersList = memo(function PendingOrdersList({
   useEffect(() => {
     setEditedItems(initialEditedItems);
   }, [initialEditedItems]);
+
+  // ✅ ADD: Initialize inboundManagers when orders change
+  useEffect(() => {
+    if (orders.length > 0) {
+      setInboundManagers((prev) => {
+        const updated: Record<string, string> = { ...prev };
+        let hasChanges = false;
+        
+        orders.forEach((order: any) => {
+          const orderId = order.id || order.orderId;
+          if (orderId && !updated[orderId]) {
+            // ✅ Initialize with empty string (user must enter manually)
+            updated[orderId] = "";
+            hasChanges = true;
+          }
+        });
+        
+        return hasChanges ? updated : prev;
+      });
+    }
+  }, [orders, inboundManagerName]);
 
   // Pagination calculations
   const totalPages = Math.ceil(orders.length / itemsPerPage);
@@ -2464,11 +2488,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../lib/api");
 
-      // Get current member info for inbound_manager
-      const memberData = localStorage.getItem("erp_member_data");
-      const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager =
-        memberInfo.member_id || memberInfo.full_name || "자동입고"; // Use member_id for return_manager
+      // ✅ Use inboundManagers state instead of localStorage
+      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -2667,11 +2688,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // Get current member info for inbound_manager
-      const memberData = localStorage.getItem("erp_member_data");
-      const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager =
-        memberInfo.member_id || memberInfo.full_name || "자동입고";
+      // ✅ Use inboundManagers state instead of localStorage
+      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
 
       // Create batches for valid items
       for (const item of validItems) {
@@ -2816,11 +2834,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // Get current member info for inbound_manager
-      const memberData = localStorage.getItem("erp_member_data");
-      const memberInfo = memberData ? JSON.parse(memberData) : {};
-      const inboundManager =
-        memberInfo.member_id || memberInfo.full_name || "자동입고";
+      // ✅ Use inboundManagers state instead of localStorage
+      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
 
       // Process all items and create returns for shortages
       const returnItems: any[] = [];
@@ -3011,19 +3026,27 @@ const PendingOrdersList = memo(function PendingOrdersList({
       </div>
 
       <div className="space-y-4">
-        {currentOrders.map((order) => (
-          <OrderCard
-            key={order.orderId}
-            order={order}
-            editedItems={editedItems}
-            updateItemField={updateItemField}
-            handleProcessOrder={handleProcessOrder}
-            processing={processing}
-            inboundManagerName={inboundManagerName}
-            onRefresh={onRefresh}
-            apiUrl={apiUrl}
-          />
-        ))}
+        {currentOrders.map((order) => {
+          const orderId = order.id || order.orderId;
+          return (
+            <OrderCard
+              key={orderId || `order-${order.orderNo || Math.random()}`}
+              order={order}
+              editedItems={editedItems}
+              updateItemField={updateItemField}
+              handleProcessOrder={handleProcessOrder}
+              processing={processing}
+              inboundManagerName={inboundManagers[orderId] ?? ""}
+              onInboundManagerChange={(value: string) => {
+                if (orderId) {
+                  setInboundManagers((prev) => ({ ...prev, [orderId]: value }));
+                }
+              }}
+              onRefresh={onRefresh}
+              apiUrl={apiUrl}
+            />
+          );
+        })}
       </div>
 
       {totalPages > 1 && (
@@ -3227,6 +3250,7 @@ const OrderCard = memo(function OrderCard({
   handleProcessOrder,
   processing,
   inboundManagerName,
+  onInboundManagerChange,
   onRefresh,
   apiUrl,
 }: {
@@ -3236,6 +3260,7 @@ const OrderCard = memo(function OrderCard({
   handleProcessOrder: (order: any) => void;
   processing: string | null;
   inboundManagerName: string;
+  onInboundManagerChange: (value: string) => void;
   onRefresh: () => void;
   apiUrl: string;
 }) {
@@ -3583,13 +3608,20 @@ const OrderCard = memo(function OrderCard({
         {/* Footer - 입고 담당자 + Button */}
         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
           {(isSupplierConfirmed || isRejected) && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-2 flex-1 mr-4">
+              <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                 입고 담당자:
-              </span>
-              <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
-                {inboundManagerName}
-              </span>
+              </label>
+              <input
+                type="text"
+                value={inboundManagerName}
+                onChange={(e) => onInboundManagerChange(e.target.value)}
+                placeholder="입고 담당자 이름을 입력하세요"
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 
+                           focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200
+                           dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
+                           dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
+              />
             </div>
           )}
           {isPending ? (

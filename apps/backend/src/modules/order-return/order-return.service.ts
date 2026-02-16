@@ -38,6 +38,9 @@ export class OrderReturnService {
       where.status = status;
     }
 
+    // ✅ NOTE: Cannot filter by outbound relation in where clause (Prisma limitation)
+    // Will filter damaged/defective outbounds after fetching data
+
     const data = await this.prisma.executeWithRetry(async () => {
       // 1. Barcha return'larni bir marta olish (faqat kerakli fieldlar)
       const returns = await (this.prisma as any).orderReturn.findMany({
@@ -124,6 +127,8 @@ export class OrderReturnService {
               select: {
                 id: true,
                 product_id: true,
+                is_damaged: true, // ✅ ADD: To filter out damaged/defective returns
+                is_defective: true, // ✅ ADD: To filter out damaged/defective returns
               },
             })
           : [],
@@ -1402,6 +1407,18 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         throw new BadRequestException("Outbound not found");
       }
 
+      // ✅ Determine return type based on outbound flags
+      let returnType = "불량|반품"; // Default to defective
+      if (outbound.is_damaged) {
+        returnType = "파손|반품";
+      } else if (outbound.is_defective) {
+        returnType = "불량|반품";
+      }
+
+      this.logger.log(
+        `📦 [createFromOutbound] Creating return for outbound ${outboundId}: is_damaged=${outbound.is_damaged}, is_defective=${outbound.is_defective}, returnType=${returnType}`
+      );
+
       // Get supplier_id from product via ProductSupplier -> ClinicSupplierManager -> linkedManager
       let supplierId = null;
       if (
@@ -1461,8 +1478,8 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
             return (this.prisma as any).orderReturn.create({
               data: {
                 tenant_id: tenantId,
-                order_id: null, // No order for defective products
-                order_no: null, // No order number for defective products
+                order_id: null, // No order for defective/damaged products
+                order_no: null, // No order number for defective/damaged products
                 outbound_id: outboundId,
                 batch_no: itemBatchNo,
                 product_id: item.productId || outbound.product_id,
@@ -1472,7 +1489,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
                 return_quantity: item.returnQuantity || outbound.outbound_qty,
                 total_quantity: item.totalQuantity || outbound.outbound_qty,
                 unit_price: item.unitPrice || outbound.product?.sale_price || 0,
-                return_type: "불량|반품",
+                return_type: returnType, // ✅ Use dynamic returnType based on is_damaged/is_defective
                 status: "pending",
                 supplier_id: supplierId,
                 return_manager: returnManager,

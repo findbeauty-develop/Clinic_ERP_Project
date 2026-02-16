@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../../../core/prisma.service";
 import { ProductsService } from "../../product/services/products.service";
@@ -18,6 +19,7 @@ import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class OutboundService {
+  private readonly logger = new Logger(OutboundService.name);
   // ✅ Replaced Map with CacheManager
   private productsForOutboundCache: CacheManager<any[]>;
 
@@ -286,7 +288,12 @@ export class OutboundService {
 
           let batchQtyDecrement = dto.outboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
 
+          // ✅ IMPORTANT: Don't update used_count for damaged (파손) or defective (불량) items
+          // They go directly to order-returns, not to returns (empty boxes)
+          const isDamagedOrDefective = dto.isDamaged || dto.isDefective;
+
           if (
+            !isDamagedOrDefective && // ✅ ADD: Skip used_count update for damaged/defective
             product &&
             product.usage_capacity &&
             product.usage_capacity > 0 &&
@@ -329,8 +336,16 @@ export class OutboundService {
               data: { used_count: newUsedCount },
             });
 
+            this.logger.debug(
+              `✅ [createOutbound] Updated used_count for batch ${dto.batchId}: ${currentUsedCount} → ${newUsedCount} (emptyBoxes: ${previousEmptyBoxes} → ${newEmptyBoxes})`
+            );
+
             // Empty box'lar avtomatik Return jadvaliga yozilmaydi
             // Ular faqat Return page'da ko'rsatiladi va user xohlagan paytda return qiladi
+          } else if (isDamagedOrDefective) {
+            this.logger.warn(
+              `⚠️ [createOutbound] Skipping used_count update for damaged/defective outbound (isDamaged=${dto.isDamaged}, isDefective=${dto.isDefective})`
+            );
           }
 
           // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
@@ -357,8 +372,8 @@ export class OutboundService {
         }
       )
       .then(async (outbound: any) => {
-        // If defective, create order return after transaction
-        if (dto.isDefective) {
+        // If damaged or defective, create order return after transaction
+        if (dto.isDamaged || dto.isDefective) {
           try {
             await this.orderReturnService.createFromOutbound(tenantId, {
               outboundId: outbound.id,
@@ -376,7 +391,7 @@ export class OutboundService {
             });
           } catch (error: any) {
             console.error(
-              `Failed to create return for defective product:`,
+              `Failed to create return for damaged/defective product:`,
               error
             );
             // Don't fail the outbound if return creation fails
@@ -1549,7 +1564,11 @@ export class OutboundService {
             const product = productMap.get(productId);
             let batchQtyDecrement = batchData.totalOutboundQty; // Default
 
+            // ✅ IMPORTANT: Don't update used_count for damaged (파손) or defective (불량) items
+            const isDamagedOrDefective = dto.isDamaged || dto.isDefective;
+
             if (
+              !isDamagedOrDefective && // ✅ ADD: Skip used_count update for damaged/defective
               product &&
               product.usage_capacity &&
               product.usage_capacity > 0 &&
@@ -1592,6 +1611,14 @@ export class OutboundService {
                 where: { id: batchId },
                 data: { used_count: newUsedCount },
               });
+
+              this.logger.debug(
+                `✅ [createUnifiedOutbound] Updated used_count for batch ${batchId}: ${currentUsedCount} → ${newUsedCount} (emptyBoxes: ${previousEmptyBoxes} → ${newEmptyBoxes})`
+              );
+            } else if (isDamagedOrDefective) {
+              this.logger.warn(
+                `⚠️ [createUnifiedOutbound] Skipping used_count update for damaged/defective outbound (isDamaged=${dto.isDamaged}, isDefective=${dto.isDefective})`
+              );
             }
 
             // Batch qty ni kamaytirish
