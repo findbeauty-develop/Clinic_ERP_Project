@@ -118,6 +118,11 @@ export class OrderReturnService {
               select: {
                 id: true,
                 name: true,
+                returnPolicy: {
+                  select: {
+                    refund_amount: true,
+                  },
+                },
               },
             })
           : [],
@@ -350,6 +355,9 @@ export class OrderReturnService {
           product_name:
             (productMap.get(returnItem.product_id) as any)?.name ||
             "알 수 없음",
+          refund_amount:
+            (productMap.get(returnItem.product_id) as any)?.returnPolicy
+              ?.refund_amount || 0,
         };
       });
 

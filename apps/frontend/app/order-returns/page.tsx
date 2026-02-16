@@ -262,14 +262,14 @@ const ReturnCard = memo(function ReturnCard({
   };
 
   const handleProcessReturn = async () => {
-    // Check if product has prices (unit_price is purchase_price, need sale_price too)
-    const hasUnitPrice = returnItem.unit_price && returnItem.unit_price > 0;
+    // Check if product has prices (refund_amount is purchase_price, need sale_price too)
+    const hasRefundAmount = returnItem.refund_amount && returnItem.refund_amount > 0;
     const hasSalePrice = returnItem.sale_price && returnItem.sale_price > 0;
 
-    if (!hasUnitPrice || !hasSalePrice) {
+    if (!hasRefundAmount || !hasSalePrice) {
       // Show price modal if prices are missing
       setModalPrices({
-        purchasePrice: hasUnitPrice ? String(returnItem.unit_price) : "",
+        purchasePrice: hasRefundAmount ? String(returnItem.refund_amount) : "",
         salePrice: hasSalePrice ? String(returnItem.sale_price) : "",
       });
       setShowPriceModal(true);
@@ -339,7 +339,7 @@ const ReturnCard = memo(function ReturnCard({
       });
 
       // Update returnItem with new prices
-      returnItem.unit_price = purchasePrice;
+      returnItem.refund_amount = purchasePrice;
       returnItem.sale_price = salePrice;
 
       // Close modal and proceed with return processing
@@ -606,7 +606,7 @@ const ReturnCard = memo(function ReturnCard({
           <div className="flex items-center gap-1">
             <span className="font-medium">단가:</span>
             <span className="font-semibold text-blue-600 underline dark:text-blue-400">
-              {returnItem.unit_price?.toLocaleString() || 0}원
+              {returnItem.refund_amount?.toLocaleString() || 0}원
             </span>
           </div>
         </div>
