@@ -455,71 +455,125 @@ export default function InventoryPage() {
           )}
         </section>
 
-        {/* 소진 */}
-        <section className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">소진</h2>
+        {/* 재고 부족 (Stock Shortage) */}
+        <section className="bg-white rounded-lg p-6 shadow-sm border border-red-200 bg-red-50/30">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+            <h2 className="text-lg font-semibold text-red-700">재고 부족</h2>
+            {!loading && depletionItems.filter(item => item.currentStock < item.minStock).length > 0 && (
+              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+                {depletionItems.filter(item => item.currentStock < item.minStock).length}개
+              </span>
+            )}
+          </div>
           {loading ? (
             <p className="text-slate-500 text-center py-8">로딩 중...</p>
-          ) : depletionItems.length === 0 ? (
+          ) : depletionItems.filter(item => item.currentStock < item.minStock).length === 0 ? (
             <p className="text-slate-500 text-center py-8">
-              소진 예정 제품이 없습니다.
+              재고 부족 제품이 없습니다.
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full bg-white rounded-lg">
                 <thead>
                   <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
                       제품명
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
                       현재고
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
-                      안정 재고
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
+                      안전 재고
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
+                      부족량
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
                       전 주문량
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
                       주문 빈도
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
-                      소진 예상
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
+                      상태
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {depletionItems.map((item, index) => (
-                    <tr
-                      key={index}
-                      className="border-b border-slate-100 hover:bg-slate-50"
-                    >
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.productName}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.currentStock} {item.unit}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.minStock} {item.unit}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.lastOrderQty} {item.unit}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.orderFrequency}
-                      </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        {item.estimatedDepletion}
-                      </td>
-                    </tr>
-                  ))}
+                  {depletionItems
+                    .filter(item => item.currentStock < item.minStock)
+                    .sort((a, b) => {
+                      // Sort by shortage severity (percentage below min_stock)
+                      const aShortage = (a.minStock - a.currentStock) / a.minStock;
+                      const bShortage = (b.minStock - b.currentStock) / b.minStock;
+                      return bShortage - aShortage;
+                    })
+                    .map((item, index) => {
+                      const shortage = item.minStock - item.currentStock;
+                      const shortagePercent = Math.round((shortage / item.minStock) * 100);
+                      const isCritical = item.currentStock === 0;
+                      const isUrgent = shortagePercent >= 50;
+                      
+                      return (
+                        <tr
+                          key={index}
+                          className={`border-b border-slate-100 ${
+                            isCritical 
+                              ? 'bg-red-50 hover:bg-red-100' 
+                              : isUrgent 
+                              ? 'bg-orange-50 hover:bg-orange-100'
+                              : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-3 px-4 text-sm font-medium text-slate-900">
+                            {item.productName}
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            <span className={isCritical ? 'text-red-700 font-semibold' : 'text-slate-900'}>
+                              {item.currentStock} {item.unit}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-slate-900">
+                            {item.minStock} {item.unit}
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            <span className="text-red-600 font-semibold">
+                              -{shortage} {item.unit}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-slate-900">
+                            {item.lastOrderQty} {item.unit}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-slate-900">
+                            {item.orderFrequency}
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            {isCritical ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+                                ⚠️ 품절
+                              </span>
+                            ) : isUrgent ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
+                                🔔 긴급
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">
+                                ⚡ 주의
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           )}
         </section>
+
+        {/* 소진 예상 (All Depletion Items) */}
+      
 
         {/* Bottom Section: Top Value Products and Location View */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
