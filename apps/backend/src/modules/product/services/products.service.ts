@@ -841,6 +841,46 @@ export class ProductsService {
     return formattedProducts;
   }
 
+  /**
+   * Find product by barcode (GTIN)
+   * Used for USB barcode scanner functionality
+   */
+  async findByBarcode(barcode: string, tenantId: string) {
+    if (!barcode || !tenantId) {
+      throw new BadRequestException('Barcode and tenant ID are required');
+    }
+
+    const product = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).product.findFirst({
+        where: {
+          tenant_id: tenantId,
+          barcode: barcode,
+          is_active: true,
+        },
+        include: {
+          productSupplier: {
+            include: { 
+              clinicSupplierManager: true,
+              product: true,
+            },
+          },
+          returnPolicy: true,
+          batches: {
+            orderBy: { created_at: 'desc' },
+            take: 1,
+          },
+        },
+      });
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with barcode ${barcode} not found`);
+    }
+
+    // Return full product details using existing getProduct method
+    return this.getProduct(product.id, tenantId);
+  }
+
   async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -1410,8 +1450,10 @@ export class ProductsService {
 
     return this.prisma.$transaction(
       async (tx: any) => {
-      // Avtomatik batch_no yaratish
-      const batchNo = await this.generateBatchNo(productId, tenantId, tx);
+      // ✅ Use frontend's batch_no if provided, otherwise auto-generate BTX-XXX
+      const batchNo = dto.batch_no && dto.batch_no.trim() !== ""
+        ? dto.batch_no
+        : await this.generateBatchNo(productId, tenantId, tx);
 
         // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price, min_stock uchun)
         const product = await tx.product.findFirst({
@@ -1563,16 +1605,17 @@ export class ProductsService {
    * Format: {9xonalik random raqam}-{3xonalik tartib raqami}
    * Masalan: 123456789-001, 987654321-002
    */
+  /**
+   * Generate custom batch number in BTX-XXX format
+   * Always uses custom format (ignores GS1 batch numbers)
+   */
   private async generateBatchNo(
     productId: string,
     tenantId: string,
     tx: any
   ): Promise<string> {
-    // 9 xonalik random raqam yaratish (100000000 - 999999999)
-    const random9Digits = Math.floor(
-      100000000 + Math.random() * 900000000
-    ).toString();
-
+    const productPrefix = 'BTX'; // Custom prefix for all products
+    
     try {
       // ✅ Validate transaction client before using it
       if (!tx || typeof tx.batch?.count !== "function") {
@@ -1588,7 +1631,7 @@ export class ProductsService {
           .toString()
           .padStart(3, "0");
 
-        return `${random9Digits}-${sequenceNumber}`;
+        return `${productPrefix}-${sequenceNumber}`;
       }
 
     // Product'ning mavjud batch'lari sonini topish
@@ -1601,8 +1644,8 @@ export class ProductsService {
       .toString()
       .padStart(3, "0");
 
-    // Formatlash: {random9digit}-{3digitSequence}
-    return `${random9Digits}-${sequenceNumber}`;
+    // Formatlash: BTX-001, BTX-002, BTX-003, ...
+    return `${productPrefix}-${sequenceNumber}`;
     } catch (error: any) {
       // ✅ Fallback: if transaction fails, use regular prisma client
       console.error(
@@ -1621,7 +1664,7 @@ export class ProductsService {
         .toString()
         .padStart(3, "0");
 
-      return `${random9Digits}-${sequenceNumber}`;
+      return `${productPrefix}-${sequenceNumber}`;
     }
   }
 

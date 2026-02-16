@@ -107,6 +107,58 @@ export default function InboundNewPage() {
     fetchStorages();
   }, []);
 
+  // USB Barcode Scanner Support
+  useEffect(() => {
+    let buffer = '';
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+    
+    const handleKeyPress = (e: KeyboardEvent) => {
+      const now = Date.now();
+      
+      // USB scanner types very fast (< 100ms between chars)
+      if (now - lastTime > 100) buffer = '';
+      
+      if (e.key === 'Enter' && buffer.length >= 8) {
+        handleBarcodeScanned(buffer);
+        buffer = '';
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => { buffer = ''; }, 500);
+      }
+    };
+    
+    window.addEventListener('keypress', handleKeyPress);
+    return () => {
+      window.removeEventListener('keypress', handleKeyPress);
+      clearTimeout(timeout);
+    };
+  }, [apiUrl]);
+
+  const handleBarcodeScanned = async (scannedBarcode: string) => {
+    try {
+      const { parseGS1Barcode } = await import('../../../utils/barcodeParser');
+      const parsed = parseGS1Barcode(scannedBarcode);
+      
+      if (!parsed.gtin) {
+        // If not GS1 format, just use the raw barcode
+        setFormData(prev => ({ ...prev, barcode: scannedBarcode }));
+        return;
+      }
+      
+      // Fill only GTIN to the barcode field
+      setFormData(prev => ({ ...prev, barcode: parsed.gtin }));
+      
+    } catch (error) {
+      console.error('Barcode parsing error:', error);
+      // On any error, just use the raw barcode
+      setFormData(prev => ({ ...prev, barcode: scannedBarcode }));
+    }
+  };
+
   // Supplier search states
   const [supplierSearchCompanyName, setSupplierSearchCompanyName] =
     useState("");
@@ -199,11 +251,10 @@ export default function InboundNewPage() {
     status: statusOptions[0],
     isActive: true,
     isUrgent: false,
-    currentStock: 0,
-    currentStockUnit: unitOptions[0] || "cc / mL", // Default to first real unit
+    // REMOVED: currentStock, currentStockUnit (moved to /inbound page)
+    unit: unitOptions[0],
     minStock: 0,
     minStockUnit: unitOptions[0] || "cc / mL",
-    unit: unitOptions[0],
     capacityPerProduct: 0,
     capacityUnit: unitOptions[0] || "cc / mL", // 제품 용량 unit
     usageCapacity: 0,
@@ -217,15 +268,10 @@ export default function InboundNewPage() {
     refundAmount: "",
     returnStorage: "",
     returnNote: "",
-    // Batch info
-    batchNo: "",
-    storage: "",
-    manufactureDate: "",
-    expiryDate: "",
-    expiryMonths: 12,
-    expiryUnit: "months",
+    // REMOVED: Batch info (batchNo, storage, manufactureDate, expiryDate, moved to /inbound page)
+    // Alert Days - Product level configuration
+    hasExpiryPeriod: true, // 유효기간 있음/없음 switch
     alertDays: "",
-    noExpiryPeriod: false, // 유통기간 없음
     // Supplier info
     supplierId: "",
     supplierName: "",
@@ -250,11 +296,7 @@ export default function InboundNewPage() {
       const newData = { ...prev, [field]: value };
 
       // 제품 재고 수량, 최소 제품 재고, 구매가 unit'lari bir-biriga bog'langan
-      const syncedUnitFields = [
-        "currentStockUnit",
-        "minStockUnit",
-        "purchasePriceUnit",
-      ];
+      const syncedUnitFields = ["minStockUnit", "purchasePriceUnit"];
 
       if (syncedUnitFields.includes(field)) {
         syncedUnitFields.forEach((unitField) => {
@@ -293,43 +335,6 @@ export default function InboundNewPage() {
         }
       }
 
-      // 제조일, 유통기한 기간 변경 시 자동 계산
-      if (
-        field === "manufactureDate" ||
-        field === "expiryMonths" ||
-        field === "expiryUnit"
-      ) {
-        const manufactureDate =
-          field === "manufactureDate" ? value : prev.manufactureDate;
-        const expiryMonths =
-          field === "expiryMonths" ? value : prev.expiryMonths;
-        const expiryUnit = field === "expiryUnit" ? value : prev.expiryUnit;
-
-        if (manufactureDate && expiryMonths && expiryUnit) {
-          const mfgDate = new Date(manufactureDate);
-          let calculatedDate = new Date(mfgDate);
-
-          if (expiryUnit === "months") {
-            calculatedDate.setMonth(
-              calculatedDate.getMonth() + Number(expiryMonths)
-            );
-          } else if (expiryUnit === "days") {
-            calculatedDate.setDate(
-              calculatedDate.getDate() + Number(expiryMonths)
-            );
-          } else if (expiryUnit === "years") {
-            calculatedDate.setFullYear(
-              calculatedDate.getFullYear() + Number(expiryMonths)
-            );
-          }
-
-          const calculatedExpiryDate = calculatedDate
-            .toISOString()
-            .split("T")[0];
-          newData.expiryDate = calculatedExpiryDate;
-        }
-      }
-
       return newData;
     });
   };
@@ -353,12 +358,8 @@ export default function InboundNewPage() {
       formData.image ||
       formData.imageUrl ||
       formData.additionalImage ||
-      formData.batchNo ||
-      formData.manufactureDate ||
-      formData.expiryDate ||
       formData.purchasePrice ||
       formData.salePrice ||
-      formData.currentStock ||
       formData.supplierName ||
       formData.supplierContactName ||
       selectedSupplierDetails
@@ -1051,14 +1052,16 @@ export default function InboundNewPage() {
         category: formData.category,
         status: resolvedStatus,
         isActive: resolvedIsActive,
-        currentStock: Number(formData.currentStock) || 0,
+        barcode: formData.barcode || undefined,
         minStock: Number(formData.minStock) || 0,
-        storage: formData.storage || undefined,
-        // ✅ Always send unit (use currentStockUnit, fallback to "EA")
+        // ✅ Always send unit (use minStockUnit or purchasePriceUnit or default to "EA")
         unit:
-          formData.currentStockUnit &&
-          formData.currentStockUnit !== unitOptions[0]
-            ? formData.currentStockUnit
+          formData.minStockUnit &&
+          formData.minStockUnit !== unitOptions[0]
+            ? formData.minStockUnit
+            : formData.purchasePriceUnit &&
+              formData.purchasePriceUnit !== unitOptions[0]
+            ? formData.purchasePriceUnit
             : "EA",
       };
       // ✅ unit already set above, no need for conditional
@@ -1108,39 +1111,16 @@ export default function InboundNewPage() {
       }
 
       // Add optional fields
-      if (formData.barcode) payload.barcode = formData.barcode;
       if (formData.image) payload.image = formData.image;
       else if (formData.imageUrl) payload.image = formData.imageUrl;
 
-      // ✅ Add expiry_months and expiry_unit at product level if not noExpiryPeriod
-      if (!formData.noExpiryPeriod) {
-        if (
-          formData.expiryMonths !== null &&
-          formData.expiryMonths !== undefined
-        ) {
-          payload.expiryMonths = Number(formData.expiryMonths);
-        }
-        if (formData.expiryUnit) {
-          payload.expiryUnit = formData.expiryUnit;
-        }
-      }
-
-      // Add alert_days at product level if not noExpiryPeriod
+      // Add alert_days at product level if hasExpiryPeriod
       if (
-        !formData.noExpiryPeriod &&
+        formData.hasExpiryPeriod &&
         formData.alertDays &&
         formData.alertDays.trim() !== ""
       ) {
         payload.alertDays = formData.alertDays;
-      }
-
-      // Add inbound_manager at product level
-      if (
-        selectedManager &&
-        selectedManager.trim() !== "" &&
-        selectedManager !== "성함 선택"
-      ) {
-        payload.inboundManager = selectedManager;
       }
 
       // Add return policy if returnable
@@ -1153,41 +1133,6 @@ export default function InboundNewPage() {
           return_storage: formData.returnStorage || undefined,
           note: formData.returnNote || undefined,
         };
-      }
-
-      // Always add batch if stock is provided (automatically create batch)
-      if (Number(formData.currentStock) > 0) {
-        payload.initial_batches = [
-          {
-            batch_no: formData.batchNo || undefined, // Backend will auto-generate in format: 123456789-001
-            storage: formData.storage || undefined,
-            purchase_price: formData.purchasePrice
-              ? Number(formData.purchasePrice)
-              : undefined,
-            sale_price: formData.salePrice
-              ? Number(formData.salePrice)
-              : undefined,
-            manufacture_date: formData.manufactureDate || undefined,
-            expiry_date: formData.noExpiryPeriod
-              ? null
-              : formData.expiryDate || undefined,
-            expiry_months: formData.noExpiryPeriod
-              ? null
-              : formData.expiryMonths || undefined,
-            expiry_unit: formData.noExpiryPeriod
-              ? null
-              : formData.expiryUnit || undefined,
-            qty: Number(formData.currentStock) || 0,
-            alert_days:
-              !formData.noExpiryPeriod &&
-              formData.alertDays &&
-              formData.alertDays.trim() !== ""
-                ? formData.alertDays
-                : undefined,
-            inbound_manager:
-              selectedManager !== "성함 선택" ? selectedManager : undefined,
-          },
-        ];
       }
 
       // Add supplier if supplier info is provided
@@ -1423,31 +1368,21 @@ export default function InboundNewPage() {
                       />
                       <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          바코드 번호
+                          바코드 번호 (선택사항)
                         </label>
+                        <p className="text-xs text-blue-700 mb-2">
+                          USB 스캐너로 바코드를 스캔하거나 직접 입력하세요. 스캔 시 자동으로 중복 체크됩니다.
+                        </p>
                         <div className="flex gap-2">
                           <input
                             type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            maxLength={13}
-                            placeholder="바코드 입력 (13자리)"
+                            placeholder="바코드 스캔 또는 입력"
                             value={formData.barcode}
                             onChange={(e) => {
-                              // Only allow numbers and limit to 13 digits
-                              const value = e.target.value
-                                .replace(/\D/g, "")
-                                .slice(0, 13);
-                              handleInputChange("barcode", value);
+                              handleInputChange("barcode", e.target.value);
                             }}
-                            className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            className="h-11 flex-1 rounded-xl border border-blue-300 bg-blue-50 px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
-                          {/* <button
-                            type="button"
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                          >
-                            바코드 스캔
-                          </button> */}
                         </div>
                       </div>
                     </div>
@@ -1531,57 +1466,9 @@ export default function InboundNewPage() {
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-4">
-              {/* Top Row - Stock Fields */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  제품 재고 수량
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.currentStock || ""}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "currentStock",
-                        e.target.value ? Number(e.target.value) : 0
-                      )
-                    }
-                    placeholder="0"
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <div className="relative w-28">
-                    <select
-                      value={formData.currentStockUnit}
-                      onChange={(e) =>
-                        handleInputChange("currentStockUnit", e.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    >
-                      {unitOptions.slice(0).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* REMOVED: 제품 재고 수량 - moved to /inbound page */}
+              
+              {/* 최소 제품 재고 */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                   최소 제품 재고
@@ -2054,75 +1941,38 @@ export default function InboundNewPage() {
           </div>
         </section>
 
+        {/* 유효기간 설정 section */}
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <CalendarIcon className="h-5 w-5 text-emerald-500" />
-            유통기한 정보 *
+            유효기간 설정
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      유통기한
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.noExpiryPeriod}
-                        onChange={(e) => {
-                          const isChecked = e.target.checked;
-                          handleInputChange("noExpiryPeriod", isChecked);
-                          if (isChecked) {
-                            // Checkbox bosilganda expiryDate va alertDays ni tozalash
-                            handleInputChange("expiryDate", "");
-                            handleInputChange("alertDays", "");
-                          }
-                        }}
-                        className="
-        h-5 w-5 shrink-0 rounded
-        appearance-none bg-white
-        border border-white-300
-        checked:bg-white-500 checked:border-white-500
-        focus:outline-none focus:ring-2 focus:ring-white-500
-        dark:bg-white
-        relative
-        after:content-['']
-        after:absolute after:left-1/2 after:top-1/2
-        after:h-2.5 after:w-1.5
-        after:-translate-x-1/2 after:-translate-y-1/2
-        after:rotate-45
-        after:border-r-2 after:border-b-2
-        after:border-black
-        after:opacity-0
-        checked:after:opacity-100
-      "
-                      />
-                      <span className="text-sm text-slate-600 dark:text-slate-300">
-                        유통기간 없음
-                      </span>
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <CalendarIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
-                    <input
-                      type="date"
-                      value={formData.expiryDate}
-                      onChange={(e) =>
-                        handleInputChange("expiryDate", e.target.value)
+            <div className="space-y-4">
+              {/* Switch: 유효기간 있음/없음 */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl dark:bg-slate-800/50">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  유효기간 있음
+                </label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.hasExpiryPeriod}
+                    onChange={(e) => {
+                      const isChecked = e.target.checked;
+                      handleInputChange("hasExpiryPeriod", isChecked);
+                      if (!isChecked) {
+                        handleInputChange("alertDays", "");
                       }
-                      disabled={formData.noExpiryPeriod}
-                      min={`${new Date().getFullYear() - 10}-01-01`}
-                      max={`${new Date().getFullYear() + 20}-12-31`}
-                      className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:w-6 [&::-webkit-calendar-picker-indicator]:h-6 [&::-webkit-calendar-picker-indicator]:ml-2 [&::-webkit-calendar-picker-indicator]:hover:opacity-80"
-                      style={{
-                        colorScheme: "light dark",
-                      }}
-                      title="날짜를 선택하세요. 연도와 월을 변경할 수 있습니다."
-                    />
-                  </div>
-                </div>
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {/* Alert Days Dropdown */}
+              {formData.hasExpiryPeriod && (
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     유효기간 임박 알림 기준
@@ -2133,8 +1983,7 @@ export default function InboundNewPage() {
                       onChange={(e) =>
                         handleInputChange("alertDays", e.target.value)
                       }
-                      disabled={formData.noExpiryPeriod}
-                      className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                      className="h-14 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
                       <option value="">선택(30일전/60일전/90일전)</option>
                       <option value="30">30일전</option>
@@ -2158,7 +2007,7 @@ export default function InboundNewPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </section>
@@ -2967,48 +2816,11 @@ export default function InboundNewPage() {
           </div>
         </section>
 
-        {/* <section className="space-y-6">
-          <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <ClipboardIcon className="h-5 w-5 text-indigo-500" />
-            입고 담당자 *
-          </h2>
-        </section> */}
+        {/* REMOVED: 입고 담당자 section - moved to /inbound page */}
 
         <footer className="">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6">
-            {/* LEFT: 보관 위치 */}
-            <div className="flex-1">
-              <div className="relative">
-                <label className="text-sm font-medium text-slate-600 dark:text-slate-400 mr-2">
-                  보관 위치 *
-                </label>
-                <input
-                  type="text"
-                  list="storage-options"
-                  placeholder="보관 위치를 입력해 주세요"
-                  value={formData.storage}
-                  onChange={(e) => handleInputChange("storage", e.target.value)}
-                  className="h-11 w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-                <datalist id="storage-options">
-                  {storageOptions.map((storage, index) => (
-                    <option key={index} value={storage} />
-                  ))}
-                </datalist>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                담당자 *
-              </label>
-              <input
-                type="text"
-                value={selectedManager}
-                onChange={(e) => setSelectedManager(e.target.value)}
-                placeholder="담당자 이름 입력"
-                className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-              />
-            </div>
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-end gap-6">
+            {/* REMOVED: 보관 위치 and 담당자 - moved to /inbound page */}
 
             {/* RIGHT: 버튼 */}
             <button

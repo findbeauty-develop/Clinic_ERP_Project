@@ -58,6 +58,7 @@ type ProductListItem = {
   id: string;
   productName: string;
   brand: string;
+  barcode?: string | null;
   productImage?: string | null;
   category: string;
   status: string;
@@ -92,6 +93,19 @@ export default function InboundPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 10;
+
+  // ✅ State for barcode scan success modal
+  const [scanSuccessModal, setScanSuccessModal] = useState<{
+    show: boolean;
+    productName: string;
+    batchNumber: string;
+    expiryDate: string;
+  }>({
+    show: false,
+    productName: "",
+    batchNumber: "",
+    expiryDate: "",
+  });
 
   // ✅ Use ref to track activeTab in event listener (avoid closure issues)
   const activeTabRef = useRef(activeTab);
@@ -200,6 +214,60 @@ export default function InboundPage() {
     }
   }, [fetchProducts]);
 
+  // ✅ Global barcode scanner handler - works even when cards are collapsed
+  const handleGlobalBarcodeScanned = useCallback(async (scannedBarcode: string) => {
+    try {
+      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
+      const parsed = parseGS1Barcode(scannedBarcode);
+      
+      if (!parsed.gtin) {
+        alert('잘못된 바코드 형식입니다.');
+        return;
+      }
+      
+      // Find product by GTIN in the current product list
+      const matchedProduct = products.find(p => p.barcode === parsed.gtin);
+      
+      if (!matchedProduct) {
+        alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${parsed.gtin}\n\n제품을 먼저 등록하세요.`);
+        return;
+      }
+      
+      // Auto expand the matched product
+      setExpandedCardId(matchedProduct.id);
+      
+      // Wait for card to expand, then dispatch fill event
+      setTimeout(() => {
+        // Trigger batch form fill via custom event
+        window.dispatchEvent(new CustomEvent('fillBatchForm', {
+          detail: {
+            productId: matchedProduct.id,
+            batchNumber: parsed.batchNumber,
+            expiryDate: parsed.expiryDate,
+          }
+        }));
+      }, 200); // Wait 200ms for card expansion
+      
+      // Scroll to the product card
+      setTimeout(() => {
+        const element = document.getElementById(`product-card-${matchedProduct.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+      
+      // Show success modal instead of alert
+      setScanSuccessModal({
+        show: true,
+        productName: matchedProduct.productName,
+        batchNumber: parsed.batchNumber || '(없음)',
+        expiryDate: parsed.expiryDate || '(없음)',
+      });
+    } catch (error) {
+      console.error('Global barcode scan error:', error);
+    }
+  }, [products]);
+
   // ✅ Listen for product deletion events and update state immediately
   useEffect(() => {
     const handleProductDeleted = async (event: Event) => {
@@ -290,7 +358,7 @@ export default function InboundPage() {
       }
     };
 
-    const handleBatchCreated = (e: Event) => {
+  const handleBatchCreated = (e: Event) => {
       const customEvent = e as CustomEvent;
       const productId = customEvent.detail?.productId;
       if (!productId) return;
@@ -317,6 +385,46 @@ export default function InboundPage() {
       window.removeEventListener("batchCreated", handleBatchCreated);
     };
   }, [apiUrl]); // Only apiUrl in dependencies - activeTab is accessed via ref to avoid closure issues
+
+  // ✅ Global USB Scanner - works even when all cards are collapsed
+  useEffect(() => {
+    // Only active on "quick" tab
+    if (activeTab !== "quick") return;
+    
+    let buffer = '';
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+    
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      const now = Date.now();
+      
+      // USB scanner types very fast (< 100ms between chars)
+      if (now - lastTime > 100) buffer = '';
+      
+      if (e.key === 'Enter' && buffer.length >= 8) {
+        handleGlobalBarcodeScanned(buffer);
+        buffer = '';
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => { buffer = ''; }, 500);
+      }
+    };
+    
+    window.addEventListener('keypress', handleGlobalKeyPress);
+    return () => {
+      window.removeEventListener('keypress', handleGlobalKeyPress);
+      clearTimeout(timeout);
+    };
+  }, [activeTab, handleGlobalBarcodeScanned]);
 
   // ✅ Refresh products when page becomes visible (after product deletion from other pages)
   useEffect(() => {
@@ -697,6 +805,65 @@ export default function InboundPage() {
           }
         }}
       />
+
+      {/* ✅ Barcode Scan Success Modal */}
+      {scanSuccessModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-8 shadow-2xl dark:border-emerald-500/30 dark:bg-slate-900">
+            {/* Success Icon */}
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
+              <svg className="h-12 w-12 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="mb-6 text-center text-2xl font-bold text-slate-900 dark:text-white">
+              ✅ 제품 찾음!
+            </h3>
+
+            {/* Info Grid */}
+            <div className="space-y-4 rounded-2xl bg-slate-50 p-6 dark:bg-slate-800/50">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  제품명:
+                </div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {scanSuccessModal.productName}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    배치번호:
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 text-sm font-mono font-semibold text-indigo-600 dark:bg-slate-900 dark:text-indigo-400">
+                    {scanSuccessModal.batchNumber}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    유효기간:
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 text-sm font-mono font-semibold text-emerald-600 dark:bg-slate-900 dark:text-emerald-400">
+                    {scanSuccessModal.expiryDate}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* OK Button */}
+            <button
+              onClick={() => setScanSuccessModal({ show: false, productName: "", batchNumber: "", expiryDate: "" })}
+              className="mt-6 w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -722,6 +889,7 @@ const ProductCard = memo(function ProductCard({
     purchasePrice: "",
     expiryDate: "",
     storageLocation: "",
+    batchNumber: "", // LOT from barcode scan
   });
 
   // ✅ Avtomatik to'ldirish o'chirildi - placeholder har doim bo'sh bo'lishi kerak
@@ -753,6 +921,93 @@ const ProductCard = memo(function ProductCard({
     Map<string, { data: ProductBatch[]; timestamp: number }>
   >(new Map());
   const CACHE_TTL = 5000; // 30 seconds
+
+  // USB Barcode Scanner for Batch
+  useEffect(() => {
+    if (!isExpanded) return;
+    
+    let buffer = '';
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+    
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (!isExpanded) return;
+      
+      const now = Date.now();
+      if (now - lastTime > 100) buffer = '';
+      
+      if (e.key === 'Enter' && buffer.length >= 8) {
+        handleBatchBarcodeScanned(buffer);
+        buffer = '';
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => { buffer = ''; }, 500);
+      }
+    };
+    
+    window.addEventListener('keypress', handleKeyPress);
+    return () => {
+      window.removeEventListener('keypress', handleKeyPress);
+      clearTimeout(timeout);
+    };
+  }, [isExpanded, product.barcode]);
+
+  const handleBatchBarcodeScanned = async (scannedBarcode: string) => {
+    try {
+      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
+      const parsed = parseGS1Barcode(scannedBarcode);
+      
+      // Verify GTIN matches current product
+      if (parsed.gtin && parsed.gtin !== product.barcode) {
+        alert('⚠️ 잘못된 바코드입니다. 다른 제품의 바코드입니다.');
+        return;
+      }
+      
+      // Auto-fill batch number (LOT) from GS1
+      if (parsed.batchNumber) {
+        setBatchForm(prev => ({
+          ...prev,
+          batchNumber: parsed.batchNumber || "",
+        }));
+      }
+      
+      // Auto-fill expiry date from GS1
+      if (parsed.expiryDate) {
+        setBatchForm(prev => ({
+          ...prev,
+          expiryDate: parsed.expiryDate || prev.expiryDate,
+        }));
+      }
+      
+      // Auto-calculate manufacture date
+      if (parsed.expiryDate && product.expiryMonths) {
+        const expiry = new Date(parsed.expiryDate);
+        const mfg = new Date(expiry);
+        
+        if (product.expiryUnit === 'months') {
+          mfg.setMonth(mfg.getMonth() - product.expiryMonths);
+        } else {
+          mfg.setDate(mfg.getDate() - product.expiryMonths);
+        }
+        
+        setBatchForm(prev => ({
+          ...prev,
+          manufactureDate: mfg.toISOString().split('T')[0],
+        }));
+      }
+      
+      alert(
+        `✅ 배치 스캔 완료!\n` +
+        `배치번호: ${parsed.batchNumber || '(없음)'}\n` +
+        `유효기간: ${parsed.expiryDate || '(없음)'}`
+      );
+    } catch (error) {
+      console.error('Barcode parsing error:', error);
+    }
+  };
 
   useEffect(() => {
     const fetchBatches = async () => {
@@ -826,6 +1081,86 @@ const ProductCard = memo(function ProductCard({
     }
   }, [batchForm.manufactureDate, product.expiryMonths, product.expiryUnit]);
 
+  // Calculate manufacture date when expiry date changes (reverse calculation)
+  useEffect(() => {
+    if (
+      batchForm.expiryDate &&
+      product.expiryMonths &&
+      product.expiryUnit &&
+      !batchForm.manufactureDate // Only auto-calculate if manufacture date is empty
+    ) {
+      const expiryDate = new Date(batchForm.expiryDate);
+      let calculatedMfgDate = new Date(expiryDate);
+
+      if (product.expiryUnit === "months") {
+        calculatedMfgDate.setMonth(
+          calculatedMfgDate.getMonth() - Number(product.expiryMonths)
+        );
+      } else if (product.expiryUnit === "days") {
+        calculatedMfgDate.setDate(
+          calculatedMfgDate.getDate() - Number(product.expiryMonths)
+        );
+      } else if (product.expiryUnit === "years") {
+        calculatedMfgDate.setFullYear(
+          calculatedMfgDate.getFullYear() - Number(product.expiryMonths)
+        );
+      }
+
+      // Format: YYYY-MM-DD
+      const calculatedManufactureDate = calculatedMfgDate.toISOString().split("T")[0];
+
+      setBatchForm((prev) => ({ ...prev, manufactureDate: calculatedManufactureDate }));
+    }
+  }, [batchForm.expiryDate, product.expiryMonths, product.expiryUnit, batchForm.manufactureDate]);
+
+  // ✅ Listen for global barcode scan events to auto-fill batch form
+  useEffect(() => {
+    const handleFillBatchForm = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { productId, batchNumber, expiryDate } = customEvent.detail;
+      
+      // Only fill if this is the target product
+      if (productId !== product.id) return;
+      
+      // Only fill if card is expanded
+      if (!isExpanded) return;
+      
+      console.log('[fillBatchForm] Filling form for product:', productId, { batchNumber, expiryDate });
+      
+      // Fill batch form
+      setBatchForm(prev => ({
+        ...prev,
+        batchNumber: batchNumber || "",
+        expiryDate: expiryDate || prev.expiryDate,
+      }));
+      
+      // Auto-calculate manufacture date if possible
+      if (expiryDate && product.expiryMonths) {
+        const expiry = new Date(expiryDate);
+        const mfg = new Date(expiry);
+        
+        if (product.expiryUnit === 'months') {
+          mfg.setMonth(mfg.getMonth() - product.expiryMonths);
+        } else if (product.expiryUnit === 'days') {
+          mfg.setDate(mfg.getDate() - product.expiryMonths);
+        } else if (product.expiryUnit === 'years') {
+          mfg.setFullYear(mfg.getFullYear() - product.expiryMonths);
+        }
+        
+        setBatchForm(prev => ({
+          ...prev,
+          manufactureDate: mfg.toISOString().split('T')[0],
+        }));
+      }
+    };
+    
+    // Always add listener (not conditional on isExpanded)
+    window.addEventListener('fillBatchForm', handleFillBatchForm);
+    return () => {
+      window.removeEventListener('fillBatchForm', handleFillBatchForm);
+    };
+  }, [isExpanded, product.id, product.expiryMonths, product.expiryUnit]);
+
   const handleCardClick = () => {
     onToggle();
   };
@@ -879,6 +1214,11 @@ const ProductCard = memo(function ProductCard({
         payload.purchase_price = parseInt(batchForm.purchasePrice);
       }
 
+      // ✅ Optional: Batch Number (LOT from barcode scan)
+      if (batchForm.batchNumber && batchForm.batchNumber.trim() !== "") {
+        payload.batch_no = batchForm.batchNumber;
+      }
+
       // ✅ Product'dan sale_price, expiry_months, expiry_unit, alert_days ni olib yuborish
       // Backend fallback qiladi agar frontend'dan yuborilmasa
       if (product.salePrice !== null && product.salePrice !== undefined) {
@@ -930,6 +1270,7 @@ const ProductCard = memo(function ProductCard({
         purchasePrice: "",
         expiryDate: "",
         storageLocation: "",
+        batchNumber: "", // Reset batch number
       });
       setBatchQuantity(1);
 
@@ -983,6 +1324,7 @@ const ProductCard = memo(function ProductCard({
 
   return (
     <div
+      id={`product-card-${product.id}`}
       onClick={handleCardClick}
       className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:border-sky-200 cursor-pointer dark:border-slate-800 dark:bg-slate-900/70"
     >
@@ -1142,93 +1484,203 @@ const ProductCard = memo(function ProductCard({
             )}
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                새 배치 입고 처리
+          <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-6 dark:border-sky-500/30 dark:bg-sky-500/5">
+            {/* Title */}
+            <div className="flex items-center justify-between border-b border-sky-200 pb-3 dark:border-sky-500/30">
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                별도 구매
+              </h3>
+             
+            </div>
+
+            {/* Note: 배치번호는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다 */}
+            <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+              <p>별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다.</p>
+              <p className="mt-1">
+                <span className="font-semibold">Jaclit을 통해 주문한 제품은</span> : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
+              </p>
+            </div>
+
+            {/* Row 1: 배치번호 + 입고 수량 */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* 배치번호 (선택가능) */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  배치번호
+                  <span className="text-xs font-normal text-slate-500">(선택가능)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="자동 생성됩니다 (BTX-XXX) 또는 바코드 스캔"
+                  value={batchForm.batchNumber}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setBatchForm({ ...batchForm, batchNumber: e.target.value });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+
+              {/* 입고 수량 */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  입고 수량 *
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBatchQuantity(Math.max(0, batchQuantity - 1));
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    value={batchQuantity}
+                    onChange={(e) => setBatchQuantity(Number(e.target.value) || 0)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBatchQuantity(batchQuantity + 1);
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    +
+                  </button>
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {product.unit || 'box'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* 입고 담당자 - Editable input field */}
-            <div className="flex items-center">
-              <label className="w-28 shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
-                입고 담당자 *
-              </label>
+            {/* Row 2: 제조일 + 유효 기간 */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* 제조일 */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  제조일 *
+                </label>
+                <input
+                  type="date"
+                  value={batchForm.manufactureDate}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setBatchForm({ ...batchForm, manufactureDate: e.target.value });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
 
-              <input
-                type="text"
-                placeholder="입고 담당자 이름을 입력하세요"
-                value={batchForm.inboundManager}
-                onChange={(e) =>
-                  setBatchForm({ ...batchForm, inboundManager: e.target.value })
-                }
-                onClick={(e) => e.stopPropagation()}
-                className="rounded-xl border border-slate-200 bg-white px-1 w-full  max-w-sm py-2 text-sm text-slate-800
-               focus:border-sky-400 focus:outline-none
-               dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
-               dark:focus:border-sky-500"
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <QuantityField
-                value={batchQuantity}
-                onChange={setBatchQuantity}
-              />
-              <InlineField
-                label="구매원가 (원)"
-                placeholder="구매원가를 입력하세요"
-                type="text"
-                value={
-                  batchForm.purchasePrice
-                    ? Number(batchForm.purchasePrice).toLocaleString()
-                    : ""
-                }
-                onChange={(value) => {
-                  // Remove commas and keep only numbers
-                  const numericValue = value.replace(/,/g, "");
-                  setBatchForm({ ...batchForm, purchasePrice: numericValue });
-                }}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <InlineField
-                  label="유효 기간 *"
+              {/* 유효 기간 */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  유효 기간 *
+                </label>
+                <input
                   type="date"
                   value={batchForm.expiryDate}
-                  onChange={(value) =>
-                    setBatchForm({ ...batchForm, expiryDate: value })
-                  }
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setBatchForm({ ...batchForm, expiryDate: e.target.value });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
-                {batchForm.manufactureDate &&
-                  product.expiryMonths &&
-                  product.expiryUnit && (
-                    <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
-                      계산된 유통기한: {batchForm.expiryDate || "계산 중..."}
-                    </p>
-                  )}
               </div>
-              {/* 보관 위치 - to'liq width */}
-              <InlineField
-                label="보관 위치"
-                placeholder="예: 창고 A-3, 냉장실 1번"
-                value={batchForm.storageLocation}
-                onChange={(value) =>
-                  setBatchForm({ ...batchForm, storageLocation: value })
-                }
-              />
             </div>
 
-            <div className="flex justify-end">
-              <button
+            {/* Row 3: 구매가 + 보관 위치 */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* 구매가 */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  구매가 *
+                </label>
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    placeholder="0"
+                    value={
+                      batchForm.purchasePrice
+                        ? Number(batchForm.purchasePrice).toLocaleString()
+                        : ""
+                    }
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      const numericValue = e.target.value.replace(/,/g, "");
+                      setBatchForm({ ...batchForm, purchasePrice: numericValue });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  {product.purchasePrice && (
+                    <div className="text-xs text-slate-500">
+                      전구매가 {Number(product.purchasePrice).toLocaleString()} / {product.unit || 'box'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 보관 위치 */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  보관 위치
+                </label>
+                <input
+                  type="text"
+                  placeholder="보관 위치를 입력하지 않으면 기본 위치로 저장됩니다"
+                  value={batchForm.storageLocation}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setBatchForm({ ...batchForm, storageLocation: e.target.value });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+            </div>
+
+            {/* Row 4: 입고 직원 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  입고 직원 *
+                </label>
+                <input
+                  type="text"
+                  placeholder="이름 입력"
+                  value={batchForm.inboundManager}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setBatchForm({ ...batchForm, inboundManager: e.target.value });
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+              <div className="space-y-2 ml-auto mt-8">
+               <button
                 onClick={handleCreateBatch}
                 disabled={submittingBatch}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submittingBatch ? "처리 중..." : "+ 입고"}
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {submittingBatch ? "처리 중..." : "바코드 입고"}
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3746,3 +4198,4 @@ const OrderCard = memo(function OrderCard({
     </div>
   );
 });
+

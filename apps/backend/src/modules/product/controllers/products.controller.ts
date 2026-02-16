@@ -105,6 +105,17 @@ export class ProductsController {
     return res.json(products);
   }
 
+  @Get('barcode/:barcode')
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Find product by barcode (GTIN)' })
+  async findByBarcode(
+    @Param('barcode') barcode: string,
+    @Tenant() tenantId: string
+  ) {
+    return this.productsService.findByBarcode(barcode, tenantId);
+  }
+
   @Get("storages/list")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
