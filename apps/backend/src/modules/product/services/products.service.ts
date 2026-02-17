@@ -71,22 +71,18 @@ export class ProductsService {
               id: true,
               name: true,
               brand: true,
-              barcode: true,
-              image_url: true,
-              category: true,
-              status: true,
-              current_stock: true,
-              min_stock: true,
-              purchase_price: true,
-              sale_price: true,
-              unit: true,
-              usage_capacity: true,
-              capacity_unit: true,
-              capacity_per_product: true,
-              storage: true,
-              expiry_months: true,
-              expiry_unit: true,
-              alert_days: true,
+            barcode: true,
+            image_url: true,
+            category: true,
+            current_stock: true,
+            min_stock: true,
+            purchase_price: true,
+            sale_price: true,
+            unit: true,
+            usage_capacity: true,
+            capacity_unit: true,
+            capacity_per_product: true,
+            alert_days: true,
               created_at: true,
               batches: {
                 select: {
@@ -178,11 +174,11 @@ export class ProductsService {
           managerName: supplierManager?.name ?? null,
           supplierId: supplierManager?.id ?? null,
           expiryDate: latestBatch?.expiry_date ?? null,
-          storageLocation: latestBatch?.storage ?? product.storage ?? null,
-          productStorage: product.storage ?? null,
+          storageLocation: latestBatch?.storage ?? null, // Only from batch now
+          productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
           memo: returnPolicy?.note ?? null,
-          expiryMonths: product.expiry_months ?? null,
-          expiryUnit: product.expiry_unit ?? null,
+          expiryMonths: null, // Removed from Product table
+          expiryUnit: null, // Removed from Product table
           isLowStock: product.current_stock < product.min_stock,
           batches: product.batches || [],
         };
@@ -253,11 +249,11 @@ export class ProductsService {
       managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
       supplierId: supplierManager?.id ?? null,
       expiryDate: latestBatch?.expiry_date ?? null,
-      storageLocation: latestBatch?.storage ?? product.storage ?? null,
-      productStorage: product.storage ?? null,
+      storageLocation: latestBatch?.storage ?? null, // Only from batch now
+      productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
       memo: returnPolicy?.note ?? null,
-      expiryMonths: product.expiry_months ?? null,
-      expiryUnit: product.expiry_unit ?? null,
+      expiryMonths: null, // Removed from Product table
+      expiryUnit: null, // Removed from Product table
       isLowStock: product.current_stock < product.min_stock,
       batches: product.batches || [],
     };
@@ -669,10 +665,10 @@ export class ProductsService {
       supplierEmail2: supplierManager?.email2 ?? null,
       supplierResponsibleProducts: supplierManager?.responsible_products ?? [],
       supplierMemo: supplierManager?.memo ?? null,
-      expiryDate: product.expiry_date ?? latestBatch?.expiry_date ?? null, // Product level first, then batch
-      storageLocation: product.storage ?? latestBatch?.storage ?? null, // Product level first, then batch
-      productStorage: product.storage ?? null, // Product level storage (fallback uchun)
-      inboundManager: product.inbound_manager ?? null, // 입고 담당자
+      expiryDate: latestBatch?.expiry_date ?? null, // Only from batch now
+      storageLocation: latestBatch?.storage ?? null, // Only from batch now
+      productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
+      inboundManager: null, // Removed from Product table
       memo: product.returnPolicy?.note ?? null,
       isReturnable: product.returnPolicy?.is_returnable ?? false,
       refundAmount: product.returnPolicy?.refund_amount ?? null,
@@ -711,7 +707,6 @@ export class ProductsService {
             barcode: true,
             image_url: true,
             category: true,
-            status: true,
             current_stock: true,
             min_stock: true,
             purchase_price: true,
@@ -720,9 +715,6 @@ export class ProductsService {
             usage_capacity: true,
             capacity_unit: true,
             capacity_per_product: true,
-            storage: true,
-            expiry_months: true,
-            expiry_unit: true,
             alert_days: true,
             created_at: true,
           batches: {
@@ -818,11 +810,11 @@ export class ProductsService {
         managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
         supplierId: supplierManager?.id ?? null,
         expiryDate: latestBatch?.expiry_date ?? null,
-        storageLocation: latestBatch?.storage ?? product.storage ?? null,
-        productStorage: product.storage ?? null,
+        storageLocation: latestBatch?.storage ?? null, // Only from batch now
+        productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
         memo: returnPolicy?.note ?? null,
-        expiryMonths: product.expiry_months ?? null,
-        expiryUnit: product.expiry_unit ?? null,
+        expiryMonths: null, // Removed from Product table
+        expiryUnit: null, // Removed from Product table
         alertDays: product.alert_days ?? null,
         isLowStock: product.current_stock < product.min_stock,
         batches: product.batches || [],
@@ -920,10 +912,10 @@ export class ProductsService {
     }
     // Agar dto.image undefined bo'lsa, eski image saqlanadi (image o'zgarmagan)
 
-    const resolvedStatus = dto.status ?? existing.status;
-    const resolvedIsActive =
-      dto.isActive ??
-      (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
+    // const resolvedStatus = dto.status ?? existing.status;
+    // const resolvedIsActive =
+    //   dto.isActive ??
+    //   (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
 
     const newCurrentStock =
       dto.currentStock !== undefined
@@ -949,8 +941,8 @@ export class ProductsService {
           barcode: dto.barcode ?? existing.barcode,
           image_url: imageUrl,
           category: dto.category ?? existing.category,
-          status: resolvedStatus,
-          is_active: resolvedIsActive,
+          // status: resolvedStatus,
+          // is_active: resolvedIsActive,
           unit: dto.unit ?? existing.unit,
           purchase_price: dto.purchasePrice ?? existing.purchase_price,
           sale_price: dto.salePrice ?? existing.sale_price,
@@ -1385,8 +1377,6 @@ export class ProductsService {
         id: true,
         batch_no: true,
         expiry_date: true,
-        expiry_months: true,
-        expiry_unit: true,
         alert_days: true,
         storage: true,
         created_at: true,
@@ -1462,10 +1452,7 @@ export class ProductsService {
         const product = await tx.product.findFirst({
           where: { id: productId, tenant_id: tenantId },
           select: {
-            storage: true,
             unit: true,
-            expiry_months: true,
-            expiry_unit: true,
             alert_days: true,
             sale_price: true,
             min_stock: true,

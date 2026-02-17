@@ -1228,15 +1228,15 @@ export default function InboundNewPage() {
             <p className="max-w-3xl text-base text-slate-500 dark:text-slate-300"></p>
           </div>
           <div className="flex flex-col items-end gap-3">
-            <div className="flex items-center gap-2 text-base font-medium text-slate-700 dark:text-slate-200">
-              <span>입고날짜</span>
-              <span className="font-mono text-slate-900 dark:text-white">
-                {inboundDate
-                  .split("-")
-                  .map((part, i) => (i === 0 ? part.slice(2) : part))
-                  .join("-")}
-              </span>
-            </div>
+        <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+  <span>입고날짜</span>
+  <span className="font-mono text-slate-500 dark:text-slate-400">
+    {inboundDate
+      .split("-")
+      .map((part, i) => (i === 0 ? part.slice(2) : part))
+      .join("-")}
+  </span>
+</div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

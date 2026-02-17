@@ -567,8 +567,7 @@ export default function ContactInfoPage() {
                   />
                 </svg>
                 <span>
-                  담당하는 제품 또는 카테고리를 입력하고 추가 버튼을 누르세요
-                </span>
+담당하는 제품 또는 카테고리를 입력한 후 Enter 키를 눌러 추가하세요.                </span>
               </div>
               {errors.newProduct && (
                 <p className="mb-2 text-xs text-red-600">{errors.newProduct}</p>

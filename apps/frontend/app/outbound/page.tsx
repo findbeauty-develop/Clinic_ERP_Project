@@ -2476,7 +2476,7 @@ function OutboundPageContent() {
                                       ? `${item.packageName} - `
                                       : ""}
                                     {item.productName} {item.batchNo}{" "}
-                                    {item.quantity}
+                                   [ {item.quantity}]
                                     {item.capacity_unit || "개"}
                                   </span>
                                   <button
@@ -2793,7 +2793,7 @@ function OutboundPageContent() {
                                   }`}
                                 >
                                   {item.productName} {item.batchNo}{" "}
-                                  {item.quantity}
+                                  [{item.quantity}]
                                   {item.capacity_unit || "개"}
                                   {isFailed && (
                                     <span className="ml-2 text-xs text-red-600 dark:text-red-400">
@@ -2834,23 +2834,39 @@ function OutboundPageContent() {
                             );
                           });
                         })()}
-                        <div className="pt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          총 {scheduledItems.length}항목
-                          {failedItems.length > 0 && (
-                            <span className="ml-2 text-red-600 dark:text-red-400">
-                              (실패: {failedItems.length}개)
-                            </span>
-                          )}
-                        </div>
+                        
                       </div>
                     )}
                   </div>
 
                   {/* Memo Field */}
                 </div>
+               
+
+<div className="mt-6 flex-shrink-0">
+  {/* Divider */}
+  <div className="border-t border-slate-200 dark:border-slate-700 mb-2" />
+
+  {/* Text under divider */}
+  <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+    총 {scheduledItems.length}항목
+    {failedItems.length > 0 && (
+      <span className="ml-2 text-red-600 dark:text-red-400">
+        (실패: {failedItems.length}개)
+      </span>
+    )}
+  </div>
+
+ 
+
+
+  {/* Content under divider */}
+ 
+</div>
 
                 {/* Action Buttons - Fixed at bottom */}
-                <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0 mt-4">
+                <div className="flex gap-3 pt-4">
+                   
                   <button
                     onClick={handleSubmit}
                     disabled={
@@ -2911,6 +2927,7 @@ function OutboundPageContent() {
                     }
                     className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
+                    
                     {submitting ? "처리 중..." : "출고 하기"}
                   </button>
                   <button

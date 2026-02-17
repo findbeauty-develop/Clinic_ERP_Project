@@ -135,8 +135,6 @@ export class PackageRepository {
                     used_count: true, // ✅ Add for availableQuantity calculation
                     // available_quantity: true, // ✅ Will be available after migration
                     expiry_date: true,
-                    expiry_months: true,
-                    expiry_unit: true,
                     storage: true,
                     alert_days: true,
                   },
