@@ -739,6 +739,7 @@ export class ProductsService {
                 storage: true,
                 alert_days: true,
                 created_at: true,
+                is_separate_purchase: true, // ✅ Added
               },
             orderBy: { created_at: "desc" },
               // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)

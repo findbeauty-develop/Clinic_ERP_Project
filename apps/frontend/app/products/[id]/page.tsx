@@ -77,6 +77,7 @@ type ProductDetail = {
     sale_price?: number | null;
     manufacture_date?: string | null;
     created_at: string;
+    is_separate_purchase?: boolean; // ✅ Added
   }[];
 };
 
@@ -214,6 +215,7 @@ export default function ProductDetailPage() {
             sale_price: null,
             manufacture_date: null,
             created_at: batch.created_at || new Date().toISOString(),
+            is_separate_purchase: batch.is_separate_purchase ?? false, // ✅ Added
           })
         );
 
@@ -427,6 +429,12 @@ export default function ProductDetailPage() {
                               <span className="text-sm font-semibold text-slate-800 dark:text-white">
                                 {batch.batch_no}
                               </span>
+                              {/* ✅ 별도 구매 Badge */}
+                              {batch.is_separate_purchase && (
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                  별도 구매
+                                </span>
+                              )}
                             </div>
                             {batch.inbound_qty && (
                               <span className="inline-flex items-center gap-1 font-semibold text-sky-600 dark:text-sky-400">

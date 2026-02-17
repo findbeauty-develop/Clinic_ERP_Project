@@ -25,6 +25,7 @@ type Batch = {
   storage?: string | null;
   isExpiringSoon?: boolean;
   daysUntilExpiry?: number | null;
+  is_separate_purchase?: boolean; // ✅ Added
 };
 
 type ProductForOutbound = {
@@ -95,6 +96,7 @@ type PackageItemForOutbound = {
     storage?: string | null;
     isExpiringSoon?: boolean;
     daysUntilExpiry?: number | null;
+    is_separate_purchase?: boolean; // ✅ Added
   }[];
 };
 
@@ -3262,6 +3264,12 @@ const ProductCard = memo(function ProductCard({
                       <span className="text-base font-bold text-slate-900 dark:text-white">
                         베치: {batch.batch_no}
                       </span>
+                      {/* ✅ 별도 구매 Badge */}
+                      {batch.is_separate_purchase && (
+                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                          별도 구매
+                        </span>
+                      )}
                       {batch.isExpiringSoon && (
                         <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300">
                           유효기간 임박
