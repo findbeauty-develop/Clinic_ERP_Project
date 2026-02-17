@@ -243,7 +243,7 @@ export default function ProductDetailPage() {
             </div>
             <div className="flex items-center gap-3">
               <Link
-                href="/inventory/products"
+                href="/inbound"
                 className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
               >
                 <ArrowLeftIcon className="h-5 w-5" />

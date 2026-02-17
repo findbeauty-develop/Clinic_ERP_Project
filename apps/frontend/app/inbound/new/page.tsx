@@ -254,7 +254,7 @@ export default function InboundNewPage() {
     // REMOVED: currentStock, currentStockUnit (moved to /inbound page)
     unit: unitOptions[0],
     minStock: 0,
-    minStockUnit: unitOptions[0] || "cc / mL",
+    minStockUnit: "box", // ✅ Changed to always be "box"
     capacityPerProduct: 0,
     capacityUnit: unitOptions[0] || "cc / mL", // 제품 용량 unit
     usageCapacity: 0,
@@ -1460,7 +1460,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <InfoIcon className="h-5 w-5 text-sky-500" />
-            수량 및 용량 *
+            제품 수량 및 용량 설정 *
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-4">
@@ -1491,29 +1491,11 @@ export default function InboundNewPage() {
                       onChange={(e) =>
                         handleInputChange("minStockUnit", e.target.value)
                       }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      disabled
                     >
-                      {unitOptions.slice(0).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
+                      <option value="box">box</option>
                     </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -2086,14 +2068,14 @@ export default function InboundNewPage() {
                         {selectedSupplierDetails.companyPhone || "-"}
                       </div>
                     </div>
-                    <div>
+                    {/* <div>
                       <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
                         담당자 ID
                       </label>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                         {selectedSupplierDetails.managerId}
                       </div>
-                    </div>
+                    </div> */}
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
                         핸드폰 번호
@@ -2711,9 +2693,9 @@ export default function InboundNewPage() {
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
                             핸드폰 번호
                           </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          {/* <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
                             담당자 ID
-                          </th>
+                          </th> */}
                         </tr>
                       </thead>
                       <tbody>
@@ -2739,9 +2721,9 @@ export default function InboundNewPage() {
                             <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
                               {result.phoneNumber}
                             </td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                            {/* <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
                               {result.managerId}
-                            </td>
+                            </td> */}
                           </tr>
                         ))}
                       </tbody>

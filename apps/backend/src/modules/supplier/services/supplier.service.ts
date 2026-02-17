@@ -14,149 +14,43 @@ export class SupplierService {
   ) {}
 
   async searchSuppliers(dto: SearchSupplierDto, tenantId: string) {
-    // Primary search: companyName + managerName
-    // STRICT RULE: phoneNumber should NOT be used in primary search
-    // phoneNumber is only for fallback search (searchSuppliersByPhone)
+    // ✅ NEW SIMPLIFIED LOGIC: Search directly from ClinicSupplierManager
+    // No need to check APPROVED links or SupplierManager - all data is in one table
 
-    // Validate that companyName and/or managerName is provided (phoneNumber is NOT allowed here)
+    // Validate that at least one search criteria is provided
     if (!dto.companyName && !dto.managerName) {
       throw new Error(
-        "회사명 또는 담당자 이름 중 하나는 필수입니다. 전화번호로 검색하려면 /supplier/search-by-phone 엔드포인트를 사용하세요."
+        "회사명 또는 담당자 이름 중 하나는 필수입니다."
       );
     }
 
-    // If phoneNumber is provided, reject it - phone search should use separate endpoint
-    if (dto.phoneNumber) {
-      throw new Error(
-        "전화번호로 검색하려면 /supplier/search-by-phone 엔드포인트를 사용하세요."
-      );
-    }
-
-    // Primary search: companyName + managerName
-    // ONLY returns suppliers with APPROVED ClinicSupplierLink
-    // If no APPROVED link exists, returns empty array (no results)
-    const suppliers = await this.repository.searchSuppliers(
+    // Search ClinicSupplierManager directly
+    const results = await this.repository.searchSuppliers(
       tenantId,
       dto.companyName,
-      undefined, // phoneNumber is NOT allowed in primary search
+      undefined, // phoneNumber is NOT allowed in primary search (use separate endpoint)
       dto.managerName
     );
 
-    // CRITICAL SAFETY CHECK: Verify all returned suppliers have APPROVED ClinicSupplierLink
-    // IMPORTANT: ClinicSupplierLink now links to SupplierManager, not Supplier
-    // We need to check if any SupplierManager from these suppliers has APPROVED link
-    if (suppliers.length > 0) {
-      const prisma = this.prisma as any;
-
-      // Get all SupplierManager IDs from returned suppliers
-      const allManagerIds: string[] = [];
-      suppliers.forEach((s: any) => {
-        if (s.managers && s.managers.length > 0) {
-          s.managers.forEach((m: any) => {
-            if (m.id) allManagerIds.push(m.id);
-          });
-        }
-      });
-
-      if (allManagerIds.length > 0) {
-        // Double-check: Get APPROVED links for these SupplierManagers
-        const verifiedLinks = await prisma.clinicSupplierLink.findMany({
-          where: {
-            tenant_id: tenantId,
-            supplier_manager_id: { in: allManagerIds },
-            status: "APPROVED",
-          },
-          select: {
-            supplier_manager_id: true,
-          },
-        });
-
-        const verifiedManagerIds = new Set(
-          verifiedLinks.map((link: any) => link.supplier_manager_id)
-        );
-
-        // Filter suppliers to only include those with at least one approved manager
-        const verifiedSuppliers = suppliers.filter((supplier: any) => {
-          if (!supplier.managers || supplier.managers.length === 0)
-            return false;
-          return supplier.managers.some((m: any) =>
-            verifiedManagerIds.has(m.id)
-          );
-        });
-
-        // Filter managers within each supplier to only include approved ones
-        verifiedSuppliers.forEach((supplier: any) => {
-          if (supplier.managers) {
-            supplier.managers = supplier.managers.filter((m: any) =>
-              verifiedManagerIds.has(m.id)
-            );
-          }
-        });
-
-        // If any suppliers were filtered out, log a warning
-        if (verifiedSuppliers.length !== suppliers.length) {
-          this.logger.warn(
-            `Filtered out ${
-              suppliers.length - verifiedSuppliers.length
-            } suppliers without APPROVED ClinicSupplierLink`
-          );
-        }
-
-        // Only return verified suppliers
-        const suppliersToReturn = verifiedSuppliers;
-
-        // Format response
-        return suppliersToReturn.map((supplier: any) => {
-          // IMPORTANT: Primary search matches ONLY by SupplierManager.name
-          // Get the first manager (use SupplierManager)
-          // SupplierManager is from platform-registered suppliers (has login credentials)
-          const manager = supplier.managers?.[0];
-
-          return {
-            // 회사 정보
-            id: supplier.id, // Supplier company ID
-            supplierId: supplier.id, // Alias for clarity
-            companyName: supplier.company_name, // 회사명
-            companyAddress: supplier.company_address, // 회사주소
-            businessNumber: supplier.business_number, // 사업자 등록번호
-            companyPhone: supplier.company_phone, // 회사 전화번호
-            companyEmail: supplier.company_email, // 회사 이메일
-            businessType: supplier.business_type, // 업태
-            businessItem: supplier.business_item, // 종목
-            productCategories: supplier.product_categories, // 취급 제품 카테고리
-            status: supplier.status, // 상태
-
-            // 담당자 정보 (SupplierManager yoki ClinicSupplierManager)
-            managerId: manager?.manager_id || null, // 담당자 ID (SupplierManager'da mavjud)
-            managerName: manager?.name || null, // 이름
-            position: manager?.position || null, // 직함
-            phoneNumber: manager?.phone_number || null, // 담당자 핸드폰 번호
-            email1: manager?.email1 || null, // 이메일1
-            email2: manager?.email2 || null, // 이메일2
-            responsibleProducts: manager?.responsible_products || [], // 담당자 제품
-            managerStatus: manager?.status || null, // 담당자 상태 (SupplierManager'da mavjud)
-
-            // All managers (SupplierManager - global, login uchun)
-            managers:
-              supplier.managers?.map((m: any) => ({
-                managerId: m.manager_id,
-                name: m.name,
-                position: m.position,
-                phoneNumber: m.phone_number,
-                email1: m.email1,
-                email2: m.email2,
-                responsibleProducts: m.responsible_products,
-                status: m.status,
-              })) || [],
-
-            // Note: clinicManagers removed - no direct relation in Supplier model
-          };
-        });
-      }
-    }
-
-    // If no suppliers returned from repository, return empty array
-    return [];
+    // Format response to match frontend expectations
+    return results.map((manager: any) => {
+      return {
+        id: manager.id, // ClinicSupplierManager ID
+        supplierId: manager.id, // Same as id for consistency
+        companyName: manager.company_name || "",
+        companyAddress: manager.company_address || null,
+        businessNumber: manager.business_number || "",
+        companyPhone: manager.company_phone || null,
+        companyEmail: manager.company_email || "",
+        managerId: manager.id, // Same as id
+        managerName: manager.name || "",
+        position: manager.position || null,
+        phoneNumber: manager.phone_number || "",
+        email1: manager.email1 || null,
+        email2: manager.email2 || null,
+        responsibleProducts: manager.responsible_products || [],
+      };
+    });
   }
 
   /**
@@ -207,79 +101,43 @@ export class SupplierService {
   }
 
   /**
-   * Fallback search by phone number without transaction history filter
-   * Used when main search returns no results
-   * Also searches clinic-created suppliers (ClinicSupplierManager)
+   * Fallback search by phone number
+   * Searches directly from ClinicSupplierManager table
    */
   async searchSuppliersByPhone(phoneNumber: string, tenantId: string) {
     if (!phoneNumber) {
       throw new Error("핸드폰 번호는 필수입니다");
     }
 
-    const suppliers = await this.repository.searchSuppliersByPhone(
-      phoneNumber,
-      tenantId
+    // ✅ NEW SIMPLIFIED LOGIC: Search directly from ClinicSupplierManager by phone
+    const results = await this.repository.searchSuppliers(
+      tenantId,
+      undefined, // no companyName filter
+      phoneNumber, // search by phone
+      undefined // no managerName filter
     );
 
-    // Format response (same format as searchSuppliers, but with isRegisteredOnPlatform flag)
-    return suppliers.map((supplier: any) => {
-      // Get the first manager (use SupplierManager or ClinicSupplierManager)
-      // IMPORTANT: For phone search, we want the manager that matches the phone number
-      const manager = supplier.managers?.[0];
-
-      // Check if supplier is registered on platform (has ACTIVE SupplierManager)
-      // ✅ Agar isClinicCreated flag bo'lsa, bu ClinicSupplierManager
-      const isRegisteredOnPlatform =
-        !supplier.isClinicCreated &&
-        (supplier.managers?.some((m: any) => m.status === "ACTIVE") || false);
-
-      // Get the SupplierManager ID (not manager_id, but the actual database ID)
-      // ✅ Agar ClinicSupplierManager bo'lsa, clinicSupplierManagerId'ni qaytarish
-      const supplierManagerId = supplier.isClinicCreated
-        ? null // ClinicSupplierManager uchun SupplierManager ID yo'q
-        : supplier.managers?.[0]?.id || null;
-
-      // ✅ ClinicSupplierManager ID'ni olish
-      const clinicSupplierManagerId = supplier.clinicSupplierManagerId || null;
-
-      // Debug logging
-
+    // Format response to match frontend expectations
+    return results.map((manager: any) => {
       return {
-        id: supplier.id, // Supplier company ID yoki ClinicSupplierManager ID
-        supplierId: supplier.id, // Alias for clarity
-        companyName: supplier.company_name,
-        companyAddress: supplier.company_address,
-        businessNumber: supplier.business_number,
-        companyPhone: supplier.company_phone,
-        companyEmail: supplier.company_email,
-        businessType: supplier.business_type,
-        businessItem: supplier.business_item,
-        productCategories: supplier.product_categories || [],
-        status: supplier.status,
-        isRegisteredOnPlatform, // Flag: supplier platformada ro'yxatdan o'tgan
-        isClinicCreated: supplier.isClinicCreated || false, // ✅ Flag: Clinic yaratgan supplier
-        managerId: manager?.manager_id || null, // manager_id (like "회사명0001") yoki null ClinicSupplierManager uchun
-        supplierManagerId: supplierManagerId, // Database ID of SupplierManager (for creating ClinicSupplierLink)
-        clinicSupplierManagerId: clinicSupplierManagerId, // ✅ ClinicSupplierManager ID
-        managerName: manager?.name || null,
-        position: manager?.position || null,
-        phoneNumber: manager?.phone_number || null,
-        email1: manager?.email1 || null,
-        email2: manager?.email2 || null,
-        responsibleProducts: manager?.responsible_products || [],
-        managerStatus: manager?.status || null,
-        managers:
-          supplier.managers?.map((m: any) => ({
-            id: m.id, // Database ID
-            managerId: m.manager_id || null, // manager_id (like "회사명0001") yoki null ClinicSupplierManager uchun
-            name: m.name,
-            position: m.position,
-            phoneNumber: m.phone_number,
-            email1: m.email1,
-            email2: m.email2,
-            responsibleProducts: m.responsible_products || [],
-            status: m.status,
-          })) || [],
+        id: manager.id, // ClinicSupplierManager ID
+        supplierId: manager.id, // Same as id for consistency
+        companyName: manager.company_name || "",
+        companyAddress: manager.company_address || null,
+        businessNumber: manager.business_number || "",
+        companyPhone: manager.company_phone || null,
+        companyEmail: manager.company_email || "",
+        managerId: manager.id, // Same as id
+        managerName: manager.name || "",
+        position: manager.position || null,
+        phoneNumber: manager.phone_number || "",
+        email1: manager.email1 || null,
+        email2: manager.email2 || null,
+        responsibleProducts: manager.responsible_products || [],
+        isRegisteredOnPlatform: false, // Not applicable anymore - all suppliers are clinic-specific
+        isClinicCreated: true, // All are clinic-created now
+        supplierManagerId: null, // Not applicable - using ClinicSupplierManager
+        clinicSupplierManagerId: manager.id, // ClinicSupplierManager ID
       };
     });
   }

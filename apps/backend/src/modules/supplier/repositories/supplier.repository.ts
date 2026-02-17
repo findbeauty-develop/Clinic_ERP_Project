@@ -26,143 +26,53 @@ export class SupplierRepository {
   ) {
     const prisma = this.prisma as any;
 
-    // STEP 1: Get SupplierManager IDs that have APPROVED trade relationship with this clinic
-    // This is the STRICT filter - if no APPROVED link exists, return empty array
-    const approvedLinks = await prisma.clinicSupplierLink.findMany({
-      where: {
-        tenant_id: tenantId,
-        status: "APPROVED", // ONLY approved trade relationships
-      },
-      select: {
-        supplier_manager_id: true,
-      },
-    });
-
-    const approvedManagerIds = new Set<string>();
-    approvedLinks.forEach((link: any) => {
-      approvedManagerIds.add(link.supplier_manager_id);
-    });
-
-    // STEP 2: If no APPROVED links exist, return empty array immediately
-    // This ensures suppliers without trade relationship don't appear
-    // CRITICAL: This check MUST happen before any query execution
-    if (approvedManagerIds.size === 0) {
-      return [];
-    }
-
-    // STEP 3: Get Supplier IDs from approved SupplierManagers
-    const approvedManagers = await prisma.supplierManager.findMany({
-      where: {
-        id: {
-          in: Array.from(approvedManagerIds),
-        },
-        status: "ACTIVE", // Only active managers
-      },
-      select: {
-        supplier_tenant_id: true,
-        supplier: {
-          select: { id: true },
-        },
-      },
-    });
-
-    const approvedSupplierIds = new Set<string>();
-    approvedManagers.forEach((m: any) => {
-      if (m.supplier?.id) {
-        approvedSupplierIds.add(m.supplier.id);
-      }
-    });
-
-    if (approvedSupplierIds.size === 0) {
-      return [];
-    }
-
-    // STEP 4: Build where clause - ONLY search within approved suppliers
-    // The id filter is the PRIMARY and MANDATORY filter - MUST be applied
-    const approvedIdsArray = Array.from(approvedSupplierIds);
-
-    // Build base conditions - id filter is ALWAYS required
-    const baseConditions: any[] = [
-      {
-        id: {
-          in: approvedIdsArray, // CRITICAL: Only approved suppliers - this MUST be applied
-        },
-      },
-    ];
-
-    // Add company name filter (if provided)
-    if (companyName) {
-      baseConditions.push({
-        company_name: {
-          contains: companyName,
-          mode: "insensitive",
-        },
-      });
-    }
-
-    // Add manager filters (managerName only - phoneNumber is NOT allowed in primary search)
-    if (managerName) {
-      // IMPORTANT: Manager name filter matches ONLY by SupplierManager.name
-      // This ensures that primary search only finds suppliers registered on the platform
-      // ClinicSupplierManager.name is NOT used for matching in primary search
-      // Reason: Primary search is for suppliers with APPROVED ClinicSupplierLink,
-      // which links to SupplierManager (platform-registered suppliers)
-      baseConditions.push({
-        managers: {
-          some: {
-            id: {
-              in: Array.from(approvedManagerIds), // CRITICAL: Only approved managers
-            },
-            name: {
-              contains: managerName,
-              mode: "insensitive",
-            },
-            status: "ACTIVE",
-          },
-        },
-      });
-    }
-
-    // Final where clause: ALL conditions must be met (AND)
-    // This ensures id filter is ALWAYS applied
+    // ✅ NEW SIMPLIFIED LOGIC: Search directly from ClinicSupplierManager table
+    // This table contains all clinic-specific supplier data
+    
+    // Build where clause for ClinicSupplierManager
     const where: any = {
-      AND: baseConditions,
+      tenant_id: tenantId,
     };
 
-    // STEP 4: Execute query - suppliers MUST be in approvedSupplierIds set
-    // This query will ONLY return suppliers that have APPROVED ClinicSupplierLink
-    return prisma.supplier.findMany({
+    // Add filters based on search criteria
+    if (companyName) {
+      where.company_name = {
+        contains: companyName,
+        mode: "insensitive",
+      };
+    }
+
+    if (managerName) {
+      where.name = {
+        contains: managerName,
+        mode: "insensitive",
+      };
+    }
+
+    if (phoneNumber) {
+      where.phone_number = {
+        contains: phoneNumber,
+        mode: "insensitive",
+      };
+    }
+
+    // Query ClinicSupplierManager directly
+    return prisma.clinicSupplierManager.findMany({
       where,
-      include: {
-        managers: {
-          where: (() => {
-            const where: any = {};
-            if (phoneNumber) {
-              where.phone_number = {
-                contains: phoneNumber,
-                mode: "insensitive",
-              };
-            }
-            if (managerName) {
-              where.name = {
-                contains: managerName,
-                mode: "insensitive",
-              };
-            }
-            return Object.keys(where).length > 0 ? where : undefined;
-          })(),
-          select: {
-            id: true,
-            manager_id: true,
-            name: true,
-            position: true,
-            phone_number: true,
-            email1: true,
-            manager_address: true,
-            responsible_products: true,
-            status: true,
-          },
-        },
+      select: {
+        id: true,
+        company_name: true,
+        name: true,
+        position: true,
+        phone_number: true,
+        email1: true,
+        email2: true,
+        company_address: true,
+        business_number: true,
+        company_phone: true,
+        company_email: true,
+        responsible_products: true,
+        created_at: true,
       },
       orderBy: {
         created_at: "desc",

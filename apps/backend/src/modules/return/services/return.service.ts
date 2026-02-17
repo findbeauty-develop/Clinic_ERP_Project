@@ -171,6 +171,7 @@ export class ReturnService {
             select: {
               storage: true,
               used_count: true, // 사용 단위 uchun
+              is_separate_purchase: true, // ✅ Added: 별도 구매 batch filter uchun
             },
           },
           outbounds: {
@@ -232,11 +233,14 @@ export class ReturnService {
           product.capacity_per_product > 0
         ) {
           // ✅ FIX: BARCHA batch'larning used_count'ini yig'ish (faqat birinchi batch emas!)
+          // ✅ IMPORTANT: Faqat is_separate_purchase = false bo'lgan batch'larni hisobga olish
           // Bu yangi inbound bo'lsa ham, eski batch'larning empty boxes'i saqlanadi
-          const usedCount = (product.batches || []).reduce(
-            (sum: number, batch: any) => sum + (batch.used_count || 0),
-            0
-          );
+          const usedCount = (product.batches || [])
+            .filter((batch: any) => !batch.is_separate_purchase) // ✅ 별도 구매 batch'larni exclude qilish
+            .reduce(
+              (sum: number, batch: any) => sum + (batch.used_count || 0),
+              0
+            );
 
           // previousEmptyBoxes = Math.floor(used_count / capacity_per_product)
           const previousEmptyBoxes = Math.floor(
