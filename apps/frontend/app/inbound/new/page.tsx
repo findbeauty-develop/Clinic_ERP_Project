@@ -150,7 +150,7 @@ export default function InboundNewPage() {
       }
       
       // Fill only GTIN to the barcode field
-      setFormData(prev => ({ ...prev, barcode: parsed.gtin }));
+      setFormData(prev => ({ ...prev, barcode: parsed.gtin || "" }));
       
     } catch (error) {
       console.error('Barcode parsing error:', error);
@@ -1368,11 +1368,9 @@ export default function InboundNewPage() {
                       />
                       <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          바코드 번호 (선택사항)
+                          바코드 번호 
                         </label>
-                        <p className="text-xs text-blue-700 mb-2">
-                          USB 스캐너로 바코드를 스캔하거나 직접 입력하세요. 스캔 시 자동으로 중복 체크됩니다.
-                        </p>
+                       
                         <div className="flex gap-2">
                           <input
                             type="text"

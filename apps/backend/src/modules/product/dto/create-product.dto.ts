@@ -67,6 +67,11 @@ export class CreateBatchDto {
   @IsString()
   inbound_manager?: string;
 
+  // 별도 구매 여부 (Separate purchase flag) - optional
+  @IsOptional()
+  @IsBoolean()
+  is_separate_purchase?: boolean;
+
   // Additional optional fields
   @IsOptional()
   @IsInt()

@@ -1396,6 +1396,7 @@ export class ProductsService {
         unit: true,
         min_stock: true,
         purchase_price: true, // ✅ 구매가 (Purchase price)
+        is_separate_purchase: true, // ✅ 별도 구매 여부
       },
     });
 
@@ -1415,6 +1416,7 @@ export class ProductsService {
       min_stock: batch.min_stock ?? null, // ✅ Minimum stock from product (immutable)
       purchase_price: batch.purchase_price ?? null, // ✅ 구매가 (Purchase price)
         created_at: batch.created_at,
+      is_separate_purchase: batch.is_separate_purchase ?? false, // ✅ 별도 구매 여부
       // Raw fields for batch copying (입고 대기 page uchun)
       expiry_months: batch.expiry_months,
       expiry_unit: batch.expiry_unit,
@@ -1511,6 +1513,8 @@ export class ProductsService {
           expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
             // ✅ Alert days: DTO'dan yoki Product level'dan (fallback)
             alert_days: dto.alert_days ?? (product as any)?.alert_days ?? null,
+            // ✅ 별도 구매 여부
+            is_separate_purchase: dto.is_separate_purchase ?? false,
         } as any,
       });
 

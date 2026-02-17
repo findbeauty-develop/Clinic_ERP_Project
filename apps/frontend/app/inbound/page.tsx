@@ -52,6 +52,7 @@ type ProductBatch = {
   purchase_price?: number | null;
   qty?: number; // Original qty from inbound (immutable)
   created_at: string;
+  is_separate_purchase?: boolean; // 별도 구매 여부
 };
 
 type ProductListItem = {
@@ -890,6 +891,7 @@ const ProductCard = memo(function ProductCard({
     expiryDate: "",
     storageLocation: "",
     batchNumber: "", // LOT from barcode scan
+    isSeparatePurchase: false, // 별도 구매 여부
   });
 
   // ✅ Avtomatik to'ldirish o'chirildi - placeholder har doim bo'sh bo'lishi kerak
@@ -1219,6 +1221,9 @@ const ProductCard = memo(function ProductCard({
         payload.batch_no = batchForm.batchNumber;
       }
 
+      // ✅ 별도 구매 여부
+      payload.is_separate_purchase = batchForm.isSeparatePurchase;
+
       // ✅ Product'dan sale_price, expiry_months, expiry_unit, alert_days ni olib yuborish
       // Backend fallback qiladi agar frontend'dan yuborilmasa
       if (product.salePrice !== null && product.salePrice !== undefined) {
@@ -1271,6 +1276,7 @@ const ProductCard = memo(function ProductCard({
         expiryDate: "",
         storageLocation: "",
         batchNumber: "", // Reset batch number
+        isSeparatePurchase: false, // Reset separate purchase flag
       });
       setBatchQuantity(1);
 
@@ -1438,6 +1444,12 @@ const ProductCard = memo(function ProductCard({
                     <span className="font-semibold text-slate-800 dark:text-white">
                       {batch.batch_no}
                     </span>
+                    {/* 별도 구매 Badge */}
+                    {batch.is_separate_purchase && (
+                      <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                        별도 구매
+                      </span>
+                    )}
                   </div>
 
                   {/* Barcha ma'lumotlar bitta row'da */}
@@ -1485,17 +1497,46 @@ const ProductCard = memo(function ProductCard({
           </div>
 
           <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-6 dark:border-sky-500/30 dark:bg-sky-500/5">
-            {/* Title */}
+            {/* Title + Switch */}
             <div className="flex items-center justify-between border-b border-sky-200 pb-3 dark:border-sky-500/30">
               <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                별도 구매
+                {batchForm.isSeparatePurchase ? "별도 구매" : "바코드 입고"}
               </h3>
-             
+              
+              {/* Toggle Switch */}
+              <div 
+                className="flex items-center gap-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  별도 구매
+                </span>
+                <label 
+                  className="relative inline-flex cursor-pointer items-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={batchForm.isSeparatePurchase}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setBatchForm({ ...batchForm, isSeparatePurchase: e.target.checked });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-6 w-11 rounded-full bg-slate-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:border-slate-600 dark:bg-slate-700 dark:peer-focus:ring-indigo-800"></div>
+                </label>
+              </div>
             </div>
 
             {/* Note: 배치번호는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다 */}
             <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-              <p>별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다.</p>
+              <p>
+                {batchForm.isSeparatePurchase 
+                  ? "별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다." 
+                  : "바코드 입고는 Supplier에서 주문한 제품의 입고를 의미합니다."}
+              </p>
               <p className="mt-1">
                 <span className="font-semibold">Jaclit을 통해 주문한 제품은</span> : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
               </p>

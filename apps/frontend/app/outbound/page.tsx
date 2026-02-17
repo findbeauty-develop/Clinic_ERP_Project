@@ -150,6 +150,19 @@ function OutboundPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
 
+  // ✅ Barcode scan success modal state
+  const [scanSuccessModal, setScanSuccessModal] = useState<{
+    show: boolean;
+    productName: string;
+    batchNo: string;
+    quantity: number;
+  }>({
+    show: false,
+    productName: "",
+    batchNo: "",
+    quantity: 0,
+  });
+
   // ✅ Navigation warning modal state
   const [showNavigationWarning, setShowNavigationWarning] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -382,6 +395,111 @@ function OutboundPageContent() {
       window.removeEventListener("productDeleted", handleProductDeleted);
     };
   }, [apiUrl, isPackageMode, fetchProducts]);
+
+  // ✅ Global USB Barcode Scanner - Auto add to cart
+  useEffect(() => {
+    // Only active on product mode (not package mode)
+    if (isPackageMode) return;
+    
+    let buffer = '';
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+    
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      const now = Date.now();
+      
+      // USB scanner types very fast (< 100ms between chars)
+      if (now - lastTime > 100) buffer = '';
+      
+      if (e.key === 'Enter' && buffer.length >= 8) {
+        handleBarcodeScanned(buffer);
+        buffer = '';
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => { buffer = ''; }, 500);
+      }
+    };
+    
+    window.addEventListener('keypress', handleGlobalKeyPress);
+    return () => {
+      window.removeEventListener('keypress', handleGlobalKeyPress);
+      clearTimeout(timeout);
+    };
+  }, [isPackageMode, products, scheduledItems]);
+
+  const handleBarcodeScanned = useCallback(async (scannedBarcode: string) => {
+    try {
+      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
+      const parsed = parseGS1Barcode(scannedBarcode);
+      
+      const gtin = parsed.gtin || scannedBarcode;
+      
+      // Find product by GTIN
+      const matchedProduct = products.find(p => p.barcode === gtin);
+      
+      if (!matchedProduct) {
+        alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${gtin}`);
+        return;
+      }
+      
+      // Find first available batch
+      const availableBatch = matchedProduct.batches.find(b => b.qty > 0);
+      
+      if (!availableBatch) {
+        alert(`⚠️ ${matchedProduct.productName}\n재고가 없습니다.`);
+        return;
+      }
+      
+      // Check if already in cart
+      const existingItem = scheduledItems.find(
+        item => item.productId === matchedProduct.id && item.batchId === availableBatch.id
+      );
+      
+      let newQuantity = 1;
+      
+      if (existingItem) {
+        // Increment quantity
+        newQuantity = existingItem.quantity + 1;
+        setScheduledItems(prev => prev.map(item => 
+          item.productId === matchedProduct.id && item.batchId === availableBatch.id
+            ? { ...item, quantity: newQuantity }
+            : item
+        ));
+      } else {
+        // Add new item
+        const newItem: ScheduledItem = {
+          productId: matchedProduct.id,
+          productName: matchedProduct.productName,
+          batchId: availableBatch.id,
+          batchNo: availableBatch.batch_no,
+          quantity: 1,
+          unit: matchedProduct.unit || "EA",
+        };
+        setScheduledItems(prev => [...prev, newItem]);
+      }
+      
+      // Show success modal
+      setScanSuccessModal({
+        show: true,
+        productName: matchedProduct.productName,
+        batchNo: availableBatch.batch_no,
+        quantity: newQuantity,
+      });
+      
+    } catch (error) {
+      console.error('Barcode scan error:', error);
+      alert('바코드 스캔 오류가 발생했습니다.');
+    }
+  }, [products, scheduledItems]);
 
   // Handle highlight from URL parameter (when navigating from package mode)
   useEffect(() => {
@@ -2855,6 +2973,65 @@ function OutboundPageContent() {
                 계속 출고하기
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Barcode Scan Success Modal */}
+      {scanSuccessModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-8 shadow-2xl dark:border-emerald-500/30 dark:bg-slate-900">
+            {/* Success Icon */}
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
+              <svg className="h-12 w-12 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="mb-6 text-center text-2xl font-bold text-slate-900 dark:text-white">
+              ✅ 출고 카트에 추가됨!
+            </h3>
+
+            {/* Info Grid */}
+            <div className="space-y-4 rounded-2xl bg-slate-50 p-6 dark:bg-slate-800/50">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  제품명:
+                </div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {scanSuccessModal.productName}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    배치번호:
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 text-sm font-mono font-semibold text-indigo-600 dark:bg-slate-900 dark:text-indigo-400">
+                    {scanSuccessModal.batchNo}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    수량:
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-emerald-600 dark:bg-slate-900 dark:text-emerald-400">
+                    {scanSuccessModal.quantity}개
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* OK Button */}
+            <button
+              onClick={() => setScanSuccessModal({ show: false, productName: "", batchNo: "", quantity: 0 })}
+              className="mt-6 w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
