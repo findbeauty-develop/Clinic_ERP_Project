@@ -1407,7 +1407,7 @@ export class OutboundService {
         qty: true,
         inbound_qty: true,
         used_count: true,
-        // available_quantity: true, // ✅ Will be available after migration
+        outbound_count: true, // outbound_count field does not exist in BatchSelect<DefaultArgs>, so remove to fix error
       },
     });
 
@@ -1565,9 +1565,10 @@ export class OutboundService {
             const isDamagedOrDefective = dto.isDamaged || dto.isDefective;
             
             let batchQtyDecrement = 0; // Default
+            let usedCountIncrement = 0; // ✅ Faqat oddiy outbound uchun
+            let outboundCountIncrement = batchData.totalOutboundQty; // ✅ Har doim (barcha outbound turlari)
 
-            // ✅ Oddiy product: used_count yangilanadi va empty box yaratiladi
-            // ✅ Damaged/Defective: used_count yangilanadi (frontend uchun), lekin empty box yaratilMAYdi
+            // ✅ Empty box logic (faqat capacity mavjud bo'lgan productlar uchun)
             if (
               product &&
               product.usage_capacity &&
@@ -1578,47 +1579,85 @@ export class OutboundService {
               // Batch'ning hozirgi used_count'ini olish
               const currentBatch = await tx.batch.findUnique({
                 where: { id: batchId },
-                select: { used_count: true, qty: true, inbound_qty: true },
+                select: { used_count: true, outbound_count: true, qty: true, inbound_qty: true },
               });
 
               const currentUsedCount = currentBatch?.used_count || 0;
+              const currentOutboundCount = currentBatch?.outbound_count || 0;
               const currentInboundQty = currentBatch?.inbound_qty || 0;
               const currentBatchQty = currentBatch?.qty || 0;
 
-              // ✅ usage_capacity qo'shish (har doim, damaged/defective bo'lsa ham)
+              // ✅ usage_capacity qo'shish
               const usageIncrement = product.usage_capacity * batchData.totalOutboundQty;
-              const newUsedCount = Math.max(0, currentUsedCount + usageIncrement);
-
-              // ✅ Empty boxes hisoblanadi (har doim, damaged/defective bo'lsa ham)
-              const previousEmptyBoxes = Math.floor(
-                currentUsedCount / product.capacity_per_product
-              );
-              const newEmptyBoxes = Math.floor(
-                newUsedCount / product.capacity_per_product
-              );
-              const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
-              batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
-
-              // ✅ used_count ni yangilash (har doim, damaged/defective bo'lsa ham)
-              await tx.batch.update({
-                where: { id: batchId },
-                data: { used_count: newUsedCount },
-              });
-
+              
               if (!isDamagedOrDefective) {
-                // ✅ ODDIY PRODUCT: Empty box return page-ga chiqadi
+                // ✅ ODDIY PRODUCT: used_count yangilanadi
+                usedCountIncrement = usageIncrement;
+                const newUsedCount = Math.max(0, currentUsedCount + usageIncrement);
+
+                // ✅ Empty boxes hisoblanadi
+                const previousEmptyBoxes = Math.floor(
+                  currentUsedCount / product.capacity_per_product
+                );
+                const newEmptyBoxes = Math.floor(
+                  newUsedCount / product.capacity_per_product
+                );
+                const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
+                batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
+
                 this.logger.debug(
-                  `✅ [createUnifiedOutbound] NORMAL product - Updated used_count for batch ${batchId}: ${currentUsedCount} → ${newUsedCount}, empty boxes: ${emptyBoxesToCreate} (will create return)`
+                  `✅ [NORMAL] batch ${batchId}: used_count ${currentUsedCount} → ${newUsedCount}, empty boxes: ${emptyBoxesToCreate}, qty decrement: ${batchQtyDecrement}`
                 );
               } else {
-                // ✅ DAMAGED/DEFECTIVE: Empty box return page-ga chiqMAYdi
+                // ✅ DAMAGED/DEFECTIVE: used_count yangilanMAYdi, faqat ombordan chiqadi
+                usedCountIncrement = 0;
+                
+                // Virtual empty boxes hisoblash (faqat qty kamaytirish uchun)
+                const virtualUsedCount = currentUsedCount + usageIncrement;
+                const previousEmptyBoxes = Math.floor(
+                  currentUsedCount / product.capacity_per_product
+                );
+                const virtualEmptyBoxes = Math.floor(
+                  virtualUsedCount / product.capacity_per_product
+                );
+                const emptyBoxesToDecrement = virtualEmptyBoxes - previousEmptyBoxes;
+                batchQtyDecrement = Math.max(0, emptyBoxesToDecrement);
+
                 this.logger.warn(
-                  `⚠️ [createUnifiedOutbound] DAMAGED/DEFECTIVE product - batch ${batchId}: used_count updated ${currentUsedCount} → ${newUsedCount}, empty boxes: ${emptyBoxesToCreate} (NO return will be created)`
+                  `⚠️ [DAMAGED/DEFECTIVE] batch ${batchId}: used_count NOT updated (${currentUsedCount}), virtual empty boxes: ${emptyBoxesToDecrement}, qty decrement: ${batchQtyDecrement}`
                 );
               }
+
+              // ✅ Update used_count (faqat oddiy uchun)
+              if (usedCountIncrement > 0) {
+                await tx.batch.update({
+                  where: { id: batchId },
+                  data: { used_count: { increment: usedCountIncrement } },
+                });
+              }
+
+              // ✅ Update outbound_count (har doim)
+              await tx.batch.update({
+                where: { id: batchId },
+                data: { outbound_count: { increment: outboundCountIncrement } },
+              });
+
+              this.logger.debug(
+                `📊 [COUNTS] batch ${batchId}: outbound_count ${currentOutboundCount} → ${currentOutboundCount + outboundCountIncrement} (total warehouse out)`
+              );
             } else {
               // ✅ usage_capacity yoki capacity_per_product bo'lmasa: to'g'ridan-to'g'ri qty kamayadi
               batchQtyDecrement = batchData.totalOutboundQty;
+              
+              // ✅ outbound_count yangilanadi (har doim)
+              await tx.batch.update({
+                where: { id: batchId },
+                data: { outbound_count: { increment: outboundCountIncrement } },
+              });
+              
+              this.logger.debug(
+                `📦 [NO CAPACITY] batch ${batchId}: direct qty decrement ${batchQtyDecrement}, outbound_count +${outboundCountIncrement}`
+              );
             }
 
             // Batch qty ni kamaytirish

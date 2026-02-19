@@ -713,8 +713,8 @@ export class ProductsService {
                 batch_no: true,
                 qty: true,
                 inbound_qty: true,
-                used_count: true, // ✅ 사용 단위 mantiqi uchun kerak
-                // available_quantity: true, // ✅ Will be available after migration
+                used_count: true, // ✅ Ishlatilgan miqdor (empty box uchun)
+                outbound_count: true, // ✅ Ombordan chiqgan jami miqdor
                 unit: true,
                 min_stock: true,
                 expiry_date: true,
@@ -1379,8 +1379,8 @@ export class ProductsService {
         created_at: true,
         qty: true,
         inbound_qty: true,
-        used_count: true, // ✅ Add for availableQuantity calculation
-        // available_quantity: true, // ✅ Will be available after migration
+        used_count: true, // ✅ Ishlatilgan miqdor (empty box uchun)
+        outbound_count: true, // ✅ Ombordan chiqgan jami miqdor
         unit: true,
         min_stock: true,
         purchase_price: true, // ✅ 구매가 (Purchase price)

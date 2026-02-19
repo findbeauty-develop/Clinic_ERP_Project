@@ -1,0 +1,789 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-backend"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Batch {
+  id                   String            @id
+  tenant_id            String
+  product_id           String
+  batch_no             String
+  storage              String?
+  purchase_price       Int?
+  sale_price           Int?
+  manufacture_date     DateTime?
+  expiry_date          DateTime?
+  expiry_months        Int?
+  qty                  Int
+  alert_days           String?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime?
+  expiry_unit          String?
+  inbound_manager      String?
+  used_count           Int               @default(0)
+  inbound_qty          Int?
+  unit                 String?
+  min_stock            Int?
+  available_quantity   Int?
+  is_separate_purchase Boolean           @default(false)
+  outbound_count       Int               @default(0)
+  product              Product           @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  orderItems           OrderItem[]
+  outbounds            Outbound[]
+  packageOutbounds     PackageOutbound[]
+  returns              Return[]
+
+  @@index([product_id])
+  @@index([tenant_id])
+  @@index([tenant_id, product_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Clinic {
+  id                    String    @id
+  tenant_id             String
+  name                  String
+  english_name          String
+  category              String
+  location              String
+  medical_subjects      String
+  license_type          String
+  license_number        String
+  document_issue_number String
+  document_image_urls   String[]  @default([])
+  created_at            DateTime  @default(now())
+  created_by            String?
+  updated_at            DateTime?
+  updated_by            String?
+  doctor_name           String?
+  open_date             DateTime?
+  phone_number          String?
+  allow_company_search  Boolean   @default(false)
+  allow_info_disclosure Boolean   @default(false)
+  logo_url              String?
+
+  @@index([tenant_id])
+}
+
+model ClinicSupplierLink {
+  id                         String                 @id
+  tenant_id                  String
+  status                     String                 @default("REQUESTED")
+  requested_at               DateTime               @default(now())
+  approved_at                DateTime?
+  blocked_at                 DateTime?
+  created_at                 DateTime               @default(now())
+  updated_at                 DateTime
+  supplier_manager_id        String
+  memo                       String?
+  clinic_supplier_manager_id String?
+  ClinicSupplierManager      ClinicSupplierManager? @relation(fields: [clinic_supplier_manager_id], references: [id])
+  SupplierManager            SupplierManager        @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, supplier_manager_id])
+  @@index([clinic_supplier_manager_id])
+  @@index([status])
+  @@index([supplier_manager_id])
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+}
+
+model ClinicSupplierManager {
+  id                                                                                String               @id
+  tenant_id                                                                         String
+  name                                                                              String
+  phone_number                                                                      String
+  email1                                                                            String?
+  email2                                                                            String?
+  position                                                                          String?
+  certificate_image_url                                                             String?
+  responsible_regions                                                               String[]             @default([])
+  responsible_products                                                              String[]             @default([])
+  memo                                                                              String?
+  created_at                                                                        DateTime             @default(now())
+  updated_at                                                                        DateTime
+  company_name                                                                      String
+  business_number                                                                   String?
+  company_phone                                                                     String?
+  company_email                                                                     String?
+  company_address                                                                   String?
+  linked_supplier_manager_id                                                        String?
+  ClinicSupplierLink                                                                ClinicSupplierLink[]
+  SupplierManager_ClinicSupplierManager_linked_supplier_manager_idToSupplierManager SupplierManager?     @relation("ClinicSupplierManager_linked_supplier_manager_idToSupplierManager", fields: [linked_supplier_manager_id], references: [id])
+  ProductSupplier                                                                   ProductSupplier[]
+  SupplierManager_SupplierManager_clinic_manager_idToClinicSupplierManager          SupplierManager?     @relation("SupplierManager_clinic_manager_idToClinicSupplierManager")
+
+  @@index([linked_supplier_manager_id])
+  @@index([phone_number])
+  @@index([tenant_id, business_number])
+  @@index([tenant_id])
+  @@index([tenant_id, phone_number])
+}
+
+model ClinicSupportCenter {
+  id           String   @id
+  tenant_id    String
+  member_name  String
+  clinic_name  String
+  phone_number String
+  inquiry      String
+  created_at   DateTime @default(now())
+
+  @@index([created_at])
+  @@index([tenant_id, created_at])
+  @@index([tenant_id])
+}
+
+model Member {
+  id                   String         @id
+  tenant_id            String
+  member_id            String         @unique
+  role                 String
+  password_hash        String
+  clinic_name          String
+  created_at           DateTime       @default(now())
+  created_by           String?
+  updated_at           DateTime?
+  updated_by           String?
+  full_name            String?
+  phone_number         String?
+  id_card_number       String?
+  address              String?
+  must_change_password Boolean        @default(false)
+  RefreshToken         RefreshToken[]
+
+  @@index([tenant_id])
+}
+
+model NewsCache {
+  id         String   @id
+  cache_key  String   @unique
+  data       String
+  updated_at DateTime @default(now())
+  created_at DateTime @default(now())
+
+  @@index([cache_key])
+  @@index([updated_at])
+}
+
+model Order {
+  id                     String      @id
+  tenant_id              String
+  order_no               String      @unique
+  status                 String      @default("draft")
+  supplier_id            String?
+  total_amount           Float       @default(0)
+  order_date             DateTime    @default(now())
+  expected_delivery_date DateTime?
+  created_by             String?
+  approved_by            String?
+  memo                   String?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime?
+  confirmed_at           DateTime?
+  supplier_adjustments   Json?
+  clinic_manager_name    String?
+  OrderItem              OrderItem[]
+
+  @@index([order_date])
+  @@index([status])
+  @@index([supplier_id])
+  @@index([tenant_id])
+  @@index([tenant_id, order_date])
+  @@index([tenant_id, status, confirmed_at])
+  @@index([tenant_id, status])
+}
+
+model OrderDraft {
+  id           String   @id
+  tenant_id    String
+  session_id   String
+  items        Json
+  total_amount Float    @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+  expires_at   DateTime
+
+  @@unique([tenant_id, session_id])
+  @@index([expires_at])
+  @@index([session_id])
+  @@index([tenant_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model OrderItem {
+  id                 String    @id
+  tenant_id          String
+  order_id           String
+  product_id         String
+  batch_id           String?
+  confirmed_quantity Int?
+  unit_price         Int
+  total_price        Int
+  memo               String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime?
+  unit               String?
+  ordered_quantity   Int
+  inbound_quantity   Int?
+  pending_quantity   Int?
+  Batch              Batch?    @relation(fields: [batch_id], references: [id])
+  Order              Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  Product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id])
+  @@index([order_id])
+  @@index([product_id])
+  @@index([tenant_id])
+  @@index([tenant_id, order_id])
+}
+
+model OrderReturn {
+  id              String    @id
+  tenant_id       String
+  order_id        String?
+  order_no        String?
+  batch_no        String
+  product_id      String
+  product_name    String
+  brand           String?
+  return_quantity Int
+  total_quantity  Int
+  unit_price      Int
+  return_type     String
+  status          String    @default("pending")
+  memo            String?
+  images          String[]  @default([])
+  return_manager  String?
+  supplier_id     String?
+  inbound_date    DateTime  @default(now())
+  created_at      DateTime  @default(now())
+  updated_at      DateTime?
+  outbound_id     String?
+  return_no       String?
+
+  @@index([order_id])
+  @@index([outbound_id])
+  @@index([return_no])
+  @@index([return_type])
+  @@index([status])
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+}
+
+model Outbound {
+  id            String    @id
+  tenant_id     String
+  product_id    String
+  batch_id      String
+  batch_no      String
+  outbound_qty  Int
+  outbound_date DateTime  @default(now())
+  manager_name  String
+  patient_name  String?
+  chart_number  String?
+  memo          String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
+  created_by    String?
+  is_damaged    Boolean   @default(false)
+  is_defective  Boolean   @default(false)
+  outbound_type String    @default("제품")
+  package_id    String?
+  batch         Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  returns       Return[]
+
+  @@index([batch_id])
+  @@index([outbound_date])
+  @@index([outbound_type])
+  @@index([product_id])
+  @@index([tenant_id])
+  @@index([tenant_id, outbound_date])
+}
+
+model Package {
+  id              String            @id
+  tenant_id       String
+  name            String
+  description     String?
+  is_active       Boolean           @default(true)
+  created_at      DateTime          @default(now())
+  updated_at      DateTime?
+  created_by      String?
+  updated_by      String?
+  PackageItem     PackageItem[]
+  PackageOutbound PackageOutbound[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, is_active])
+}
+
+model PackageItem {
+  id           String  @id
+  tenant_id    String
+  package_id   String
+  product_id   String
+  quantity     Int     @default(1)
+  order        Int     @default(0)
+  package_name String?
+  Package      Package @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  Product      Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([package_id, product_id])
+  @@index([package_id])
+  @@index([product_id])
+  @@index([tenant_id])
+}
+
+model PackageOutbound {
+  id            String   @id
+  tenant_id     String
+  package_id    String
+  product_id    String
+  batch_id      String
+  package_qty   Int
+  outbound_date DateTime @default(now())
+  manager_name  String
+  chart_number  String?
+  memo          String?
+  created_at    DateTime @default(now())
+  is_damaged    Boolean  @default(false)
+  is_defective  Boolean  @default(false)
+  package_name  String?
+  Batch         Batch    @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  Package       Package  @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  Product       Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id])
+  @@index([outbound_date])
+  @@index([package_id])
+  @@index([product_id])
+  @@index([tenant_id])
+  @@index([tenant_id, outbound_date])
+}
+
+model PackageReservation {
+  id           String    @id
+  tenant_id    String
+  package_id   String
+  product_id   String
+  batch_id     String
+  reserved_qty Int
+  created_at   DateTime  @default(now())
+  updated_at   DateTime?
+
+  @@index([batch_id])
+  @@index([package_id])
+  @@index([product_id])
+  @@index([tenant_id, batch_id])
+  @@index([tenant_id])
+  @@index([tenant_id, package_id])
+  @@index([tenant_id, product_id])
+}
+
+model PhoneVerificationCode {
+  id           String   @id
+  phone_number String
+  code         String
+  verified     Boolean  @default(false)
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+
+  @@index([expires_at])
+  @@index([phone_number, verified])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Product {
+  id                   String            @id
+  tenant_id            String
+  name                 String
+  barcode              String?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime?
+  brand                String
+  category             String
+  current_stock        Int               @default(0)
+  image_url            String?
+  is_active            Boolean           @default(true)
+  min_stock            Int               @default(0)
+  unit                 String?
+  purchase_price       Int?
+  sale_price           Int?
+  capacity_per_product Float?
+  capacity_unit        String?
+  usage_capacity       Float?
+  alert_days           String?
+  batches              Batch[]
+  orderItems           OrderItem[]
+  outbounds            Outbound[]
+  packageItems         PackageItem[]
+  packageOutbounds     PackageOutbound[]
+  productSupplier      ProductSupplier?
+  returns              Return[]
+  returnPolicy         ReturnPolicy?
+  supplierProducts     SupplierProduct[]
+
+  @@index([tenant_id, barcode])
+  @@index([tenant_id])
+  @@index([tenant_id, name])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ProductSupplier {
+  id                         String                @id
+  tenant_id                  String
+  product_id                 String                @unique
+  clinic_supplier_manager_id String
+  purchase_price             Int?
+  moq                        Int?
+  lead_time_days             Int?
+  note                       String?
+  created_at                 DateTime              @default(now())
+  updated_at                 DateTime
+  clinicSupplierManager      ClinicSupplierManager @relation(fields: [clinic_supplier_manager_id], references: [id], onDelete: Cascade)
+  product                    Product               @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, product_id], map: "ProductSupplier_tenant_product_uniq")
+  @@unique([tenant_id, product_id], map: "ProductSupplier_tenant_product_unique")
+  @@index([clinic_supplier_manager_id])
+  @@index([clinic_supplier_manager_id], map: "ProductSupplier_csm_id_idx")
+  @@index([product_id])
+  @@index([tenant_id, clinic_supplier_manager_id])
+  @@index([tenant_id])
+}
+
+model RefreshToken {
+  id         String    @id
+  member_id  String
+  token      String    @unique
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  revoked    Boolean   @default(false)
+  revoked_at DateTime?
+  Member     Member    @relation(fields: [member_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
+  @@index([member_id])
+  @@index([token])
+}
+
+model RejectedOrder {
+  id            String    @id
+  tenant_id     String
+  order_id      String
+  order_no      String
+  company_name  String
+  manager_name  String
+  product_name  String
+  product_brand String?
+  qty           Int
+  member_name   String
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
+
+  @@index([order_id])
+  @@index([order_no])
+  @@index([tenant_id])
+  @@index([tenant_id, order_id])
+}
+
+model Return {
+  id            String    @id
+  tenant_id     String
+  product_id    String
+  batch_id      String
+  outbound_id   String?
+  batch_no      String
+  supplier_id   String?
+  return_qty    Int
+  return_date   DateTime  @default(now())
+  refund_amount Float     @default(0)
+  total_refund  Float     @default(0)
+  manager_name  String
+  memo          String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime?
+  created_by    String?
+  return_no     String?
+  Batch         Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  Outbound      Outbound? @relation(fields: [outbound_id], references: [id])
+  Product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id])
+  @@index([outbound_id])
+  @@index([product_id])
+  @@index([return_date])
+  @@index([tenant_id])
+  @@index([tenant_id, return_date])
+}
+
+model ReturnPolicy {
+  id             String    @id
+  tenant_id      String
+  product_id     String    @unique
+  is_returnable  Boolean   @default(false)
+  refund_amount  Float     @default(0)
+  return_storage String?
+  note           String?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime?
+  product        Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+}
+
+model Supplier {
+  id                 String            @id
+  tenant_id          String            @unique
+  company_name       String
+  business_number    String            @unique
+  company_phone      String?
+  company_email      String
+  company_address    String?
+  product_categories String[]          @default([])
+  share_consent      Boolean           @default(false)
+  status             String            @default("MANUAL_ONLY")
+  created_at         DateTime          @default(now())
+  updated_at         DateTime?
+  SupplierManager    SupplierManager[]
+
+  @@index([business_number])
+  @@index([status])
+  @@index([tenant_id])
+}
+
+model SupplierManager {
+  id                                                                                      String                       @id
+  manager_id                                                                              String                       @unique
+  name                                                                                    String
+  phone_number                                                                            String                       @unique
+  certificate_image_url                                                                   String?
+  password_hash                                                                           String?
+  email1                                                                                  String?
+  responsible_products                                                                    String[]                     @default([])
+  status                                                                                  String                       @default("ACTIVE")
+  created_at                                                                              DateTime                     @default(now())
+  updated_at                                                                              DateTime?
+  position                                                                                String?
+  clinic_manager_id                                                                       String?                      @unique
+  supplier_tenant_id                                                                      String
+  manager_address                                                                         String?
+  created_by                                                                              String?
+  public_contact_name                                                                     Boolean                      @default(false)
+  allow_hospital_search                                                                   Boolean                      @default(false)
+  receive_kakaotalk                                                                       Boolean                      @default(false)
+  receive_sms                                                                             Boolean                      @default(false)
+  receive_email                                                                           Boolean                      @default(false)
+  withdrawal_reason                                                                       String?
+  ClinicSupplierLink                                                                      ClinicSupplierLink[]
+  ClinicSupplierManager_ClinicSupplierManager_linked_supplier_manager_idToSupplierManager ClinicSupplierManager[]      @relation("ClinicSupplierManager_linked_supplier_manager_idToSupplierManager")
+  ClinicSupplierManager_SupplierManager_clinic_manager_idToClinicSupplierManager          ClinicSupplierManager?       @relation("SupplierManager_clinic_manager_idToClinicSupplierManager", fields: [clinic_manager_id], references: [id])
+  Supplier                                                                                Supplier                     @relation(fields: [supplier_tenant_id], references: [tenant_id])
+  SupplierReturnNotification                                                              SupplierReturnNotification[]
+
+  @@index([clinic_manager_id])
+  @@index([created_by])
+  @@index([email1])
+  @@index([manager_id])
+  @@index([phone_number])
+  @@index([status])
+  @@index([supplier_tenant_id])
+}
+
+model SupplierOrder {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supplier_tenant_id  String
+  supplier_manager_id String?
+  clinic_tenant_id    String?
+  clinic_name         String?
+  clinic_manager_name String?
+  order_no            String              @unique
+  status              String              @default("pending")
+  total_amount        Int                 @default(0)
+  memo                String?
+  order_date          DateTime            @default(now()) @db.Timestamptz(6)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?           @db.Timestamptz(6)
+  SupplierOrderItem   SupplierOrderItem[]
+
+  @@index([clinic_tenant_id], map: "SupplierOrder_clinic_tenant_idx")
+  @@index([order_date])
+  @@index([status])
+  @@index([supplier_manager_id], map: "SupplierOrder_supplier_manager_idx")
+  @@index([supplier_tenant_id], map: "SupplierOrder_supplier_tenant_idx")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model SupplierOrderItem {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id                String        @db.Uuid
+  product_id              String?
+  product_name            String
+  brand                   String?
+  batch_no                String?
+  confirmed_quantity      Int?
+  unit_price              Int
+  total_price             Int
+  memo                    String?
+  created_at              DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?     @db.Timestamptz(6)
+  inbound_quantity        Int?
+  received_order_quantity Int
+  pending_quantity        Int?
+  SupplierOrder           SupplierOrder @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id])
+  @@index([product_id])
+}
+
+model SupplierProduct {
+  id                  String    @id
+  tenant_id           String
+  product_id          String
+  supplier_id         String?
+  supplier_manager_id String?
+  purchase_price      Int?
+  moq                 Int?
+  lead_time_days      Int?
+  note                String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime?
+  contact_name        String?
+  contact_phone       String?
+  contact_email       String?
+  supplier_tenant_id  String?
+  company_name        String?
+  Product             Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([supplier_id])
+  @@index([supplier_manager_id])
+  @@index([supplier_tenant_id])
+  @@index([tenant_id])
+  @@index([tenant_id, product_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model SupplierProductTag {
+  id         String   @id
+  name       String   @unique
+  created_at DateTime @default(now())
+
+  @@index([name])
+}
+
+model SupplierRegionTag {
+  id         String   @id
+  name       String   @unique
+  created_at DateTime @default(now())
+
+  @@index([name])
+}
+
+model SupplierReturnItem {
+  id                    String                @id
+  return_request_id     String
+  product_name          String
+  brand                 String?
+  quantity              Int
+  return_type           String
+  memo                  String?
+  images                String[]              @default([])
+  inbound_date          String
+  total_price           Int
+  order_no              String?
+  batch_no              String?
+  created_at            DateTime              @default(now())
+  updated_at            DateTime?
+  status                String                @default("pending")
+  SupplierReturnRequest SupplierReturnRequest @relation(fields: [return_request_id], references: [id], onDelete: Cascade)
+
+  @@index([return_request_id])
+}
+
+model SupplierReturnNotification {
+  id                     String          @id
+  supplier_manager_id    String
+  return_id              String
+  clinic_tenant_id       String
+  clinic_name            String?
+  product_id             String
+  product_name           String
+  product_brand          String
+  product_code           String?
+  return_qty             Int
+  refund_amount_per_item Float
+  total_refund           Float
+  return_manager_name    String
+  return_date            DateTime
+  batch_no               String?
+  status                 String          @default("PENDING")
+  is_read                Boolean         @default(false)
+  created_at             DateTime        @default(now())
+  updated_at             DateTime?
+  accepted_at            DateTime?
+  rejected_at            DateTime?
+  accepted_quantity      Int?
+  unreturned_quantity    Int?
+  quantity_change_reason String?
+  SupplierManager        SupplierManager @relation(fields: [supplier_manager_id], references: [id], onDelete: Cascade)
+
+  @@index([clinic_tenant_id])
+  @@index([created_at])
+  @@index([is_read])
+  @@index([return_id])
+  @@index([status])
+  @@index([supplier_manager_id])
+  @@index([supplier_manager_id, is_read])
+  @@index([supplier_manager_id, status])
+}
+
+model SupplierReturnRequest {
+  id                  String               @id
+  supplier_tenant_id  String
+  supplier_manager_id String?
+  clinic_tenant_id    String
+  clinic_name         String
+  clinic_manager_name String
+  return_no           String               @unique
+  status              String               @default("pending")
+  memo                String?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime?
+  confirmed_at        DateTime?
+  completed_at        DateTime?
+  rejected_at         DateTime?
+  rejected_reason     String?
+  SupplierReturnItem  SupplierReturnItem[]
+
+  @@index([clinic_tenant_id])
+  @@index([created_at])
+  @@index([return_no])
+  @@index([status])
+  @@index([supplier_manager_id])
+  @@index([supplier_tenant_id])
+}
+
+model WarehouseLocation {
+  id         String    @id
+  tenant_id  String
+  name       String
+  category   String?
+  items      String[]  @default([])
+  created_at DateTime  @default(now())
+  updated_at DateTime?
+
+  @@unique([tenant_id, name])
+  @@index([category])
+  @@index([tenant_id])
+}

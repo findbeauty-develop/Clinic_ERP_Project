@@ -18,7 +18,8 @@ type Batch = {
   batch_no: string;
   qty: number;
   inbound_qty?: number | null;
-  used_count?: number | null; // ✅ 사용 단위 mantiqi uchun kerak
+  used_count?: number | null; // ✅ Ishlatilgan miqdor (empty box uchun)
+  outbound_count?: number | null; // ✅ Ombordan chiqgan jami miqdor
   available_quantity?: number | null; // ✅ Add available_quantity from database
   min_stock?: number | null;
   expiry_date?: string | null;
@@ -3092,24 +3093,21 @@ const ProductCard = memo(function ProductCard({
     }
 
     // Fallback: Calculate if available_quantity not in database
-    // If inbound_qty, capacity_per_product, and usage_capacity exist, use them
+    // If inbound_qty, capacity_per_product, and outbound_count exist, use them
     if (
       batch.inbound_qty !== null &&
       batch.inbound_qty !== undefined &&
       product.capacityPerProduct !== null &&
       product.capacityPerProduct !== undefined &&
-      product.capacityPerProduct > 0 &&
-      product.usageCapacity !== null &&
-      product.usageCapacity !== undefined &&
-      product.usageCapacity > 0
+      product.capacityPerProduct > 0
     ) {
-      // Jami miqdor: inbound_qty * capacity_per_product
+      // ✅ NEW FORMULA: (inbound_qty * capacity_per_product) - outbound_count
+      // outbound_count tracks total warehouse outbound (all types)
       const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
-      // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
-      const usedCount = batch.used_count || 0;
-      // Qolgan miqdor: totalQuantity - usedCount
-      return Math.max(0, totalQuantity - usedCount);
+      const outboundCount = batch.outbound_count || 0;
+      return Math.max(0, totalQuantity - outboundCount);
     }
+    
     // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
     if (
       batch.inbound_qty !== null &&

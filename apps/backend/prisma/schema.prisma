@@ -140,7 +140,8 @@ model Batch {
   unit             String?      // Unit from product (e.g., EA, BOX, etc.)
   min_stock        Int?         // Minimum stock from product (immutable)
   alert_days       String?
-  used_count       Int         @default(0) // Ishlatilgan mahsulotlar soni (usageCapacity asosida)
+  used_count       Int         @default(0) // Normal product outbound uchun (empty box hisoblash uchun)
+  outbound_count   Int         @default(0) // Barcha outbound uchun (normal, damaged, defective)
   available_quantity Int?      // Available quantity: (inbound_qty * capacity_per_product) - used_count (auto-calculated)
   is_separate_purchase Boolean @default(false) // 별도 구매 (true) vs 바코드 입고 (false)
   created_at       DateTime    @default(now())
