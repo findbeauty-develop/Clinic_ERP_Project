@@ -160,7 +160,7 @@ export class ProductsService {
           barcode: product.barcode,
           productImage: product.image_url,
           category: product.category,
-          status: product.status,
+          status: null, // status field removed from Product table
           currentStock: product.current_stock,
           minStock: product.min_stock,
           purchasePrice: product.purchase_price,
@@ -234,7 +234,7 @@ export class ProductsService {
       barcode: product.barcode,
       productImage: product.image_url,
       category: product.category,
-      status: product.status,
+      status: null, // status field removed from Product table
       currentStock: product.current_stock,
       minStock: product.min_stock,
       purchasePrice: product.purchase_price,
@@ -379,29 +379,20 @@ export class ProductsService {
           barcode: dto.barcode,
           image_url: imageUrl,
           category: dto.category,
-            storage: dto.storage ?? null, // 보관 위치 (Storage location)
-          status: resolvedStatus,
+          // status field removed from Product table
           is_active: resolvedIsActive,
           unit: dto.unit ?? null,
-            purchase_price: dto.purchasePrice ?? null, // Default/fallback price
+          purchase_price: dto.purchasePrice ?? null, // Default/fallback price
           sale_price: dto.salePrice ?? null,
           current_stock: dto.currentStock ?? 0,
           min_stock: dto.minStock ?? 0,
           capacity_per_product: dto.capacityPerProduct ?? null,
           capacity_unit: dto.capacityUnit ?? null,
           usage_capacity: dto.usageCapacity ?? null,
-            // Product-level expiry defaults
-            expiry_months: dto.expiryMonths ?? null,
-            expiry_unit: dto.expiryUnit ?? null,
-            alert_days: dto.alertDays ?? null,
-            inbound_manager: dto.inboundManager ?? null,
-            // Packaging unit conversion
-            has_different_packaging_quantity:
-              dto.hasDifferentPackagingQuantity ?? false,
-            packaging_from_quantity: dto.packagingFromQuantity ?? null,
-            packaging_from_unit: dto.packagingFromUnit ?? null,
-            packaging_to_quantity: dto.packagingToQuantity ?? null,
-            packaging_to_unit: dto.packagingToUnit ?? null,
+          // alert_days is kept
+          alert_days: dto.alertDays ?? null,
+          // All removed fields: expiry_months, expiry_unit, inbound_manager, storage
+          // has_different_packaging_quantity, packaging_from_unit, packaging_to_unit, etc.
           returnPolicy: dto.returnPolicy
             ? {
                 create: {
@@ -488,9 +479,15 @@ export class ProductsService {
       if (dto.initial_batches?.length) {
         for (const batch of dto.initial_batches) {
           // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
-          const batchNo =
-            batch.batch_no ||
-            (await this.generateBatchNo(product.id, tenantId, tx));
+          // Agar barcode-dan batch_no kelgan bo'lsa, unga tartib raqam qo'shamiz
+          let batchNo: string;
+          if (batch.batch_no && batch.batch_no.trim() !== "") {
+            // Barcode-dan kelgan batch number: tartib raqam qo'shish kerak
+            batchNo = await this.generateBatchNo(product.id, tenantId, tx, batch.batch_no.trim());
+          } else {
+            // Random batch number yaratish: 9ta random raqam - 001
+            batchNo = await this.generateBatchNo(product.id, tenantId, tx);
+          }
 
           await tx.batch.create({
             data: {
@@ -523,14 +520,7 @@ export class ProductsService {
           });
           }
 
-          // ✅ Set Product's inbound_qty from first batch (one-time only)
-          if (dto.initial_batches.length > 0) {
-            const firstBatchQty = dto.initial_batches[0].qty;
-            await tx.product.update({
-              where: { id: product.id },
-              data: { inbound_qty: firstBatchQty },
-          });
-        }
+          // inbound_qty field removed from Product table - no longer needed
       }
 
       // Return product with all related data
@@ -641,9 +631,9 @@ export class ProductsService {
       barcode: product.barcode ?? null, // ✅ Qo'shildi
       productImage: product.image_url,
       category: product.category,
-      status: product.status,
+      status: null, // status field removed from Product table
       currentStock: product.current_stock,
-      inboundQty: product.inbound_qty ?? null, // ✅ Original qty from first inbound
+      inboundQty: null, // inbound_qty removed from Product table - should get from first Batch if needed
       minStock: product.min_stock,
       purchasePrice: purchasePrice, // ProductSupplier.purchase_price or Product.purchase_price
       salePrice: product.sale_price,
@@ -795,7 +785,7 @@ export class ProductsService {
         barcode: product.barcode,
         productImage: product.image_url,
         category: product.category,
-        status: product.status,
+        status: null, // status field removed from Product table
         currentStock: product.current_stock,
         minStock: product.min_stock,
         purchasePrice: product.purchase_price,
@@ -1209,8 +1199,15 @@ export class ProductsService {
 
         for (const batch of dto.initial_batches) {
           // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
-          const batchNo =
-            batch.batch_no || (await this.generateBatchNo(id, tenantId, tx));
+          // Agar barcode-dan batch_no kelgan bo'lsa, unga tartib raqam qo'shamiz
+          let batchNo: string;
+          if (batch.batch_no && batch.batch_no.trim() !== "") {
+            // Barcode-dan kelgan batch number: tartib raqam qo'shish kerak
+            batchNo = await this.generateBatchNo(id, tenantId, tx, batch.batch_no.trim());
+          } else {
+            // Random batch number yaratish: 9ta random raqam - 001
+            batchNo = await this.generateBatchNo(id, tenantId, tx);
+          }
 
           await tx.batch.create({
             data: {
@@ -1443,10 +1440,17 @@ export class ProductsService {
 
     return this.prisma.$transaction(
       async (tx: any) => {
-      // ✅ Use frontend's batch_no if provided, otherwise auto-generate BTX-XXX
-      const batchNo = dto.batch_no && dto.batch_no.trim() !== ""
-        ? dto.batch_no
-        : await this.generateBatchNo(productId, tenantId, tx);
+      // ✅ Use frontend's batch_no if provided (from barcode), otherwise auto-generate
+      // Agar barcode-dan batch_no kelgan bo'lsa, unga tartib raqam qo'shamiz
+      let batchNo: string;
+      if (dto.batch_no && dto.batch_no.trim() !== "") {
+        // Barcode-dan kelgan batch number: tartib raqam qo'shish kerak
+        // Format: barcode_batch_number - 001
+        batchNo = await this.generateBatchNo(productId, tenantId, tx, dto.batch_no.trim());
+      } else {
+        // Random batch number yaratish: 9ta random raqam - 001
+        batchNo = await this.generateBatchNo(productId, tenantId, tx);
+      }
 
         // Product'ni olish (storage, unit, expiry_months, expiry_unit, alert_days, sale_price, min_stock uchun)
         const product = await tx.product.findFirst({
@@ -1513,14 +1517,7 @@ export class ProductsService {
           where: { product_id: productId, tenant_id: tenantId },
         });
 
-        // If this is the first batch, set Product's inbound_qty
-        if (existingBatches === 1) {
-          // Count includes the just-created batch
-          await tx.product.update({
-            where: { id: productId, tenant_id: tenantId },
-            data: { inbound_qty: dto.qty },
-          });
-        }
+        // inbound_qty field removed from Product table - no longer needed
 
       // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
       const totalStock = await tx.batch.aggregate({
@@ -1604,9 +1601,11 @@ export class ProductsService {
   private async generateBatchNo(
     productId: string,
     tenantId: string,
-    tx: any
+    tx: any,
+    customPrefix?: string // Optional: barcode-dan kelgan batch number uchun
   ): Promise<string> {
-    const productPrefix = 'BTX'; // Custom prefix for all products
+    // ✅ Generate 9 random digits
+    const randomDigits = Math.floor(100000000 + Math.random() * 900000000).toString();
     
     try {
       // ✅ Validate transaction client before using it
@@ -1623,7 +1622,9 @@ export class ProductsService {
           .toString()
           .padStart(3, "0");
 
-        return `${productPrefix}-${sequenceNumber}`;
+        // Format: 9ta random raqam - 001
+        const prefix = customPrefix || randomDigits;
+        return `${prefix}-${sequenceNumber}`;
       }
 
     // Product'ning mavjud batch'lari sonini topish
@@ -1636,8 +1637,9 @@ export class ProductsService {
       .toString()
       .padStart(3, "0");
 
-    // Formatlash: BTX-001, BTX-002, BTX-003, ...
-    return `${productPrefix}-${sequenceNumber}`;
+    // Format: 9ta random raqam - 001 (yoki customPrefix - 001 agar barcode-dan kelgan bo'lsa)
+    const prefix = customPrefix || randomDigits;
+    return `${prefix}-${sequenceNumber}`;
     } catch (error: any) {
       // ✅ Fallback: if transaction fails, use regular prisma client
       console.error(
@@ -1656,7 +1658,9 @@ export class ProductsService {
         .toString()
         .padStart(3, "0");
 
-      return `${productPrefix}-${sequenceNumber}`;
+      // Format: 9ta random raqam - 001
+      const prefix = customPrefix || randomDigits;
+      return `${prefix}-${sequenceNumber}`;
     }
   }
 

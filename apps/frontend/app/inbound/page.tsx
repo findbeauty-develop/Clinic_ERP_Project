@@ -916,13 +916,35 @@ const ProductCard = memo(function ProductCard({
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
-  const isLowStock = product.currentStock <= product.minStock;
-
-  // Cache for batches to prevent duplicate requests
+  
+  // Cache TTL constant (must be declared before useRef and useMemo)
+  const CACHE_TTL = 5000; // 5 seconds
+  
+  // Cache for batches to prevent duplicate requests (must be declared before useMemo)
   const batchesCacheRef = useRef<
     Map<string, { data: ProductBatch[]; timestamp: number }>
   >(new Map());
-  const CACHE_TTL = 5000; // 30 seconds
+  
+  // ✅ Calculate currentStock from batches (more accurate than Product table)
+  const calculatedCurrentStock = useMemo(() => {
+    // If batches are loaded in state, use them (most accurate)
+    if (batches.length > 0) {
+      return batches.reduce((sum, batch) => sum + (batch.qty || 0), 0);
+    }
+    
+    // If batches not in state, try cache (works when card is collapsed)
+    const cacheKey = `${product.id}`;
+    const cached = batchesCacheRef.current.get(cacheKey);
+    if (cached?.data && cached.data.length > 0) {
+      return cached.data.reduce((sum, batch) => sum + (batch.qty || 0), 0);
+    }
+    
+    // If no batches available, use product.currentStock from API
+    // This ensures we always show a value, even when card is collapsed
+    return product.currentStock ?? 0;
+  }, [batches, product.currentStock, product.id]);
+  
+  const isLowStock = calculatedCurrentStock <= product.minStock;
 
   // USB Barcode Scanner for Batch
   useEffect(() => {
@@ -1010,6 +1032,16 @@ const ProductCard = memo(function ProductCard({
       console.error('Barcode parsing error:', error);
     }
   };
+
+  // ✅ Load batches from cache on mount (even if not expanded)
+  useEffect(() => {
+    const cacheKey = `${product.id}`;
+    const cached = batchesCacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setBatches(cached.data);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]); // CACHE_TTL is constant, no need to include
 
   useEffect(() => {
     const fetchBatches = async () => {
@@ -1365,7 +1397,7 @@ const ProductCard = memo(function ProductCard({
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
               <span className="inline-flex items-center gap-1">
                 <BoxIcon className="h-4 w-4" />
-                {product.currentStock.toLocaleString()} /{" "}
+                {calculatedCurrentStock.toLocaleString()} /{" "}
                 {product.minStock.toLocaleString()} {product.unit ?? "EA"}
               </span>
 
@@ -1377,14 +1409,14 @@ const ProductCard = memo(function ProductCard({
               )}
               {product.managerName && (
                 <span className="inline-flex items-center gap-1">
-                  {product.managerName}
+                  {product.managerName} {product.managerPosition}
                 </span>
               )}
-              {product.managerPosition && (
+              {/* {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
-                  직함: {product.managerPosition}
+                  
                 </span>
-              )}
+              )} */}
             </div>
           </div>
         </div>
@@ -1680,7 +1712,7 @@ const ProductCard = memo(function ProductCard({
                 </label>
                 <input
                   type="text"
-                  placeholder="보관 위치를 입력하지 않으면 기본 위치로 저장됩니다"
+                  placeholder="보관 위치를 입력"
                   value={batchForm.storageLocation}
                   onChange={(e) => {
                     e.stopPropagation();

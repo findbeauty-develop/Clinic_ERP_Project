@@ -260,7 +260,7 @@ export default function InboundNewPage() {
     usageCapacity: 0,
     usageCapacityUnit: unitOptions[0] || "cc / mL", // 사용 단위 unit (alohida)
     purchasePrice: "",
-    purchasePriceUnit: unitOptions[0] || "cc / mL",
+    purchasePriceUnit: "box", // Fixed to "box" only
     salePrice: "",
     salePriceUnit: unitOptions[0] || "cc / mL",
     usageSalePrice: "", // 사용량에 대한 별도 판매가
@@ -295,16 +295,8 @@ export default function InboundNewPage() {
     setFormData((prev) => {
       const newData = { ...prev, [field]: value };
 
-      // 제품 재고 수량, 최소 제품 재고, 구매가 unit'lari bir-biriga bog'langan
-      const syncedUnitFields = ["minStockUnit", "purchasePriceUnit"];
-
-      if (syncedUnitFields.includes(field)) {
-        syncedUnitFields.forEach((unitField) => {
-          if (unitField !== field) {
-            (newData as Record<string, any>)[unitField] = value;
-          }
-        });
-      }
+      // minStockUnit is fixed to "box", no syncing needed
+      // purchasePriceUnit is also fixed to "box"
 
       // 제품 용량 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
       // Faqat "사용 단위" checkbox o'chirilgan bo'lsa
@@ -1054,15 +1046,8 @@ export default function InboundNewPage() {
         isActive: resolvedIsActive,
         barcode: formData.barcode || undefined,
         minStock: Number(formData.minStock) || 0,
-        // ✅ Always send unit (use minStockUnit or purchasePriceUnit or default to "EA")
-        unit:
-          formData.minStockUnit &&
-          formData.minStockUnit !== unitOptions[0]
-            ? formData.minStockUnit
-            : formData.purchasePriceUnit &&
-              formData.purchasePriceUnit !== unitOptions[0]
-            ? formData.purchasePriceUnit
-            : "EA",
+        // ✅ Always use "box" as the unit (minStockUnit and purchasePriceUnit are both fixed to "box")
+        unit: "box",
       };
       // ✅ unit already set above, no need for conditional
       if (formData.capacityPerProduct && formData.capacityPerProduct > 0) {
@@ -1665,34 +1650,12 @@ export default function InboundNewPage() {
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
                   <div className="relative w-28">
-                    <select
-                      value={formData.purchasePriceUnit}
-                      onChange={(e) =>
-                        handleInputChange("purchasePriceUnit", e.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    >
-                      {unitOptions.slice(0).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
+                    <input
+                      type="text"
+                      value="box"
+                      readOnly
+                      className="h-11 w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
                   </div>
                 </div>
                 {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
