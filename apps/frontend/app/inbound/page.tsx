@@ -869,6 +869,41 @@ export default function InboundPage() {
   );
 }
 
+// ✅ Global cache for batches (shared across all ProductCard instances)
+// This prevents data loss when navigating between pages and on force refresh
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes (prevents data loss on page navigation)
+const CACHE_STORAGE_KEY = 'jaclit-batches-cache';
+
+// Initialize cache from localStorage on first load
+const initializeCache = (): Map<string, { data: ProductBatch[]; timestamp: number }> => {
+  if (typeof window === 'undefined') return new Map();
+  
+  try {
+    const stored = localStorage.getItem(CACHE_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (error) {
+    console.error('Failed to load batches cache from localStorage:', error);
+  }
+  return new Map();
+};
+
+const globalBatchesCache = initializeCache();
+
+// Save cache to localStorage whenever it changes
+const saveCacheToStorage = () => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const cacheObject = Object.fromEntries(globalBatchesCache.entries());
+    localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cacheObject));
+  } catch (error) {
+    console.error('Failed to save batches cache to localStorage:', error);
+  }
+};
+
 const ProductCard = memo(function ProductCard({
   product,
   isExpanded,
@@ -916,34 +951,42 @@ const ProductCard = memo(function ProductCard({
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
   );
-  
-  // Cache TTL constant (must be declared before useRef and useMemo)
-  const CACHE_TTL = 5000; // 5 seconds
-  
-  // Cache for batches to prevent duplicate requests (must be declared before useMemo)
-  const batchesCacheRef = useRef<
-    Map<string, { data: ProductBatch[]; timestamp: number }>
-  >(new Map());
-  
+
+  // ✅ Update cache whenever batches state changes
+  useEffect(() => {
+    if (batches.length > 0) {
+      const cacheKey = `${product.id}`;
+      globalBatchesCache.set(cacheKey, {
+        data: batches,
+        timestamp: Date.now(),
+      });
+      // Save to localStorage for persistence across page refreshes
+      saveCacheToStorage();
+    }
+  }, [batches, product.id]);
+
   // ✅ Calculate currentStock from batches (more accurate than Product table)
   const calculatedCurrentStock = useMemo(() => {
     // If batches are loaded in state, use them (most accurate)
     if (batches.length > 0) {
       return batches.reduce((sum, batch) => sum + (batch.qty || 0), 0);
     }
-    
-    // If batches not in state, try cache (works when card is collapsed)
+
+    // If batches not in state, try cache (works when card is collapsed or after navigation)
     const cacheKey = `${product.id}`;
-    const cached = batchesCacheRef.current.get(cacheKey);
+    const cached = globalBatchesCache.get(cacheKey);
+    
+    // ✅ Use cache without expiration check for display purposes
+    // This ensures data persists even after long page navigation
     if (cached?.data && cached.data.length > 0) {
       return cached.data.reduce((sum, batch) => sum + (batch.qty || 0), 0);
     }
-    
+
     // If no batches available, use product.currentStock from API
     // This ensures we always show a value, even when card is collapsed
     return product.currentStock ?? 0;
   }, [batches, product.currentStock, product.id]);
-  
+
   const isLowStock = calculatedCurrentStock <= product.minStock;
 
   // USB Barcode Scanner for Batch
@@ -978,6 +1021,18 @@ const ProductCard = memo(function ProductCard({
       clearTimeout(timeout);
     };
   }, [isExpanded, product.barcode]);
+
+  // ✅ Load batches from cache on mount (even if not expanded)
+  // This ensures data persists after page navigation
+  useEffect(() => {
+    const cacheKey = `${product.id}`;
+    const cached = globalBatchesCache.get(cacheKey);
+    
+    // Load from cache without expiration check to preserve data across navigation
+    if (cached?.data && cached.data.length > 0) {
+      setBatches(cached.data);
+    }
+  }, [product.id]);
 
   const handleBatchBarcodeScanned = async (scannedBarcode: string) => {
     try {
@@ -1033,16 +1088,6 @@ const ProductCard = memo(function ProductCard({
     }
   };
 
-  // ✅ Load batches from cache on mount (even if not expanded)
-  useEffect(() => {
-    const cacheKey = `${product.id}`;
-    const cached = batchesCacheRef.current.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      setBatches(cached.data);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product.id]); // CACHE_TTL is constant, no need to include
-
   useEffect(() => {
     const fetchBatches = async () => {
       if (!isExpanded) {
@@ -1052,7 +1097,7 @@ const ProductCard = memo(function ProductCard({
 
       // Check cache first
       const cacheKey = `${product.id}`;
-      const cached = batchesCacheRef.current.get(cacheKey);
+      const cached = globalBatchesCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         setBatches(cached.data);
         return;
@@ -1066,7 +1111,8 @@ const ProductCard = memo(function ProductCard({
         );
         setBatches(data);
         // Update cache
-        batchesCacheRef.current.set(cacheKey, { data, timestamp: Date.now() });
+        globalBatchesCache.set(cacheKey, { data, timestamp: Date.now() });
+        saveCacheToStorage(); // Save to localStorage
       } catch (err) {
         console.error("Failed to load batches", err);
         setBatches([]);
@@ -1321,7 +1367,8 @@ const ProductCard = memo(function ProductCard({
 
       // Clear local batches cache
       const cacheKey = `${product.id}`;
-      batchesCacheRef.current.delete(cacheKey);
+      globalBatchesCache.delete(cacheKey);
+      saveCacheToStorage(); // Update localStorage
 
       // Fetch fresh batches with cache-busting
       const updatedBatches = await apiGet<ProductBatch[]>(
@@ -1337,10 +1384,11 @@ const ProductCard = memo(function ProductCard({
       setBatches(updatedBatches);
 
       // Update local cache with fresh data
-      batchesCacheRef.current.set(cacheKey, {
+      globalBatchesCache.set(cacheKey, {
         data: updatedBatches,
         timestamp: Date.now(),
       });
+      saveCacheToStorage(); // Save to localStorage
 
       // ✅ Dispatch event to refresh product list (for current_stock update)
       window.dispatchEvent(
