@@ -2920,6 +2920,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
               barcode: item.product?.barcode || '',
               quantity: remainingQty,
               expiryDate: '',
+              productionDate: '', // ✅ AI 11
               storageLocation: '',
               batchNumber: '',
               manufactureDate: '',
@@ -3013,52 +3014,62 @@ const PendingOrdersList = memo(function PendingOrdersList({
   };
 
   // ✅ NEW: GS1 Barcode Parser
-  const parseGS1Barcode = (barcode: string) => {
-    const result = {
-      gtin: '',
-      gtinVariants: [] as string[],
-      expiryDate: '',
-      batchNumber: '',
-      originalBarcode: barcode,
-    };
-
-    // Extract GTIN (01) - 14 digits
-    const gtinMatch = barcode.match(/01(\d{14})/);
-    if (gtinMatch) {
-      const gtin14 = gtinMatch[1];
-      result.gtin = gtin14;
+  // ✅ Import production-level GS1 barcode parser
+  const parseGS1Barcode = async (barcode: string) => {
+    try {
+      const { parseGS1Barcode: parse } = await import('../../utils/gs1Parser');
+      const parsed = parse(barcode, { mode: 'lenient' });
       
-      // Create variants for matching
-      result.gtinVariants = [
-        gtin14,                    // Full GTIN-14
-        gtin14.substring(1),       // EAN-13 (remove first digit)
-        gtin14.substring(2),       // UPC-12 (remove first 2 digits)
-      ];
+      console.log('[parseGS1Barcode] Production parser result:', parsed);
+      
+      // Create comprehensive GTIN variants for matching
+      const gtinVariants: string[] = [];
+      
+      if (parsed.primary_gtin) {
+        const gtin14 = parsed.primary_gtin;
+        gtinVariants.push(gtin14);
+        
+        // EAN-13: Remove first digit
+        if (gtin14.length === 14) {
+          gtinVariants.push(gtin14.substring(1));
+          // UPC-12: Remove first 2 digits
+          gtinVariants.push(gtin14.substring(2));
+          // Zero-padded EAN-13
+          gtinVariants.push('0' + gtin14.substring(1));
+        }
+        
+        console.log('[parseGS1Barcode] GTIN Variants:', gtinVariants);
+      }
+      
+      // Convert to compatible format
+      return {
+        gtin: parsed.primary_gtin || '',
+        gtinVariants,
+        expiryDate: parsed.expiry || '',
+        productionDate: parsed.prod_date || '', // ✅ AI 11
+        batchNumber: parsed.batch || '',
+        originalBarcode: barcode,
+        errors: parsed.errors,
+        raw_tail: parsed.raw_tail,
+      };
+    } catch (error) {
+      console.error('[parseGS1Barcode] Error:', error);
+      // Fallback to empty
+      return {
+        gtin: '',
+        gtinVariants: [],
+        expiryDate: '',
+        productionDate: '', // ✅ AI 11
+        batchNumber: '',
+        originalBarcode: barcode,
+        errors: [],
+      };
     }
-
-    // Extract expiry date (17) - YYMMDD
-    const expiryMatch = barcode.match(/17(\d{6})/);
-    if (expiryMatch) {
-      const date = expiryMatch[1];
-      const year = '20' + date.substring(0, 2);
-      const month = date.substring(2, 4);
-      const day = date.substring(4, 6);
-      result.expiryDate = `${year}-${month}-${day}`;
-    }
-
-    // Extract batch number (10) - Variable length alphanumeric
-    const batchMatch = barcode.match(/10([A-Z0-9]+?)(?=\d{2}|$)/);
-    if (batchMatch) {
-      result.batchNumber = batchMatch[1];
-    }
-
-    return result;
   };
 
-  // ✅ NEW: Find order by barcode
   // ✅ NEW: Find order by barcode - prioritize items already in scannedItems
-  const findOrderByBarcode = (barcode: string) => {
-    const parsed = parseGS1Barcode(barcode);
+  const findOrderByBarcode = async (barcode: string) => {
+    const parsed = await parseGS1Barcode(barcode);
     const searchVariants = [
       barcode,
       parsed.gtin,
@@ -3066,10 +3077,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
     ].filter(Boolean);
 
     // First, try to find matching product in scannedItems (pending or active)
-    const pendingOrActive = scannedItems.find(p => 
-      (p.status === 'pending' || p.status === 'active') &&
-      searchVariants.some(variant => p.barcode === variant || p.product?.barcode === variant)
-    );
+    const pendingOrActive = scannedItems.find(p => {
+      if (p.status !== 'pending' && p.status !== 'active') return false;
+      
+      return searchVariants.some(variant => 
+        p.barcode === variant || 
+        p.product?.barcode === variant ||
+        p.productId === variant
+      );
+    });
 
     if (pendingOrActive) {
       console.log('[findOrderByBarcode] Found in scannedItems:', pendingOrActive.productName);
@@ -3147,11 +3163,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
   }, [scanModalOpen]); // handleBarcodeScan uses latest scannedItems via closure
 
   // ✅ NEW: Handle barcode scan
-  const handleBarcodeScan = (barcode: string) => {
+  const handleBarcodeScan = async (barcode: string) => {
     console.log('=== Barcode Scan Started ===');
     console.log('Scanned barcode:', barcode);
     
-    const parsed = parseGS1Barcode(barcode);
+    const parsed = await parseGS1Barcode(barcode);
     const searchVariants = [
       barcode,
       parsed.gtin,
@@ -3159,41 +3175,76 @@ const PendingOrdersList = memo(function PendingOrdersList({
     ].filter(Boolean);
 
     console.log('Search variants:', searchVariants);
+    console.log('Parsed data:', parsed);
 
-    // ✅ USE setScannedItems with callback to get latest state
+    // STEP 1: Get current scannedItems and check if product exists
+    let existingItem: any = null;
+    let currentItems: any[] = [];
+    
     setScannedItems(prevItems => {
+      currentItems = prevItems; // Store for later use
+      console.log('🔍 Searching in scannedItems...');
       console.log('Current scannedItems (LATEST):', prevItems.map(p => ({ 
         itemId: p.itemId, 
         productId: p.productId, 
         name: p.productName, 
         status: p.status,
-        barcode: p.barcode 
+        barcode: p.barcode,
+        productBarcode: p.product?.barcode
       })));
+      console.log('Search variants to match:', searchVariants);
 
-      // STEP 1: Try to find in scannedItems (pending or active only)
-      const existingPending = prevItems.find(p => 
-        (p.status === 'pending' || p.status === 'active') &&
-        (searchVariants.includes(p.product?.barcode) || 
-         searchVariants.includes(p.barcode) ||
-         p.productId === parsed.gtin)
-      );
+      existingItem = prevItems.find(p => {
+        if (p.status !== 'pending' && p.status !== 'active') return false;
+        
+        // Try multiple matching strategies
+        const matches = 
+          searchVariants.some(variant => 
+            p.product?.barcode === variant || 
+            p.barcode === variant ||
+            p.productId === variant
+          ) ||
+          p.productId === parsed.gtin ||
+          p.itemId === parsed.gtin;
+        
+        if (matches) {
+          console.log('🔍 Match found:', {
+            productName: p.productName,
+            itemId: p.itemId,
+            productId: p.productId,
+            barcode: p.barcode,
+            productBarcode: p.product?.barcode
+          });
+        }
+        
+        return matches;
+      });
 
-      if (existingPending) {
-        console.log('✅ Found existing pending/active product:', existingPending.productName);
-        console.log('Updating itemId:', existingPending.itemId);
+      if (existingItem) {
+        console.log('✅ Found existing pending/active product:', existingItem.productName);
+        console.log('Updating itemId:', existingItem.itemId);
         
         // Update this product and set to active
         const updatedItems = prevItems.map((p) => {
-          if (p.itemId === existingPending.itemId) {
-            return {
+          if (p.itemId === existingItem.itemId) {
+            const updated = {
               ...p,
-              quantity: existingPending.remainingQty > 0 ? existingPending.remainingQty : p.quantity,
+              quantity: existingItem.remainingQty > 0 ? existingItem.remainingQty : p.quantity,
               expiryDate: parsed.expiryDate || p.expiryDate,
+              productionDate: parsed.productionDate || p.productionDate, // ✅ AI 11
               batchNumber: parsed.batchNumber || p.batchNumber,
-              lotNumber: parsed.batchNumber || p.lotNumber,
+              lotNumber: parsed.batchNumber || p.lotNumber, // ✅ Auto-fill from GS1 batch
               barcode: parsed.originalBarcode,
               status: 'active',
             };
+            console.log('📦 Updated product fields:', {
+              lotNumber: updated.lotNumber,
+              batchNumber: updated.batchNumber,
+              expiryDate: updated.expiryDate,
+              productionDate: updated.productionDate,
+              quantity: updated.quantity
+            });
+            return updated;
           }
           // Set other active items back to pending
           if (p.status === 'active') {
@@ -3202,56 +3253,99 @@ const PendingOrdersList = memo(function PendingOrdersList({
           return p;
         });
         
-        setActiveItemId(existingPending.itemId);
-        console.log('Set activeItemId to:', existingPending.itemId);
+        setActiveItemId(existingItem.itemId);
+        console.log('Set activeItemId to:', existingItem.itemId);
         return updatedItems;
       }
 
-      // STEP 2: If not in scannedItems, find in orders
-      console.log('Not found in scannedItems, searching in orders...');
-      const result = findOrderByBarcode(barcode);
+      return prevItems; // No changes yet
+    });
 
-      if (!result) {
-        console.log('Parsed GS1:', parsed);
-        console.log('Search variants:', searchVariants);
-        
-        // Debug: Show all product barcodes in orders
-        console.log('Available product barcodes in orders:');
-        orders.forEach((order, i) => {
-          order.items?.forEach((item: any, j: number) => {
-            console.log(`Order ${i+1}, Item ${j+1}:`, {
-              productName: item.productName,
-              productBarcode: item.product?.barcode,
-              itemBarcode: item.barcode,
-            });
+    // If found in scannedItems, we're done
+    if (existingItem) {
+      console.log('✅ Product updated, scan complete');
+      return;
+    }
+
+    // STEP 2: If not in scannedItems, find in orders
+    console.log('Not found in scannedItems, searching in orders...');
+    const result = await findOrderByBarcode(barcode);
+
+    if (!result) {
+      console.log('Parsed GS1:', parsed);
+      console.log('Search variants:', searchVariants);
+      
+      // Debug: Show all product barcodes in orders
+      console.log('Available product barcodes in orders:');
+      orders.forEach((order, i) => {
+        order.items?.forEach((item: any, j: number) => {
+          console.log(`Order ${i+1}, Item ${j+1}:`, {
+            productName: item.productName,
+            productBarcode: item.product?.barcode,
+            itemBarcode: item.barcode,
           });
         });
-        
-        alert(
-          `바코드를 찾을 수 없습니다.\n\n` +
-          `스캔된 바코드: ${barcode}\n` +
-          `GTIN: ${parsed.gtin || '없음'}\n\n` +
-          `주문에 해당 제품이 있는지 확인하세요.`
-        );
-        return prevItems; // Return unchanged
+      });
+      
+      alert(
+        `바코드를 찾을 수 없습니다.\n\n` +
+        `스캔된 바코드: ${barcode}\n` +
+        `GTIN: ${parsed.gtin || '없음'}\n\n` +
+        `주문에 해당 제품이 있는지 확인하세요.`
+      );
+      return;
+    }
+
+    console.log('Found order:', result.order.orderNo);
+    console.log('Found item:', result.item.productName);
+    console.log('Found item.id:', result.item.id);
+    
+    const { order, item } = result;
+    
+    // Calculate remaining quantity
+    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+    const alreadyInbound = item.inboundQuantity || 0;
+    const remainingQty = confirmedQty - alreadyInbound;
+
+    // STEP 3: This should rarely happen (product exists in order but not in scannedItems)
+    console.warn('⚠️ Product found in order but not in scannedItems - adding as fallback');
+    
+    // Check if this ID already exists in scannedItems (prevent duplicate)
+    setScannedItems(prev => {
+      const proposedId = `${order.id}-${item.id}`;
+      const alreadyExists = prev.some(p => p.id === proposedId);
+      
+      if (alreadyExists) {
+        console.error('🔴 DUPLICATE DETECTED! Product already in scannedItems:', proposedId);
+        console.log('This should not happen - matching logic failed!');
+        // Try to find and update existing item instead
+        const existingIndex = prev.findIndex(p => p.id === proposedId);
+        if (existingIndex !== -1) {
+          console.log('Updating existing item instead of adding duplicate');
+          setActiveItemId(prev[existingIndex].itemId);
+          return prev.map((p, i) => {
+            if (i === existingIndex) {
+              return {
+                ...p,
+                quantity: remainingQty > 0 ? remainingQty : p.quantity,
+                expiryDate: parsed.expiryDate || p.expiryDate,
+                batchNumber: parsed.batchNumber || p.batchNumber,
+                lotNumber: parsed.batchNumber || p.lotNumber,
+                barcode: parsed.originalBarcode,
+                status: 'active',
+              };
+            }
+            if (p.status === 'active') {
+              return { ...p, status: 'pending' };
+            }
+            return p;
+          });
+        }
+        return prev; // Fallback - no changes
       }
-
-      console.log('Found order:', result.order.orderNo);
-      console.log('Found item:', result.item.productName);
-      console.log('Found item.id:', result.item.id);
-      
-      const { order, item } = result;
-      
-      // Calculate remaining quantity
-      const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
-      const alreadyInbound = item.inboundQuantity || 0;
-      const remainingQty = confirmedQty - alreadyInbound;
-
-      // STEP 3: This should rarely happen (product exists in order but not in scannedItems)
-      console.warn('⚠️ Product found in order but not in scannedItems - adding as fallback');
       
       const newProduct = {
-        id: `${order.id}-${item.id}`,
+        id: proposedId,
         orderId: order.id,
         orderNo: order.orderNo,
         itemId: item.id,
@@ -3261,6 +3355,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
         barcode: parsed.originalBarcode,
         quantity: remainingQty > 0 ? remainingQty : 0,
         expiryDate: parsed.expiryDate,
+        productionDate: parsed.productionDate, // ✅ AI 11
         storageLocation: '',
         batchNumber: parsed.batchNumber,
         manufactureDate: '',
@@ -3273,12 +3368,19 @@ const PendingOrdersList = memo(function PendingOrdersList({
       };
 
       console.log('[handleBarcodeScan] Adding new product (fallback):', newProduct.id);
+      console.log('📦 New product fields:', {
+        lotNumber: newProduct.lotNumber,
+        batchNumber: newProduct.batchNumber,
+        expiryDate: newProduct.expiryDate,
+        productionDate: newProduct.productionDate,
+        quantity: newProduct.quantity
+      });
       
       setActiveItemId(item.id);
       
       // Set all existing active items to pending and add new product
       return [
-        ...prevItems.map(p => p.status === 'active' ? { ...p, status: 'pending' } : p),
+        ...prev.map(p => p.status === 'active' ? { ...p, status: 'pending' } : p),
         newProduct
       ];
     });
@@ -4418,13 +4520,28 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               {/* Manufacture Date */}
                               <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  제조일
+                                  제조일 <span className="text-xs font-normal text-slate-500">(선택가능)</span>
                                 </label>
                                 <input
                                   type="date"
                                   value={item.manufactureDate || ''}
                                   onChange={(e) => updateScannedProduct(item.itemId, { manufactureDate: e.target.value })}
                                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+
+                              {/* Production Date (AI 11) */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  생산일 (AI 11) {item.productionDate && '✓'}
+                                </label>
+                                <input
+                                  type="date"
+                                  value={item.productionDate || ''}
+                                  onChange={(e) => updateScannedProduct(item.itemId, { productionDate: e.target.value })}
+                                  placeholder="바코드에서 자동 입력"
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  readOnly={!!item.productionDate}
                                 />
                               </div>
 
@@ -4477,7 +4594,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 disabled={
                                   !item.quantity || 
                                   item.quantity <= 0 || 
-                                  !item.manufactureDate || 
                                   !item.storageLocation
                                 }
                                 className="w-full mt-4 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
