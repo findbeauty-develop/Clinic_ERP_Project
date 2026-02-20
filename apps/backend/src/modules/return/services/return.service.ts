@@ -138,7 +138,7 @@ export class ReturnService {
           capacity_per_product: true, // 사용 단위 uchun
           returnPolicy: {
             select: {
-              is_returnable: true,
+            is_returnable: true,
               refund_amount: true,
             },
           },
@@ -267,18 +267,18 @@ export class ReturnService {
         // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
         const batchDetails = (product.outbounds || []).map((outbound: any) => {
           const batchReturned = returnedByOutbound.get(outbound.id) || 0;
-          const availableQty = outbound.outbound_qty - batchReturned;
+            const availableQty = outbound.outbound_qty - batchReturned;
 
-          return {
-            batchId: outbound.batch_id,
-            batchNo: outbound.batch_no,
-            outboundId: outbound.id,
-            outboundQty: outbound.outbound_qty,
-            returnedQty: batchReturned,
-            availableQty: availableQty > 0 ? availableQty : 0,
-            outboundDate: outbound.outbound_date,
-            managerName: outbound.manager_name,
-          };
+            return {
+              batchId: outbound.batch_id,
+              batchNo: outbound.batch_no,
+              outboundId: outbound.id,
+              outboundQty: outbound.outbound_qty,
+              returnedQty: batchReturned,
+              availableQty: availableQty > 0 ? availableQty : 0,
+              outboundDate: outbound.outbound_date,
+              managerName: outbound.manager_name,
+            };
         });
 
         // Search filter

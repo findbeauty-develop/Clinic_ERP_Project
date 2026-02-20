@@ -3171,6 +3171,14 @@ export class OrderService {
             expiryMonths: item.product?.expiry_months || null,
             expiryUnit: item.product?.expiry_unit || null,
             alertDays: item.product?.alert_days || null,
+            product: {
+              id: item.product?.id,
+              name: item.product?.name,
+              brand: item.product?.brand,
+              unit: item.product?.unit,
+              alert_days: item.product?.alert_days,
+              barcode: item.product?.barcode, // ✅ Include barcode for scanner
+            },
           };
         });
 
@@ -3246,6 +3254,7 @@ export class OrderService {
                   brand: true,
                   unit: true,
                   alert_days: true,
+                  barcode: true, // ✅ For barcode scanner matching
                 },
               },
             },
@@ -3428,6 +3437,14 @@ export class OrderService {
           expiryMonths: item.product?.expiry_months || null,
           expiryUnit: item.product?.expiry_unit || null,
           alertDays: item.product?.alert_days || null,
+          product: {
+            id: item.product?.id,
+            name: item.product?.name,
+            brand: item.product?.brand,
+            unit: item.product?.unit,
+            alert_days: item.product?.alert_days,
+            barcode: item.product?.barcode, // ✅ Include barcode for scanner
+          },
         };
       });
 

@@ -2878,6 +2878,82 @@ const PendingOrdersList = memo(function PendingOrdersList({
   // ✅ ADD: State for inbound managers per order
   const [inboundManagers, setInboundManagers] = useState<Record<string, string>>({});
 
+  // ✅ NEW: Barcode Scanner Modal States
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scannedItems, setScannedItems] = useState<any[]>([]);
+  const [showProductConfirm, setShowProductConfirm] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<any>(null);
+  const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
+
+  // ✅ NEW: Load all pending products when modal opens
+  const loadPendingProducts = useCallback(() => {
+    const allProducts: any[] = [];
+    const seenIds = new Set<string>(); // Track unique IDs
+    
+    orders.forEach(order => {
+      // Only load orders with "주문 진행" status (supplier_confirmed or pending)
+      if (order.status === 'supplier_confirmed' || order.status === 'pending') {
+        order.items?.forEach((item: any) => {
+          const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+          const alreadyInbound = item.inboundQuantity || 0;
+          const remainingQty = confirmedQty - alreadyInbound;
+
+          // Only add if there's remaining quantity
+          if (remainingQty > 0) {
+            const uniqueId = `${order.id}-${item.id}`;
+            
+            // Skip if already added (prevent duplicates)
+            if (seenIds.has(uniqueId)) {
+              console.warn('[loadPendingProducts] Skipping duplicate:', uniqueId, item.productName);
+              return;
+            }
+            seenIds.add(uniqueId);
+            
+            allProducts.push({
+              id: uniqueId, // Unique key for React
+              orderId: order.id,
+              orderNo: order.orderNo,
+              itemId: item.id,
+              productId: item.productId,
+              productName: item.productName,
+              brand: item.brand || '',
+              barcode: item.product?.barcode || '',
+              quantity: remainingQty,
+              expiryDate: '',
+              storageLocation: '',
+              batchNumber: '',
+              manufactureDate: '',
+              lotNumber: '',
+              remainingQty,
+              order,
+              item,
+              status: 'pending', // All start as pending
+            });
+          }
+        });
+      }
+    });
+
+    console.log('[loadPendingProducts] Loaded products:', allProducts.length);
+    console.log('[loadPendingProducts] Unique IDs:', Array.from(seenIds));
+    setScannedItems(allProducts);
+  }, [orders]);
+
+  // ✅ NEW: Load pending products when modal opens
+  useEffect(() => {
+    if (scanModalOpen && scannedItems.length === 0 && orders.length > 0) {
+      loadPendingProducts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanModalOpen, orders, loadPendingProducts]);
+
+  // ✅ NEW: Close modal and reset state
+  const closeScanModal = () => {
+    setScanModalOpen(false);
+    setScannedItems([]);
+    setActiveItemId(null); // Reset active item
+  };
+
   // Initialize edited items when orders change - optimized with useMemo
   const initialEditedItems = useMemo(() => {
     const initialEdits: Record<string, any> = {};
@@ -2934,6 +3010,364 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ✅ NEW: GS1 Barcode Parser
+  const parseGS1Barcode = (barcode: string) => {
+    const result = {
+      gtin: '',
+      gtinVariants: [] as string[],
+      expiryDate: '',
+      batchNumber: '',
+      originalBarcode: barcode,
+    };
+
+    // Extract GTIN (01) - 14 digits
+    const gtinMatch = barcode.match(/01(\d{14})/);
+    if (gtinMatch) {
+      const gtin14 = gtinMatch[1];
+      result.gtin = gtin14;
+      
+      // Create variants for matching
+      result.gtinVariants = [
+        gtin14,                    // Full GTIN-14
+        gtin14.substring(1),       // EAN-13 (remove first digit)
+        gtin14.substring(2),       // UPC-12 (remove first 2 digits)
+      ];
+    }
+
+    // Extract expiry date (17) - YYMMDD
+    const expiryMatch = barcode.match(/17(\d{6})/);
+    if (expiryMatch) {
+      const date = expiryMatch[1];
+      const year = '20' + date.substring(0, 2);
+      const month = date.substring(2, 4);
+      const day = date.substring(4, 6);
+      result.expiryDate = `${year}-${month}-${day}`;
+    }
+
+    // Extract batch number (10) - Variable length alphanumeric
+    const batchMatch = barcode.match(/10([A-Z0-9]+?)(?=\d{2}|$)/);
+    if (batchMatch) {
+      result.batchNumber = batchMatch[1];
+    }
+
+    return result;
+  };
+
+  // ✅ NEW: Find order by barcode
+  // ✅ NEW: Find order by barcode - prioritize items already in scannedItems
+  const findOrderByBarcode = (barcode: string) => {
+    const parsed = parseGS1Barcode(barcode);
+    const searchVariants = [
+      barcode,
+      parsed.gtin,
+      ...parsed.gtinVariants,
+    ].filter(Boolean);
+
+    // First, try to find matching product in scannedItems (pending or active)
+    const pendingOrActive = scannedItems.find(p => 
+      (p.status === 'pending' || p.status === 'active') &&
+      searchVariants.some(variant => p.barcode === variant || p.product?.barcode === variant)
+    );
+
+    if (pendingOrActive) {
+      console.log('[findOrderByBarcode] Found in scannedItems:', pendingOrActive.productName);
+      // Return the order and item from scannedItems
+      return {
+        order: pendingOrActive.order,
+        item: pendingOrActive.item,
+        parsed,
+      };
+    }
+
+    // If not found in scannedItems, search in orders
+    for (const order of orders) {
+      for (const item of order.items || []) {
+        const productBarcode = item.product?.barcode || item.barcode;
+
+        if (searchVariants.some(variant => productBarcode === variant)) {
+          console.log('[findOrderByBarcode] Found in orders:', item.productName);
+          return {
+            order,
+            item,
+            parsed,
+          };
+        }
+      }
+    }
+
+    console.log('[findOrderByBarcode] Not found');
+    return null;
+  };
+
+  // ✅ NEW: USB Barcode Scanner Listener (only when modal is open)
+  useEffect(() => {
+    if (!scanModalOpen) return;
+
+    let buffer = '';
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Ignore if typing in input field
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      const now = Date.now();
+      
+      // Reset buffer if too much time passed (scanner is faster)
+      if (now - lastTime > 100) {
+        buffer = '';
+      }
+
+      // Enter = scan complete
+      if (e.key === 'Enter' && buffer.length > 0) {
+        e.preventDefault();
+        handleBarcodeScan(buffer.trim());
+        buffer = '';
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+
+        clearTimeout(timeout);
+        timeout = setTimeout(() => { buffer = ''; }, 500);
+      }
+    };
+
+    window.addEventListener('keypress', handleKeyPress);
+    return () => {
+      window.removeEventListener('keypress', handleKeyPress);
+      clearTimeout(timeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanModalOpen]); // handleBarcodeScan uses latest scannedItems via closure
+
+  // ✅ NEW: Handle barcode scan
+  const handleBarcodeScan = (barcode: string) => {
+    console.log('=== Barcode Scan Started ===');
+    console.log('Scanned barcode:', barcode);
+    
+    const parsed = parseGS1Barcode(barcode);
+    const searchVariants = [
+      barcode,
+      parsed.gtin,
+      ...parsed.gtinVariants,
+    ].filter(Boolean);
+
+    console.log('Search variants:', searchVariants);
+
+    // ✅ USE setScannedItems with callback to get latest state
+    setScannedItems(prevItems => {
+      console.log('Current scannedItems (LATEST):', prevItems.map(p => ({ 
+        itemId: p.itemId, 
+        productId: p.productId, 
+        name: p.productName, 
+        status: p.status,
+        barcode: p.barcode 
+      })));
+
+      // STEP 1: Try to find in scannedItems (pending or active only)
+      const existingPending = prevItems.find(p => 
+        (p.status === 'pending' || p.status === 'active') &&
+        (searchVariants.includes(p.product?.barcode) || 
+         searchVariants.includes(p.barcode) ||
+         p.productId === parsed.gtin)
+      );
+
+      if (existingPending) {
+        console.log('✅ Found existing pending/active product:', existingPending.productName);
+        console.log('Updating itemId:', existingPending.itemId);
+        
+        // Update this product and set to active
+        const updatedItems = prevItems.map((p) => {
+          if (p.itemId === existingPending.itemId) {
+            return {
+              ...p,
+              quantity: existingPending.remainingQty > 0 ? existingPending.remainingQty : p.quantity,
+              expiryDate: parsed.expiryDate || p.expiryDate,
+              batchNumber: parsed.batchNumber || p.batchNumber,
+              lotNumber: parsed.batchNumber || p.lotNumber,
+              barcode: parsed.originalBarcode,
+              status: 'active',
+            };
+          }
+          // Set other active items back to pending
+          if (p.status === 'active') {
+            return { ...p, status: 'pending' };
+          }
+          return p;
+        });
+        
+        setActiveItemId(existingPending.itemId);
+        console.log('Set activeItemId to:', existingPending.itemId);
+        return updatedItems;
+      }
+
+      // STEP 2: If not in scannedItems, find in orders
+      console.log('Not found in scannedItems, searching in orders...');
+      const result = findOrderByBarcode(barcode);
+
+      if (!result) {
+        console.log('Parsed GS1:', parsed);
+        console.log('Search variants:', searchVariants);
+        
+        // Debug: Show all product barcodes in orders
+        console.log('Available product barcodes in orders:');
+        orders.forEach((order, i) => {
+          order.items?.forEach((item: any, j: number) => {
+            console.log(`Order ${i+1}, Item ${j+1}:`, {
+              productName: item.productName,
+              productBarcode: item.product?.barcode,
+              itemBarcode: item.barcode,
+            });
+          });
+        });
+        
+        alert(
+          `바코드를 찾을 수 없습니다.\n\n` +
+          `스캔된 바코드: ${barcode}\n` +
+          `GTIN: ${parsed.gtin || '없음'}\n\n` +
+          `주문에 해당 제품이 있는지 확인하세요.`
+        );
+        return prevItems; // Return unchanged
+      }
+
+      console.log('Found order:', result.order.orderNo);
+      console.log('Found item:', result.item.productName);
+      console.log('Found item.id:', result.item.id);
+      
+      const { order, item } = result;
+      
+      // Calculate remaining quantity
+      const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+      const alreadyInbound = item.inboundQuantity || 0;
+      const remainingQty = confirmedQty - alreadyInbound;
+
+      // STEP 3: This should rarely happen (product exists in order but not in scannedItems)
+      console.warn('⚠️ Product found in order but not in scannedItems - adding as fallback');
+      
+      const newProduct = {
+        id: `${order.id}-${item.id}`,
+        orderId: order.id,
+        orderNo: order.orderNo,
+        itemId: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        brand: item.brand,
+        barcode: parsed.originalBarcode,
+        quantity: remainingQty > 0 ? remainingQty : 0,
+        expiryDate: parsed.expiryDate,
+        storageLocation: '',
+        batchNumber: parsed.batchNumber,
+        manufactureDate: '',
+        lotNumber: parsed.batchNumber,
+        remainingQty,
+        order,
+        item,
+        product: item.product,
+        status: 'active',
+      };
+
+      console.log('[handleBarcodeScan] Adding new product (fallback):', newProduct.id);
+      
+      setActiveItemId(item.id);
+      
+      // Set all existing active items to pending and add new product
+      return [
+        ...prevItems.map(p => p.status === 'active' ? { ...p, status: 'pending' } : p),
+        newProduct
+      ];
+    });
+  };
+
+  // ✅ NEW: Update scanned product data by itemId
+  const updateScannedProduct = (itemId: number, updates: Partial<any>) => {
+    setScannedItems(prev => prev.map((item) => 
+      item.itemId === itemId ? { ...item, ...updates } : item
+    ));
+  };
+
+  // ✅ NEW: Mark product as completed and move to next
+  const completeCurrentProduct = () => {
+    if (!activeItemId) {
+      console.warn('[completeCurrentProduct] No active item ID');
+      return;
+    }
+    
+    console.log('[completeCurrentProduct] Completing item:', activeItemId);
+    
+    // Mark current as completed
+    setScannedItems(prev => prev.map((item) => {
+      if (item.itemId === activeItemId) {
+        console.log('[completeCurrentProduct] Marking as completed:', item.productName);
+        return { ...item, status: 'completed' };
+      }
+      return item;
+    }));
+    
+    // Reset active item - user must scan next product manually
+    setActiveItemId(null);
+    console.log('[completeCurrentProduct] Reset activeItemId to null - scan next product');
+  };
+
+  // ✅ NEW: Remove scanned product by itemId
+  const removeScannedProduct = (itemId: number) => {
+    setScannedItems(prev => prev.filter((item) => item.itemId !== itemId));
+    if (activeItemId === itemId) {
+      setActiveItemId(null);
+    }
+  };
+
+  // ✅ NEW: Submit all scanned items (batch inbound)
+  const submitAllScannedItems = async () => {
+    if (scannedItems.length === 0) {
+      alert('스캔된 제품이 없습니다.');
+      return;
+    }
+
+    // Instead of API call, auto-fill the order form fields
+    try {
+      // Group by order
+      const groupedByOrder = scannedItems.reduce((acc, item) => {
+        if (!acc[item.orderId]) {
+          acc[item.orderId] = {
+            order: item.order,
+            items: [],
+          };
+        }
+        acc[item.orderId].items.push(item);
+        return acc;
+      }, {} as Record<string, any>);
+
+      // Auto-fill editedItems for each scanned product
+      for (const [orderId, data] of Object.entries(groupedByOrder)) {
+        for (const item of (data as any).items) {
+          updateItemField(item.itemId, 'quantity', item.quantity);
+          updateItemField(item.itemId, 'expiryDate', item.expiryDate);
+          updateItemField(item.itemId, 'storageLocation', item.storageLocation);
+          updateItemField(item.itemId, 'purchasePrice', item.item.unit_price || '');
+        }
+
+        // Set inbound manager
+        if (!inboundManagers[orderId]) {
+          setInboundManagers(prev => ({ ...prev, [orderId]: inboundManagerName }));
+        }
+      }
+
+      alert(
+        `✅ ${scannedItems.length}개 제품 정보가 입력되었습니다!\n\n` +
+        `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
+      );
+      
+      closeScanModal();
+    } catch (error: any) {
+      console.error('Auto-fill error:', error);
+      alert(`입력 처리 중 오류: ${error.message || '알 수 없는 오류'}`);
+    }
   };
 
   const updateItemField = (itemId: string, field: string, value: any) => {
@@ -3574,19 +4008,42 @@ const PendingOrdersList = memo(function PendingOrdersList({
           입고 대기 중인 주문 ({orders.length}건)
         </h2>
 
-        {/* 🆕 Manual Refresh Button */}
-        <button
-          onClick={onRefresh}
-          disabled={loading || isRefreshing}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="주문 목록 새로고침"
-        >
-          <svg
-            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        <div className="flex items-center gap-2">
+          {/* ✅ NEW: Barcode Scanner Button */}
+          <button
+            onClick={() => setScanModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
+            title="바코드 스캔 입고"
           >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+              />
+            </svg>
+            바코드 스캔 입고
+          </button>
+
+          {/* 🆕 Manual Refresh Button */}
+          <button
+            onClick={onRefresh}
+            disabled={loading || isRefreshing}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="주문 목록 새로고침"
+          >
+            <svg
+              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -3596,6 +4053,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
           </svg>
           {loading ? "새로고침 중..." : "새로고침"}
         </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -3811,6 +4269,282 @@ const PendingOrdersList = memo(function PendingOrdersList({
           </div>
         </div>
       )}
+
+      {/* ✅ NEW: Barcode Scanner Modal */}
+      {scanModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeScanModal();
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-slate-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                🔍 바코드 스캔 입고
+              </h2>
+              <button
+                onClick={closeScanModal}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Progress Indicator */}
+              {scannedItems.length > 0 && (
+                <div className="mb-4 text-center">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    입고 진행: <span className="font-bold text-emerald-600">{scannedItems.filter(i => i.status === 'completed').length}</span> / {scannedItems.length}
+                  </span>
+                </div>
+              )}
+
+              {/* Accordion Items List */}
+              {scannedItems.length > 0 ? (
+                <div className="space-y-3">
+                  {scannedItems
+                    .slice()
+                    .sort((a, b) => {
+                      // Sort order: active (진행) > pending (대기) > completed (완료)
+                      const statusOrder: { [key: string]: number } = { active: 0, pending: 1, completed: 2 };
+                      return (statusOrder[a.status] || 1) - (statusOrder[b.status] || 1);
+                    })
+                    .map((item) => {
+                    const isActive = item.status === 'active';
+                    const isCompleted = item.status === 'completed';
+                    const isPending = item.status === 'pending';
+                    
+                    return (
+                      <div
+                        key={item.id}
+                        className={`border rounded-lg overflow-hidden transition-all ${
+                          isActive 
+                            ? 'border-blue-500 shadow-lg' 
+                            : isCompleted
+                            ? 'border-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/10'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {/* Card Header */}
+                        <div
+                          className={`p-4 cursor-pointer ${
+                            isActive 
+                              ? 'bg-blue-50 dark:bg-blue-900/20' 
+                              : isCompleted
+                              ? 'bg-emerald-50 dark:bg-emerald-900/20'
+                              : 'bg-white dark:bg-slate-800'
+                          }`}
+                          onClick={() => {
+                            if (!isCompleted) {
+                              // Set all others to pending, this one to active
+                              setScannedItems(prev => prev.map((p) => ({
+                                ...p,
+                                status: p.itemId === item.itemId && p.status !== 'completed' ? 'active' : p.status === 'active' ? 'pending' : p.status
+                              })));
+                              setActiveItemId(item.itemId);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              {/* Status Badge */}
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                isActive
+                                  ? 'bg-blue-500 text-white'
+                                  : isCompleted
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>
+                                {isActive ? '진행' : isCompleted ? '완료' : '대기'}
+                              </span>
+                              
+                              {/* Product Info */}
+                              <div className="flex-1">
+                                <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                  {item.productName}
+                                </div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  {item.brand} · 주문번호: {item.orderNo}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2">
+                              {isCompleted && (
+                                <span className="text-emerald-600 text-xl">✓</span>
+                              )}
+                              {!isCompleted && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeScannedProduct(item.itemId);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 text-sm"
+                                >
+                                  삭제
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Form - Only show for active item */}
+                        {isActive && !isCompleted && (
+                          <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                            <div className="space-y-3">
+                              {/* Lot Number */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  Lot 번호 {item.lotNumber && '✓'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.lotNumber || ''}
+                                  onChange={(e) => updateScannedProduct(item.itemId, { lotNumber: e.target.value })}
+                                  placeholder="자동 입력됨"
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+
+                              {/* Manufacture Date */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  제조일
+                                </label>
+                                <input
+                                  type="date"
+                                  value={item.manufactureDate || ''}
+                                  onChange={(e) => updateScannedProduct(item.itemId, { manufactureDate: e.target.value })}
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+
+                              {/* Expiry Date */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  유효기간 {item.expiryDate && '✓'}
+                                </label>
+                                <input
+                                  type="date"
+                                  value={item.expiryDate || ''}
+                                  onChange={(e) => updateScannedProduct(item.itemId, { expiryDate: e.target.value })}
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+
+                              {/* Quantity */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  입고수량 <span className="text-xs text-slate-500">(남은: {item.remainingQty})</span>
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => updateScannedProduct(item.itemId, { quantity: parseInt(e.target.value) || 0 })}
+                                    className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">개</span>
+                                </div>
+                              </div>
+
+                              {/* Storage Location */}
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  보관위치
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.storageLocation || ''}
+                                  onChange={(e) => updateScannedProduct(item.itemId, { storageLocation: e.target.value })}
+                                  placeholder="예: 창고 A-01"
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+
+                              {/* Complete Button */}
+                              <button
+                                onClick={completeCurrentProduct}
+                                disabled={
+                                  !item.quantity || 
+                                  item.quantity <= 0 || 
+                                  !item.manufactureDate || 
+                                  !item.storageLocation
+                                }
+                                className="w-full mt-4 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
+                              >
+                                입력 완료
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  <svg
+                    className="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-slate-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                    />
+                  </svg>
+                  <p className="text-sm font-medium">스캔된 제품이 없습니다</p>
+                  <p className="text-xs mt-2">바코드를 스캔하세요</p>
+                </div>
+              )}
+
+              {/* Scan Status */}
+              {scannedItems.length > 0 && (
+                <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4">
+                  <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400">
+                    <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="text-sm font-medium">추가 제품을 스캔하세요</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900">
+              <button
+                onClick={closeScanModal}
+                className="px-6 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={submitAllScannedItems}
+                disabled={scannedItems.length === 0 || scannedItems.some(item => item.status !== 'completed')}
+                className="px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold flex items-center gap-2"
+              >
+                {scannedItems.every(item => item.status === 'completed') ? '✓ ' : ''}
+                정보 입력 완료 ({scannedItems.filter(i => i.status === 'completed').length}/{scannedItems.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 });
