@@ -254,19 +254,28 @@ export function parseGS1Barcode(
 ): GS1ParseResult {
   const { mode = 'lenient', fnc1 } = options;
   
+  // ✅ CRITICAL: Clean barcode - remove non-ASCII characters (Korean, special chars)
+  const cleanedBarcode = barcode.replace(/[^\x20-\x7E]/g, '');
+  
+  if (cleanedBarcode !== barcode) {
+    console.warn('[gs1Parser] ⚠️ Removed non-ASCII characters from barcode');
+    console.warn('[gs1Parser] Original:', barcode);
+    console.warn('[gs1Parser] Cleaned:', cleanedBarcode);
+  }
+  
   const result: GS1ParseResult = {
     fields: {},
     errors: [],
-    raw: barcode,
+    raw: cleanedBarcode,
   };
   
   let currentIndex = 0;
   
-  console.log('[gs1Parser] Starting parse:', barcode);
+  console.log('[gs1Parser] Starting parse:', cleanedBarcode);
   console.log('[gs1Parser] Mode:', mode);
   
-  while (currentIndex < barcode.length - 1) {
-    const ai = barcode.substring(currentIndex, currentIndex + 2);
+  while (currentIndex < cleanedBarcode.length - 1) {
+    const ai = cleanedBarcode.substring(currentIndex, currentIndex + 2);
     
     // Check if this is a known AI
     if (!KNOWN_AIS.includes(ai)) {
@@ -278,7 +287,7 @@ export function parseGS1Barcode(
       });
       
       if (mode === 'strict') {
-        result.raw_tail = barcode.substring(currentIndex);
+        result.raw_tail = cleanedBarcode.substring(currentIndex);
         break;
       }
       
@@ -299,15 +308,15 @@ export function parseGS1Barcode(
       const payloadStart = currentIndex + 2;
       const maxEnd = Math.min(
         payloadStart + (spec.maxLength || 20),
-        barcode.length
+        cleanedBarcode.length
       );
       
       // Check for FNC1
       let fnc1Index = -1;
       if (fnc1) {
-        fnc1Index = barcode.indexOf(fnc1, payloadStart);
+        fnc1Index = cleanedBarcode.indexOf(fnc1, payloadStart);
         if (fnc1Index !== -1 && fnc1Index < maxEnd) {
-          payload = barcode.substring(payloadStart, fnc1Index);
+          payload = cleanedBarcode.substring(payloadStart, fnc1Index);
           payloadEnd = fnc1Index + 1; // Skip FNC1
           console.log(`[gs1Parser] Found FNC1 at ${fnc1Index}, payload: "${payload}"`);
         }
@@ -323,13 +332,13 @@ export function parseGS1Barcode(
         let bestPayload = null;
         
         // Start with minimum distance and increase
-        for (let searchDist = 3; searchDist <= Math.min(10, barcode.length - payloadStart); searchDist++) {
-          const nextAI = findNextValidAI(barcode, payloadStart, searchDist, ai); // Pass current AI
+        for (let searchDist = 3; searchDist <= Math.min(10, cleanedBarcode.length - payloadStart); searchDist++) {
+          const nextAI = findNextValidAI(cleanedBarcode, payloadStart, searchDist, ai); // Pass current AI
           
           if (nextAI && nextAI.position < maxEnd) {
             // Found a valid next AI
             bestNextAI = nextAI;
-            bestPayload = barcode.substring(payloadStart, nextAI.position);
+            bestPayload = cleanedBarcode.substring(payloadStart, nextAI.position);
             console.log(`[gs1Parser] Candidate next AI "${nextAI.ai}" at ${nextAI.position}, would give payload: "${bestPayload}"`);
             break; // Use first valid match
           }
@@ -341,14 +350,14 @@ export function parseGS1Barcode(
           console.log(`[gs1Parser] Found next AI "${bestNextAI.ai}" at ${bestNextAI.position}, payload: "${payload}"`);
         } else {
           // No valid next AI found, take remaining up to maxLength
-          payload = barcode.substring(payloadStart, maxEnd);
+          payload = cleanedBarcode.substring(payloadStart, maxEnd);
           payloadEnd = maxEnd;
           console.log(`[gs1Parser] No valid next AI found, taking remaining payload: "${payload}"`);
         }
       }
     } else {
       // Fixed-length
-      payload = barcode.substring(currentIndex + 2, currentIndex + 2 + spec.length);
+      payload = cleanedBarcode.substring(currentIndex + 2, currentIndex + 2 + spec.length);
       payloadEnd = currentIndex + 2 + spec.length;
       console.log(`[gs1Parser] Fixed-length payload: "${payload}"`);
     }
@@ -420,8 +429,8 @@ export function parseGS1Barcode(
   }
   
   // Check for unparsed tail
-  if (currentIndex < barcode.length) {
-    const tail = barcode.substring(currentIndex);
+  if (currentIndex < cleanedBarcode.length) {
+    const tail = cleanedBarcode.substring(currentIndex);
     if (tail.length > 0) {
       console.warn(`[gs1Parser] Unparsed tail: "${tail}"`);
       result.raw_tail = tail;

@@ -108,6 +108,20 @@ export default function InboundPage() {
     expiryDate: "",
   });
 
+  // ✅ State for keyboard warning modal (Korean keyboard detection)
+  const [showKeyboardWarning, setShowKeyboardWarning] = useState(false);
+
+  // ✅ State for barcode not found modal
+  const [barcodeNotFoundModal, setBarcodeNotFoundModal] = useState<{
+    show: boolean;
+    barcode: string;
+    gtin: string;
+  }>({
+    show: false,
+    barcode: "",
+    gtin: "",
+  });
+
   // ✅ Use ref to track activeTab in event listener (avoid closure issues)
   const activeTabRef = useRef(activeTab);
   useEffect(() => {
@@ -190,7 +204,6 @@ export default function InboundPage() {
         );
 
         // 🔍 DEBUG LOG - Check currentStock in frontend
-        
 
         setProducts(formattedProducts);
       } catch (err) {
@@ -216,58 +229,67 @@ export default function InboundPage() {
   }, [fetchProducts]);
 
   // ✅ Global barcode scanner handler - works even when cards are collapsed
-  const handleGlobalBarcodeScanned = useCallback(async (scannedBarcode: string) => {
-    try {
-      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
-      const parsed = parseGS1Barcode(scannedBarcode);
-      
-      if (!parsed.gtin) {
-        alert('잘못된 바코드 형식입니다.');
-        return;
-      }
-      
-      // Find product by GTIN in the current product list
-      const matchedProduct = products.find(p => p.barcode === parsed.gtin);
-      
-      if (!matchedProduct) {
-        alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${parsed.gtin}\n\n제품을 먼저 등록하세요.`);
-        return;
-      }
-      
-      // Auto expand the matched product
-      setExpandedCardId(matchedProduct.id);
-      
-      // Wait for card to expand, then dispatch fill event
-      setTimeout(() => {
-        // Trigger batch form fill via custom event
-        window.dispatchEvent(new CustomEvent('fillBatchForm', {
-          detail: {
-            productId: matchedProduct.id,
-            batchNumber: parsed.batchNumber,
-            expiryDate: parsed.expiryDate,
-          }
-        }));
-      }, 200); // Wait 200ms for card expansion
-      
-      // Scroll to the product card
-      setTimeout(() => {
-        const element = document.getElementById(`product-card-${matchedProduct.id}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const handleGlobalBarcodeScanned = useCallback(
+    async (scannedBarcode: string) => {
+      try {
+        const { parseGS1Barcode } = await import("../../utils/barcodeParser");
+        const parsed = parseGS1Barcode(scannedBarcode);
+
+        if (!parsed.gtin) {
+          alert("잘못된 바코드 형식입니다.");
+          return;
         }
-      }, 300);
-      
-      // Show success modal instead of alert
-      setScanSuccessModal({
-        show: true,
-        productName: matchedProduct.productName,
-        batchNumber: parsed.batchNumber || '(없음)',
-        expiryDate: parsed.expiryDate || '(없음)',
-      });
-    } catch (error) {
-      console.error('Global barcode scan error:', error);
-    }
-  }, [products]);
+
+        // Find product by GTIN in the current product list
+        const matchedProduct = products.find((p) => p.barcode === parsed.gtin);
+
+        if (!matchedProduct) {
+          alert(
+            `⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${parsed.gtin}\n\n제품을 먼저 등록하세요.`
+          );
+          return;
+        }
+
+        // Auto expand the matched product
+        setExpandedCardId(matchedProduct.id);
+
+        // Wait for card to expand, then dispatch fill event
+        setTimeout(() => {
+          // Trigger batch form fill via custom event
+          window.dispatchEvent(
+            new CustomEvent("fillBatchForm", {
+              detail: {
+                productId: matchedProduct.id,
+                batchNumber: parsed.batchNumber,
+                expiryDate: parsed.expiryDate,
+              },
+            })
+          );
+        }, 200); // Wait 200ms for card expansion
+
+        // Scroll to the product card
+        setTimeout(() => {
+          const element = document.getElementById(
+            `product-card-${matchedProduct.id}`
+          );
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 300);
+
+        // Show success modal instead of alert
+        setScanSuccessModal({
+          show: true,
+          productName: matchedProduct.productName,
+          batchNumber: parsed.batchNumber || "(없음)",
+          expiryDate: parsed.expiryDate || "(없음)",
+        });
+      } catch (error) {
+        console.error("Global barcode scan error:", error);
+      }
+    },
+    [products]
+  );
 
   // ✅ Listen for product deletion events and update state immediately
   useEffect(() => {
@@ -359,7 +381,7 @@ export default function InboundPage() {
       }
     };
 
-  const handleBatchCreated = (e: Event) => {
+    const handleBatchCreated = (e: Event) => {
       const customEvent = e as CustomEvent;
       const productId = customEvent.detail?.productId;
       if (!productId) return;
@@ -391,38 +413,79 @@ export default function InboundPage() {
   useEffect(() => {
     // Only active on "quick" tab
     if (activeTab !== "quick") return;
-    
-    let buffer = '';
+
+    let buffer = "";
     let lastTime = 0;
     let timeout: NodeJS.Timeout;
-    
+
+    // ✅ Track keyboard layout warnings to avoid spam
+    let lastGlobalKeyboardWarning = 0;
+    let globalKoreanCharDetected = false;
+
     const handleGlobalKeyPress = (e: KeyboardEvent) => {
       // Skip if user is typing in an input field
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
         return;
       }
-      
+
+      // ✅ CRITICAL: Detect Korean/IME input BEFORE ignoring it
+      if (e.isComposing || e.keyCode === 229) {
+        if (!globalKoreanCharDetected) {
+          setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+          globalKoreanCharDetected = true;
+          setTimeout(() => {
+            globalKoreanCharDetected = false;
+          }, 5000);
+        }
+        buffer = "";
+        return;
+      }
+
       const now = Date.now();
-      
+
       // USB scanner types very fast (< 100ms between chars)
-      if (now - lastTime > 100) buffer = '';
-      
-      if (e.key === 'Enter' && buffer.length >= 8) {
-        handleGlobalBarcodeScanned(buffer);
-        buffer = '';
+      if (now - lastTime > 100) buffer = "";
+
+      if (e.key === "Enter" && buffer.length >= 8) {
+        // ✅ STRICT: Only allow alphanumeric characters (GS1 standard)
+        const cleanedBarcode = buffer.replace(/[^0-9A-Za-z]/g, "");
+
+        handleGlobalBarcodeScanned(cleanedBarcode);
+        buffer = "";
       } else if (e.key.length === 1) {
-        buffer += e.key;
-        lastTime = now;
-        
-        clearTimeout(timeout);
-        timeout = setTimeout(() => { buffer = ''; }, 500);
+        // ✅ STRICT: Only accept digits and letters (0-9, A-Z, a-z)
+        if (/[0-9A-Za-z]/.test(e.key)) {
+          buffer += e.key;
+          lastTime = now;
+
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            buffer = "";
+          }, 500);
+        } else {
+          // ✅ Non-alphanumeric detected - likely Korean keyboard
+          if (!globalKoreanCharDetected) {
+            setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+            globalKoreanCharDetected = true;
+            setTimeout(() => {
+              globalKoreanCharDetected = false;
+            }, 5000);
+          }
+          buffer = "";
+          console.warn(
+            "[Global Barcode Scanner] ⚠️ Ignored non-alphanumeric:",
+            e.key,
+            "charCode:",
+            e.key.charCodeAt(0)
+          );
+        }
       }
     };
-    
-    window.addEventListener('keypress', handleGlobalKeyPress);
+
+    window.addEventListener("keypress", handleGlobalKeyPress);
     return () => {
-      window.removeEventListener('keypress', handleGlobalKeyPress);
+      window.removeEventListener("keypress", handleGlobalKeyPress);
       clearTimeout(timeout);
     };
   }, [activeTab, handleGlobalBarcodeScanned]);
@@ -462,68 +525,71 @@ export default function InboundPage() {
   }, [activeTab, fetchProducts]);
 
   // Fetch pending orders function - memoized to prevent duplicate requests
-  const fetchPendingOrders = useCallback(async (forceRefresh = false) => {
-    if (activeTab !== "pending") return;
+  const fetchPendingOrders = useCallback(
+    async (forceRefresh = false) => {
+      if (activeTab !== "pending") return;
 
-    // ✅ NO CACHE: Always fetch fresh data
-    if (forceRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+      // ✅ NO CACHE: Always fetch fresh data
+      if (forceRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-    setError(null);
-    try {
-      const { apiGet } = await import("../../lib/api");
-      // Add cache-busting parameter for real-time updates
-      const groupedData = await apiGet<any[]>(
-        `${apiUrl}/order/pending-inbound?_t=${Date.now()}`,
-        {
-          headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-          },
-        }
-      );
+      setError(null);
+      try {
+        const { apiGet } = await import("../../lib/api");
+        // Add cache-busting parameter for real-time updates
+        const groupedData = await apiGet<any[]>(
+          `${apiUrl}/order/pending-inbound?_t=${Date.now()}`,
+          {
+            headers: {
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+            },
+          }
+        );
 
-      // Flatten grouped data: each supplier group has an array of orders
-      const flatOrders: any[] = [];
-      groupedData.forEach((supplierGroup: any) => {
-        supplierGroup.orders?.forEach((order: any) => {
-          flatOrders.push({
-            ...order,
-            id: order.id || order.orderId, // ✅ Ensure id exists (backend should have it)
-            orderId: order.id, // ✅ ADD: Map id to orderId for backward compatibility
-            supplierName: supplierGroup.supplierName,
-            managerName: supplierGroup.managerName,
-            managerPosition: supplierGroup.managerPosition,
-            isPlatformSupplier: supplierGroup.isPlatformSupplier, // ✅ NEW
+        // Flatten grouped data: each supplier group has an array of orders
+        const flatOrders: any[] = [];
+        groupedData.forEach((supplierGroup: any) => {
+          supplierGroup.orders?.forEach((order: any) => {
+            flatOrders.push({
+              ...order,
+              id: order.id || order.orderId, // ✅ Ensure id exists (backend should have it)
+              orderId: order.id, // ✅ ADD: Map id to orderId for backward compatibility
+              supplierName: supplierGroup.supplierName,
+              managerName: supplierGroup.managerName,
+              managerPosition: supplierGroup.managerPosition,
+              isPlatformSupplier: supplierGroup.isPlatformSupplier, // ✅ NEW
+            });
           });
         });
-      });
 
-      // ✅ DEBUG: Log first order to check structure
-      if (flatOrders.length > 0) {
-        console.log('[fetchPendingOrders] First order structure:', {
-          id: flatOrders[0].id,
-          orderId: flatOrders[0].orderId,
-          orderNo: flatOrders[0].orderNo,
-        });
-      }
+        // ✅ DEBUG: Log first order to check structure
+        if (flatOrders.length > 0) {
+          console.log("[fetchPendingOrders] First order structure:", {
+            id: flatOrders[0].id,
+            orderId: flatOrders[0].orderId,
+            orderNo: flatOrders[0].orderNo,
+          });
+        }
 
-      setPendingOrders(flatOrders);
-      // ✅ NO CACHE: Don't store in cache
-    } catch (err) {
-      console.error("Failed to load pending orders", err);
-      setError("입고 대기 주문을 불러오지 못했습니다.");
-    } finally {
-      if (forceRefresh) {
-        setIsRefreshing(false);
-      } else {
-        setLoading(false);
+        setPendingOrders(flatOrders);
+        // ✅ NO CACHE: Don't store in cache
+      } catch (err) {
+        console.error("Failed to load pending orders", err);
+        setError("입고 대기 주문을 불러오지 못했습니다.");
+      } finally {
+        if (forceRefresh) {
+          setIsRefreshing(false);
+        } else {
+          setLoading(false);
+        }
       }
-    }
-  }, [apiUrl, activeTab]);
+    },
+    [apiUrl, activeTab]
+  );
 
   // Fetch pending orders for "입고 대기" tab - only when tab is active
   useEffect(() => {
@@ -784,6 +850,8 @@ export default function InboundPage() {
               isRefreshing={isRefreshing}
               error={error}
               apiUrl={apiUrl}
+              setShowKeyboardWarning={setShowKeyboardWarning}
+              setBarcodeNotFoundModal={setBarcodeNotFoundModal}
               onRefresh={() => {
                 // Clear cache before refresh
                 pendingOrdersCacheRef.current = null;
@@ -813,8 +881,18 @@ export default function InboundPage() {
           <div className="relative w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-8 shadow-2xl dark:border-emerald-500/30 dark:bg-slate-900">
             {/* Success Icon */}
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
-              <svg className="h-12 w-12 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-12 w-12 text-emerald-600 dark:text-emerald-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
 
@@ -857,7 +935,14 @@ export default function InboundPage() {
 
             {/* OK Button */}
             <button
-              onClick={() => setScanSuccessModal({ show: false, productName: "", batchNumber: "", expiryDate: "" })}
+              onClick={() =>
+                setScanSuccessModal({
+                  show: false,
+                  productName: "",
+                  batchNumber: "",
+                  expiryDate: "",
+                })
+              }
               className="mt-6 w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700"
             >
               OK
@@ -865,6 +950,135 @@ export default function InboundPage() {
           </div>
         </div>
       )}
+
+      {/* ✅ Keyboard Warning Modal - Korean keyboard detected */}
+      {showKeyboardWarning && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl dark:bg-slate-800">
+            {/* Icon */}
+            <div className="mb-6 flex justify-center">
+              <div className="rounded-full bg-amber-100 p-4 dark:bg-amber-900/30">
+                <svg
+                  className="h-12 w-12 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="mb-4 text-center text-2xl font-bold text-slate-900 dark:text-white">
+              키보드 설정 오류
+            </h3>
+
+            {/* Message */}
+            <div className="mb-6 space-y-3 text-center">
+              <p className="text-base text-slate-700 dark:text-slate-300">
+                키보드가{" "}
+                <span className="font-bold text-amber-600 dark:text-amber-400">
+                  한글(Hangul)
+                </span>
+                로 설정되어 있습니다.
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                바코드 스캐너를 사용하려면 키보드를
+                <br />
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  영어(English)
+                </span>
+                로 전환하세요.
+              </p>
+            </div>
+
+            {/* Instructions */}
+            <div className="mb-6 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50">
+              <div className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⌨️</span>
+                  <span>
+                    <kbd className="rounded bg-white px-2 py-1 text-xs font-semibold shadow dark:bg-slate-800">
+                      Shift
+                    </kbd>{" "}
+                    +{" "}
+                    <kbd className="rounded bg-white px-2 py-1 text-xs font-semibold shadow dark:bg-slate-800">
+                      Space
+                    </kbd>{" "}
+                    또는
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🌐</span>
+                  <span>우측 상단 입력 소스에서 변경</span>
+                </div>
+              </div>
+            </div>
+
+            {/* OK Button */}
+            <button
+              onClick={() => setShowKeyboardWarning(false)}
+              className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-3.5 text-base font-semibold text-white shadow-lg transition hover:from-emerald-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+            >
+              확인했습니다
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Barcode Not Found Modal */}
+      {/* {barcodeNotFoundModal.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl dark:bg-slate-800">
+           
+            <div className="mb-6 flex justify-center">
+              <div className="rounded-full bg-red-100 p-4 dark:bg-red-900/30">
+                <svg className="h-12 w-12 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            </div>
+
+          
+            <h3 className="mb-4 text-center text-2xl font-bold text-slate-900 dark:text-white">
+              바코드를 찾을 수 없습니다
+            </h3>
+
+           
+            <div className="mb-6 space-y-3">
+              <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">스캔된 바코드:</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-white">{barcodeNotFoundModal.barcode}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 dark:text-slate-400">GTIN:</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-white">{barcodeNotFoundModal.gtin}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+                주문에 해당 제품이 있는지 확인하세요.
+              </p>
+            </div>
+
+           
+            <button
+              onClick={() => setBarcodeNotFoundModal({ show: false, barcode: '', gtin: '' })}
+              className="w-full rounded-xl bg-gradient-to-r from-red-500 to-red-600 py-3.5 text-base font-semibold text-white shadow-lg transition hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )} */}
     </main>
   );
 }
@@ -872,12 +1086,15 @@ export default function InboundPage() {
 // ✅ Global cache for batches (shared across all ProductCard instances)
 // This prevents data loss when navigating between pages and on force refresh
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes (prevents data loss on page navigation)
-const CACHE_STORAGE_KEY = 'jaclit-batches-cache';
+const CACHE_STORAGE_KEY = "jaclit-batches-cache";
 
 // Initialize cache from localStorage on first load
-const initializeCache = (): Map<string, { data: ProductBatch[]; timestamp: number }> => {
-  if (typeof window === 'undefined') return new Map();
-  
+const initializeCache = (): Map<
+  string,
+  { data: ProductBatch[]; timestamp: number }
+> => {
+  if (typeof window === "undefined") return new Map();
+
   try {
     const stored = localStorage.getItem(CACHE_STORAGE_KEY);
     if (stored) {
@@ -885,7 +1102,7 @@ const initializeCache = (): Map<string, { data: ProductBatch[]; timestamp: numbe
       return new Map(Object.entries(parsed));
     }
   } catch (error) {
-    console.error('Failed to load batches cache from localStorage:', error);
+    console.error("Failed to load batches cache from localStorage:", error);
   }
   return new Map();
 };
@@ -894,13 +1111,13 @@ const globalBatchesCache = initializeCache();
 
 // Save cache to localStorage whenever it changes
 const saveCacheToStorage = () => {
-  if (typeof window === 'undefined') return;
-  
+  if (typeof window === "undefined") return;
+
   try {
     const cacheObject = Object.fromEntries(globalBatchesCache.entries());
     localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cacheObject));
   } catch (error) {
-    console.error('Failed to save batches cache to localStorage:', error);
+    console.error("Failed to save batches cache to localStorage:", error);
   }
 };
 
@@ -975,7 +1192,7 @@ const ProductCard = memo(function ProductCard({
     // If batches not in state, try cache (works when card is collapsed or after navigation)
     const cacheKey = `${product.id}`;
     const cached = globalBatchesCache.get(cacheKey);
-    
+
     // ✅ Use cache without expiration check for display purposes
     // This ensures data persists even after long page navigation
     if (cached?.data && cached.data.length > 0) {
@@ -992,32 +1209,34 @@ const ProductCard = memo(function ProductCard({
   // USB Barcode Scanner for Batch
   useEffect(() => {
     if (!isExpanded) return;
-    
-    let buffer = '';
+
+    let buffer = "";
     let lastTime = 0;
     let timeout: NodeJS.Timeout;
-    
+
     const handleKeyPress = (e: KeyboardEvent) => {
       if (!isExpanded) return;
-      
+
       const now = Date.now();
-      if (now - lastTime > 100) buffer = '';
-      
-      if (e.key === 'Enter' && buffer.length >= 8) {
+      if (now - lastTime > 100) buffer = "";
+
+      if (e.key === "Enter" && buffer.length >= 8) {
         handleBatchBarcodeScanned(buffer);
-        buffer = '';
+        buffer = "";
       } else if (e.key.length === 1) {
         buffer += e.key;
         lastTime = now;
-        
+
         clearTimeout(timeout);
-        timeout = setTimeout(() => { buffer = ''; }, 500);
+        timeout = setTimeout(() => {
+          buffer = "";
+        }, 500);
       }
     };
-    
-    window.addEventListener('keypress', handleKeyPress);
+
+    window.addEventListener("keypress", handleKeyPress);
     return () => {
-      window.removeEventListener('keypress', handleKeyPress);
+      window.removeEventListener("keypress", handleKeyPress);
       clearTimeout(timeout);
     };
   }, [isExpanded, product.barcode]);
@@ -1027,7 +1246,7 @@ const ProductCard = memo(function ProductCard({
   useEffect(() => {
     const cacheKey = `${product.id}`;
     const cached = globalBatchesCache.get(cacheKey);
-    
+
     // Load from cache without expiration check to preserve data across navigation
     if (cached?.data && cached.data.length > 0) {
       setBatches(cached.data);
@@ -1036,55 +1255,55 @@ const ProductCard = memo(function ProductCard({
 
   const handleBatchBarcodeScanned = async (scannedBarcode: string) => {
     try {
-      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
+      const { parseGS1Barcode } = await import("../../utils/barcodeParser");
       const parsed = parseGS1Barcode(scannedBarcode);
-      
+
       // Verify GTIN matches current product
       if (parsed.gtin && parsed.gtin !== product.barcode) {
-        alert('⚠️ 잘못된 바코드입니다. 다른 제품의 바코드입니다.');
+        alert("⚠️ 잘못된 바코드입니다. 다른 제품의 바코드입니다.");
         return;
       }
-      
+
       // Auto-fill batch number (LOT) from GS1
       if (parsed.batchNumber) {
-        setBatchForm(prev => ({
+        setBatchForm((prev) => ({
           ...prev,
           batchNumber: parsed.batchNumber || "",
         }));
       }
-      
+
       // Auto-fill expiry date from GS1
       if (parsed.expiryDate) {
-        setBatchForm(prev => ({
+        setBatchForm((prev) => ({
           ...prev,
           expiryDate: parsed.expiryDate || prev.expiryDate,
         }));
       }
-      
+
       // Auto-calculate manufacture date
       if (parsed.expiryDate && product.expiryMonths) {
         const expiry = new Date(parsed.expiryDate);
         const mfg = new Date(expiry);
-        
-        if (product.expiryUnit === 'months') {
+
+        if (product.expiryUnit === "months") {
           mfg.setMonth(mfg.getMonth() - product.expiryMonths);
         } else {
           mfg.setDate(mfg.getDate() - product.expiryMonths);
         }
-        
-        setBatchForm(prev => ({
+
+        setBatchForm((prev) => ({
           ...prev,
-          manufactureDate: mfg.toISOString().split('T')[0],
+          manufactureDate: mfg.toISOString().split("T")[0],
         }));
       }
-      
+
       alert(
         `✅ 배치 스캔 완료!\n` +
-        `배치번호: ${parsed.batchNumber || '(없음)'}\n` +
-        `유효기간: ${parsed.expiryDate || '(없음)'}`
+          `배치번호: ${parsed.batchNumber || "(없음)"}\n` +
+          `유효기간: ${parsed.expiryDate || "(없음)"}`
       );
     } catch (error) {
-      console.error('Barcode parsing error:', error);
+      console.error("Barcode parsing error:", error);
     }
   };
 
@@ -1187,57 +1406,70 @@ const ProductCard = memo(function ProductCard({
       }
 
       // Format: YYYY-MM-DD
-      const calculatedManufactureDate = calculatedMfgDate.toISOString().split("T")[0];
+      const calculatedManufactureDate = calculatedMfgDate
+        .toISOString()
+        .split("T")[0];
 
-      setBatchForm((prev) => ({ ...prev, manufactureDate: calculatedManufactureDate }));
+      setBatchForm((prev) => ({
+        ...prev,
+        manufactureDate: calculatedManufactureDate,
+      }));
     }
-  }, [batchForm.expiryDate, product.expiryMonths, product.expiryUnit, batchForm.manufactureDate]);
+  }, [
+    batchForm.expiryDate,
+    product.expiryMonths,
+    product.expiryUnit,
+    batchForm.manufactureDate,
+  ]);
 
   // ✅ Listen for global barcode scan events to auto-fill batch form
   useEffect(() => {
     const handleFillBatchForm = (event: Event) => {
       const customEvent = event as CustomEvent;
       const { productId, batchNumber, expiryDate } = customEvent.detail;
-      
+
       // Only fill if this is the target product
       if (productId !== product.id) return;
-      
+
       // Only fill if card is expanded
       if (!isExpanded) return;
-      
-      console.log('[fillBatchForm] Filling form for product:', productId, { batchNumber, expiryDate });
-      
+
+      console.log("[fillBatchForm] Filling form for product:", productId, {
+        batchNumber,
+        expiryDate,
+      });
+
       // Fill batch form
-      setBatchForm(prev => ({
+      setBatchForm((prev) => ({
         ...prev,
         batchNumber: batchNumber || "",
         expiryDate: expiryDate || prev.expiryDate,
       }));
-      
+
       // Auto-calculate manufacture date if possible
       if (expiryDate && product.expiryMonths) {
         const expiry = new Date(expiryDate);
         const mfg = new Date(expiry);
-        
-        if (product.expiryUnit === 'months') {
+
+        if (product.expiryUnit === "months") {
           mfg.setMonth(mfg.getMonth() - product.expiryMonths);
-        } else if (product.expiryUnit === 'days') {
+        } else if (product.expiryUnit === "days") {
           mfg.setDate(mfg.getDate() - product.expiryMonths);
-        } else if (product.expiryUnit === 'years') {
+        } else if (product.expiryUnit === "years") {
           mfg.setFullYear(mfg.getFullYear() - product.expiryMonths);
         }
-        
-        setBatchForm(prev => ({
+
+        setBatchForm((prev) => ({
           ...prev,
-          manufactureDate: mfg.toISOString().split('T')[0],
+          manufactureDate: mfg.toISOString().split("T")[0],
         }));
       }
     };
-    
+
     // Always add listener (not conditional on isExpanded)
-    window.addEventListener('fillBatchForm', handleFillBatchForm);
+    window.addEventListener("fillBatchForm", handleFillBatchForm);
     return () => {
-      window.removeEventListener('fillBatchForm', handleFillBatchForm);
+      window.removeEventListener("fillBatchForm", handleFillBatchForm);
     };
   }, [isExpanded, product.id, product.expiryMonths, product.expiryUnit]);
 
@@ -1582,16 +1814,16 @@ const ProductCard = memo(function ProductCard({
               <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
                 {batchForm.isSeparatePurchase ? "별도 구매" : "바코드 입고"}
               </h3>
-              
+
               {/* Toggle Switch */}
-              <div 
+              <div
                 className="flex items-center gap-3"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                   별도 구매
                 </span>
-                <label 
+                <label
                   className="relative inline-flex cursor-pointer items-center"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -1600,7 +1832,10 @@ const ProductCard = memo(function ProductCard({
                     checked={batchForm.isSeparatePurchase}
                     onChange={(e) => {
                       e.stopPropagation();
-                      setBatchForm({ ...batchForm, isSeparatePurchase: e.target.checked });
+                      setBatchForm({
+                        ...batchForm,
+                        isSeparatePurchase: e.target.checked,
+                      });
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="peer sr-only"
@@ -1613,12 +1848,15 @@ const ProductCard = memo(function ProductCard({
             {/* Note: 배치번호는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다 */}
             <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
               <p>
-                {batchForm.isSeparatePurchase 
-                  ? "별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다." 
+                {batchForm.isSeparatePurchase
+                  ? "별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다."
                   : "바코드 입고는 Supplier에서 주문한 제품의 입고를 의미합니다."}
               </p>
               <p className="mt-1">
-                <span className="font-semibold">Jaclit을 통해 주문한 제품은</span> : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
+                <span className="font-semibold">
+                  Jaclit을 통해 주문한 제품은
+                </span>{" "}
+                : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
               </p>
             </div>
 
@@ -1628,7 +1866,9 @@ const ProductCard = memo(function ProductCard({
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
                   배치번호
-                  <span className="text-xs font-normal text-slate-500">(선택가능)</span>
+                  <span className="text-xs font-normal text-slate-500">
+                    (선택가능)
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -1663,7 +1903,9 @@ const ProductCard = memo(function ProductCard({
                     type="number"
                     min="0"
                     value={batchQuantity}
-                    onChange={(e) => setBatchQuantity(Number(e.target.value) || 0)}
+                    onChange={(e) =>
+                      setBatchQuantity(Number(e.target.value) || 0)
+                    }
                     onClick={(e) => e.stopPropagation()}
                     className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
@@ -1678,7 +1920,7 @@ const ProductCard = memo(function ProductCard({
                     +
                   </button>
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {product.unit || 'box'}
+                    {product.unit || "box"}
                   </span>
                 </div>
               </div>
@@ -1696,7 +1938,10 @@ const ProductCard = memo(function ProductCard({
                   value={batchForm.manufactureDate}
                   onChange={(e) => {
                     e.stopPropagation();
-                    setBatchForm({ ...batchForm, manufactureDate: e.target.value });
+                    setBatchForm({
+                      ...batchForm,
+                      manufactureDate: e.target.value,
+                    });
                   }}
                   onClick={(e) => e.stopPropagation()}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -1740,14 +1985,18 @@ const ProductCard = memo(function ProductCard({
                     onChange={(e) => {
                       e.stopPropagation();
                       const numericValue = e.target.value.replace(/,/g, "");
-                      setBatchForm({ ...batchForm, purchasePrice: numericValue });
+                      setBatchForm({
+                        ...batchForm,
+                        purchasePrice: numericValue,
+                      });
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
                   {product.purchasePrice && (
                     <div className="text-xs text-slate-500">
-                      전구매가 {Number(product.purchasePrice).toLocaleString()} / {product.unit || 'box'}
+                      전구매가 {Number(product.purchasePrice).toLocaleString()}{" "}
+                      / {product.unit || "box"}
                     </div>
                   )}
                 </div>
@@ -1764,7 +2013,10 @@ const ProductCard = memo(function ProductCard({
                   value={batchForm.storageLocation}
                   onChange={(e) => {
                     e.stopPropagation();
-                    setBatchForm({ ...batchForm, storageLocation: e.target.value });
+                    setBatchForm({
+                      ...batchForm,
+                      storageLocation: e.target.value,
+                    });
                   }}
                   onClick={(e) => e.stopPropagation()}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -1784,23 +2036,36 @@ const ProductCard = memo(function ProductCard({
                   value={batchForm.inboundManager}
                   onChange={(e) => {
                     e.stopPropagation();
-                    setBatchForm({ ...batchForm, inboundManager: e.target.value });
+                    setBatchForm({
+                      ...batchForm,
+                      inboundManager: e.target.value,
+                    });
                   }}
                   onClick={(e) => e.stopPropagation()}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
               </div>
               <div className="space-y-2 ml-auto mt-8">
-               <button
-                onClick={handleCreateBatch}
-                disabled={submittingBatch}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                {submittingBatch ? "처리 중..." : "바코드 입고"}
-              </button>
+                <button
+                  onClick={handleCreateBatch}
+                  disabled={submittingBatch}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  {submittingBatch ? "처리 중..." : "바코드 입고"}
+                </button>
               </div>
             </div>
           </div>
@@ -2846,6 +3111,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
   error,
   apiUrl,
   onRefresh,
+  setShowKeyboardWarning,
+  setBarcodeNotFoundModal,
 }: {
   orders: any[];
   loading: boolean;
@@ -2853,6 +3120,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
   error: string | null;
   apiUrl: string;
   onRefresh: () => void;
+  setShowKeyboardWarning: (show: boolean) => void;
+  setBarcodeNotFoundModal: (data: {
+    show: boolean;
+    barcode: string;
+    gtin: string;
+  }) => void;
 }) {
   const [processing, setProcessing] = useState<string | null>(null);
   const [editedItems, setEditedItems] = useState<Record<string, any>>({});
@@ -2870,13 +3143,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
     return memberData ? JSON.parse(memberData) : {};
   }, []);
 
-  const inboundManagerName = useMemo(
-    () => memberInfo?.full_name || memberInfo?.member_id || "알 수 없음",
-    [memberInfo]
-  );
+  // ✅ REMOVED: Auto-fill inbound manager name - user should fill manually
+  // const inboundManagerName = useMemo(
+  //   () => memberInfo?.full_name || memberInfo?.member_id || "알 수 없음",
+  //   [memberInfo]
+  // );
 
   // ✅ ADD: State for inbound managers per order
-  const [inboundManagers, setInboundManagers] = useState<Record<string, string>>({});
+  const [inboundManagers, setInboundManagers] = useState<
+    Record<string, string>
+  >({});
 
   // ✅ NEW: Barcode Scanner Modal States
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -2889,26 +3165,31 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const loadPendingProducts = useCallback(() => {
     const allProducts: any[] = [];
     const seenIds = new Set<string>(); // Track unique IDs
-    
-    orders.forEach(order => {
+
+    orders.forEach((order) => {
       // Only load orders with "주문 진행" status (supplier_confirmed or pending)
-      if (order.status === 'supplier_confirmed' || order.status === 'pending') {
+      if (order.status === "supplier_confirmed" || order.status === "pending") {
         order.items?.forEach((item: any) => {
-          const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+          const confirmedQty =
+            item.confirmedQuantity || item.orderedQuantity || 0;
           const alreadyInbound = item.inboundQuantity || 0;
           const remainingQty = confirmedQty - alreadyInbound;
 
           // Only add if there's remaining quantity
           if (remainingQty > 0) {
             const uniqueId = `${order.id}-${item.id}`;
-            
+
             // Skip if already added (prevent duplicates)
             if (seenIds.has(uniqueId)) {
-              console.warn('[loadPendingProducts] Skipping duplicate:', uniqueId, item.productName);
+              console.warn(
+                "[loadPendingProducts] Skipping duplicate:",
+                uniqueId,
+                item.productName
+              );
               return;
             }
             seenIds.add(uniqueId);
-            
+
             allProducts.push({
               id: uniqueId, // Unique key for React
               orderId: order.id,
@@ -2916,27 +3197,27 @@ const PendingOrdersList = memo(function PendingOrdersList({
               itemId: item.id,
               productId: item.productId,
               productName: item.productName,
-              brand: item.brand || '',
-              barcode: item.product?.barcode || '',
+              brand: item.brand || "",
+              barcode: item.product?.barcode || "",
               quantity: remainingQty,
-              expiryDate: '',
-              productionDate: '', // ✅ AI 11
-              storageLocation: '',
-              batchNumber: '',
-              manufactureDate: '',
-              lotNumber: '',
+              expiryDate: "",
+              productionDate: "", // ✅ AI 11
+              storageLocation: "",
+              batchNumber: "",
+              manufactureDate: "",
+              lotNumber: "",
               remainingQty,
               order,
               item,
-              status: 'pending', // All start as pending
+              status: "pending", // All start as pending
             });
           }
         });
       }
     });
 
-    console.log('[loadPendingProducts] Loaded products:', allProducts.length);
-    console.log('[loadPendingProducts] Unique IDs:', Array.from(seenIds));
+    console.log("[loadPendingProducts] Loaded products:", allProducts.length);
+    console.log("[loadPendingProducts] Unique IDs:", Array.from(seenIds));
     setScannedItems(allProducts);
   }, [orders]);
 
@@ -2982,7 +3263,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       setInboundManagers((prev) => {
         const updated: Record<string, string> = { ...prev };
         let hasChanges = false;
-        
+
         orders.forEach((order: any) => {
           const orderId = order.id || order.orderId;
           if (orderId && !updated[orderId]) {
@@ -2991,11 +3272,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
             hasChanges = true;
           }
         });
-        
+
         return hasChanges ? updated : prev;
       });
     }
-  }, [orders, inboundManagerName]);
+  }, [orders]);
 
   // Pagination calculations
   const totalPages = Math.ceil(orders.length / itemsPerPage);
@@ -3017,50 +3298,50 @@ const PendingOrdersList = memo(function PendingOrdersList({
   // ✅ Import production-level GS1 barcode parser
   const parseGS1Barcode = async (barcode: string) => {
     try {
-      const { parseGS1Barcode: parse } = await import('../../utils/gs1Parser');
-      const parsed = parse(barcode, { mode: 'lenient' });
-      
-      console.log('[parseGS1Barcode] Production parser result:', parsed);
-      
+      const { parseGS1Barcode: parse } = await import("../../utils/gs1Parser");
+      const parsed = parse(barcode, { mode: "lenient" });
+
+      console.log("[parseGS1Barcode] Production parser result:", parsed);
+
       // Create comprehensive GTIN variants for matching
       const gtinVariants: string[] = [];
-      
+
       if (parsed.primary_gtin) {
         const gtin14 = parsed.primary_gtin;
         gtinVariants.push(gtin14);
-        
+
         // EAN-13: Remove first digit
         if (gtin14.length === 14) {
           gtinVariants.push(gtin14.substring(1));
           // UPC-12: Remove first 2 digits
           gtinVariants.push(gtin14.substring(2));
           // Zero-padded EAN-13
-          gtinVariants.push('0' + gtin14.substring(1));
+          gtinVariants.push("0" + gtin14.substring(1));
         }
-        
-        console.log('[parseGS1Barcode] GTIN Variants:', gtinVariants);
+
+        console.log("[parseGS1Barcode] GTIN Variants:", gtinVariants);
       }
-      
+
       // Convert to compatible format
       return {
-        gtin: parsed.primary_gtin || '',
+        gtin: parsed.primary_gtin || "",
         gtinVariants,
-        expiryDate: parsed.expiry || '',
-        productionDate: parsed.prod_date || '', // ✅ AI 11
-        batchNumber: parsed.batch || '',
+        expiryDate: parsed.expiry || "",
+        productionDate: parsed.prod_date || "", // ✅ AI 11
+        batchNumber: parsed.batch || "",
         originalBarcode: barcode,
         errors: parsed.errors,
         raw_tail: parsed.raw_tail,
       };
     } catch (error) {
-      console.error('[parseGS1Barcode] Error:', error);
+      console.error("[parseGS1Barcode] Error:", error);
       // Fallback to empty
       return {
-        gtin: '',
+        gtin: "",
         gtinVariants: [],
-        expiryDate: '',
-        productionDate: '', // ✅ AI 11
-        batchNumber: '',
+        expiryDate: "",
+        productionDate: "", // ✅ AI 11
+        batchNumber: "",
         originalBarcode: barcode,
         errors: [],
       };
@@ -3077,18 +3358,22 @@ const PendingOrdersList = memo(function PendingOrdersList({
     ].filter(Boolean);
 
     // First, try to find matching product in scannedItems (pending or active)
-    const pendingOrActive = scannedItems.find(p => {
-      if (p.status !== 'pending' && p.status !== 'active') return false;
-      
-      return searchVariants.some(variant => 
-        p.barcode === variant || 
-        p.product?.barcode === variant ||
-        p.productId === variant
+    const pendingOrActive = scannedItems.find((p) => {
+      if (p.status !== "pending" && p.status !== "active") return false;
+
+      return searchVariants.some(
+        (variant) =>
+          p.barcode === variant ||
+          p.product?.barcode === variant ||
+          p.productId === variant
       );
     });
 
     if (pendingOrActive) {
-      console.log('[findOrderByBarcode] Found in scannedItems:', pendingOrActive.productName);
+      console.log(
+        "[findOrderByBarcode] Found in scannedItems:",
+        pendingOrActive.productName
+      );
       // Return the order and item from scannedItems
       return {
         order: pendingOrActive.order,
@@ -3102,8 +3387,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
       for (const item of order.items || []) {
         const productBarcode = item.product?.barcode || item.barcode;
 
-        if (searchVariants.some(variant => productBarcode === variant)) {
-          console.log('[findOrderByBarcode] Found in orders:', item.productName);
+        if (searchVariants.some((variant) => productBarcode === variant)) {
+          console.log(
+            "[findOrderByBarcode] Found in orders:",
+            item.productName
+          );
           return {
             order,
             item,
@@ -3113,7 +3401,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
     }
 
-    console.log('[findOrderByBarcode] Not found');
+    console.log("[findOrderByBarcode] Not found");
     return null;
   };
 
@@ -3121,42 +3409,83 @@ const PendingOrdersList = memo(function PendingOrdersList({
   useEffect(() => {
     if (!scanModalOpen) return;
 
-    let buffer = '';
+    let buffer = "";
     let lastTime = 0;
     let timeout: NodeJS.Timeout;
 
+    // ✅ Track keyboard layout warnings to avoid spam
+    let lastKeyboardWarning = 0;
+    let koreanCharDetected = false;
+
     const handleKeyPress = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      
+
       // Ignore if typing in input field
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      // ✅ CRITICAL: Detect Korean/IME input BEFORE ignoring it
+      if (e.isComposing || e.keyCode === 229) {
+        if (!koreanCharDetected) {
+          setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+          koreanCharDetected = true;
+          setTimeout(() => {
+            koreanCharDetected = false;
+          }, 5000);
+        }
+        buffer = "";
         return;
       }
 
       const now = Date.now();
-      
+
       // Reset buffer if too much time passed (scanner is faster)
       if (now - lastTime > 100) {
-        buffer = '';
+        buffer = "";
       }
 
       // Enter = scan complete
-      if (e.key === 'Enter' && buffer.length > 0) {
+      if (e.key === "Enter" && buffer.length > 0) {
         e.preventDefault();
-        handleBarcodeScan(buffer.trim());
-        buffer = '';
-      } else if (e.key.length === 1) {
-        buffer += e.key;
-        lastTime = now;
+        // ✅ STRICT: Only allow alphanumeric characters (GS1 standard)
+        const cleanedBarcode = buffer.trim().replace(/[^0-9A-Za-z]/g, "");
 
-        clearTimeout(timeout);
-        timeout = setTimeout(() => { buffer = ''; }, 500);
+        handleBarcodeScan(cleanedBarcode);
+        buffer = "";
+      } else if (e.key.length === 1) {
+        // ✅ STRICT: Only accept digits and letters (0-9, A-Z, a-z)
+        if (/[0-9A-Za-z]/.test(e.key)) {
+          buffer += e.key;
+          lastTime = now;
+
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            buffer = "";
+          }, 500);
+        } else {
+          // ✅ Non-alphanumeric detected - likely Korean keyboard
+          if (!koreanCharDetected) {
+            setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+            koreanCharDetected = true;
+            setTimeout(() => {
+              koreanCharDetected = false;
+            }, 5000);
+          }
+          buffer = "";
+          console.warn(
+            "[Barcode Scanner] ⚠️ Ignored non-alphanumeric:",
+            e.key,
+            "charCode:",
+            e.key.charCodeAt(0)
+          );
+        }
       }
     };
 
-    window.addEventListener('keypress', handleKeyPress);
+    window.addEventListener("keypress", handleKeyPress);
     return () => {
-      window.removeEventListener('keypress', handleKeyPress);
+      window.removeEventListener("keypress", handleKeyPress);
       clearTimeout(timeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3164,9 +3493,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ NEW: Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
-    console.log('=== Barcode Scan Started ===');
-    console.log('Scanned barcode:', barcode);
-    
+    console.log("=== Barcode Scan Started ===");
+    console.log("Scanned barcode:", barcode);
+
     const parsed = await parseGS1Barcode(barcode);
     const searchVariants = [
       barcode,
@@ -3174,87 +3503,97 @@ const PendingOrdersList = memo(function PendingOrdersList({
       ...parsed.gtinVariants,
     ].filter(Boolean);
 
-    console.log('Search variants:', searchVariants);
-    console.log('Parsed data:', parsed);
+    console.log("Search variants:", searchVariants);
+    console.log("Parsed data:", parsed);
 
     // STEP 1: Get current scannedItems and check if product exists
     let existingItem: any = null;
     let currentItems: any[] = [];
-    
-    setScannedItems(prevItems => {
-      currentItems = prevItems; // Store for later use
-      console.log('🔍 Searching in scannedItems...');
-      console.log('Current scannedItems (LATEST):', prevItems.map(p => ({ 
-        itemId: p.itemId, 
-        productId: p.productId, 
-        name: p.productName, 
-        status: p.status,
-        barcode: p.barcode,
-        productBarcode: p.product?.barcode
-      })));
-      console.log('Search variants to match:', searchVariants);
 
-      existingItem = prevItems.find(p => {
-        if (p.status !== 'pending' && p.status !== 'active') return false;
-        
+    setScannedItems((prevItems) => {
+      currentItems = prevItems; // Store for later use
+      console.log("🔍 Searching in scannedItems...");
+      console.log(
+        "Current scannedItems (LATEST):",
+        prevItems.map((p) => ({
+          itemId: p.itemId,
+          productId: p.productId,
+          name: p.productName,
+          status: p.status,
+          barcode: p.barcode,
+          productBarcode: p.product?.barcode,
+        }))
+      );
+      console.log("Search variants to match:", searchVariants);
+
+      existingItem = prevItems.find((p) => {
+        if (p.status !== "pending" && p.status !== "active") return false;
+
         // Try multiple matching strategies
-        const matches = 
-          searchVariants.some(variant => 
-            p.product?.barcode === variant || 
-            p.barcode === variant ||
-            p.productId === variant
+        const matches =
+          searchVariants.some(
+            (variant) =>
+              p.product?.barcode === variant ||
+              p.barcode === variant ||
+              p.productId === variant
           ) ||
           p.productId === parsed.gtin ||
           p.itemId === parsed.gtin;
-        
+
         if (matches) {
-          console.log('🔍 Match found:', {
+          console.log("🔍 Match found:", {
             productName: p.productName,
             itemId: p.itemId,
             productId: p.productId,
             barcode: p.barcode,
-            productBarcode: p.product?.barcode
+            productBarcode: p.product?.barcode,
           });
         }
-        
+
         return matches;
       });
 
       if (existingItem) {
-        console.log('✅ Found existing pending/active product:', existingItem.productName);
-        console.log('Updating itemId:', existingItem.itemId);
-        
+        console.log(
+          "✅ Found existing pending/active product:",
+          existingItem.productName
+        );
+        console.log("Updating itemId:", existingItem.itemId);
+
         // Update this product and set to active
         const updatedItems = prevItems.map((p) => {
           if (p.itemId === existingItem.itemId) {
             const updated = {
               ...p,
-              quantity: existingItem.remainingQty > 0 ? existingItem.remainingQty : p.quantity,
+              quantity:
+                existingItem.remainingQty > 0
+                  ? existingItem.remainingQty
+                  : p.quantity,
               expiryDate: parsed.expiryDate || p.expiryDate,
               productionDate: parsed.productionDate || p.productionDate, // ✅ AI 11
               batchNumber: parsed.batchNumber || p.batchNumber,
               lotNumber: parsed.batchNumber || p.lotNumber, // ✅ Auto-fill from GS1 batch
               barcode: parsed.originalBarcode,
-              status: 'active',
+              status: "active",
             };
-            console.log('📦 Updated product fields:', {
+            console.log("📦 Updated product fields:", {
               lotNumber: updated.lotNumber,
               batchNumber: updated.batchNumber,
               expiryDate: updated.expiryDate,
               productionDate: updated.productionDate,
-              quantity: updated.quantity
+              quantity: updated.quantity,
             });
             return updated;
           }
           // Set other active items back to pending
-          if (p.status === 'active') {
-            return { ...p, status: 'pending' };
+          if (p.status === "active") {
+            return { ...p, status: "pending" };
           }
           return p;
         });
-        
+
         setActiveItemId(existingItem.itemId);
-        console.log('Set activeItemId to:', existingItem.itemId);
+        console.log("Set activeItemId to:", existingItem.itemId);
         return updatedItems;
       }
 
@@ -3263,65 +3602,69 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     // If found in scannedItems, we're done
     if (existingItem) {
-      console.log('✅ Product updated, scan complete');
+      console.log("✅ Product updated, scan complete");
       return;
     }
 
     // STEP 2: If not in scannedItems, find in orders
-    console.log('Not found in scannedItems, searching in orders...');
+    console.log("Not found in scannedItems, searching in orders...");
     const result = await findOrderByBarcode(barcode);
 
     if (!result) {
-      console.log('Parsed GS1:', parsed);
-      console.log('Search variants:', searchVariants);
-      
+      console.log("Parsed GS1:", parsed);
+      console.log("Search variants:", searchVariants);
+
       // Debug: Show all product barcodes in orders
-      console.log('Available product barcodes in orders:');
+      console.log("Available product barcodes in orders:");
       orders.forEach((order, i) => {
         order.items?.forEach((item: any, j: number) => {
-          console.log(`Order ${i+1}, Item ${j+1}:`, {
+          console.log(`Order ${i + 1}, Item ${j + 1}:`, {
             productName: item.productName,
             productBarcode: item.product?.barcode,
             itemBarcode: item.barcode,
           });
         });
       });
-      
-      alert(
-        `바코드를 찾을 수 없습니다.\n\n` +
-        `스캔된 바코드: ${barcode}\n` +
-        `GTIN: ${parsed.gtin || '없음'}\n\n` +
-        `주문에 해당 제품이 있는지 확인하세요.`
-      );
+
+      setBarcodeNotFoundModal({
+        show: true,
+        barcode: barcode,
+        gtin: parsed.gtin || "없음",
+      });
       return;
     }
 
-    console.log('Found order:', result.order.orderNo);
-    console.log('Found item:', result.item.productName);
-    console.log('Found item.id:', result.item.id);
-    
+    console.log("Found order:", result.order.orderNo);
+    console.log("Found item:", result.item.productName);
+    console.log("Found item.id:", result.item.id);
+
     const { order, item } = result;
-    
+
     // Calculate remaining quantity
     const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
     const alreadyInbound = item.inboundQuantity || 0;
     const remainingQty = confirmedQty - alreadyInbound;
 
     // STEP 3: This should rarely happen (product exists in order but not in scannedItems)
-    console.warn('⚠️ Product found in order but not in scannedItems - adding as fallback');
-    
+    console.warn(
+      "⚠️ Product found in order but not in scannedItems - adding as fallback"
+    );
+
     // Check if this ID already exists in scannedItems (prevent duplicate)
-    setScannedItems(prev => {
+    setScannedItems((prev) => {
       const proposedId = `${order.id}-${item.id}`;
-      const alreadyExists = prev.some(p => p.id === proposedId);
-      
+      const alreadyExists = prev.some((p) => p.id === proposedId);
+
       if (alreadyExists) {
-        console.error('🔴 DUPLICATE DETECTED! Product already in scannedItems:', proposedId);
-        console.log('This should not happen - matching logic failed!');
+        console.error(
+          "🔴 DUPLICATE DETECTED! Product already in scannedItems:",
+          proposedId
+        );
+        console.log("This should not happen - matching logic failed!");
         // Try to find and update existing item instead
-        const existingIndex = prev.findIndex(p => p.id === proposedId);
+        const existingIndex = prev.findIndex((p) => p.id === proposedId);
         if (existingIndex !== -1) {
-          console.log('Updating existing item instead of adding duplicate');
+          console.log("Updating existing item instead of adding duplicate");
           setActiveItemId(prev[existingIndex].itemId);
           return prev.map((p, i) => {
             if (i === existingIndex) {
@@ -3332,18 +3675,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 batchNumber: parsed.batchNumber || p.batchNumber,
                 lotNumber: parsed.batchNumber || p.lotNumber,
                 barcode: parsed.originalBarcode,
-                status: 'active',
+                status: "active",
               };
             }
-            if (p.status === 'active') {
-              return { ...p, status: 'pending' };
+            if (p.status === "active") {
+              return { ...p, status: "pending" };
             }
             return p;
           });
         }
         return prev; // Fallback - no changes
       }
-      
+
       const newProduct = {
         id: proposedId,
         orderId: order.id,
@@ -3356,69 +3699,83 @@ const PendingOrdersList = memo(function PendingOrdersList({
         quantity: remainingQty > 0 ? remainingQty : 0,
         expiryDate: parsed.expiryDate,
         productionDate: parsed.productionDate, // ✅ AI 11
-        storageLocation: '',
+        storageLocation: "",
         batchNumber: parsed.batchNumber,
-        manufactureDate: '',
+        manufactureDate: "",
         lotNumber: parsed.batchNumber,
         remainingQty,
         order,
         item,
         product: item.product,
-        status: 'active',
+        status: "active",
       };
 
-      console.log('[handleBarcodeScan] Adding new product (fallback):', newProduct.id);
-      console.log('📦 New product fields:', {
+      console.log(
+        "[handleBarcodeScan] Adding new product (fallback):",
+        newProduct.id
+      );
+      console.log("📦 New product fields:", {
         lotNumber: newProduct.lotNumber,
         batchNumber: newProduct.batchNumber,
         expiryDate: newProduct.expiryDate,
         productionDate: newProduct.productionDate,
-        quantity: newProduct.quantity
+        quantity: newProduct.quantity,
       });
-      
+
       setActiveItemId(item.id);
-      
+
       // Set all existing active items to pending and add new product
       return [
-        ...prev.map(p => p.status === 'active' ? { ...p, status: 'pending' } : p),
-        newProduct
+        ...prev.map((p) =>
+          p.status === "active" ? { ...p, status: "pending" } : p
+        ),
+        newProduct,
       ];
     });
   };
 
   // ✅ NEW: Update scanned product data by itemId
   const updateScannedProduct = (itemId: number, updates: Partial<any>) => {
-    setScannedItems(prev => prev.map((item) => 
-      item.itemId === itemId ? { ...item, ...updates } : item
-    ));
+    setScannedItems((prev) =>
+      prev.map((item) =>
+        item.itemId === itemId ? { ...item, ...updates } : item
+      )
+    );
   };
 
   // ✅ NEW: Mark product as completed and move to next
   const completeCurrentProduct = () => {
     if (!activeItemId) {
-      console.warn('[completeCurrentProduct] No active item ID');
+      console.warn("[completeCurrentProduct] No active item ID");
       return;
     }
-    
-    console.log('[completeCurrentProduct] Completing item:', activeItemId);
-    
+
+    console.log("[completeCurrentProduct] Completing item:", activeItemId);
+
     // Mark current as completed
-    setScannedItems(prev => prev.map((item) => {
-      if (item.itemId === activeItemId) {
-        console.log('[completeCurrentProduct] Marking as completed:', item.productName);
-        return { ...item, status: 'completed' };
-      }
-      return item;
-    }));
-    
+    setScannedItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId === activeItemId) {
+          console.log(
+            "[completeCurrentProduct] Marking as completed:",
+            item.productName
+          );
+          return { ...item, status: "completed" };
+        }
+        return item;
+      })
+    );
+
     // Reset active item - user must scan next product manually
     setActiveItemId(null);
-    console.log('[completeCurrentProduct] Reset activeItemId to null - scan next product');
+    console.log(
+      "[completeCurrentProduct] Reset activeItemId to null - scan next product"
+    );
   };
 
   // ✅ NEW: Remove scanned product by itemId
   const removeScannedProduct = (itemId: number) => {
-    setScannedItems(prev => prev.filter((item) => item.itemId !== itemId));
+    setScannedItems((prev) => prev.filter((item) => item.itemId !== itemId));
     if (activeItemId === itemId) {
       setActiveItemId(null);
     }
@@ -3427,48 +3784,57 @@ const PendingOrdersList = memo(function PendingOrdersList({
   // ✅ NEW: Submit all scanned items (batch inbound)
   const submitAllScannedItems = async () => {
     if (scannedItems.length === 0) {
-      alert('스캔된 제품이 없습니다.');
+      alert("스캔된 제품이 없습니다.");
       return;
     }
 
     // Instead of API call, auto-fill the order form fields
     try {
       // Group by order
-      const groupedByOrder = scannedItems.reduce((acc, item) => {
-        if (!acc[item.orderId]) {
-          acc[item.orderId] = {
-            order: item.order,
-            items: [],
-          };
-        }
-        acc[item.orderId].items.push(item);
-        return acc;
-      }, {} as Record<string, any>);
+      const groupedByOrder = scannedItems.reduce(
+        (acc, item) => {
+          if (!acc[item.orderId]) {
+            acc[item.orderId] = {
+              order: item.order,
+              items: [],
+            };
+          }
+          acc[item.orderId].items.push(item);
+          return acc;
+        },
+        {} as Record<string, any>
+      );
 
       // Auto-fill editedItems for each scanned product
       for (const [orderId, data] of Object.entries(groupedByOrder)) {
         for (const item of (data as any).items) {
-          updateItemField(item.itemId, 'quantity', item.quantity);
-          updateItemField(item.itemId, 'expiryDate', item.expiryDate);
-          updateItemField(item.itemId, 'storageLocation', item.storageLocation);
-          updateItemField(item.itemId, 'purchasePrice', item.item.unit_price || '');
+          updateItemField(item.itemId, "quantity", item.quantity);
+          updateItemField(item.itemId, "expiryDate", item.expiryDate);
+          updateItemField(item.itemId, "storageLocation", item.storageLocation);
+          updateItemField(
+            item.itemId,
+            "purchasePrice",
+            item.item.unit_price || ""
+          );
+
+          // ✅ CRITICAL: Include lotNumber (batch from barcode)
+          if (item.lotNumber && item.lotNumber.trim() !== "") {
+            updateItemField(item.itemId, "lotNumber", item.lotNumber);
+          }
         }
 
-        // Set inbound manager
-        if (!inboundManagers[orderId]) {
-          setInboundManagers(prev => ({ ...prev, [orderId]: inboundManagerName }));
-        }
+        // ✅ REMOVED: Auto-set inbound manager - user should fill manually
       }
 
       alert(
         `✅ ${scannedItems.length}개 제품 정보가 입력되었습니다!\n\n` +
-        `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
+          `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
       );
-      
+
       closeScanModal();
     } catch (error: any) {
-      console.error('Auto-fill error:', error);
-      alert(`입력 처리 중 오류: ${error.message || '알 수 없는 오류'}`);
+      console.error("Auto-fill error:", error);
+      alert(`입력 처리 중 오류: ${error.message || "알 수 없는 오류"}`);
     }
   };
 
@@ -3484,7 +3850,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   const handleProcessOrder = async (order: any) => {
     // ✅ DEBUG: Check order ID
-    console.log('[handleProcessOrder] Order data:', {
+    console.log("[handleProcessOrder] Order data:", {
       id: order.id,
       orderId: order.orderId,
       orderNo: order.orderNo,
@@ -3494,8 +3860,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const orderIdToUse = order.id || order.orderId;
 
     if (!orderIdToUse) {
-      console.error('[handleProcessOrder] ERROR: No order ID found!');
-      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      console.error("[handleProcessOrder] ERROR: No order ID found!");
+      alert("주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.");
       return;
     }
 
@@ -3578,8 +3944,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const orderIdToUse = order.id || order.orderId;
 
     if (!orderIdToUse) {
-      console.error('[processInboundOrder] ERROR: No order ID found!', order);
-      alert('주문 정보가 올바르지 않습니다. 페이지를 새로고침해주세요.');
+      console.error("[processInboundOrder] ERROR: No order ID found!", order);
+      alert("주문 정보가 올바르지 않습니다. 페이지를 새로고침해주세요.");
       return;
     }
 
@@ -3597,8 +3963,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../lib/api");
 
-      // ✅ Use inboundManagers state instead of localStorage
-      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
+      // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
+      const inboundManager =
+        inboundManagers[orderIdToUse] || "";
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -3652,6 +4019,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
           expiry_date: editedFirstItem?.expiryDate,
           inbound_manager: inboundManager,
         };
+
+        // ✅ CRITICAL: Include batch_no from barcode (if scanned)
+        if (
+          editedFirstItem?.lotNumber &&
+          editedFirstItem.lotNumber.trim() !== ""
+        ) {
+          batchPayload.batch_no = editedFirstItem.lotNumber.trim();
+        }
 
         if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
         if (expiryMonths) batchPayload.expiry_months = expiryMonths;
@@ -3756,21 +4131,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const { order } = modalData;
 
     // ✅ DEBUG: Check order.id before API call
-    console.log('[Partial Inbound] Order data:', {
+    console.log("[Partial Inbound] Order data:", {
       id: order.id,
       orderId: order.orderId,
       orderNo: order.orderNo,
     });
 
     if (!order.id && !order.orderId) {
-      console.error('[Partial Inbound] ERROR: No order ID found!');
-      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      console.error("[Partial Inbound] ERROR: No order ID found!");
+      alert("주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.");
       return;
     }
 
     // ✅ Use orderId as fallback if id is missing
     const orderIdToUse = order.id || order.orderId;
-    
+
     // ✅ Order'dan barcha item'larni ko'rib chiqish (qisman va to'liq inbound qilinadigan item'lar ham)
     const validItems = order.items.filter((item: any) => {
       const edited = editedItems[item.id];
@@ -3779,12 +4154,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
     });
 
     // ✅ Debug: validItems ni ko'rsatish
-    console.log('[Partial Inbound] Valid items:', validItems.map((item: any) => ({
-      id: item.id,
-      productId: item.productId || item.product_id,
-      productName: item.productName,
-      inboundQty: editedItems[item.id]?.quantity || 0,
-    })));
+    console.log(
+      "[Partial Inbound] Valid items:",
+      validItems.map((item: any) => ({
+        id: item.id,
+        productId: item.productId || item.product_id,
+        productName: item.productName,
+        inboundQty: editedItems[item.id]?.quantity || 0,
+      }))
+    );
 
     if (validItems.length === 0) {
       alert("입고 가능한 제품이 없습니다.");
@@ -3797,8 +4175,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // ✅ Use inboundManagers state instead of localStorage
-      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
+      // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
+      const inboundManager =
+        inboundManagers[orderIdToUse] || "";
 
       // Create batches for valid items
       for (const item of validItems) {
@@ -3810,7 +4189,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
         // ✅ Get productId from item (productId or product_id)
         const productId = item.productId || item.product_id;
         if (!productId) {
-          console.error(`[Partial Inbound] Product ID not found for item ${item.id}`);
+          console.error(
+            `[Partial Inbound] Product ID not found for item ${item.id}`
+          );
           continue;
         }
 
@@ -3838,6 +4219,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
           inbound_manager: inboundManager,
         };
 
+        // ✅ CRITICAL: Include batch_no from barcode (if scanned)
+        if (editedItem?.lotNumber && editedItem.lotNumber.trim() !== "") {
+          batchPayload.batch_no = editedItem.lotNumber.trim();
+        }
+
         if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
         if (expiryMonths) batchPayload.expiry_months = expiryMonths;
         if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
@@ -3855,10 +4241,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // ✅ Call partial inbound API - item'ning bir qismini inbound qilish, qolgan qismini order'da qoldirish
       const inboundedItems = validItems.map((item: any) => {
         const inboundQty = editedItems[item.id]?.quantity || 0;
-        
+
         // ✅ Debug log
-        console.log(`[Partial Inbound] Item ${item.id} (${item.productName || item.productId}): inboundQty=${inboundQty}, originalQty=${item.confirmedQuantity || item.orderedQuantity || item.quantity}`);
-        
+        console.log(
+          `[Partial Inbound] Item ${item.id} (${item.productName || item.productId}): inboundQty=${inboundQty}, originalQty=${item.confirmedQuantity || item.orderedQuantity || item.quantity}`
+        );
+
         return {
           itemId: item.id,
           productId: item.productId || item.product_id, // ✅ productId yoki product_id
@@ -3867,8 +4255,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
       });
 
       // ✅ Debug: inboundedItems ni ko'rsatish
-      console.log('[Partial Inbound] InboundedItems:', inboundedItems);
-      console.log('[Partial Inbound] Order ID to use:', orderIdToUse);
+      console.log("[Partial Inbound] InboundedItems:", inboundedItems);
+      console.log("[Partial Inbound] Order ID to use:", orderIdToUse);
 
       const result = await apiPost(
         `${apiUrl}/order/${orderIdToUse}/partial-inbound`, // ✅ Use fallback ID
@@ -3882,7 +4270,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // remaining = confirmedQty - (already inbound) - (new inbound)
       const totalRemainingQty = order.items.reduce((sum: number, item: any) => {
         const edited = editedItems[item.id];
-        const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
+        const confirmedQty =
+          item.confirmedQuantity || item.orderedQuantity || 0;
         const alreadyInbound = item.inboundQuantity || 0; // ✅ Already inbound from database
         const newInbound = edited?.quantity || 0; // ✅ New inbound from user input
         const totalInbound = alreadyInbound + newInbound; // ✅ Total inbound
@@ -3891,9 +4280,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }, 0);
 
       // ✅ Better alert messages
-      const inboundProductNames = validItems.map((item: any) => item.productName).join(", ");
-      const totalInboundQty = validItems.reduce((sum: number, item: any) => 
-        sum + (editedItems[item.id]?.quantity || 0), 0
+      const inboundProductNames = validItems
+        .map((item: any) => item.productName)
+        .join(", ");
+      const totalInboundQty = validItems.reduce(
+        (sum: number, item: any) => sum + (editedItems[item.id]?.quantity || 0),
+        0
       );
 
       if (totalRemainingQty > 0) {
@@ -3901,7 +4293,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
           `${inboundProductNames}\n${totalInboundQty}개 입고 완료되었습니다.\n남은 ${totalRemainingQty}개 제품은 재입고 대기 중입니다.`
         );
       } else {
-        alert(`${inboundProductNames}\n남은 ${totalInboundQty}개 입고 완료되었습니다.`);
+        alert(
+          `${inboundProductNames}\n남은 ${totalInboundQty}개 입고 완료되었습니다.`
+        );
       }
 
       onRefresh();
@@ -3922,15 +4316,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const { order } = modalData;
 
     // ✅ DEBUG: Check order ID
-    console.log('[navigateToReturns] Order data:', {
+    console.log("[navigateToReturns] Order data:", {
       id: order.id,
       orderId: order.orderId,
       orderNo: order.orderNo,
     });
 
     if (!order.id && !order.orderId) {
-      console.error('[navigateToReturns] ERROR: No order ID found!');
-      alert('주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.');
+      console.error("[navigateToReturns] ERROR: No order ID found!");
+      alert("주문 ID를 찾을 수 없습니다. 페이지를 새로고침 해주세요.");
       return;
     }
 
@@ -3943,8 +4337,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // ✅ Use inboundManagers state instead of localStorage
-      const inboundManager = inboundManagers[orderIdToUse] || inboundManagerName || "자동입고";
+      // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
+      const inboundManager =
+        inboundManagers[orderIdToUse] || "";
 
       // Process all items and create returns for shortages
       const returnItems: any[] = [];
@@ -4146,15 +4541,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          {loading ? "새로고침 중..." : "새로고침"}
-        </button>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {loading ? "새로고침 중..." : "새로고침"}
+          </button>
         </div>
       </div>
 
@@ -4207,12 +4602,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 {(() => {
                   // ✅ FIXED: Check based on order.items' inboundQuantity (database), not editedItems
                   // Agar biror item allaqachon partial inbound qilingan bo'lsa (inboundQuantity > 0 va < confirmedQuantity)
-                  const hasPartialInbound = modalData.order.items.some((item: any) => {
-                    const inboundQty = item.inboundQuantity || 0;
-                    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
-                    return inboundQty > 0 && inboundQty < confirmedQty;
-                  });
-                  
+                  const hasPartialInbound = modalData.order.items.some(
+                    (item: any) => {
+                      const inboundQty = item.inboundQuantity || 0;
+                      const confirmedQty =
+                        item.confirmedQuantity || item.orderedQuantity || 0;
+                      return inboundQty > 0 && inboundQty < confirmedQty;
+                    }
+                  );
+
                   // Agar partial inbound bo'lmasa (birinchi marta shortage) → Ikki button
                   // Agar partial inbound bo'lsa (qolgan pending) → Bitta button
                   return hasPartialInbound
@@ -4245,21 +4643,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
                 {(() => {
                   // ✅ Same logic for description
-                  const hasPartialInbound = modalData.order.items.some((item: any) => {
-                    const inboundQty = item.inboundQuantity || 0;
-                    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
-                    return inboundQty > 0 && inboundQty < confirmedQty;
-                  });
-                  
-                  return hasPartialInbound
-                    ? "입고 처리를 진행하시겠습니까?" // Qolgan pending
-                    : (
-                        <>
-                          부족한 수량은 추후 재입고 예정인가요?
-                          <br />
-                          재입고가 어려운 경우, 반품 절차를 통해 처리됩니다.
-                        </>
-                      );
+                  const hasPartialInbound = modalData.order.items.some(
+                    (item: any) => {
+                      const inboundQty = item.inboundQuantity || 0;
+                      const confirmedQty =
+                        item.confirmedQuantity || item.orderedQuantity || 0;
+                      return inboundQty > 0 && inboundQty < confirmedQty;
+                    }
+                  );
+
+                  return hasPartialInbound ? (
+                    "입고 처리를 진행하시겠습니까?" // Qolgan pending
+                  ) : (
+                    <>
+                      부족한 수량은 추후 재입고 예정인가요?
+                      <br />
+                      재입고가 어려운 경우, 반품 절차를 통해 처리됩니다.
+                    </>
+                  );
                 })()}
               </p>
 
@@ -4328,11 +4729,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
             <div className="flex gap-3 justify-end">
               {(() => {
                 // ✅ FIXED: Check if any item has partial inbound already (database state)
-                const hasPartialInbound = modalData.order.items.some((item: any) => {
-                  const inboundQty = item.inboundQuantity || 0;
-                  const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
-                  return inboundQty > 0 && inboundQty < confirmedQty;
-                });
+                const hasPartialInbound = modalData.order.items.some(
+                  (item: any) => {
+                    const inboundQty = item.inboundQuantity || 0;
+                    const confirmedQty =
+                      item.confirmedQuantity || item.orderedQuantity || 0;
+                    return inboundQty > 0 && inboundQty < confirmedQty;
+                  }
+                );
 
                 // ✅ Agar partial inbound bo'lsa → Qolgan pending → Bitta "입고 완료" button
                 if (hasPartialInbound) {
@@ -4341,8 +4745,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
                       onClick={handlePartialInbound}
                     >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                       입고 완료
                     </button>
@@ -4392,8 +4806,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 onClick={closeScanModal}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -4404,7 +4828,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
               {scannedItems.length > 0 && (
                 <div className="mb-4 text-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    입고 진행: <span className="font-bold text-emerald-600">{scannedItems.filter(i => i.status === 'completed').length}</span> / {scannedItems.length}
+                    입고 진행:{" "}
+                    <span className="font-bold text-emerald-600">
+                      {
+                        scannedItems.filter((i) => i.status === "completed")
+                          .length
+                      }
+                    </span>{" "}
+                    / {scannedItems.length}
                   </span>
                 </div>
               )}
@@ -4416,196 +4847,252 @@ const PendingOrdersList = memo(function PendingOrdersList({
                     .slice()
                     .sort((a, b) => {
                       // Sort order: active (진행) > pending (대기) > completed (완료)
-                      const statusOrder: { [key: string]: number } = { active: 0, pending: 1, completed: 2 };
-                      return (statusOrder[a.status] || 1) - (statusOrder[b.status] || 1);
+                      const statusOrder: { [key: string]: number } = {
+                        active: 0,
+                        pending: 1,
+                        completed: 2,
+                      };
+                      return (
+                        (statusOrder[a.status] || 1) -
+                        (statusOrder[b.status] || 1)
+                      );
                     })
                     .map((item) => {
-                    const isActive = item.status === 'active';
-                    const isCompleted = item.status === 'completed';
-                    const isPending = item.status === 'pending';
-                    
-                    return (
-                      <div
-                        key={item.id}
-                        className={`border rounded-lg overflow-hidden transition-all ${
-                          isActive 
-                            ? 'border-blue-500 shadow-lg' 
-                            : isCompleted
-                            ? 'border-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/10'
-                            : 'border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {/* Card Header */}
+                      const isActive = item.status === "active";
+                      const isCompleted = item.status === "completed";
+                      const isPending = item.status === "pending";
+
+                      return (
                         <div
-                          className={`p-4 cursor-pointer ${
-                            isActive 
-                              ? 'bg-blue-50 dark:bg-blue-900/20' 
+                          key={item.id}
+                          className={`border rounded-lg overflow-hidden transition-all ${
+                            isActive
+                              ? "border-blue-500 shadow-lg"
                               : isCompleted
-                              ? 'bg-emerald-50 dark:bg-emerald-900/20'
-                              : 'bg-white dark:bg-slate-800'
+                                ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/10"
+                                : "border-slate-200 dark:border-slate-700"
                           }`}
-                          onClick={() => {
-                            if (!isCompleted) {
-                              // Set all others to pending, this one to active
-                              setScannedItems(prev => prev.map((p) => ({
-                                ...p,
-                                status: p.itemId === item.itemId && p.status !== 'completed' ? 'active' : p.status === 'active' ? 'pending' : p.status
-                              })));
-                              setActiveItemId(item.itemId);
-                            }
-                          }}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 flex-1">
-                              {/* Status Badge */}
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                isActive
-                                  ? 'bg-blue-500 text-white'
-                                  : isCompleted
-                                  ? 'bg-emerald-500 text-white'
-                                  : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                              }`}>
-                                {isActive ? '진행' : isCompleted ? '완료' : '대기'}
-                              </span>
-                              
-                              {/* Product Info */}
-                              <div className="flex-1">
-                                <div className="font-semibold text-slate-800 dark:text-slate-100">
-                                  {item.productName}
-                                </div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                  {item.brand} · 주문번호: {item.orderNo}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-2">
-                              {isCompleted && (
-                                <span className="text-emerald-600 text-xl">✓</span>
-                              )}
-                              {!isCompleted && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeScannedProduct(item.itemId);
-                                  }}
-                                  className="text-red-500 hover:text-red-700 text-sm"
+                          {/* Card Header */}
+                          <div
+                            className={`p-4 cursor-pointer ${
+                              isActive
+                                ? "bg-blue-50 dark:bg-blue-900/20"
+                                : isCompleted
+                                  ? "bg-emerald-50 dark:bg-emerald-900/20"
+                                  : "bg-white dark:bg-slate-800"
+                            }`}
+                            onClick={() => {
+                              if (!isCompleted) {
+                                // Set all others to pending, this one to active
+                                setScannedItems((prev) =>
+                                  prev.map((p) => ({
+                                    ...p,
+                                    status:
+                                      p.itemId === item.itemId &&
+                                      p.status !== "completed"
+                                        ? "active"
+                                        : p.status === "active"
+                                          ? "pending"
+                                          : p.status,
+                                  }))
+                                );
+                                setActiveItemId(item.itemId);
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 flex-1">
+                                {/* Status Badge */}
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                    isActive
+                                      ? "bg-blue-500 text-white"
+                                      : isCompleted
+                                        ? "bg-emerald-500 text-white"
+                                        : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                                  }`}
                                 >
-                                  삭제
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                                  {isActive
+                                    ? "진행"
+                                    : isCompleted
+                                      ? "완료"
+                                      : "대기"}
+                                </span>
 
-                        {/* Expanded Form - Only show for active item */}
-                        {isActive && !isCompleted && (
-                          <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                            <div className="space-y-3">
-                              {/* Lot Number */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  Lot 번호 {item.lotNumber && '✓'}
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.lotNumber || ''}
-                                  onChange={(e) => updateScannedProduct(item.itemId, { lotNumber: e.target.value })}
-                                  placeholder="자동 입력됨"
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
-                              </div>
-
-                              {/* Manufacture Date */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  제조일 <span className="text-xs font-normal text-slate-500">(선택가능)</span>
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.manufactureDate || ''}
-                                  onChange={(e) => updateScannedProduct(item.itemId, { manufactureDate: e.target.value })}
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
-                              </div>
-
-                              {/* Production Date (AI 11) */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  생산일 (AI 11) {item.productionDate && '✓'}
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.productionDate || ''}
-                                  onChange={(e) => updateScannedProduct(item.itemId, { productionDate: e.target.value })}
-                                  placeholder="바코드에서 자동 입력"
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  readOnly={!!item.productionDate}
-                                />
-                              </div>
-
-                              {/* Expiry Date */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  유효기간 {item.expiryDate && '✓'}
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.expiryDate || ''}
-                                  onChange={(e) => updateScannedProduct(item.itemId, { expiryDate: e.target.value })}
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
-                              </div>
-
-                              {/* Quantity */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  입고수량 <span className="text-xs text-slate-500">(남은: {item.remainingQty})</span>
-                                </label>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    value={item.quantity}
-                                    onChange={(e) => updateScannedProduct(item.itemId, { quantity: parseInt(e.target.value) || 0 })}
-                                    className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
-                                  <span className="text-sm text-slate-600 dark:text-slate-400">개</span>
+                                {/* Product Info */}
+                                <div className="flex-1">
+                                  <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                    {item.productName}
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {item.brand} · 주문번호: {item.orderNo}
+                                  </div>
                                 </div>
                               </div>
 
-                              {/* Storage Location */}
-                              <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                  보관위치
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.storageLocation || ''}
-                                  onChange={(e) => updateScannedProduct(item.itemId, { storageLocation: e.target.value })}
-                                  placeholder="예: 창고 A-01"
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
+                              {/* Actions */}
+                              <div className="flex items-center gap-2">
+                                {isCompleted && (
+                                  <span className="text-emerald-600 text-xl">
+                                    ✓
+                                  </span>
+                                )}
+                                {!isCompleted && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeScannedProduct(item.itemId);
+                                    }}
+                                    className="text-red-500 hover:text-red-700 text-sm"
+                                  >
+                                    삭제
+                                  </button>
+                                )}
                               </div>
-
-                              {/* Complete Button */}
-                              <button
-                                onClick={completeCurrentProduct}
-                                disabled={
-                                  !item.quantity || 
-                                  item.quantity <= 0 || 
-                                  !item.storageLocation
-                                }
-                                className="w-full mt-4 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
-                              >
-                                입력 완료
-                              </button>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+                          {/* Expanded Form - Only show for active item */}
+                          {isActive && !isCompleted && (
+                            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                              <div className="space-y-3">
+                                {/* Lot Number */}
+                                <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    Lot 번호 {item.lotNumber && "✓"}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={item.lotNumber || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        lotNumber: e.target.value,
+                                      })
+                                    }
+                                    placeholder="자동 입력됨"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                </div>
+
+                                {/* Manufacture Date */}
+                                {/* <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    제조일{" "}
+                                    <span className="text-xs font-normal text-slate-500">
+                                      (선택가능)
+                                    </span>
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={item.manufactureDate || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        manufactureDate: e.target.value,
+                                      })
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                </div> */}
+
+                                {/* Production Date (AI 11) */}
+                                <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    제조일 {item.productionDate && "✓"}
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={item.productionDate || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        productionDate: e.target.value,
+                                      })
+                                    }
+                                    placeholder="바코드에서 자동 입력"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                    readOnly={!!item.productionDate}
+                                  />
+                                </div>
+
+                                {/* Expiry Date */}
+                                <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    유효기간 {item.expiryDate && "✓"}
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={item.expiryDate || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        expiryDate: e.target.value,
+                                      })
+                                    }
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                </div>
+
+                                {/* Quantity */}
+                                <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    입고수량{" "}
+                                    <span className="text-xs text-slate-500">
+                                      (남은: {item.remainingQty})
+                                    </span>
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      value={item.quantity}
+                                      onChange={(e) =>
+                                        updateScannedProduct(item.itemId, {
+                                          quantity:
+                                            parseInt(e.target.value) || 0,
+                                        })
+                                      }
+                                      className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                    />
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                                      개
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Storage Location */}
+                                <div>
+                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    보관위치
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={item.storageLocation || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        storageLocation: e.target.value,
+                                      })
+                                    }
+                                    placeholder="예: 창고 A-01"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                </div>
+
+                                {/* Complete Button */}
+                                <button
+                                  onClick={completeCurrentProduct}
+                                  disabled={
+                                    !item.quantity ||
+                                    item.quantity <= 0 ||
+                                    !item.storageLocation
+                                  }
+                                  className="w-full mt-4 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
+                                >
+                                  입력 완료
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               ) : (
                 <div className="text-center py-12 text-slate-500 dark:text-slate-400">
@@ -4631,10 +5118,22 @@ const PendingOrdersList = memo(function PendingOrdersList({
               {scannedItems.length > 0 && (
                 <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4">
                   <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400">
-                    <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <svg
+                      className="w-5 h-5 animate-pulse"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
                     </svg>
-                    <span className="text-sm font-medium">추가 제품을 스캔하세요</span>
+                    <span className="text-sm font-medium">
+                      추가 제품을 스캔하세요
+                    </span>
                   </div>
                 </div>
               )}
@@ -4650,17 +5149,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
               </button>
               <button
                 onClick={submitAllScannedItems}
-                disabled={scannedItems.length === 0 || scannedItems.some(item => item.status !== 'completed')}
+                disabled={
+                  scannedItems.length === 0 ||
+                  scannedItems.some((item) => item.status !== "completed")
+                }
                 className="px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold flex items-center gap-2"
               >
-                {scannedItems.every(item => item.status === 'completed') ? '✓ ' : ''}
-                정보 입력 완료 ({scannedItems.filter(i => i.status === 'completed').length}/{scannedItems.length})
+                {scannedItems.every((item) => item.status === "completed")
+                  ? "✓ "
+                  : ""}
+                정보 입력 완료 (
+                {scannedItems.filter((i) => i.status === "completed").length}/
+                {scannedItems.length})
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 });
@@ -4905,7 +5410,6 @@ const OrderCard = memo(function OrderCard({
                   </div>
                   {(isSupplierConfirmed || isRejected) && (
                     <div className="mt-1 flex flex-wrap gap-2">
-                      
                       {item.priceReason && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
                           💰 가격 변경: {item.priceReason}
@@ -4949,11 +5453,12 @@ const OrderCard = memo(function OrderCard({
                     </div>
                     {(isSupplierConfirmed || isRejected) && hasQtyChange && (
                       <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                        요청 수량: {item.orderedQuantity}개 {item.quantityReason && (
-                        <span className="text-xs text-rose-600 dark:text-rose-400">
-                          (⚠ 수량 변경: {item.quantityReason})
-                        </span>
-                      )}
+                        요청 수량: {item.orderedQuantity}개{" "}
+                        {item.quantityReason && (
+                          <span className="text-xs text-rose-600 dark:text-rose-400">
+                            (⚠ 수량 변경: {item.quantityReason})
+                          </span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -5169,4 +5674,3 @@ const OrderCard = memo(function OrderCard({
     </div>
   );
 });
-
