@@ -214,7 +214,7 @@ export default function OrderPage() {
     timestamp: number;
     sessionId: string;
   } | null>(null);
-  const CACHE_TTL = 5000; // 30 seconds
+  const CACHE_TTL = 0; // 단가 = supplier tasdiqlagan narx, yangilanganda tez ko'rinsin (cache o'chiq)
 
   // Client-side mount initialization (hydration error'dan qochish uchun)
   useEffect(() => {

@@ -101,12 +101,26 @@ export class OrderService {
     });
 
     // Faqat basic formatting - hamma logic frontend'da
+    // 단가: 1) Batch bor bo'lsa = oxirgi inbound (batch) narxi, 2) yo'q bo'lsa = Product/ProductSupplier
     const formattedProducts = products.map((product: any) => {
       // Get supplier info from ProductSupplier -> ClinicSupplierManager
       const supplierManager = product.productSupplier?.clinicSupplierManager;
       const supplierId = supplierManager?.id ?? null;
       const supplierName = supplierManager?.company_name ?? null;
       const managerName = supplierManager?.name ?? null;
+
+      const batches = product.batches || [];
+      const sortedBatches = [...batches].sort(
+        (a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const latestBatch = sortedBatches[0];
+      const unitPrice =
+        latestBatch?.purchase_price != null
+          ? latestBatch.purchase_price
+          : (product.productSupplier?.purchase_price ??
+            product.purchase_price ??
+            null);
 
       return {
         id: product.id,
@@ -116,14 +130,11 @@ export class OrderService {
         supplierName: supplierName,
         managerName: managerName,
         managerPosition: null, // Position is not in ClinicSupplierManager
-        unitPrice:
-          product.productSupplier?.purchase_price ??
-          product.purchase_price ??
-          null,
+        unitPrice,
         currentStock: product.current_stock ?? 0,
         minStock: product.min_stock ?? 0,
         unit: product.unit ?? null, // ✅ Product unit
-        batches: (product.batches || []).map((batch: any) => ({
+        batches: batches.map((batch: any) => ({
           id: batch.id,
           batchNo: batch.batch_no ?? "",
           expiryDate: batch.expiry_date
@@ -345,14 +356,14 @@ export class OrderService {
       throw new BadRequestException("Tenant ID and Session ID are required");
     }
 
-    // Product va batch ma'lumotlarini olish
+    // Product va batch ma'lumotlarini olish (productSupplier = supplier tasdiqlagan narx keyingi order uchun)
     const product = await (this.prisma.product.findFirst as any)({
       where: { id: dto.productId, tenant_id: tenantId },
       include: {
-        supplierManager: {
+        productSupplier: {
           select: {
-            id: true,
-            name: true,
+            clinic_supplier_manager_id: true,
+            purchase_price: true,
           },
         },
       },
@@ -362,8 +373,12 @@ export class OrderService {
       throw new NotFoundException("Product not found");
     }
 
+    // 단가 tartibi: 1) Tanlangan/oxirgi batch (inbound qilingan narx), 2) ProductSupplier, 3) Product
+    const supplierPrice = product.productSupplier?.purchase_price ?? null;
+    const productPrice = product.purchase_price ?? 0;
+
     let batch = null;
-    let unitPrice = product.purchase_price ?? 0;
+    let unitPrice = supplierPrice ?? productPrice;
 
     if (dto.batchId) {
       batch = await this.prisma.batch.findFirst({
@@ -378,9 +393,9 @@ export class OrderService {
         throw new NotFoundException("Batch not found");
       }
 
-      unitPrice = batch.purchase_price ?? product.purchase_price ?? 0;
+      unitPrice = batch.purchase_price ?? supplierPrice ?? productPrice;
     } else {
-      // BatchId yo'q bo'lsa, eng so'nggi batch'dan narx olish
+      // Batch tanlanmagan: oxirgi inbound (batch) narxi bor bo'lsa shuni, yo'q bo'lsa Product/ProductSupplier
       const latestBatch = await this.prisma.batch.findFirst({
         where: {
           product_id: dto.productId,
@@ -391,10 +406,10 @@ export class OrderService {
         orderBy: { created_at: "desc" },
       });
 
-      if (latestBatch) {
-        unitPrice = latestBatch.purchase_price ?? product.purchase_price ?? 0;
+      if (latestBatch?.purchase_price != null) {
+        unitPrice = latestBatch.purchase_price;
       } else {
-        unitPrice = product.purchase_price ?? 0;
+        unitPrice = supplierPrice ?? productPrice;
       }
     }
 
@@ -414,7 +429,7 @@ export class OrderService {
 
     // Supplier ID olish (clinic_supplier_manager_id)
     const supplierId =
-      product.productSupplier.clinic_supplier_manager_id || null;
+      product.productSupplier?.clinic_supplier_manager_id || null;
 
     const newItem = {
       id: itemId,
@@ -2853,6 +2868,24 @@ export class OrderService {
                 updated_at: new Date(),
               },
             });
+
+            // ✅ Keyingi orderda shu narx ishlatilsin: ProductSupplier.purchase_price yangilash
+            if (order.supplier_id && newConfirmedUnitPrice != null) {
+              try {
+                await (this.prisma as any).productSupplier.updateMany({
+                  where: {
+                    tenant_id: clinicTenantId,
+                    product_id: orderItem.product_id,
+                    clinic_supplier_manager_id: order.supplier_id,
+                  },
+                  data: { purchase_price: newConfirmedUnitPrice },
+                });
+              } catch (psErr: any) {
+                this.logger.warn(
+                  `ProductSupplier purchase_price update skip (product may not be linked): ${psErr?.message || psErr}`
+                );
+              }
+            }
 
             this.logger.log(
               `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, confirmed_unit_price ${oldConfirmedPrice} → ${newConfirmedUnitPrice} (unit_price unchanged)`

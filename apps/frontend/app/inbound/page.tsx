@@ -1085,7 +1085,7 @@ export default function InboundPage() {
 
 // ✅ Global cache for batches (shared across all ProductCard instances)
 // This prevents data loss when navigating between pages and on force refresh
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutes (prevents data loss on page navigation)
+const CACHE_TTL = 5 * 1000; // 5 seconds
 const CACHE_STORAGE_KEY = "jaclit-batches-cache";
 
 // Initialize cache from localStorage on first load
@@ -3161,14 +3161,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [pendingProduct, setPendingProduct] = useState<any>(null);
   const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
 
-  // ✅ NEW: Load all pending products when modal opens
+  // ✅ Load only "주문 진행" orders in barcode modal (not "주문 요청" = pending)
   const loadPendingProducts = useCallback(() => {
     const allProducts: any[] = [];
     const seenIds = new Set<string>(); // Track unique IDs
 
     orders.forEach((order) => {
-      // Only load orders with "주문 진행" status (supplier_confirmed or pending)
-      if (order.status === "supplier_confirmed" || order.status === "pending") {
+      // Only "주문 진행" (supplier_confirmed, pending_inbound) — exclude "주문 요청" (pending)
+      if (
+        order.status === "supplier_confirmed" ||
+        order.status === "pending_inbound"
+      ) {
         order.items?.forEach((item: any) => {
           const confirmedQty =
             item.confirmedQuantity || item.orderedQuantity || 0;
@@ -3886,7 +3889,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
         alert(`${item.productName}의 수량을 입력해주세요.`);
         return;
       }
-      if (!edited?.purchasePrice || edited.purchasePrice <= 0) {
+      // 구매가: 사용자 입력 또는 supplier 확정가(confirmedPrice) 사용
+      const effectivePrice =
+        edited?.purchasePrice != null && edited.purchasePrice !== ""
+          ? Number(edited.purchasePrice)
+          : item.confirmedPrice != null
+            ? Number(item.confirmedPrice)
+            : 0;
+      if (!effectivePrice || effectivePrice <= 0) {
         alert(`${item.productName}의 구매가를 입력해주세요.`);
         return;
       }
@@ -4012,9 +4022,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
 
+        // 구매가: edited에 없으면 API 확정가(confirmedPrice) 사용 (platform supplier 등)
+        const purchasePrice =
+          editedFirstItem?.purchasePrice != null &&
+          editedFirstItem.purchasePrice !== ""
+            ? Number(editedFirstItem.purchasePrice)
+            : firstItem.confirmedPrice != null
+              ? Number(firstItem.confirmedPrice)
+              : 0;
         const batchPayload: any = {
           qty: inboundQty,
-          purchase_price: editedFirstItem?.purchasePrice || 0,
+          purchase_price: purchasePrice,
           expiry_date: editedFirstItem?.expiryDate,
           inbound_manager: inboundManager,
         };
@@ -4053,7 +4071,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
             batchNo: batchNo,
             returnQuantity: excessQty,
             totalQuantity: confirmedQty,
-            unitPrice: editedFirstItem?.purchasePrice || 0,
+            unitPrice: purchasePrice,
           });
         }
       }
@@ -4210,9 +4228,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
 
+        const itemPurchasePrice =
+          editedItem?.purchasePrice != null && editedItem.purchasePrice !== ""
+            ? Number(editedItem.purchasePrice)
+            : item.confirmedPrice != null
+              ? Number(item.confirmedPrice)
+              : 0;
         const batchPayload: any = {
           qty: inboundQty,
-          purchase_price: editedItem?.purchasePrice || 0,
+          purchase_price: itemPurchasePrice,
           expiry_date: editedItem?.expiryDate,
           inbound_manager: inboundManager,
         };
@@ -4386,9 +4410,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
             manufactureDate = expiryDateObj.toISOString().split("T")[0];
           }
 
+          const shortagePrice =
+            editedFirstItem?.purchasePrice != null &&
+            editedFirstItem.purchasePrice !== ""
+              ? Number(editedFirstItem.purchasePrice)
+              : firstItem.confirmedPrice != null
+                ? Number(firstItem.confirmedPrice)
+                : 0;
           const batchPayload: any = {
             qty: inboundQty,
-            purchase_price: editedFirstItem?.purchasePrice || 0,
+            purchase_price: shortagePrice,
             expiry_date: editedFirstItem?.expiryDate,
             inbound_manager: inboundManager,
           };
@@ -4418,11 +4449,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
               batchNo: batchNo,
               returnQuantity: shortageQty,
               totalQuantity: confirmedQty,
-              unitPrice: editedFirstItem?.purchasePrice || 0,
+              unitPrice: shortagePrice,
             });
           }
         } else if (shortageQty > 0) {
           // No inbound, but shortage exists - create return without batch
+          const shortagePrice =
+            editedFirstItem?.purchasePrice != null &&
+            editedFirstItem.purchasePrice !== ""
+              ? Number(editedFirstItem.purchasePrice)
+              : firstItem.confirmedPrice != null
+                ? Number(firstItem.confirmedPrice)
+                : 0;
           returnItems.push({
             productId: firstItem.productId,
             productName: firstItem.productName,
@@ -4430,7 +4468,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
             batchNo: "",
             returnQuantity: shortageQty,
             totalQuantity: confirmedQty,
-            unitPrice: editedFirstItem?.purchasePrice || 0,
+            unitPrice: shortagePrice,
           });
         }
       }

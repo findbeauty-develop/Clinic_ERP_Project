@@ -44,7 +44,7 @@ export class OrderController {
    * 주문 처리용 제품 목록 (모든 제품 반환, frontend에서 sorting/filtering)
    */
   @Get("products")
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-cache, no-store, must-revalidate") // ✅ 단가 = ProductSupplier narxi, yangilanganda tez ko'rinsin
   @ApiOperation({
     summary: "Get all products for order - filtering done on frontend",
   })
