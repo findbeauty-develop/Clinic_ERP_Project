@@ -78,7 +78,7 @@ export class OrderService {
     }
     // Barcha product'larni olish
     const products = await (this.prisma.product.findMany as any)({
-      where: {
+            where: {
         tenant_id: tenantId,
       },
       include: {
@@ -680,14 +680,14 @@ export class OrderService {
       }));
     } else if (sessionId) {
       // Draft'dan olish (eski logic)
-      const draft = await this.orderRepository.findDraftBySession(
-        sessionId,
-        tenantId
-      );
+    const draft = await this.orderRepository.findDraftBySession(
+      sessionId,
+      tenantId
+    );
 
-      if (!draft) {
-        throw new NotFoundException("Draft not found");
-      }
+    if (!draft) {
+      throw new NotFoundException("Draft not found");
+    }
 
       items = Array.isArray(draft.items) ? draft.items : [];
     } else {
@@ -805,46 +805,46 @@ export class OrderService {
       let order: any;
       try {
         order = await this.prisma.$transaction(async (tx: any) => {
-          const order = await (tx as any).order.create({
-            data: {
-              tenant_id: tenantId,
-              order_no: orderNo,
+        const order = await (tx as any).order.create({
+          data: {
+            tenant_id: tenantId,
+            order_no: orderNo,
               status: initialStatus, // ✅ Dynamic status
-              supplier_id: supplierId !== "unknown" ? supplierId : null,
-              total_amount: group.totalAmount,
-              expected_delivery_date: dto.expectedDeliveryDate
-                ? new Date(dto.expectedDeliveryDate)
-                : null,
+            supplier_id: supplierId !== "unknown" ? supplierId : null,
+            total_amount: group.totalAmount,
+            expected_delivery_date: dto.expectedDeliveryDate
+              ? new Date(dto.expectedDeliveryDate)
+              : null,
               confirmed_at: isManualSupplier ? new Date() : null, // ✅ Auto-confirm timestamp
-              created_by: createdBy ?? null,
-              memo: supplierMemo,
+            created_by: createdBy ?? null,
+            memo: supplierMemo,
               clinic_manager_name: dto.clinicManagerName || null,
-            },
-          });
+          },
+        });
 
-          // Order items yaratish
-          await Promise.all(
-            group.items.map((item: any) =>
-              (tx as any).orderItem.create({
-                data: {
-                  tenant_id: tenantId,
-                  order_id: order.id,
-                  product_id: item.productId,
-                  batch_id: item.batchId ?? null,
+        // Order items yaratish
+        await Promise.all(
+          group.items.map((item: any) =>
+            (tx as any).orderItem.create({
+              data: {
+                tenant_id: tenantId,
+                order_id: order.id,
+                product_id: item.productId,
+                batch_id: item.batchId ?? null,
                   ordered_quantity: item.quantity,      // ✅ Clinic order qilgan (o'zgarmas)
                   confirmed_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier auto-confirm, platform supplier null
                   inbound_quantity: null,               // ✅ Hali inbound qilinmagan
                   pending_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier: confirmed = pending, Platform: null until confirmed
-                  unit_price: item.unitPrice,
-                  total_price: item.totalPrice,
-                  memo: item.memo ?? null,
-                },
-              })
-            )
-          );
+                unit_price: item.unitPrice,
+                total_price: item.totalPrice,
+                memo: item.memo ?? null,
+              },
+            })
+          )
+        );
 
-          return order;
-        });
+        return order;
+      });
       } catch (transactionError: any) {
         // ✅ Telegram notification for transaction rollback
         if (
@@ -892,13 +892,13 @@ export class OrderService {
     try {
       await this.prisma.executeWithRetry(async () => {
         const draft = await (this.prisma as any).orderDraft.findUnique({
-          where: {
-            tenant_id_session_id: {
-              tenant_id: tenantId,
-              session_id: sessionId,
-            },
+        where: {
+          tenant_id_session_id: {
+            tenant_id: tenantId,
+            session_id: sessionId,
           },
-        });
+        },
+      });
 
         if (draft) {
           await (this.prisma as any).orderDraft.delete({
@@ -934,10 +934,10 @@ export class OrderService {
     const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
     const day = String(date.getDate()).padStart(2, "0"); // DD
     const dateStr = `${year}${month}${day}`; // YYMMDD
-
+    
     // Random 6 digits
     const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
-
+    
     return `${dateStr}${randomDigits}`;
   }
 
@@ -1257,7 +1257,7 @@ export class OrderService {
       if (supplierId && suppliersMap.has(supplierId)) {
         const supplier = suppliersMap.get(supplierId);
         supplierName = supplier.company_name || supplierName;
-
+        
         supplierDetails = {
           id: supplier.id,
           companyName: supplier.company_name || "",
@@ -1293,7 +1293,7 @@ export class OrderService {
           supplierDetails.position = manager.position || null;
         } else if (clinicSupplierManager) {
           managerName = clinicSupplierManager.name || "";
-          supplierDetails.managerName = managerName;
+            supplierDetails.managerName = managerName;
           supplierDetails.managerPhone =
             clinicSupplierManager.phone_number || null;
           supplierDetails.managerEmail =
@@ -1307,18 +1307,18 @@ export class OrderService {
         if (clinicSupplierManager) {
           const fallbackSupplierId =
             clinicSupplierManager.linkedManager?.supplier?.id;
-
-          // Try to find supplier by the fallback ID
-          if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
-            const supplier = suppliersMap.get(fallbackSupplierId);
-            supplierName = supplier.company_name || supplierName;
-            supplierDetails = {
-              id: supplier.id,
-              companyName: supplier.company_name || "",
-              companyAddress: supplier.company_address || null,
-              companyPhone: supplier.company_phone || null,
-              companyEmail: supplier.company_email || null,
-              businessNumber: supplier.business_number || "",
+            
+            // Try to find supplier by the fallback ID
+            if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
+              const supplier = suppliersMap.get(fallbackSupplierId);
+              supplierName = supplier.company_name || supplierName;
+              supplierDetails = {
+                id: supplier.id,
+                companyName: supplier.company_name || "",
+                companyAddress: supplier.company_address || null,
+                companyPhone: supplier.company_phone || null,
+                companyEmail: supplier.company_email || null,
+                businessNumber: supplier.business_number || "",
               isPlatformSupplier: isPlatformSupplier, // ✅ Use pre-calculated value
             };
 
@@ -1340,14 +1340,14 @@ export class OrderService {
 
             // Variant 3: Use contact info from ClinicSupplierManager
             if (manager) {
-              managerName = manager.name || "";
-              supplierDetails.managerName = manager.name || "";
-              supplierDetails.managerPhone = manager.phone_number || null;
-              supplierDetails.managerEmail = manager.email1 || null;
-              supplierDetails.position = manager.position || null;
-            } else {
+                managerName = manager.name || "";
+                supplierDetails.managerName = manager.name || "";
+                supplierDetails.managerPhone = manager.phone_number || null;
+                supplierDetails.managerEmail = manager.email1 || null;
+                supplierDetails.position = manager.position || null;
+              } else {
               managerName = clinicSupplierManager.name || "";
-              supplierDetails.managerName = managerName;
+                supplierDetails.managerName = managerName;
               supplierDetails.managerPhone =
                 clinicSupplierManager.phone_number || null;
               supplierDetails.managerEmail =
@@ -1355,20 +1355,20 @@ export class OrderService {
                 clinicSupplierManager.email2 ||
                 null;
               supplierDetails.position = clinicSupplierManager.position || null;
-            }
-          } else {
+              }
+            } else {
             // Last resort: use clinicSupplierManager data
             // This could be platform supplier without Supplier entry, OR manual supplier
             supplierName = clinicSupplierManager.company_name || supplierName;
             managerName = clinicSupplierManager.name || "";
 
             // Create supplierDetails from clinicSupplierManager with all available fields
-            supplierDetails = {
-              companyName: supplierName,
+              supplierDetails = {
+                companyName: supplierName,
               companyAddress: clinicSupplierManager.company_address || null,
               companyPhone: clinicSupplierManager.company_phone || null,
               companyEmail: clinicSupplierManager.company_email || null,
-              managerName: managerName,
+                managerName: managerName,
               managerPhone: clinicSupplierManager.phone_number || null,
               managerEmail:
                 clinicSupplierManager.email1 ||
@@ -1398,9 +1398,9 @@ export class OrderService {
         memo: item.memo || null,
       }));
 
-      // Total amount hisoblash
+      // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
       const totalAmount = formattedItems.reduce(
-        (sum: number, item: any) => sum + item.totalPrice,
+        (sum: number, item: any) => sum + (item.orderedQuantity || 0) * (item.unitPrice || 0),
         0
       );
 
@@ -1423,7 +1423,7 @@ export class OrderService {
         managerName: managerName,
         supplierDetails: supplierDetails, // To'liq supplier ma'lumotlari
         status: order.status,
-        totalAmount: order.total_amount || totalAmount,
+        totalAmount, // ✅ Doim klinika order narxlari bo'yicha (supplier o'zgartirsa ham)
         memo: order.memo,
         createdAt: order.created_at,
         createdByName: createdByName, // 클리닉 담당자 이름
@@ -1801,7 +1801,7 @@ export class OrderService {
 
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
-
+      
       // Item ID mapping
       const itemId = item.id;
       itemIdMap[itemId] = {
@@ -1812,8 +1812,8 @@ export class OrderService {
       };
 
       // Highlight flag (yangi qo'shilgan yoki highlightItemIds'da bo'lsa)
-      const isHighlighted =
-        item.isNewlyAdded ||
+      const isHighlighted = 
+        item.isNewlyAdded || 
         (highlightItemIds && highlightItemIds.includes(itemId));
 
       if (!supplierGroups[supplierId]) {
@@ -1840,8 +1840,8 @@ export class OrderService {
       sessionId: draft.session_id,
       items: items.map((item: any) => ({
         ...item,
-        isHighlighted:
-          item.isNewlyAdded ||
+        isHighlighted: 
+          item.isNewlyAdded || 
           (highlightItemIds && highlightItemIds.includes(item.id)),
       })),
       totalAmount: totalAmount,
@@ -2754,14 +2754,14 @@ export class OrderService {
     };
 
     await this.prisma.executeWithRetry(async () => {
-      // Update order
+      // Update order (total_amount = klinika buyurtma summasi, supplier narx o'zgartirsa ham o'zgarmaydi)
       await (this.prisma as any).order.update({
         where: { id: order.id },
         data: {
           status: status,
           supplier_adjustments: adjustmentsData,
           confirmed_at: confirmedAt ? new Date(confirmedAt) : new Date(),
-          total_amount: totalAmount || order.total_amount,
+          // total_amount: o'zgartirilmaydi — klinika order paytidagi summa saqlanadi
           updated_at: new Date(),
         },
       });
@@ -2835,28 +2835,27 @@ export class OrderService {
           }
 
           if (orderItem) {
-            // ✅ actualQuantity va actualPrice dan yangilash
+            // ✅ unit_price = clinic order narxi (o'zgarmas). confirmed_unit_price = supplier tasdiqlagan narx.
             const oldConfirmedQuantity = orderItem.confirmed_quantity;
-            const oldUnitPrice = orderItem.unit_price;
+            const oldConfirmedPrice = orderItem.confirmed_unit_price ?? orderItem.unit_price;
             const newConfirmedQuantity = adjustment.actualQuantity ?? orderItem.confirmed_quantity;
-            const newUnitPrice = adjustment.actualPrice ?? orderItem.unit_price;
-            const newTotalPrice = newConfirmedQuantity * newUnitPrice;
+            const newConfirmedUnitPrice = adjustment.actualPrice ?? orderItem.confirmed_unit_price ?? orderItem.unit_price;
+            const newTotalPrice = newConfirmedQuantity * newConfirmedUnitPrice;
 
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
-                // ordered_quantity: UNCHANGED ✅ - Dastlabki order o'zgarmas
-                confirmed_quantity: newConfirmedQuantity, // ✅ Supplier adjustment (80ta)
-                // inbound_quantity: UNCHANGED ✅ - Hali inbound qilinmagan
-                pending_quantity: newConfirmedQuantity, // ✅ Pending = confirmed (supplier adjusted)
-                unit_price: newUnitPrice, // ✅ Yangi price (agar o'zgarsa)
-                total_price: newTotalPrice, // ✅ Yangi total (confirmed_quantity * price)
+                // ordered_quantity, unit_price: UNCHANGED ✅ - Clinic order ma'lumotlari
+                confirmed_quantity: newConfirmedQuantity,
+                pending_quantity: newConfirmedQuantity,
+                confirmed_unit_price: newConfirmedUnitPrice, // ✅ Supplier tasdiqlagan narx (unit_price ustiga yozilmaydi)
+                total_price: newTotalPrice,
                 updated_at: new Date(),
               },
             });
 
             this.logger.log(
-              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, pending_quantity → ${newConfirmedQuantity}, price ${oldUnitPrice} → ${newUnitPrice}`
+              `✅ Updated OrderItem ${orderItem.id} (productId: ${orderItem.product_id}): confirmed_quantity ${oldConfirmedQuantity} → ${newConfirmedQuantity}, confirmed_unit_price ${oldConfirmedPrice} → ${newConfirmedUnitPrice} (unit_price unchanged)`
             );
           } else {
             this.logger.warn(
@@ -3165,7 +3164,7 @@ export class OrderService {
             orderedQuantity: item.quantity,
             confirmedQuantity: adjustment?.actualQuantity || item.quantity,
             orderedPrice: item.unit_price,
-            confirmedPrice: adjustment?.actualPrice || item.unit_price,
+            confirmedPrice: item.confirmed_unit_price ?? item.unit_price,
             quantityReason: adjustment?.quantityChangeReason || null,
             priceReason: adjustment?.priceChangeReason || null,
             expiryMonths: item.product?.expiry_months || null,
@@ -3429,8 +3428,8 @@ export class OrderService {
           confirmedQuantity: adjustment?.actualQuantity || item.confirmed_quantity || item.ordered_quantity, // ✅ Supplier confirmed (fallback)
           inboundQuantity: item.inbound_quantity || 0,                         // ✅ Already inbound
           pendingQuantity: (item.confirmed_quantity || item.ordered_quantity) - (item.inbound_quantity || 0), // ✅ Remaining (20ta)
-          orderedPrice: item.unit_price,                                       // Original price
-          confirmedPrice: adjustment?.actualPrice || item.unit_price,          // Supplier confirmed
+          orderedPrice: item.unit_price,                                       // Original (clinic order) price
+          confirmedPrice: item.confirmed_unit_price ?? item.unit_price,        // Supplier confirmed (stored)
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
           // Product-level expiry defaults
@@ -3633,12 +3632,13 @@ export class OrderService {
             select: {
               id: true,
               product_id: true,
-              ordered_quantity: true,    // ✅ Dastlabki order
-              confirmed_quantity: true,  // ✅ Supplier tasdiqlagan
-              inbound_quantity: true,    // ✅ Clinic inbound qilgan
+              ordered_quantity: true,
+              confirmed_quantity: true,
+              inbound_quantity: true,
               unit_price: true,
+              confirmed_unit_price: true,
               total_price: true,
-              memo: true, // ✅ Include item memo for rejection reasons
+              memo: true,
               product: {
                 select: {
                   name: true,

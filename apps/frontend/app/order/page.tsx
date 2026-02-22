@@ -1892,7 +1892,10 @@ export default function OrderPage() {
                                       </div>
                                       <div className="text-sm font-semibold text-slate-900 dark:text-white">
                                         총금액:{" "}
-                                        {item.totalPrice.toLocaleString()}
+                                        {(
+                                          (item.orderedQuantity ?? 0) *
+                                          (item.unitPrice ?? 0)
+                                        ).toLocaleString()}
                                       </div>
                                     </>
                                   )}
@@ -2950,9 +2953,14 @@ export default function OrderPage() {
                                     : "0"}
                                 </td>
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-right">
-                                  {item.totalPrice
-                                    ? item.totalPrice.toLocaleString()
-                                    : "0"}
+                                  {(() => {
+                                    const qty =
+                                      item.orderedQuantity ??
+                                      item.quantity ??
+                                      0;
+                                    const price = item.unitPrice ?? 0;
+                                    return (qty * price).toLocaleString();
+                                  })()}
                                 </td>
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600 text-right">
                                   0

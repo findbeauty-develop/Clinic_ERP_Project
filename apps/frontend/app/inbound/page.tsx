@@ -3964,8 +3964,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       const { apiPost, apiGet } = await import("../../lib/api");
 
       // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
-      const inboundManager =
-        inboundManagers[orderIdToUse] || "";
+      const inboundManager = inboundManagers[orderIdToUse] || "";
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -4176,8 +4175,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       const { apiPost } = await import("../../lib/api");
 
       // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
-      const inboundManager =
-        inboundManagers[orderIdToUse] || "";
+      const inboundManager = inboundManagers[orderIdToUse] || "";
 
       // Create batches for valid items
       for (const item of validItems) {
@@ -4338,8 +4336,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       const { apiPost } = await import("../../lib/api");
 
       // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
-      const inboundManager =
-        inboundManagers[orderIdToUse] || "";
+      const inboundManager = inboundManagers[orderIdToUse] || "";
 
       // Process all items and create returns for shortages
       const returnItems: any[] = [];
@@ -5500,31 +5497,67 @@ const OrderCard = memo(function OrderCard({
                     />
                   </div>
 
-                  {/* 이번 구매가 (Editable) */}
+                  {/* 이번 구매가 */}
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       이번 구매가
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="구매가 입력"
-                      value={edited.purchasePrice || ""}
-                      onChange={(e) =>
-                        updateItemField(
-                          item.id,
-                          "purchasePrice",
-                          parseInt(e.target.value) || ""
-                        )
-                      }
-                      disabled={isPending || isRejected}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                    />
-                    {(isSupplierConfirmed || isRejected) && hasPriceChange && (
-                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                        공급업체 조정: {item.orderedPrice.toLocaleString()}원 →{" "}
-                        {item.confirmedPrice.toLocaleString()}원
-                      </p>
+
+                    {order.isPlatformSupplier ? (
+                      /* READONLY: Platform supplier - show confirmed and original prices */
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {item.confirmedPrice.toLocaleString()}원
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                            제품 등록가: {item.orderedPrice.toLocaleString()}원
+                          </div>
+                          {item.confirmedPrice !== item.orderedPrice && (
+                            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                              <svg
+                                className="h-3 w-3"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              공급업체 가격 조정
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      /* EDITABLE: Non-platform supplier - allow manual input */
+                      <>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="구매가 입력"
+                          value={edited.purchasePrice || ""}
+                          onChange={(e) =>
+                            updateItemField(
+                              item.id,
+                              "purchasePrice",
+                              parseInt(e.target.value) || ""
+                            )
+                          }
+                          disabled={isPending || isRejected}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                        />
+                        {(isSupplierConfirmed || isRejected) &&
+                          hasPriceChange && (
+                            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                              공급업체 조정:{" "}
+                              {item.orderedPrice.toLocaleString()}원 →{" "}
+                              {item.confirmedPrice.toLocaleString()}원
+                            </p>
+                          )}
+                      </>
                     )}
                   </div>
                 </div>
