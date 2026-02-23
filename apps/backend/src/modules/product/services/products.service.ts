@@ -807,7 +807,24 @@ export class ProductsService {
         expiryUnit: null, // Removed from Product table
         alertDays: product.alert_days ?? null,
         isLowStock: product.current_stock < product.min_stock,
-        batches: product.batches || [],
+        batches: (product.batches || []).map((batch: any) => {
+          const expiryDate = batch.expiry_date
+            ? new Date(batch.expiry_date)
+            : null;
+          const alertDays =
+            batch.alert_days ?? product.alert_days ?? null;
+          const daysUntilExpiry = expiryDate
+            ? this.calculateDaysUntilExpiry(expiryDate)
+            : null;
+          const isExpiringSoon = expiryDate
+            ? this.calculateExpiringSoon(expiryDate, alertDays)
+            : false;
+          return {
+            ...batch,
+            daysUntilExpiry,
+            isExpiringSoon,
+          };
+        }),
       };
     });
 

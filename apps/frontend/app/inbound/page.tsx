@@ -853,9 +853,20 @@ export default function InboundPage() {
               setShowKeyboardWarning={setShowKeyboardWarning}
               setBarcodeNotFoundModal={setBarcodeNotFoundModal}
               onRefresh={() => {
-                // Clear cache before refresh
                 pendingOrdersCacheRef.current = null;
-                fetchPendingOrders(true); // ✅ Pass forceRefresh=true
+                fetchPendingOrders(true);
+                // ✅ 스캔 입고 / 입고 완료 후 products·batches yangilansin (inbound pageda ko'rinsin)
+                import("../../lib/api").then(({ clearCache }) => {
+                  clearCache("/products");
+                  clearCache("products");
+                });
+                if (typeof window !== "undefined") {
+                  try {
+                    localStorage.removeItem("jaclit-batches-cache");
+                  } catch (_) {}
+                }
+                globalBatchesCache.clear();
+                fetchProducts(true);
               }}
             />
           )}
@@ -1872,7 +1883,7 @@ const ProductCard = memo(function ProductCard({
                 </label>
                 <input
                   type="text"
-                  placeholder="자동 생성됩니다 (BTX-XXX) 또는 바코드 스캔"
+                  placeholder="제품의 LOT 배치번호 [QR 코드 옆에 (10) 다음 숫자]를 입력해주세요"
                   value={batchForm.batchNumber}
                   onChange={(e) => {
                     e.stopPropagation();

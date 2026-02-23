@@ -393,11 +393,30 @@ export default function InventoryPage() {
           </div>
         </section>
 
-        {/* 위험재고 */}
-        <section className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">
-            위험재고
-          </h2>
+        {/* 위험재고 - 유효기간 임박, 먼저 사용 */}
+        <section className="rounded-xl p-6 shadow-md border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 dark:border-amber-500/50">
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-400/90 text-white shadow-sm">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              <div>
+                <h2 className="text-lg font-bold text-amber-800 dark:text-amber-200">
+                  위험재고 (유효기간 임박)
+                </h2>
+                <p className="text-sm text-amber-700/90 dark:text-amber-300/90">
+                  아래 제품을 <span className="font-semibold">먼저 사용하세요</span>
+                </p>
+              </div>
+            </div>
+            {!loading && riskyItems.length > 0 && (
+              <span className="ml-auto px-3 py-1 text-sm font-bold bg-amber-200/80 text-amber-900 rounded-full dark:bg-amber-500/30 dark:text-amber-100">
+                {riskyItems.length}건
+              </span>
+            )}
+          </div>
           {loading ? (
             <p className="text-slate-500 text-center py-8">로딩 중...</p>
           ) : riskyItems.length === 0 ? (
@@ -405,46 +424,65 @@ export default function InventoryPage() {
               위험재고가 없습니다.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-lg border border-amber-200/60 bg-white/80 dark:bg-slate-900/50 dark:border-amber-500/30">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                  <tr className="border-b border-amber-200/80 bg-amber-100/50 dark:bg-amber-900/20 dark:border-amber-500/30">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-amber-900 dark:text-amber-200">
                       제품명
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-amber-900 dark:text-amber-200">
                       임박기간
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-amber-900 dark:text-amber-200">
                       배치
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-amber-900 dark:text-amber-200">
                       남은 수량
                     </th>
-                    <th className="text-left py-2 px-4 text-sm font-semibold text-slate-700">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-amber-900 dark:text-amber-200">
                       사용량
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {riskyItems.map((item, index) => (
+                  {[...riskyItems]
+                    .sort((a, b) => (a.daysUntilExpiry ?? 999) - (b.daysUntilExpiry ?? 999))
+                    .map((item, index) => (
                     <tr
                       key={index}
-                      className="border-b border-slate-100 hover:bg-slate-50"
+                      className={`border-b border-amber-100/80 hover:bg-amber-50/70 dark:border-amber-500/10 dark:hover:bg-amber-900/10 ${
+                        index === 0 ? "bg-amber-50/50 dark:bg-amber-900/10" : ""
+                      }`}
                     >
-                      <td className="py-2 px-4 text-sm text-slate-900">
+                      <td className="py-3 px-4 text-sm font-medium text-slate-900 dark:text-slate-100">
                         {item.productName}
+                        {index === 0 && (
+                          <span className="ml-2 inline-flex items-center rounded bg-amber-400/90 px-1.5 py-0.5 text-xs font-bold text-white">
+                            최우선
+                          </span>
+                        )}
                       </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
-                        D-{item.daysUntilExpiry}
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex font-bold ${
+                            item.daysUntilExpiry <= 7
+                              ? "text-red-600 dark:text-red-400"
+                              : item.daysUntilExpiry <= 14
+                                ? "text-amber-700 dark:text-amber-400"
+                                : "text-amber-600 dark:text-amber-500"
+                          }`}
+                        >
+                          D-{item.daysUntilExpiry}
+                        </span>
                       </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
+                      <td className="py-3 px-4 text-sm text-slate-700 dark:text-slate-300">
                         {item.batchNo}
                       </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
+                      <td className="py-3 px-4 text-sm font-medium text-slate-900 dark:text-slate-100">
                         {item.remainingQty} {item.unit}
                       </td>
-                      <td className="py-2 px-4 text-sm text-slate-900">
+                      <td className="py-3 px-4 text-sm text-slate-700 dark:text-slate-300">
                         {item.usageRate}%
                       </td>
                     </tr>
