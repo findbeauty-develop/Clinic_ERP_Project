@@ -148,11 +148,16 @@ export default function CSVImportModal({
 
       const result = await response.json();
 
+      const existingMsg =
+        result.existingProductCount > 0
+          ? `\n기존 제품 입고 추가: ${result.existingProductCount}건`
+          : "";
       alert(
         `✅ Import 완료!\n\n` +
           `전체: ${result.total}개\n` +
           `성공: ${result.imported}개\n` +
-          `실패: ${result.failed}개`
+          `실패: ${result.failed}개` +
+          existingMsg
       );
 
       // Reset and close

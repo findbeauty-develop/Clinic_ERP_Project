@@ -320,6 +320,27 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
+    const gtin = dto.barcode?.trim();
+    if (gtin) {
+      const existingGtin = await (this.prisma as any).productGTIN.findUnique({
+        where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+        select: { product_id: true },
+      });
+      if (existingGtin) {
+        const existingProduct = await this.getProduct(
+          existingGtin.product_id,
+          tenantId
+        );
+        if (existingProduct) {
+          return {
+            ...existingProduct,
+            existingForBarcode: true,
+            code: "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE",
+          } as any;
+        }
+      }
+    }
+
     let imageUrl: string | undefined;
 
     if (dto.image) {
@@ -331,9 +352,11 @@ export class ProductsService {
       imageUrl = savedImage;
     }
 
-    const createdProductFromTransaction = await this.prisma.$transaction(
+    let createdProductFromTransaction: any;
+    try {
+      createdProductFromTransaction = await this.prisma.$transaction(
       async (tx: any) => {
-      const resolvedStatus =
+      const resolvedStatus = 
         dto.status ?? (dto.isActive === false ? "단종" : "활성");
       const resolvedIsActive =
         dto.isActive ??
@@ -425,6 +448,17 @@ export class ProductsService {
             },
           },
         });
+
+        // ✅ GTIN: link barcode to product for duplicate prevention (unique per tenant)
+        if (gtin) {
+          await (tx as any).productGTIN.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: product.id,
+              gtin,
+            },
+          });
+        }
 
         // ✅ NEW: Create ProductSupplier mapping (using transaction client)
         if (dto.suppliers && dto.suppliers.length > 0) {
@@ -564,6 +598,28 @@ export class ProductsService {
         maxWait: 10000, // 10 seconds max wait
       }
     );
+    } catch (e: any) {
+      if (e?.code === "P2002" && gtin) {
+        const existingGtin = await (this.prisma as any).productGTIN.findUnique({
+          where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+          select: { product_id: true },
+        });
+        if (existingGtin) {
+          const existingProduct = await this.getProduct(
+            existingGtin.product_id,
+            tenantId
+          );
+          if (existingProduct) {
+            return {
+              ...existingProduct,
+              existingForBarcode: true,
+              code: "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE",
+            } as any;
+          }
+        }
+      }
+      throw e;
+    }
 
     // ✅ Optimized: Add new product to cache instead of invalidating
     // This prevents performance degradation on VPS
@@ -843,42 +899,41 @@ export class ProductsService {
 
   /**
    * Find product by barcode (GTIN)
-   * Used for USB barcode scanner functionality
+   * Used for USB barcode scanner functionality. Looks up via ProductGTIN first, then Product.barcode fallback.
    */
   async findByBarcode(barcode: string, tenantId: string) {
     if (!barcode || !tenantId) {
       throw new BadRequestException('Barcode and tenant ID are required');
     }
 
+    const gtin = barcode.trim();
+    const gtinRecord = await (this.prisma as any).productGTIN
+      .findUnique({
+        where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+        select: { product_id: true },
+      })
+      .catch(() => null);
+
+    if (gtinRecord) {
+      return this.getProduct(gtinRecord.product_id, tenantId);
+    }
+
     const product = await this.prisma.executeWithRetry(async () => {
       return (this.prisma as any).product.findFirst({
         where: {
           tenant_id: tenantId,
-          barcode: barcode,
+          barcode: gtin,
           is_active: true,
         },
-        include: {
-          productSupplier: {
-            include: { 
-              clinicSupplierManager: true,
-              product: true,
-            },
-          },
-          returnPolicy: true,
-          batches: {
-            orderBy: { created_at: 'desc' },
-            take: 1,
-          },
-        },
+        select: { id: true },
       });
     });
 
-    if (!product) {
-      throw new NotFoundException(`Product with barcode ${barcode} not found`);
+    if (product) {
+      return this.getProduct(product.id, tenantId);
     }
 
-    // Return full product details using existing getProduct method
-    return this.getProduct(product.id, tenantId);
+    throw new NotFoundException(`Product with barcode ${barcode} not found`);
   }
 
   async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {
@@ -938,6 +993,19 @@ export class ProductsService {
       ? dto.currentStock
       : (existing as any).inbound_qty;
 
+    const newBarcode = dto.barcode !== undefined ? (dto.barcode?.trim() || null) : (existing.barcode?.trim() || null);
+    if (newBarcode && newBarcode !== (existing.barcode?.trim() || null)) {
+      const other = await (this.prisma as any).productGTIN.findUnique({
+        where: { tenant_id_gtin: { tenant_id: tenantId, gtin: newBarcode } },
+        select: { product_id: true },
+      });
+      if (other && other.product_id !== id) {
+        throw new BadRequestException(
+          "Bu 바코드(GTIN)는 이미 다른 제품에 등록되어 있습니다."
+        );
+      }
+    }
+
     await this.prisma.$transaction(
       async (tx: any) => {
       await tx.product.update({
@@ -945,7 +1013,7 @@ export class ProductsService {
         data: {
           name: dto.name ?? existing.name,
           brand: dto.brand ?? existing.brand,
-          barcode: dto.barcode ?? existing.barcode,
+          barcode: newBarcode ?? (dto.barcode ?? existing.barcode),
           image_url: imageUrl,
           category: dto.category ?? existing.category,
           // status: resolvedStatus,
@@ -972,6 +1040,14 @@ export class ProductsService {
             }), // Update expiry date (allows null)
         } as any,
       });
+
+      // ✅ GTIN sync: one ProductGTIN per product; update or clear when barcode changes
+      await (tx as any).productGTIN.deleteMany({ where: { product_id: id } });
+      if (newBarcode) {
+        await (tx as any).productGTIN.create({
+          data: { tenant_id: tenantId, product_id: id, gtin: newBarcode },
+        });
+      }
 
       if (dto.returnPolicy) {
         await tx.returnPolicy.upsert({
@@ -1921,20 +1997,24 @@ export class ProductsService {
     const barcodes = new Set<string>();
     const duplicateBarcodes = new Set<string>();
 
-    // Fetch existing barcodes from database in one query
-    const existingProducts = await this.prisma.product.findMany({
-      where: {
-        tenant_id: tenantId,
-        barcode: { not: null },
-      },
-      select: {
-        barcode: true,
-      },
-    });
-
-    const existingBarcodes = new Set(
-      existingProducts.map((p: any) => p.barcode?.trim()).filter(Boolean)
-    );
+    // Fetch existing barcodes (GTINs) from ProductGTIN and Product.barcode
+    const [gtinRows, existingProducts] = await Promise.all([
+      (this.prisma as any).productGTIN.findMany({
+        where: { tenant_id: tenantId },
+        select: { gtin: true },
+      }),
+      this.prisma.product.findMany({
+        where: {
+          tenant_id: tenantId,
+          barcode: { not: null },
+        },
+        select: { barcode: true },
+      }),
+    ]);
+    const existingBarcodes = new Set([
+      ...gtinRows.map((r: any) => r.gtin?.trim()).filter(Boolean),
+      ...existingProducts.map((p: any) => p.barcode?.trim()).filter(Boolean),
+    ]);
 
     for (const [index, row] of rows.entries()) {
       const errors: string[] = [];
@@ -2104,6 +2184,7 @@ export class ProductsService {
 
     const imported: any[] = [];
     const failed: any[] = [];
+    let existingProductCount = 0;
     const BATCH_SIZE = 100; // Process 100 rows at a time
     const BATCH_DELAY = 100; // 100ms delay between batches
 
@@ -2119,71 +2200,130 @@ export class ProductsService {
 
             for (const row of batch) {
               try {
-                // Generate unique ID
-                const productId = this.generateProductId();
+                const gtin = row.barcode?.trim();
+                const existingGtin = gtin
+                  ? await tx.productGTIN.findUnique({
+                      where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+                      select: { product_id: true },
+                    })
+                  : null;
 
-                // STEP 1: Find supplier if contact_phone provided
+                let product: any;
+                let productId: string;
                 let supplierId: string | null = null;
                 let supplierName: string | null = null;
 
-                if (row.contact_phone?.trim()) {
-                  const supplier = await this.findSupplierByPhone(
-                    tenantId,
-                    row.contact_phone,
-                    tx
-                  );
+                if (existingGtin) {
+                  productId = existingGtin.product_id;
+                  product = await tx.product.findUnique({
+                    where: { id: productId, tenant_id: tenantId },
+                  });
+                  if (!product) {
+                    results.push({
+                      success: false,
+                      row,
+                      error: "Existing product for barcode not found",
+                    });
+                    continue;
+                  }
+                  await tx.product.update({
+                    where: { id: productId },
+                    data: {
+                      current_stock: { increment: row.inbound_qty },
+                    },
+                  });
+                } else {
+                  productId = this.generateProductId();
 
-                  if (supplier) {
-                    supplierId = supplier.id;
-                    supplierName = supplier.company_name;
-                  } else {
-                    this.logger.warn(
-                      `📞 No supplier found for phone: ${row.contact_phone}`
+                  if (row.contact_phone?.trim()) {
+                    const supplier = await this.findSupplierByPhone(
+                      tenantId,
+                      row.contact_phone,
+                      tx
                     );
+                    if (supplier) {
+                      supplierId = supplier.id;
+                      supplierName = supplier.company_name;
+                    } else {
+                      this.logger.warn(
+                        `📞 No supplier found for phone: ${row.contact_phone}`
+                      );
+                    }
+                  }
+
+                  product = await (tx.product.create as any)({
+                    data: {
+                      id: productId,
+                      tenant_id: tenantId,
+                      name: row.name.trim(),
+                      brand: row.brand.trim(),
+                      barcode: gtin || null,
+                      category: row.category.trim(),
+                      unit: row.unit.trim(),
+                      min_stock: row.min_stock,
+                      purchase_price: row.purchase_price ?? null,
+                      sale_price: row.sale_price ?? null,
+                      usage_capacity: row.usage_capacity,
+                      capacity_unit: row.capacity_unit.trim(),
+                      capacity_per_product: row.capacity_per_product,
+                      alert_days: row.alert_days.toString(),
+                      current_stock: row.inbound_qty,
+                    },
+                  });
+
+                  if (gtin) {
+                    try {
+                      await tx.productGTIN.create({
+                        data: {
+                          tenant_id: tenantId,
+                          product_id: productId,
+                          gtin,
+                        },
+                      });
+                    } catch (gtinErr: any) {
+                      if (gtinErr?.code === "P2002") {
+                        const existing = await tx.productGTIN.findUnique({
+                          where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+                          select: { product_id: true },
+                        });
+                        if (existing) {
+                          await tx.product.delete({ where: { id: productId } });
+                          productId = existing.product_id;
+                          product = await tx.product.findUnique({
+                            where: { id: productId, tenant_id: tenantId },
+                          });
+                          await tx.product.update({
+                            where: { id: productId },
+                            data: { current_stock: { increment: row.inbound_qty } },
+                          });
+                        } else throw gtinErr;
+                      } else throw gtinErr;
+                    }
+                  }
+
+                  if (supplierId) {
+                    await (tx.productSupplier.upsert as any)({
+                      where: {
+                        tenant_id_product_id: {
+                          tenant_id: tenantId,
+                          product_id: productId,
+                        },
+                      },
+                      create: {
+                        tenant_id: tenantId,
+                        product_id: productId,
+                        clinic_supplier_manager_id: supplierId,
+                        purchase_price: row.purchase_price ?? null,
+                      },
+                      update: {
+                        clinic_supplier_manager_id: supplierId,
+                        purchase_price: row.purchase_price ?? null,
+                      },
+                    });
                   }
                 }
 
-                // STEP 2: Create product
-                const product = await (tx.product.create as any)({
-                  data: {
-                    id: productId,
-                    tenant_id: tenantId,
-                    name: row.name.trim(),
-                    brand: row.brand.trim(),
-                    barcode: row.barcode?.trim() || null,
-                    category: row.category.trim(),
-                    unit: row.unit.trim(),
-                    min_stock: row.min_stock,
-                    purchase_price: row.purchase_price ?? null,
-                    sale_price: row.sale_price ?? null,
-                    usage_capacity: row.usage_capacity,
-                    capacity_unit: row.capacity_unit.trim(),
-                    capacity_per_product: row.capacity_per_product,
-                    storage: row.storage.trim(),
-                    alert_days: row.alert_days.toString(), // Convert to string for database
-                    current_stock: row.inbound_qty,
-                    inbound_qty: row.inbound_qty, // ✅ Added: CSV inbound quantity
-                    inbound_manager: inboundManager.trim(), // ✅ Added: CSV import manager
-                    status: "active",
-                  },
-                });
-
-                // STEP 3: Create ProductSupplier link if supplier found
-                if (supplierId) {
-                  await (tx.productSupplier.create as any)({
-                    data: {
-                      tenant_id: tenantId,
-                      product_id: productId,
-                      clinic_supplier_manager_id: supplierId,
-                      purchase_price: row.purchase_price ?? null,
-                    },
-                  });
-                }
-
-                // STEP 4: Create initial batch
                 const batchId = this.generateBatchId();
-
-                // Generate batch_no using the same logic as inbound new (9-digit random + sequence)
                 const batchNo = await this.generateBatchNo(
                   productId,
                   tenantId,
@@ -2195,18 +2335,18 @@ export class ProductsService {
                     id: batchId,
                     tenant_id: tenantId,
                     product_id: productId,
-                    batch_no: batchNo, // Format: 123456789-001
+                    batch_no: batchNo,
                     qty: row.inbound_qty,
                     inbound_qty: row.inbound_qty,
                     used_count: 0,
                     unit: row.unit.trim(),
                     min_stock: row.min_stock,
-                    purchase_price: row.purchase_price ?? null, // ✅ Added: CSV purchase price
-                    sale_price: row.sale_price ?? null, // ✅ Added: CSV sale price
+                    purchase_price: row.purchase_price ?? null,
+                    sale_price: row.sale_price ?? null,
                     expiry_date: this.parseExpiryDate(row.expiry_date),
-                    storage: row.storage.trim(),
-                    alert_days: row.alert_days.toString(), // Convert to string for database
-                    inbound_manager: inboundManager.trim(), // CSV Import manager
+                    storage: row.storage?.trim() ?? null,
+                    alert_days: row.alert_days.toString(),
+                    inbound_manager: inboundManager.trim(),
                   },
                 });
 
@@ -2214,7 +2354,8 @@ export class ProductsService {
                   success: true,
                   product,
                   supplierLinked: !!supplierId,
-                  supplierName: supplierName,
+                  supplierName,
+                  existingProduct: !!existingGtin,
                 });
               } catch (error: any) {
                 this.logger.error(
@@ -2241,6 +2382,7 @@ export class ProductsService {
         for (const result of batchResults) {
           if (result.success) {
             imported.push(result.product);
+            if (result.existingProduct) existingProductCount++;
           } else {
             failed.push({
               row: result.row,
@@ -2272,6 +2414,7 @@ export class ProductsService {
       total: rows.length,
       imported: imported.length,
       failed: failed.length,
+      existingProductCount,
       failures: failed.length > 0 ? failed : undefined,
     };
   }

@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  MinLength,
   ValidateNested,
   IsArray,
 } from "class-validator";
@@ -147,9 +148,10 @@ export class CreateProductDto {
   @IsString()
   brand!: string;
 
-  @IsOptional()
+  /** Required. Used for GTIN duplicate prevention (one product per barcode per tenant). */
   @IsString()
-  barcode?: string;
+  @MinLength(1, { message: "barcode must not be empty" })
+  barcode!: string;
 
   @IsOptional()
   @IsString()

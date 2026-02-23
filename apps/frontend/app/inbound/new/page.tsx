@@ -61,6 +61,9 @@ export default function InboundNewPage() {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null
   );
+  const [showExistingProductModal, setShowExistingProductModal] =
+    useState(false);
+  const [existingProductId, setExistingProductId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false); // Flag to bypass unsaved changes check when saving
   const [supplierManagers, setSupplierManagers] = useState<
     Array<{
@@ -331,12 +334,13 @@ export default function InboundNewPage() {
     });
   };
 
-  // Check if all required fields are filled
+  // Check if all required fields are filled (including barcode)
   const isFormValid = () => {
     return !!(
       formData.name?.trim() &&
       formData.brand?.trim() &&
-      formData.category?.trim()
+      formData.category?.trim() &&
+      formData.barcode?.trim()
     );
   };
 
@@ -1153,23 +1157,24 @@ export default function InboundNewPage() {
       const result = await apiPost("/products", payload);
 
       // ✅ Clear frontend cache so new product appears immediately
-      // Clear cache for both "/products" and full URL format
       clearCache("/products");
-      clearCache("products"); // Also clear without leading slash
+      clearCache("products");
 
-      // Set flag to force refresh on inbound page
       if (typeof window !== "undefined") {
         sessionStorage.setItem("inbound_force_refresh", "true");
-
-        // ✅ Dispatch custom event to notify inbound page immediately
         window.dispatchEvent(new CustomEvent("productCreated"));
       }
 
-      // Clear unsaved changes flag and redirect to inbound list page
       setShowUnsavedChangesDialog(false);
       setPendingNavigation(null);
 
-      // Use router.push for smooth navigation (cache already cleared)
+      // ✅ GTIN duplicate: barcode already registered → show modal, stay on page
+      if ((result as any)?.existingForBarcode || (result as any)?.code === "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE") {
+        setExistingProductId((result as any)?.id ?? null);
+        setShowExistingProductModal(true);
+        return;
+      }
+
       router.push("/inbound");
       // isSaving will be reset when component unmounts or navigation completes
     } catch (error) {
@@ -1353,9 +1358,8 @@ export default function InboundNewPage() {
                       />
                       <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          바코드 번호 
+                          바코드 번호 <span className="text-red-500">*</span>
                         </label>
-                       
                         <div className="flex gap-2">
                           <input
                             type="text"
@@ -1364,9 +1368,14 @@ export default function InboundNewPage() {
                             onChange={(e) => {
                               handleInputChange("barcode", e.target.value);
                             }}
-                            className="h-11 flex-1 rounded-xl border border-blue-300 bg-blue-50 px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                         </div>
+                        {!formData.barcode?.trim() && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            바코드는 필수 입력 항목입니다. 제품 중복 등록 방지를 위해 입력해 주세요.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2950,6 +2959,52 @@ export default function InboundNewPage() {
               <button
                 onClick={() => setShowVerificationModal(false)}
                 className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Existing product for barcode modal – stay on page on OK */}
+      {showExistingProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-xl dark:border-amber-500/40 dark:bg-slate-900">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </span>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                이미 등록된 바코드
+              </h2>
+            </div>
+            <p className="mb-6 text-base text-slate-600 dark:text-slate-300">
+              이 바코드로 등록된 제품이 이미 있습니다. 동일한 바코드로 새 제품을 등록할 수 없습니다.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              {existingProductId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExistingProductModal(false);
+                    setExistingProductId(null);
+                    router.push(`/products/${existingProductId}`);
+                  }}
+                  className="order-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:order-1"
+                >
+                  해당 제품 보기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExistingProductModal(false);
+                  setExistingProductId(null);
+                }}
+                className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700"
               >
                 확인
               </button>

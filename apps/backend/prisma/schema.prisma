@@ -40,10 +40,24 @@ model Product {
   returnPolicy     ReturnPolicy?
   supplierProducts SupplierProduct[] // DEPRECATED: Will be removed after migration
   productSupplier  ProductSupplier? // NEW: 1:1 mapping to supplier (per tenant)
+  productGtins     ProductGTIN[]
 
   @@index([tenant_id])
   @@index([tenant_id, name])
   @@index([tenant_id, barcode])
+}
+
+model ProductGTIN {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  product_id String
+  gtin       String
+
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, gtin])
+  @@index([tenant_id])
+  @@index([product_id])
 }
 
 model Clinic {
