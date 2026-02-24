@@ -1721,30 +1721,29 @@ export class ProductsService {
         console.warn(
           `[ProductsService] Transaction client invalid in generateBatchNo, using fallback for productId: ${productId}`
         );
-        const existingBatchesCount = await this.prisma.batch.count({
-          where: { product_id: productId, tenant_id: tenantId },
-        });
-
+        const existingBatchesCount = await this.countBatchesForPrefix(
+          this.prisma,
+          productId,
+          tenantId,
+          customPrefix
+        );
         const sequenceNumber = (existingBatchesCount + 1)
           .toString()
           .padStart(3, "0");
-
-        // Format: 9ta random raqam - 001
         const prefix = customPrefix || randomDigits;
         return `${prefix}-${sequenceNumber}`;
       }
 
-      // Product'ning mavjud batch'lari sonini topish
-      const existingBatchesCount = await tx.batch.count({
-        where: { product_id: productId, tenant_id: tenantId },
-      });
-
-      // Keyingi tartib raqamini hisoblash (001, 002, 003, ...)
+      // Lot (customPrefix) bo'yicha suffix: 1234K56 → 1234K56-001, keyin 1234K56-002
+      const existingBatchesCount = await this.countBatchesForPrefix(
+        tx,
+        productId,
+        tenantId,
+        customPrefix
+      );
       const sequenceNumber = (existingBatchesCount + 1)
         .toString()
         .padStart(3, "0");
-
-      // Format: 9ta random raqam - 001 (yoki customPrefix - 001 agar barcode-dan kelgan bo'lsa)
       const prefix = customPrefix || randomDigits;
       return `${prefix}-${sequenceNumber}`;
     } catch (error: any) {
@@ -1757,18 +1756,35 @@ export class ProductsService {
         `[ProductsService] Using fallback for productId: ${productId}`
       );
 
-      const existingBatchesCount = await this.prisma.batch.count({
-        where: { product_id: productId, tenant_id: tenantId },
-      });
-
+      const existingBatchesCount = await this.countBatchesForPrefix(
+        this.prisma,
+        productId,
+        tenantId,
+        customPrefix
+      );
       const sequenceNumber = (existingBatchesCount + 1)
         .toString()
         .padStart(3, "0");
-
-      // Format: 9ta random raqam - 001
       const prefix = customPrefix || randomDigits;
       return `${prefix}-${sequenceNumber}`;
     }
+  }
+
+  /**
+   * Count batches for sequence: per product when no prefix, per lot prefix when customPrefix given.
+   * e.g. customPrefix "1234K56" → count batch_no starting with "1234K56-" for this product.
+   */
+  private async countBatchesForPrefix(
+    prismaOrTx: any,
+    productId: string,
+    tenantId: string,
+    customPrefix?: string
+  ): Promise<number> {
+    const where: any = { product_id: productId, tenant_id: tenantId };
+    if (customPrefix && customPrefix.trim() !== "") {
+      where.batch_no = { startsWith: `${customPrefix.trim()}-` };
+    }
+    return prismaOrTx.batch.count({ where });
   }
 
   /**

@@ -566,15 +566,6 @@ export default function InboundPage() {
           });
         });
 
-        // ✅ DEBUG: Log first order to check structure
-        if (flatOrders.length > 0) {
-          console.log("[fetchPendingOrders] First order structure:", {
-            id: flatOrders[0].id,
-            orderId: flatOrders[0].orderId,
-            orderNo: flatOrders[0].orderNo,
-          });
-        }
-
         setPendingOrders(flatOrders);
         // ✅ NO CACHE: Don't store in cache
       } catch (err) {
@@ -3497,87 +3488,157 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ NEW: Barcode Scanner Modal States
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanModalOrderId, setScanModalOrderId] = useState<string | null>(null); // Only show products for this order
   const [scannedItems, setScannedItems] = useState<any[]>([]);
   const [showProductConfirm, setShowProductConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<any>(null);
   const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
   const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
 
-  // ✅ Load only "주문 진행" orders in barcode modal (not "주문 요청" = pending)
-  const loadPendingProducts = useCallback(() => {
-    const allProducts: any[] = [];
-    const seenIds = new Set<string>(); // Track unique IDs
-
-    orders.forEach((order) => {
-      // Only "주문 진행" (supplier_confirmed, pending_inbound) — exclude "주문 요청" (pending)
-      if (
-        order.status === "supplier_confirmed" ||
-        order.status === "pending_inbound"
-      ) {
-        order.items?.forEach((item: any) => {
-          const confirmedQty =
-            item.confirmedQuantity || item.orderedQuantity || 0;
-          const alreadyInbound = item.inboundQuantity || 0;
-          const remainingQty = confirmedQty - alreadyInbound;
-
-          // Only add if there's remaining quantity
-          if (remainingQty > 0) {
-            const uniqueId = `${order.id}-${item.id}`;
-
-            // Skip if already added (prevent duplicates)
-            if (seenIds.has(uniqueId)) {
-              console.warn(
-                "[loadPendingProducts] Skipping duplicate:",
-                uniqueId,
-                item.productName
-              );
-              return;
-            }
-            seenIds.add(uniqueId);
-
-            allProducts.push({
-              id: uniqueId,
-              orderId: order.id,
-              orderNo: order.orderNo,
-              itemId: item.id,
-              productId: item.productId,
-              productName: item.productName,
-              brand: item.brand || "",
-              barcode: item.product?.barcode || "",
-              quantity: 0, // ✅ Har skanda +1 qo‘shiladi, shuning uchun boshlang‘ich 0
-              expiryDate: "",
-              productionDate: "",
-              storageLocation: "",
-              batchNumber: "",
-              manufactureDate: "",
-              lotNumber: "",
-              remainingQty,
-              order,
-              item,
-              status: "pending",
-            });
-          }
-        });
-      }
-    });
-
-    console.log("[loadPendingProducts] Loaded products:", allProducts.length);
-    console.log("[loadPendingProducts] Unique IDs:", Array.from(seenIds));
-    setScannedItems(allProducts);
-  }, [orders]);
-
-  // ✅ NEW: Load pending products when modal opens
+  // ✅ Ref so handleBarcodeScan always sees latest scannedItems (avoids stale closure + double setState overwrite)
+  const scannedItemsRef = useRef<any[]>([]);
+  const scanModalOpenRef = useRef(false);
+  const scanModalOrderIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (scanModalOpen && scannedItems.length === 0 && orders.length > 0) {
-      loadPendingProducts();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanModalOpen, orders, loadPendingProducts]);
+    scannedItemsRef.current = scannedItems;
+  }, [scannedItems]);
+  useEffect(() => {
+    scanModalOpenRef.current = scanModalOpen;
+    scanModalOrderIdRef.current = scanModalOrderId;
+  }, [scanModalOpen, scanModalOrderId]);
 
-  // ✅ NEW: Close modal and reset state
+  // 🔍 Debug: scannedItems o‘zgarganda (입고 수량 0 ga tushishini kuzatish)
+  useEffect(() => {
+    if (!scanModalOpen || scannedItems.length === 0) return;
+    const summary = scannedItems.map((p) => ({
+      name: p.productName,
+      quantity: p.quantity,
+      status: p.status,
+    }));
+  }, [scannedItems, scanModalOpen]);
+
+  // ✅ Order bo‘yicha skan modal uchun mahsulotlar ro‘yxatini qaytaradi (sync, ref/state dan oldin to‘ldirish uchun)
+  const getPendingProductsForOrder = useCallback(
+    (orderId: string) => {
+      const allProducts: any[] = [];
+      const seenIds = new Set<string>();
+      const ordersToUse = orders.filter((o) => (o.id || o.orderId) === orderId);
+
+      ordersToUse.forEach((order) => {
+        if (
+          order.status === "supplier_confirmed" ||
+          order.status === "pending_inbound"
+        ) {
+          order.items?.forEach((item: any) => {
+            const confirmedQty =
+              item.confirmedQuantity || item.orderedQuantity || 0;
+            const alreadyInbound = item.inboundQuantity || 0;
+            const remainingQty = confirmedQty - alreadyInbound;
+
+            if (remainingQty > 0) {
+              const uniqueId = `${order.id}-${item.id}`;
+              if (seenIds.has(uniqueId)) return;
+              seenIds.add(uniqueId);
+
+              allProducts.push({
+                id: uniqueId,
+                orderId: order.id,
+                orderNo: order.orderNo,
+                itemId: item.id,
+                productId: item.productId,
+                productName: item.productName,
+                brand: item.brand || "",
+                barcode: item.product?.barcode || "",
+                quantity: 0,
+                lotQuantities: {} as Record<string, number>,
+                lotDetails: {} as Record<
+                  string,
+                  { manufactureDate?: string; expiryDate?: string }
+                >,
+                expiryDate: "",
+                productionDate: "",
+                storageLocation: "",
+                batchNumber: "",
+                manufactureDate: "",
+                lotNumber: "",
+                remainingQty,
+                order,
+                item,
+                status: "pending",
+              });
+            }
+          });
+        }
+      });
+
+      return allProducts;
+    },
+    [orders]
+  );
+
+  // ✅ Load products for barcode modal (useEffect backup — asosan openBarcodeScanForOrder da sync to‘ldiramiz)
+  const loadPendingProducts = useCallback(
+    (orderId?: string) => {
+      if (!orderId) return;
+      const allProducts = getPendingProductsForOrder(orderId);
+      setScannedItems(allProducts);
+      scannedItemsRef.current = allProducts;
+    },
+    [getPendingProductsForOrder]
+  );
+
+  // ✅ Modal ochilganda agar ro‘yxat bo‘sh bo‘lsa (masalan, boshqa tabdan keldi) — backup load
+  useEffect(() => {
+    const shouldLoad =
+      scanModalOpen &&
+      scanModalOrderId &&
+      orders.length > 0 &&
+      scannedItems.length === 0;
+
+    if (shouldLoad) {
+      loadPendingProducts(scanModalOrderId);
+    }
+  }, [
+    scanModalOpen,
+    scanModalOrderId,
+    orders.length,
+    scannedItems.length,
+    loadPendingProducts,
+  ]);
+
+  // ✅ Modal ochilganda darhol ro‘yxatni to‘ldiramiz (birinchi skan "0 items" bo‘lmasin)
+  const openBarcodeScanForOrder = useCallback(
+    (orderId: string) => {
+      // Modal allaqachon shu order uchun ochiq va ro‘yxat bor bo‘lsa — ustiga yozma (입고 수량 0 ga tushmasin)
+      if (
+        scanModalOpenRef.current &&
+        scanModalOrderIdRef.current === orderId &&
+        scannedItemsRef.current.length > 0
+      ) {
+        console.log(
+          "[ScanModal] openBarcodeScanForOrder: modal allaqachon ochiq, ro‘yxatni saqlab qolamiz"
+        );
+        setScanModalOrderId(orderId);
+        setScanModalOpen(true);
+        return;
+      }
+      const products = getPendingProductsForOrder(orderId);
+
+      setScannedItems(products);
+      scannedItemsRef.current = products;
+      setScanModalOrderId(orderId);
+      setScanModalOpen(true);
+    },
+    [getPendingProductsForOrder]
+  );
+
+  // ✅ Close modal and reset state
   const closeScanModal = () => {
+    console.trace("[ScanModal] closeScanModal call stack");
     setScanModalOpen(false);
+    setScanModalOrderId(null);
     setScannedItems([]);
+    scannedItemsRef.current = [];
     setActiveItemId(null);
     setScanModalInboundStaff("");
   };
@@ -3647,8 +3708,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
       const { parseGS1Barcode: parse } = await import("../../utils/gs1Parser");
       const parsed = parse(barcode, { mode: "lenient" });
 
-      console.log("[parseGS1Barcode] Production parser result:", parsed);
-
       // Create comprehensive GTIN variants for matching
       const gtinVariants: string[] = [];
 
@@ -3664,15 +3723,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
           // Zero-padded EAN-13
           gtinVariants.push("0" + gtin14.substring(1));
         }
-
-        console.log("[parseGS1Barcode] GTIN Variants:", gtinVariants);
       }
 
       // Convert to compatible format
+      const expiryDate = parsed.expiry || "";
+      if (barcode) {
+        console.log("[parseGS1Barcode] barcode -> 유효기간:", {
+          raw: barcode,
+          expiryFromParser: parsed.expiry,
+          expiryDate,
+        });
+      }
       return {
         gtin: parsed.primary_gtin || "",
         gtinVariants,
-        expiryDate: parsed.expiry || "",
+        expiryDate,
         productionDate: parsed.prod_date || "", // ✅ AI 11
         batchNumber: parsed.batch || "",
         originalBarcode: barcode,
@@ -3703,8 +3768,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
       ...parsed.gtinVariants,
     ].filter(Boolean);
 
-    // First, try to find matching product in scannedItems (pending or active)
-    const pendingOrActive = scannedItems.find((p) => {
+    // First, try to find matching product in scannedItems (ref = always latest)
+    const currentList = scannedItemsRef.current;
+    const pendingOrActive = currentList.find((p) => {
       if (p.status !== "pending" && p.status !== "active") return false;
 
       return searchVariants.some(
@@ -3716,10 +3782,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
     });
 
     if (pendingOrActive) {
-      console.log(
-        "[findOrderByBarcode] Found in scannedItems:",
-        pendingOrActive.productName
-      );
       // Return the order and item from scannedItems
       return {
         order: pendingOrActive.order,
@@ -3734,20 +3796,50 @@ const PendingOrdersList = memo(function PendingOrdersList({
         const productBarcode = item.product?.barcode || item.barcode;
 
         if (searchVariants.some((variant) => productBarcode === variant)) {
-          console.log(
-            "[findOrderByBarcode] Found in orders:",
-            item.productName
-          );
           return {
             order,
             item,
             parsed,
+            fromCatalog: false,
           };
         }
       }
     }
 
-    console.log("[findOrderByBarcode] Not found");
+    // Not in order: try product catalog by GTIN (product/new da qo‘shilgan mahsulot)
+    for (const gtin of searchVariants) {
+      if (!gtin) continue;
+      try {
+        const { apiGet } = await import("../../lib/api");
+        const product = await apiGet<any>(
+          `${apiUrl}/products/barcode/${encodeURIComponent(gtin)}`
+        );
+        if (product && product.id) {
+          const currentOrder = scanModalOrderId
+            ? orders.find((o) => (o.id || o.orderId) === scanModalOrderId)
+            : orders[0];
+          const syntheticItem = {
+            id: product.id,
+            productId: product.id,
+            productName: product.productName ?? product.name ?? "알 수 없음",
+            brand: product.brand ?? "",
+            product: { barcode: product.barcode ?? gtin },
+            confirmedQuantity: 0,
+            orderedQuantity: 0,
+            unit_price: product.purchasePrice ?? 0,
+          };
+          return {
+            order: currentOrder ?? null,
+            item: syntheticItem,
+            parsed,
+            fromCatalog: true,
+          };
+        }
+      } catch (_) {
+        // barcode endpoint returns 404 if not found
+      }
+    }
+
     return null;
   };
 
@@ -3839,139 +3931,104 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ NEW: Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
-    console.log("=== Barcode Scan Started ===");
-    console.log("Scanned barcode:", barcode);
-
     const parsed = await parseGS1Barcode(barcode);
+    console.log("[유효기간] handleBarcodeScan parse natija:", {
+      expiryDate: parsed.expiryDate,
+      batchNumber: parsed.batchNumber,
+      gtin: parsed.gtin,
+    });
     const searchVariants = [
       barcode,
       parsed.gtin,
       ...parsed.gtinVariants,
     ].filter(Boolean);
 
-    console.log("Search variants:", searchVariants);
-    console.log("Parsed data:", parsed);
-
-    // STEP 1: Get current scannedItems and check if product exists
-    let existingItem: any = null;
-    let currentItems: any[] = [];
-
-    setScannedItems((prevItems) => {
-      currentItems = prevItems; // Store for later use
-      console.log("🔍 Searching in scannedItems...");
-      console.log(
-        "Current scannedItems (LATEST):",
-        prevItems.map((p) => ({
-          itemId: p.itemId,
-          productId: p.productId,
-          name: p.productName,
-          status: p.status,
-          barcode: p.barcode,
-          productBarcode: p.product?.barcode,
-        }))
+    // STEP 1: Read latest scannedItems from ref (sync) — avoid setState-for-read which causes double update / overwrite
+    const prevItems = scannedItemsRef.current;
+    const existingItem = prevItems.find((p) => {
+      if (p.status !== "pending" && p.status !== "active") return false;
+      return (
+        searchVariants.some(
+          (variant) =>
+            p.product?.barcode === variant ||
+            p.barcode === variant ||
+            p.productId === variant
+        ) ||
+        p.productId === parsed.gtin ||
+        p.itemId === parsed.gtin
       );
-      console.log("Search variants to match:", searchVariants);
-
-      existingItem = prevItems.find((p) => {
-        if (p.status !== "pending" && p.status !== "active") return false;
-
-        // Try multiple matching strategies
-        const matches =
-          searchVariants.some(
-            (variant) =>
-              p.product?.barcode === variant ||
-              p.barcode === variant ||
-              p.productId === variant
-          ) ||
-          p.productId === parsed.gtin ||
-          p.itemId === parsed.gtin;
-
-        if (matches) {
-          console.log("🔍 Match found:", {
-            productName: p.productName,
-            itemId: p.itemId,
-            productId: p.productId,
-            barcode: p.barcode,
-            productBarcode: p.product?.barcode,
-          });
-        }
-
-        return matches;
-      });
-
-      if (existingItem) {
-        console.log(
-          "✅ Found existing pending/active product:",
-          existingItem.productName
-        );
-        console.log("Updating itemId:", existingItem.itemId);
-
-        // Update this product and set to active
-        const updatedItems = prevItems.map((p) => {
-          if (p.itemId === existingItem.itemId) {
-            // ✅ Har skanda 입고수량 1 ga oshadi (remainingQty dan oshmasin)
-            const currentQty = p.quantity ?? 0;
-            const maxQty = existingItem.remainingQty ?? currentQty;
-            const newQty = Math.min(currentQty + 1, maxQty);
-            const updated = {
-              ...p,
-              quantity: newQty,
-              expiryDate: parsed.expiryDate || p.expiryDate,
-              productionDate: parsed.productionDate || p.productionDate, // ✅ AI 11
-              batchNumber: parsed.batchNumber || p.batchNumber,
-              lotNumber: parsed.batchNumber || p.lotNumber, // ✅ Auto-fill from GS1 batch
-              barcode: parsed.originalBarcode,
-              status: "active",
-            };
-            console.log("📦 Updated product fields:", {
-              lotNumber: updated.lotNumber,
-              batchNumber: updated.batchNumber,
-              expiryDate: updated.expiryDate,
-              productionDate: updated.productionDate,
-              quantity: updated.quantity,
-            });
-            return updated;
-          }
-          // Set other active items back to pending
-          if (p.status === "active") {
-            return { ...p, status: "pending" };
-          }
-          return p;
-        });
-
-        setActiveItemId(existingItem.itemId);
-        console.log("Set activeItemId to:", existingItem.itemId);
-        return updatedItems;
-      }
-
-      return prevItems; // No changes yet
     });
 
-    // If found in scannedItems, we're done
     if (existingItem) {
-      console.log("✅ Product updated, scan complete");
+      setActiveItemId(existingItem.itemId);
+      setScannedItems((prev) => {
+        if (prev.length === 0) return prev; // loadPendingProducts hali commit bo‘lmagan bo‘lishi mumkin
+        const next = prev.map((p) => {
+          if (p.itemId !== existingItem.itemId) {
+            if (p.status === "active") return { ...p, status: "pending" };
+            return p;
+          }
+          const lotKey = (parsed.batchNumber || "").trim() || "__default";
+          const prevLots = p.lotQuantities || {};
+          const lotQuantities = {
+            ...prevLots,
+            [lotKey]: (prevLots[lotKey] ?? 0) + 1,
+          };
+          const newQty = (Object.values(lotQuantities) as number[]).reduce(
+            (a, b) => a + b,
+            0
+          );
+          const maxQty = existingItem.remainingQty ?? newQty;
+          const cappedQty = Math.min(newQty, maxQty);
+          let finalLotQuantities = lotQuantities;
+          if (cappedQty < newQty && lotQuantities[lotKey] > 0) {
+            const diff = newQty - cappedQty;
+            finalLotQuantities = {
+              ...lotQuantities,
+              [lotKey]: Math.max(0, lotQuantities[lotKey] - diff),
+            };
+          }
+          const finalQty = (
+            Object.values(finalLotQuantities) as number[]
+          ).reduce((a, b) => a + b, 0);
+          const prevDetails = p.lotDetails || {};
+          const lotDetails = {
+            ...prevDetails,
+            [lotKey]: {
+              manufactureDate:
+                parsed.productionDate || prevDetails[lotKey]?.manufactureDate,
+              expiryDate: parsed.expiryDate || prevDetails[lotKey]?.expiryDate,
+            },
+          };
+          const itemExpiry = parsed.expiryDate || p.expiryDate;
+
+          return {
+            ...p,
+            lotQuantities: finalLotQuantities,
+            lotDetails,
+            quantity: finalQty,
+            expiryDate: itemExpiry,
+            productionDate: parsed.productionDate || p.productionDate,
+            batchNumber: parsed.batchNumber || p.batchNumber,
+            lotNumber: parsed.batchNumber || p.lotNumber,
+            barcode: parsed.originalBarcode,
+            status: "active",
+          };
+        });
+        scannedItemsRef.current = next;
+        const updatedItem = next.find((x) => x.itemId === existingItem.itemId);
+
+        return next;
+      });
+
       return;
     }
 
     // STEP 2: If not in scannedItems, find in orders
-    console.log("Not found in scannedItems, searching in orders...");
     const result = await findOrderByBarcode(barcode);
 
     if (!result) {
-      console.log("Parsed GS1:", parsed);
-      console.log("Search variants:", searchVariants);
-
       // Debug: Show all product barcodes in orders
-      console.log("Available product barcodes in orders:");
-      orders.forEach((order, i) => {
-        order.items?.forEach((item: any, j: number) => {
-          console.log(`Order ${i + 1}, Item ${j + 1}:`, {
-            productName: item.productName,
-            productBarcode: item.product?.barcode,
-            itemBarcode: item.barcode,
-          });
-        });
-      });
 
       setBarcodeNotFoundModal({
         show: true,
@@ -3981,46 +4038,73 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
 
-    console.log("Found order:", result.order.orderNo);
-    console.log("Found item:", result.item.productName);
-    console.log("Found item.id:", result.item.id);
+    const { order, item, fromCatalog } = result;
+    const isFromCatalog = !!fromCatalog;
 
-    const { order, item } = result;
+    // Catalog product: no order limit; order item: remaining from order
+    const confirmedQty = item.confirmedQuantity ?? item.orderedQuantity ?? 0;
+    const alreadyInbound = item.inboundQuantity ?? 0;
+    const remainingQty = isFromCatalog
+      ? 99999
+      : Math.max(0, confirmedQty - alreadyInbound);
 
-    // Calculate remaining quantity
-    const confirmedQty = item.confirmedQuantity || item.orderedQuantity || 0;
-    const alreadyInbound = item.inboundQuantity || 0;
-    const remainingQty = confirmedQty - alreadyInbound;
-
-    // STEP 3: This should rarely happen (product exists in order but not in scannedItems)
-    console.warn(
-      "⚠️ Product found in order but not in scannedItems - adding as fallback"
-    );
+    if (!isFromCatalog) {
+      console.warn(
+        "⚠️ Product found in order but not in scannedItems - adding as fallback"
+      );
+    }
 
     // Check if this ID already exists in scannedItems (prevent duplicate)
     setScannedItems((prev) => {
-      const proposedId = `${order.id}-${item.id}`;
+      const proposedId = order
+        ? `${order.id}-${item.id}`
+        : `catalog-${item.productId}`;
       const alreadyExists = prev.some((p) => p.id === proposedId);
 
       if (alreadyExists) {
-        console.error(
-          "🔴 DUPLICATE DETECTED! Product already in scannedItems:",
-          proposedId
-        );
-        console.log("This should not happen - matching logic failed!");
-        // Try to find and update existing item instead
         const existingIndex = prev.findIndex((p) => p.id === proposedId);
         if (existingIndex !== -1) {
-          console.log("Updating existing item instead of adding duplicate");
           setActiveItemId(prev[existingIndex].itemId);
-          return prev.map((p, i) => {
+          const next = prev.map((p, i) => {
             if (i === existingIndex) {
-              // ✅ Har skanda 입고수량 1 ga oshadi
-              const currentQty = p.quantity ?? 0;
-              const newQty = Math.min(currentQty + 1, remainingQty);
+              const lotKey = (parsed.batchNumber || "").trim() || "__default";
+              const prevLots = p.lotQuantities || {};
+              const lotQuantities = {
+                ...prevLots,
+                [lotKey]: (prevLots[lotKey] ?? 0) + 1,
+              };
+              const newQty = (Object.values(lotQuantities) as number[]).reduce(
+                (a, b) => a + b,
+                0
+              );
+              const cappedQty = Math.min(newQty, remainingQty);
+              let finalLotQuantities = lotQuantities;
+              if (cappedQty < newQty && lotQuantities[lotKey] > 0) {
+                const diff = newQty - cappedQty;
+                finalLotQuantities = {
+                  ...lotQuantities,
+                  [lotKey]: Math.max(0, lotQuantities[lotKey] - diff),
+                };
+              }
+              const finalQty = (
+                Object.values(finalLotQuantities) as number[]
+              ).reduce((a, b) => a + b, 0);
+              const prevDetails = p.lotDetails || {};
+              const lotDetails = {
+                ...prevDetails,
+                [lotKey]: {
+                  manufactureDate:
+                    parsed.productionDate ||
+                    prevDetails[lotKey]?.manufactureDate,
+                  expiryDate:
+                    parsed.expiryDate || prevDetails[lotKey]?.expiryDate,
+                },
+              };
               return {
                 ...p,
-                quantity: newQty,
+                lotQuantities: finalLotQuantities,
+                lotDetails,
+                quantity: finalQty,
                 expiryDate: parsed.expiryDate || p.expiryDate,
                 batchNumber: parsed.batchNumber || p.batchNumber,
                 lotNumber: parsed.batchNumber || p.lotNumber,
@@ -4033,54 +4117,55 @@ const PendingOrdersList = memo(function PendingOrdersList({
             }
             return p;
           });
+          scannedItemsRef.current = next;
+          return next;
         }
-        return prev; // Fallback - no changes
+        return prev;
       }
 
+      const lotKey = (parsed.batchNumber || "").trim() || "__default";
       const newProduct = {
         id: proposedId,
-        orderId: order.id,
-        orderNo: order.orderNo,
+        orderId: order?.id ?? null,
+        orderNo: order?.orderNo ?? "",
         itemId: item.id,
         productId: item.productId,
         productName: item.productName,
-        brand: item.brand,
+        brand: item.brand ?? "",
         barcode: parsed.originalBarcode,
-        quantity: 1, // ✅ Birinchi skan = 1, keyingi skanlar +1 qo‘shadi
+        quantity: 1,
+        lotQuantities: { [lotKey]: 1 } as Record<string, number>,
+        lotDetails: {
+          [lotKey]: {
+            manufactureDate: parsed.productionDate,
+            expiryDate: parsed.expiryDate,
+          },
+        } as Record<string, { manufactureDate?: string; expiryDate?: string }>,
         expiryDate: parsed.expiryDate,
-        productionDate: parsed.productionDate, // ✅ AI 11
+        productionDate: parsed.productionDate,
         storageLocation: "",
         batchNumber: parsed.batchNumber,
         manufactureDate: "",
         lotNumber: parsed.batchNumber,
         remainingQty,
-        order,
+        order: order ?? null,
         item,
         product: item.product,
         status: "active",
+        fromCatalog: isFromCatalog,
       };
-
-      console.log(
-        "[handleBarcodeScan] Adding new product (fallback):",
-        newProduct.id
-      );
-      console.log("📦 New product fields:", {
-        lotNumber: newProduct.lotNumber,
-        batchNumber: newProduct.batchNumber,
-        expiryDate: newProduct.expiryDate,
-        productionDate: newProduct.productionDate,
-        quantity: newProduct.quantity,
-      });
 
       setActiveItemId(item.id);
 
       // Set all existing active items to pending and add new product
-      return [
+      const next = [
         ...prev.map((p) =>
           p.status === "active" ? { ...p, status: "pending" } : p
         ),
         newProduct,
       ];
+      scannedItemsRef.current = next;
+      return next;
     });
   };
 
@@ -4093,6 +4178,64 @@ const PendingOrdersList = memo(function PendingOrdersList({
     );
   };
 
+  // ✅ Update one lot's quantity for a scanned product; recalc total quantity
+  const updateScannedProductLotQty = (
+    itemId: number,
+    lotKey: string,
+    qty: number
+  ) => {
+    setScannedItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId !== itemId) return item;
+        const lotQuantities = {
+          ...(item.lotQuantities || {}),
+          [lotKey]: Math.max(0, qty),
+        };
+        const quantity = (Object.values(lotQuantities) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        return { ...item, lotQuantities, quantity };
+      })
+    );
+  };
+
+  // ✅ Update one lot's dates (제조일, 유효기간)
+  const updateScannedProductLotDetails = (
+    itemId: number,
+    lotKey: string,
+    details: { manufactureDate?: string; expiryDate?: string }
+  ) => {
+    setScannedItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId !== itemId) return item;
+        const lotDetails = {
+          ...(item.lotDetails || {}),
+          [lotKey]: { ...(item.lotDetails?.[lotKey] || {}), ...details },
+        };
+        return { ...item, lotDetails };
+      })
+    );
+  };
+
+  // ✅ Remove one lot from a product (X button on sub-card); recalc quantity
+  const removeScannedProductLot = (itemId: number, lotKey: string) => {
+    setScannedItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId !== itemId) return item;
+        const lotQuantities = { ...(item.lotQuantities || {}) };
+        delete lotQuantities[lotKey];
+        const lotDetails = { ...(item.lotDetails || {}) };
+        delete lotDetails[lotKey];
+        const quantity = (Object.values(lotQuantities) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        return { ...item, lotQuantities, lotDetails, quantity };
+      })
+    );
+  };
+
   // ✅ NEW: Mark product as completed and move to next
   const completeCurrentProduct = () => {
     if (!activeItemId) {
@@ -4100,16 +4243,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
 
-    console.log("[completeCurrentProduct] Completing item:", activeItemId);
-
     // Mark current as completed
     setScannedItems((prev) =>
       prev.map((item) => {
         if (item.itemId === activeItemId) {
-          console.log(
-            "[completeCurrentProduct] Marking as completed:",
-            item.productName
-          );
           return { ...item, status: "completed" };
         }
         return item;
@@ -4118,9 +4255,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     // Reset active item - user must scan next product manually
     setActiveItemId(null);
-    console.log(
-      "[completeCurrentProduct] Reset activeItemId to null - scan next product"
-    );
   };
 
   // ✅ NEW: Remove scanned product by itemId
@@ -4137,36 +4271,103 @@ const PendingOrdersList = memo(function PendingOrdersList({
       alert("스캔된 제품이 없습니다.");
       return;
     }
-    if (scanModalInboundStaff.trim()) {
-      setInboundManagers((prev) => {
-        const next = { ...prev };
-        scannedItems.forEach((it) => {
-          const oid = it.orderId;
-          if (oid) next[oid] = scanModalInboundStaff.trim();
-        });
-        return next;
-      });
+    const inboundStaff = scanModalInboundStaff.trim();
+    if (!inboundStaff) {
+      alert("입고 직원 이름을 입력해주세요.");
+      return;
     }
+    setInboundManagers((prev) => {
+      const next = { ...prev };
+      scannedItems.forEach((it) => {
+        const oid = it.orderId;
+        if (oid) next[oid] = inboundStaff;
+      });
+      return next;
+    });
 
-    // Instead of API call, auto-fill the order form fields
     try {
-      // Group by order
-      const groupedByOrder = scannedItems.reduce(
-        (acc, item) => {
-          if (!acc[item.orderId]) {
-            acc[item.orderId] = {
-              order: item.order,
-              items: [],
+      const catalogItems = scannedItems.filter((it) => it.fromCatalog);
+      const orderItems = scannedItems.filter((it) => !it.fromCatalog);
+
+      // Catalog mahsulotlar uchun to‘g‘ridan-to‘g‘ri batch yaratish (GTIN orqali qo‘shilgan)
+      if (catalogItems.length > 0) {
+        const { apiPost } = await import("../../lib/api");
+        for (const it of catalogItems) {
+          const productId = it.productId;
+          const purchasePrice = Number(it.item?.unit_price) || 0;
+          const lotQuantities = it.lotQuantities || {};
+          const lotDetails = (it.lotDetails || {}) as Record<
+            string,
+            { manufactureDate?: string; expiryDate?: string }
+          >;
+          const hasMultipleLots =
+            Object.keys(lotQuantities).filter((k) => k !== "__default").length >
+            0;
+
+          if (hasMultipleLots) {
+            for (const [lotKey, qtyVal] of Object.entries(lotQuantities)) {
+              const qtyNum = Number(qtyVal);
+              if (qtyNum <= 0) continue;
+              const batchNo =
+                lotKey === "__default" ? (it.lotNumber || "").trim() : lotKey;
+              const perLotExpiry =
+                lotDetails[lotKey]?.expiryDate ?? it.expiryDate;
+              const perLotManufacture = lotDetails[lotKey]?.manufactureDate;
+              const payload: any = {
+                qty: qtyNum,
+                purchase_price: purchasePrice,
+                expiry_date: perLotExpiry,
+                inbound_manager: inboundStaff,
+              };
+              if (batchNo) payload.batch_no = batchNo;
+              if (perLotManufacture)
+                payload.manufacture_date = perLotManufacture;
+              if (it.storageLocation) payload.storage = it.storageLocation;
+              await apiPost<any>(
+                `${apiUrl}/products/${productId}/batches`,
+                payload
+              );
+            }
+          } else {
+            const qty =
+              it.quantity ??
+              (Object.values(lotQuantities) as number[]).reduce(
+                (a, b) => a + b,
+                0
+              );
+            if (qty <= 0) continue;
+            const payload: any = {
+              qty,
+              purchase_price: purchasePrice,
+              expiry_date: it.expiryDate,
+              inbound_manager: inboundStaff,
             };
+            if (it.lotNumber?.trim()) payload.batch_no = it.lotNumber.trim();
+            if (it.productionDate) payload.manufacture_date = it.productionDate;
+            if (it.storageLocation) payload.storage = it.storageLocation;
+            await apiPost<any>(
+              `${apiUrl}/products/${productId}/batches`,
+              payload
+            );
           }
-          acc[item.orderId].items.push(item);
+        }
+      }
+
+      // Order mahsulotlar: editedItems ga yozib, "입고 완료" ni bosishni aytamiz
+      const groupedByOrder = orderItems.reduce(
+        (acc, item) => {
+          const oid = item.orderId ?? "none";
+          if (!acc[oid]) {
+            acc[oid] = { order: item.order, items: [] };
+          }
+          acc[oid].items.push(item);
           return acc;
         },
         {} as Record<string, any>
       );
 
-      // Auto-fill editedItems for each scanned product
-      for (const [orderId, data] of Object.entries(groupedByOrder)) {
+      for (const [_orderId, data] of Object.entries(groupedByOrder)) {
+        if ((data as any).order == null) continue;
         for (const item of (data as any).items) {
           updateItemField(item.itemId, "quantity", item.quantity);
           updateItemField(item.itemId, "expiryDate", item.expiryDate);
@@ -4174,21 +4375,36 @@ const PendingOrdersList = memo(function PendingOrdersList({
           updateItemField(
             item.itemId,
             "purchasePrice",
-            item.item.unit_price || ""
+            item.item?.unit_price ?? ""
           );
-
-          // ✅ CRITICAL: Include lotNumber (batch from barcode)
-          if (item.lotNumber && item.lotNumber.trim() !== "") {
+          if (item.lotNumber?.trim()) {
             updateItemField(item.itemId, "lotNumber", item.lotNumber);
           }
+          if (
+            item.lotQuantities &&
+            Object.keys(item.lotQuantities).length > 0
+          ) {
+            updateItemField(item.itemId, "lotQuantities", item.lotQuantities);
+          }
+          if (
+            item.lotDetails &&
+            typeof item.lotDetails === "object" &&
+            Object.keys(item.lotDetails).length > 0
+          ) {
+            updateItemField(item.itemId, "lotDetails", item.lotDetails);
+          }
         }
-
-        // ✅ REMOVED: Auto-set inbound manager - user should fill manually
       }
 
+      const catalogDone =
+        catalogItems.length > 0
+          ? `\n카탈로그 제품 ${catalogItems.length}건 입고 완료.`
+          : "";
       alert(
-        `✅ ${scannedItems.length}개 제품 정보가 입력되었습니다!\n\n` +
-          `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
+        `✅ ${scannedItems.length}개 제품 정보가 입력되었습니다!${catalogDone}\n\n` +
+          (orderItems.length > 0
+            ? `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
+            : "")
       );
 
       closeScanModal();
@@ -4210,11 +4426,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   const handleProcessOrder = async (order: any) => {
     // ✅ DEBUG: Check order ID
-    console.log("[handleProcessOrder] Order data:", {
-      id: order.id,
-      orderId: order.orderId,
-      orderNo: order.orderNo,
-    });
 
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
@@ -4235,14 +4446,27 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
 
-    // Validate all items have required data
+    const resolveInboundQty = (edited: any) => {
+      if (
+        edited?.lotQuantities &&
+        typeof edited.lotQuantities === "object" &&
+        Object.keys(edited.lotQuantities).length > 0
+      ) {
+        return (Object.values(edited.lotQuantities) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+      }
+      return edited?.quantity || 0;
+    };
+
     for (const item of order.items) {
       const edited = editedItems[item.id];
       if (!edited?.expiryDate) {
         alert(`${item.productName}의 유통기한을 입력해주세요.`);
         return;
       }
-      if (!edited?.quantity || edited.quantity <= 0) {
+      if (resolveInboundQty(edited) <= 0) {
         alert(`${item.productName}의 수량을 입력해주세요.`);
         return;
       }
@@ -4259,12 +4483,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
     }
 
-    // Check for quantity discrepancies
     const insufficientItems = [];
     for (const item of order.items) {
       const edited = editedItems[item.id];
       const confirmedQty = item.confirmedQuantity || item.orderedQuantity;
-      const inboundQty = edited?.quantity || 0;
+      const inboundQty = resolveInboundQty(edited);
 
       if (inboundQty !== confirmedQty) {
         insufficientItems.push({
@@ -4341,34 +4564,39 @@ const PendingOrdersList = memo(function PendingOrdersList({
         itemsByProduct.set(item.productId, existing);
       });
 
-      // Create batches and returns for each product
       const returnItems: any[] = [];
+      const batchSummaryLines: string[] = [];
 
       for (const [productId, items] of itemsByProduct.entries()) {
-        // Use edited quantity from form
-        const inboundQty = items.reduce((sum: number, item: any) => {
-          const edited = editedItems[item.id];
-          return sum + (edited?.quantity || 0);
-        }, 0);
-
-        // Use edited values from first item
         const firstItem = items[0];
         const editedFirstItem = editedItems[firstItem.id];
 
-        // Get confirmed quantity from supplier
+        // Inbound qty: from lotQuantities sum or from quantity
+        const inboundQty = (() => {
+          const lots = editedFirstItem?.lotQuantities;
+          if (
+            lots &&
+            typeof lots === "object" &&
+            Object.keys(lots).length > 0
+          ) {
+            return (Object.values(lots) as number[]).reduce((a, b) => a + b, 0);
+          }
+          return items.reduce(
+            (sum: number, item: any) =>
+              sum + (editedItems[item.id]?.quantity || 0),
+            0
+          );
+        })();
+
         const confirmedQty =
           firstItem.confirmedQuantity || firstItem.orderedQuantity;
-
-        // Calculate excess (ortiqcha)
         const excessQty = confirmedQty - inboundQty;
 
-        // Get expiry info from product
         const expiryMonths = firstItem.expiryMonths;
         const expiryUnit = firstItem.expiryUnit || "months";
         const alertDays = firstItem.alertDays;
 
-        // Calculate manufacture date
-        let manufactureDate = null;
+        let manufactureDate: string | null = null;
         if (editedFirstItem?.expiryDate && expiryMonths) {
           const expiryDateObj = new Date(editedFirstItem.expiryDate);
           if (expiryUnit === "days") {
@@ -4379,7 +4607,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
 
-        // 구매가: edited에 없으면 API 확정가(confirmedPrice) 사용 (platform supplier 등)
         const purchasePrice =
           editedFirstItem?.purchasePrice != null &&
           editedFirstItem.purchasePrice !== ""
@@ -4387,45 +4614,104 @@ const PendingOrdersList = memo(function PendingOrdersList({
             : firstItem.confirmedPrice != null
               ? Number(firstItem.confirmedPrice)
               : 0;
-        const batchPayload: any = {
-          qty: inboundQty,
-          purchase_price: purchasePrice,
-          expiry_date: editedFirstItem?.expiryDate,
-          inbound_manager: inboundManager,
-        };
 
-        // ✅ CRITICAL: Include batch_no from barcode (if scanned)
-        if (
-          editedFirstItem?.lotNumber &&
-          editedFirstItem.lotNumber.trim() !== ""
-        ) {
-          batchPayload.batch_no = editedFirstItem.lotNumber.trim();
+        const lotQuantities = editedFirstItem?.lotQuantities;
+        const hasMultipleLots =
+          lotQuantities &&
+          typeof lotQuantities === "object" &&
+          Object.keys(lotQuantities).filter((k) => k !== "__default").length >
+            0;
+
+        const createdBatchNos: string[] = [];
+
+        const lotDetailsFirst = editedFirstItem?.lotDetails as
+          | Record<string, { manufactureDate?: string; expiryDate?: string }>
+          | undefined;
+        if (hasMultipleLots && lotQuantities) {
+          // Har bir lot uchun alohida batch — har biriga o‘zining expiry_date / manufacture_date (DB ga yoziladi)
+          for (const [lotKey, qtyVal] of Object.entries(lotQuantities)) {
+            const qtyNum = Number(qtyVal);
+            if (qtyNum <= 0) continue;
+            const batchNoFromBarcode =
+              lotKey === "__default"
+                ? (editedFirstItem?.lotNumber || "").trim()
+                : lotKey;
+            const perLotExpiry =
+              lotDetailsFirst?.[lotKey]?.expiryDate ??
+              editedFirstItem?.expiryDate;
+            const perLotManufacture =
+              lotDetailsFirst?.[lotKey]?.manufactureDate;
+            let lotManufactureDate: string | null = perLotManufacture || null;
+            if (!lotManufactureDate && perLotExpiry && expiryMonths) {
+              const expiryDateObj = new Date(perLotExpiry);
+              if (expiryUnit === "days") {
+                expiryDateObj.setDate(expiryDateObj.getDate() - expiryMonths);
+              } else {
+                expiryDateObj.setMonth(expiryDateObj.getMonth() - expiryMonths);
+              }
+              lotManufactureDate = expiryDateObj.toISOString().split("T")[0];
+            }
+            const payload: any = {
+              qty: qtyNum,
+              purchase_price: purchasePrice,
+              expiry_date: perLotExpiry,
+              inbound_manager: inboundManager,
+            };
+            if (batchNoFromBarcode) payload.batch_no = batchNoFromBarcode;
+            if (lotManufactureDate)
+              payload.manufacture_date = lotManufactureDate;
+            if (expiryMonths) payload.expiry_months = expiryMonths;
+            if (expiryUnit) payload.expiry_unit = expiryUnit;
+            if (alertDays) payload.alert_days = alertDays;
+            if (editedFirstItem?.storageLocation)
+              payload.storage = editedFirstItem.storageLocation;
+
+            const created = await apiPost<any>(
+              `${apiUrl}/products/${productId}/batches`,
+              payload
+            );
+            const no = created?.batch_no || "";
+            if (no) createdBatchNos.push(`${no} ${qtyNum}개`);
+          }
+          batchSummaryLines.push(...createdBatchNos);
+        } else {
+          // Bir xil lot yoki lotQuantities yo'q: bitta batch
+          const batchPayload: any = {
+            qty: inboundQty,
+            purchase_price: purchasePrice,
+            expiry_date: editedFirstItem?.expiryDate,
+            inbound_manager: inboundManager,
+          };
+          if (
+            editedFirstItem?.lotNumber &&
+            editedFirstItem.lotNumber.trim() !== ""
+          ) {
+            batchPayload.batch_no = editedFirstItem.lotNumber.trim();
+          }
+          if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
+          if (expiryMonths) batchPayload.expiry_months = expiryMonths;
+          if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
+          if (alertDays) batchPayload.alert_days = alertDays;
+          if (editedFirstItem?.storageLocation)
+            batchPayload.storage = editedFirstItem.storageLocation;
+
+          const createdBatch = await apiPost<any>(
+            `${apiUrl}/products/${productId}/batches`,
+            batchPayload
+          );
+          const batchNo = createdBatch?.batch_no || "";
+          if (batchNo) createdBatchNos.push(`${batchNo} ${inboundQty}개`);
         }
+        batchSummaryLines.push(...createdBatchNos);
 
-        if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
-        if (expiryMonths) batchPayload.expiry_months = expiryMonths;
-        if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
-        if (alertDays) batchPayload.alert_days = alertDays;
-        if (editedFirstItem?.storageLocation)
-          batchPayload.storage = editedFirstItem.storageLocation;
+        const batchNoForReturn = createdBatchNos[0]?.split(" ")[0] || "";
 
-        // Create batch
-        const createdBatch = await apiPost<any>(
-          `${apiUrl}/products/${productId}/batches`,
-          batchPayload
-        );
-
-        // Get batch_no from the created batch
-        // Backend returns batch object directly with batch_no
-        const batchNo = createdBatch.batch_no || "";
-
-        // If excess, prepare return item
         if (excessQty > 0) {
           returnItems.push({
             productId: firstItem.productId,
             productName: firstItem.productName,
             brand: firstItem.brand || "",
-            batchNo: batchNo,
+            batchNo: batchNoForReturn,
             returnQuantity: excessQty,
             totalQuantity: confirmedQty,
             unitPrice: purchasePrice,
@@ -4474,7 +4760,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
           return; // Exit early to prevent onRefresh() call
         }
       } else if (!isPartial) {
-        alert("입고 처리가 완료되었습니다.");
+        const msg =
+          batchSummaryLines.length > 0
+            ? `입고 처리가 완료되었습니다.\n\n배치:\n${batchSummaryLines.join("\n")}`
+            : "입고 처리가 완료되었습니다.";
+        alert(msg);
       }
 
       onRefresh();
@@ -4505,11 +4795,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const { order } = modalData;
 
     // ✅ DEBUG: Check order.id before API call
-    console.log("[Partial Inbound] Order data:", {
-      id: order.id,
-      orderId: order.orderId,
-      orderNo: order.orderNo,
-    });
 
     if (!order.id && !order.orderId) {
       console.error("[Partial Inbound] ERROR: No order ID found!");
@@ -4520,23 +4805,20 @@ const PendingOrdersList = memo(function PendingOrdersList({
     // ✅ Use orderId as fallback if id is missing
     const orderIdToUse = order.id || order.orderId;
 
-    // ✅ Order'dan barcha item'larni ko'rib chiqish (qisman va to'liq inbound qilinadigan item'lar ham)
+    const getInboundQty = (edited: any) => {
+      const lots = edited?.lotQuantities;
+      if (lots && typeof lots === "object" && Object.keys(lots).length > 0) {
+        return (Object.values(lots) as number[]).reduce((a, b) => a + b, 0);
+      }
+      return edited?.quantity || 0;
+    };
+
     const validItems = order.items.filter((item: any) => {
       const edited = editedItems[item.id];
-      const inboundQty = edited?.quantity || 0;
-      return inboundQty > 0; // ✅ Barcha inbound qilinadigan item'lar (Product A 80ta, Product B 100ta)
+      return getInboundQty(edited) > 0;
     });
 
     // ✅ Debug: validItems ni ko'rsatish
-    console.log(
-      "[Partial Inbound] Valid items:",
-      validItems.map((item: any) => ({
-        id: item.id,
-        productId: item.productId || item.product_id,
-        productName: item.productName,
-        inboundQty: editedItems[item.id]?.quantity || 0,
-      }))
-    );
 
     if (validItems.length === 0) {
       alert("입고 가능한 제품이 없습니다.");
@@ -4552,29 +4834,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
       const inboundManager = inboundManagers[orderIdToUse] || "";
 
-      // Create batches for valid items
       for (const item of validItems) {
         const editedItem = editedItems[item.id];
-        const inboundQty = editedItem?.quantity || 0;
-
+        const inboundQty = getInboundQty(editedItem);
         if (inboundQty <= 0) continue;
 
-        // ✅ Get productId from item (productId or product_id)
         const productId = item.productId || item.product_id;
-        if (!productId) {
-          console.error(
-            `[Partial Inbound] Product ID not found for item ${item.id}`
-          );
-          continue;
-        }
+        if (!productId) continue;
 
-        // Get expiry info from product
         const expiryMonths = item.expiryMonths;
         const expiryUnit = item.expiryUnit || "months";
         const alertDays = item.alertDays;
-
-        // Calculate manufacture date
-        let manufactureDate = null;
+        let manufactureDate: string | null = null;
         if (editedItem?.expiryDate && expiryMonths) {
           const expiryDateObj = new Date(editedItem.expiryDate);
           if (expiryUnit === "days") {
@@ -4584,47 +4855,87 @@ const PendingOrdersList = memo(function PendingOrdersList({
           }
           manufactureDate = expiryDateObj.toISOString().split("T")[0];
         }
-
         const itemPurchasePrice =
           editedItem?.purchasePrice != null && editedItem.purchasePrice !== ""
             ? Number(editedItem.purchasePrice)
             : item.confirmedPrice != null
               ? Number(item.confirmedPrice)
               : 0;
-        const batchPayload: any = {
-          qty: inboundQty,
-          purchase_price: itemPurchasePrice,
-          expiry_date: editedItem?.expiryDate,
-          inbound_manager: inboundManager,
-        };
 
-        // ✅ CRITICAL: Include batch_no from barcode (if scanned)
-        if (editedItem?.lotNumber && editedItem.lotNumber.trim() !== "") {
-          batchPayload.batch_no = editedItem.lotNumber.trim();
+        const lotQuantities = editedItem?.lotQuantities;
+        const hasMultipleLots =
+          lotQuantities &&
+          typeof lotQuantities === "object" &&
+          Object.keys(lotQuantities).filter((k) => k !== "__default").length >
+            0;
+
+        const lotDetailsItem = editedItem?.lotDetails as
+          | Record<string, { manufactureDate?: string; expiryDate?: string }>
+          | undefined;
+        if (hasMultipleLots && lotQuantities) {
+          for (const [lotKey, qty] of Object.entries(lotQuantities)) {
+            if (Number(qty) <= 0) continue;
+            const batchNoFromBarcode =
+              lotKey === "__default"
+                ? (editedItem?.lotNumber || "").trim()
+                : lotKey;
+            const perLotExpiry =
+              lotDetailsItem?.[lotKey]?.expiryDate ?? editedItem?.expiryDate;
+            const perLotManufacture = lotDetailsItem?.[lotKey]?.manufactureDate;
+            let lotManufactureDate: string | null = perLotManufacture || null;
+            if (!lotManufactureDate && perLotExpiry && expiryMonths) {
+              const expiryDateObj = new Date(perLotExpiry);
+              if (expiryUnit === "days") {
+                expiryDateObj.setDate(expiryDateObj.getDate() - expiryMonths);
+              } else {
+                expiryDateObj.setMonth(expiryDateObj.getMonth() - expiryMonths);
+              }
+              lotManufactureDate = expiryDateObj.toISOString().split("T")[0];
+            }
+            const payload: any = {
+              qty: Number(qty),
+              purchase_price: itemPurchasePrice,
+              expiry_date: perLotExpiry,
+              inbound_manager: inboundManager,
+            };
+            if (batchNoFromBarcode) payload.batch_no = batchNoFromBarcode;
+            if (lotManufactureDate)
+              payload.manufacture_date = lotManufactureDate;
+            if (expiryMonths) payload.expiry_months = expiryMonths;
+            if (expiryUnit) payload.expiry_unit = expiryUnit;
+            if (alertDays) payload.alert_days = alertDays;
+            if (editedItem?.storageLocation)
+              payload.storage = editedItem.storageLocation;
+            await apiPost<any>(
+              `${apiUrl}/products/${productId}/batches`,
+              payload
+            );
+          }
+        } else {
+          const batchPayload: any = {
+            qty: inboundQty,
+            purchase_price: itemPurchasePrice,
+            expiry_date: editedItem?.expiryDate,
+            inbound_manager: inboundManager,
+          };
+          if (editedItem?.lotNumber && editedItem.lotNumber.trim() !== "") {
+            batchPayload.batch_no = editedItem.lotNumber.trim();
+          }
+          if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
+          if (expiryMonths) batchPayload.expiry_months = expiryMonths;
+          if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
+          if (alertDays) batchPayload.alert_days = alertDays;
+          if (editedItem?.storageLocation)
+            batchPayload.storage = editedItem.storageLocation;
+          await apiPost<any>(
+            `${apiUrl}/products/${productId}/batches`,
+            batchPayload
+          );
         }
-
-        if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
-        if (expiryMonths) batchPayload.expiry_months = expiryMonths;
-        if (expiryUnit) batchPayload.expiry_unit = expiryUnit;
-        if (alertDays) batchPayload.alert_days = alertDays;
-        if (editedItem?.storageLocation)
-          batchPayload.storage = editedItem.storageLocation;
-
-        // Create batch
-        await apiPost<any>(
-          `${apiUrl}/products/${productId}/batches`,
-          batchPayload
-        );
       }
 
-      // ✅ Call partial inbound API - item'ning bir qismini inbound qilish, qolgan qismini order'da qoldirish
       const inboundedItems = validItems.map((item: any) => {
-        const inboundQty = editedItems[item.id]?.quantity || 0;
-
-        // ✅ Debug log
-        console.log(
-          `[Partial Inbound] Item ${item.id} (${item.productName || item.productId}): inboundQty=${inboundQty}, originalQty=${item.confirmedQuantity || item.orderedQuantity || item.quantity}`
-        );
+        const inboundQty = getInboundQty(editedItems[item.id]);
 
         return {
           itemId: item.id,
@@ -4632,10 +4943,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
           inboundQty: inboundQty, // ✅ 입고수량 (80ta yoki 100ta)
         };
       });
-
-      // ✅ Debug: inboundedItems ni ko'rsatish
-      console.log("[Partial Inbound] InboundedItems:", inboundedItems);
-      console.log("[Partial Inbound] Order ID to use:", orderIdToUse);
 
       const result = await apiPost(
         `${apiUrl}/order/${orderIdToUse}/partial-inbound`, // ✅ Use fallback ID
@@ -4645,25 +4952,22 @@ const PendingOrdersList = memo(function PendingOrdersList({
         }
       );
 
-      // ✅ FIXED: Calculate remaining quantity correctly
-      // remaining = confirmedQty - (already inbound) - (new inbound)
       const totalRemainingQty = order.items.reduce((sum: number, item: any) => {
         const edited = editedItems[item.id];
         const confirmedQty =
           item.confirmedQuantity || item.orderedQuantity || 0;
-        const alreadyInbound = item.inboundQuantity || 0; // ✅ Already inbound from database
-        const newInbound = edited?.quantity || 0; // ✅ New inbound from user input
-        const totalInbound = alreadyInbound + newInbound; // ✅ Total inbound
-        const remaining = confirmedQty - totalInbound; // ✅ Real remaining
+        const alreadyInbound = item.inboundQuantity || 0;
+        const newInbound = getInboundQty(edited);
+        const totalInbound = alreadyInbound + newInbound;
+        const remaining = confirmedQty - totalInbound;
         return sum + (remaining > 0 ? remaining : 0);
       }, 0);
 
-      // ✅ Better alert messages
       const inboundProductNames = validItems
         .map((item: any) => item.productName)
         .join(", ");
       const totalInboundQty = validItems.reduce(
-        (sum: number, item: any) => sum + (editedItems[item.id]?.quantity || 0),
+        (sum: number, item: any) => sum + getInboundQty(editedItems[item.id]),
         0
       );
 
@@ -4693,13 +4997,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
     if (!modalData) return;
 
     const { order } = modalData;
-
-    // ✅ DEBUG: Check order ID
-    console.log("[navigateToReturns] Order data:", {
-      id: order.id,
-      orderId: order.orderId,
-      orderNo: order.orderNo,
-    });
 
     if (!order.id && !order.orderId) {
       console.error("[navigateToReturns] ERROR: No order ID found!");
@@ -4898,28 +5195,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
         </h2>
 
         <div className="flex items-center gap-2">
-          {/* ✅ NEW: Barcode Scanner Button */}
-          <button
-            onClick={() => setScanModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
-            title="바코드 스캔 입고"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-              />
-            </svg>
-            바코드 스캔 입고
-          </button>
-
           {/* 🆕 Manual Refresh Button */}
           <button
             onClick={onRefresh}
@@ -4964,6 +5239,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
               }}
               onRefresh={onRefresh}
               apiUrl={apiUrl}
+              onOpenBarcodeScan={openBarcodeScanForOrder}
             />
           );
         })}
@@ -5184,6 +5460,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
+              console.log(
+                "[ScanModal] Backdrop bosildi (overlay) — closeScanModal"
+              );
               closeScanModal();
             }
           }}
@@ -5193,10 +5472,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
                 바코드 입고
+                {scanModalOrderId &&
+                  (() => {
+                    const scanOrder = orders.find(
+                      (o) => (o.id || o.orderId) === scanModalOrderId
+                    );
+                    return scanOrder?.orderNo
+                      ? ` (주문번호 ${scanOrder.orderNo})`
+                      : "";
+                  })()}
               </h2>
               <button
                 type="button"
-                onClick={closeScanModal}
+                onClick={() => {
+                  console.log(
+                    "[ScanModal] X (닫기) tugmasi bosildi — closeScanModal"
+                  );
+                  closeScanModal();
+                }}
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                 aria-label="닫기"
               >
@@ -5226,9 +5519,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
                   order?.supplier?.name ??
                   order?.companyName ??
                   "(유) 공급처";
-                const managerName = order?.managerName ?? order?.supplier?.managerName ?? "";
-                const managerPosition = order?.managerPosition ?? order?.supplier?.managerPosition ?? "";
-                const managerText = [managerName, managerPosition].filter(Boolean).join(" ");
+                const managerName =
+                  order?.managerName ?? order?.supplier?.managerName ?? "";
+                const managerPosition =
+                  order?.managerPosition ??
+                  order?.supplier?.managerPosition ??
+                  "";
+                const managerText = [managerName, managerPosition]
+                  .filter(Boolean)
+                  .join(" ");
                 const orderNo = first?.orderNo ?? "000000-000000";
                 const dateStr = new Date().toLocaleDateString("ko-KR", {
                   year: "numeric",
@@ -5240,7 +5539,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 return (
                   <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                      <div className="flex flex-col gap-0.5 min-w-0">
+                      <div className="flex flex-row gap-2 min-w-0">
                         <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
                           {companyName}
                         </span>
@@ -5344,7 +5643,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                   : "대기"}
                             </span>
                             {/* Image placeholder */}
-                            <div className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
+                            {/* <div className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                               {item.product?.image_url ? (
                                 <img
                                   src={item.product.image_url}
@@ -5356,18 +5655,35 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                   이미지
                                 </span>
                               )}
-                            </div>
-                            {/* Name + brand */}
-                            <div className="min-w-0 flex-1">
+                            </div> */}
+                            {/* Name + brand + quantity (always visible on all screens) */}
+                            <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                               <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
                                 {item.productName}
                               </div>
                               <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                                 {item.brand ?? ""}
                               </div>
+                              {/* 총 입고수량 + lot breakdown — always visible (was hidden on mobile) */}
+                              <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
+                                {/* {item.lotQuantities &&
+                                  Object.keys(item.lotQuantities).length >
+                                    0 && (
+                                    <span className="text-violet-600 dark:text-violet-400">
+                                      {Object.entries(item.lotQuantities)
+                                        .filter(([k, q]) => Number(q) > 0)
+                                        .map(([lot, q]) =>
+                                          lot === "__default"
+                                            ? `스캔 ${q}개`
+                                            : `${lot} ${q}개`
+                                        )
+                                        .join(", ")}
+                                    </span>
+                                  )} */}
+                              </div>
                             </div>
-                            {/* Right: 총 입고수량 | 구매가 | 보관위치 */}
-                            <div className="hidden sm:flex flex-row justify-center items-center gap-32 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+                            {/* Right: 구매가 (desktop) */}
+                            <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
                               <span>
                                 총 입고수량 {item.quantity ?? 0} | {capacity}개
                               </span>
@@ -5394,100 +5710,231 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             )}
                           </div>
 
-                          {/* Expanded: Lot, 제조일, 유효기간, 입고수량, 보관위치 (image layout) */}
+                          {/* Expanded: Lot ozgarganda — har bir lot uchun sub-card (2-rasma dizayni) */}
                           {isActive && !isCompleted && (
-                            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                    Lot 번호
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={item.lotNumber || ""}
-                                    onChange={(e) =>
-                                      updateScannedProduct(item.itemId, {
-                                        lotNumber: e.target.value,
-                                      })
-                                    }
-                                    placeholder="0000000000001"
-                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
+                            <div className="p-4 bg-white  dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                              {/* Lot sub-cards: when multiple lots, show one card per lot below main card */}
+                              {item.lotQuantities &&
+                              Object.entries(item.lotQuantities).filter(
+                                ([, q]) => Number(q) > 0
+                              ).length > 0 ? (
+                                <div className="space-y-3">
+                                  {Object.entries(item.lotQuantities)
+                                    .filter(([, q]) => Number(q) > 0)
+                                    .map(([lotKey]) => {
+                                      const qty = Number(
+                                        item.lotQuantities[lotKey] ?? 0
+                                      );
+                                      const details =
+                                        item.lotDetails?.[lotKey] || {};
+                                      const batchLabel =
+                                        lotKey === "__default"
+                                          ? "스캔"
+                                          : lotKey;
+                                      return (
+                                        <div
+                                          key={lotKey}
+                                          className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 p-3"
+                                        >
+                                          <div className="w-full">
+                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                              Lot 배치번호
+                                            </label>
+                                            <div className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm">
+                                              {batchLabel}
+                                            </div>
+                                          </div>
+                                          <div className="w-full">
+                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                              제조일
+                                            </label>
+                                            <input
+                                              type="date"
+                                              value={
+                                                details.manufactureDate ??
+                                                item.productionDate ??
+                                                ""
+                                              }
+                                              onChange={(e) =>
+                                                updateScannedProductLotDetails(
+                                                  item.itemId,
+                                                  lotKey,
+                                                  {
+                                                    manufactureDate:
+                                                      e.target.value,
+                                                  }
+                                                )
+                                              }
+                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                            />
+                                          </div>
+                                          <div className="w-full">
+                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                              유효기간
+                                            </label>
+                                            <input
+                                              type="date"
+                                              value={
+                                                details.expiryDate ??
+                                                item.expiryDate ??
+                                                ""
+                                              }
+                                              onChange={(e) =>
+                                                updateScannedProductLotDetails(
+                                                  item.itemId,
+                                                  lotKey,
+                                                  {
+                                                    expiryDate: e.target.value,
+                                                  }
+                                                )
+                                              }
+                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                            />
+                                          </div>
+                                          <div className="w-full">
+                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                              입고수량
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              value={qty}
+                                              onChange={(e) =>
+                                                updateScannedProductLotQty(
+                                                  item.itemId,
+                                                  lotKey,
+                                                  parseInt(
+                                                    e.target.value,
+                                                    10
+                                                  ) || 0
+                                                )
+                                              }
+                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm text-blue-600 dark:text-blue-400 border-b-2 border-blue-200 dark:border-blue-800"
+                                            />
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeScannedProductLot(
+                                                item.itemId,
+                                                lotKey
+                                              )
+                                            }
+                                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300 shrink-0"
+                                            aria-label="이 Lot 삭제"
+                                          >
+                                            <svg
+                                              className="w-5 h-5"
+                                              fill="none"
+                                              viewBox="0 0 24 24"
+                                              stroke="currentColor"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M6 18L18 6M6 6l12 12"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
                                 </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                    제조일
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={item.productionDate || ""}
-                                    onChange={(e) =>
-                                      updateScannedProduct(item.itemId, {
-                                        productionDate: e.target.value,
-                                      })
-                                    }
-                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                    유효기간
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={item.expiryDate || ""}
-                                    onChange={(e) =>
-                                      updateScannedProduct(item.itemId, {
-                                        expiryDate: e.target.value,
-                                      })
-                                    }
-                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                    입고수량
-                                  </label>
-                                  <div className="flex items-center gap-1">
+                              ) : (
+                                /* Single lot / no lots: original single form */
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                      Lot 번호
+                                    </label>
                                     <input
-                                      type="number"
-                                      min={0}
-                                      value={item.quantity}
+                                      type="text"
+                                      value={item.lotNumber || ""}
                                       onChange={(e) =>
                                         updateScannedProduct(item.itemId, {
-                                          quantity:
-                                            parseInt(e.target.value) || 0,
+                                          lotNumber: e.target.value,
                                         })
                                       }
-                                      className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                      placeholder="0000000000001"
+                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
                                     />
-                                    <button
-                                      type="button"
-                                      onClick={() =>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                      제조일
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={item.productionDate || ""}
+                                      onChange={(e) =>
                                         updateScannedProduct(item.itemId, {
-                                          quantity: 0,
+                                          productionDate: e.target.value,
                                         })
                                       }
-                                      className="p-2 text-slate-400 hover:text-slate-600 rounded"
-                                      aria-label="지우기"
-                                    >
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
+                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                      유효기간
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={item.expiryDate || ""}
+                                      onChange={(e) =>
+                                        updateScannedProduct(item.itemId, {
+                                          expiryDate: e.target.value,
+                                        })
+                                      }
+                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                      입고수량
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={item.quantity}
+                                        onChange={(e) =>
+                                          updateScannedProduct(item.itemId, {
+                                            quantity:
+                                              parseInt(e.target.value) || 0,
+                                          })
+                                        }
+                                        className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateScannedProduct(item.itemId, {
+                                            quantity: 0,
+                                          })
+                                        }
+                                        className="p-2 text-slate-400 hover:text-slate-600 rounded"
+                                        aria-label="지우기"
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M6 18L18 6M6 6l12 12"
-                                        />
-                                      </svg>
-                                    </button>
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M6 18L18 6M6 6l12 12"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
+                              )}
                               <div className="mt-3">
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                                   보관위치
@@ -5608,6 +6055,7 @@ const OrderCard = memo(function OrderCard({
   onInboundManagerChange,
   onRefresh,
   apiUrl,
+  onOpenBarcodeScan,
 }: {
   order: any;
   editedItems: Record<string, any>;
@@ -5618,6 +6066,7 @@ const OrderCard = memo(function OrderCard({
   onInboundManagerChange: (value: string) => void;
   onRefresh: () => void;
   apiUrl: string;
+  onOpenBarcodeScan?: (orderId: string) => void;
 }) {
   // Determine order status
   const isPending = order.status === "pending";
@@ -6088,13 +6537,38 @@ const OrderCard = memo(function OrderCard({
               상황 확인
             </button>
           ) : (
-            <button
-              onClick={() => handleProcessOrder(order)}
-              disabled={processing === order.orderId}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
-            </button>
+            <>
+              {onOpenBarcodeScan && (order.id || order.orderId) && (
+                <button
+                  type="button"
+                  onClick={() => onOpenBarcodeScan(order.id || order.orderId)}
+                  className="inline-flex items-center mr-4 gap-2 rounded-xl border border-emerald-500 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-600 shadow-sm transition hover:bg-emerald-50 dark:border-emerald-500 dark:bg-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+                  title="바코드 스캔 입고"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                    />
+                  </svg>
+                  바코드 스캔 입고
+                </button>
+              )}
+              <button
+                onClick={() => handleProcessOrder(order)}
+                disabled={processing === order.orderId}
+                className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+              </button>
+            </>
           )}
         </div>
 
