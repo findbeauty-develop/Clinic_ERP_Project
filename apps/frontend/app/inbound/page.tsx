@@ -3501,6 +3501,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [showProductConfirm, setShowProductConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<any>(null);
   const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
+  const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
 
   // ✅ Load only "주문 진행" orders in barcode modal (not "주문 요청" = pending)
   const loadPendingProducts = useCallback(() => {
@@ -3535,7 +3536,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
             seenIds.add(uniqueId);
 
             allProducts.push({
-              id: uniqueId, // Unique key for React
+              id: uniqueId,
               orderId: order.id,
               orderNo: order.orderNo,
               itemId: item.id,
@@ -3543,9 +3544,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
               productName: item.productName,
               brand: item.brand || "",
               barcode: item.product?.barcode || "",
-              quantity: remainingQty,
+              quantity: 0, // ✅ Har skanda +1 qo‘shiladi, shuning uchun boshlang‘ich 0
               expiryDate: "",
-              productionDate: "", // ✅ AI 11
+              productionDate: "",
               storageLocation: "",
               batchNumber: "",
               manufactureDate: "",
@@ -3553,7 +3554,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
               remainingQty,
               order,
               item,
-              status: "pending", // All start as pending
+              status: "pending",
             });
           }
         });
@@ -3577,7 +3578,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const closeScanModal = () => {
     setScanModalOpen(false);
     setScannedItems([]);
-    setActiveItemId(null); // Reset active item
+    setActiveItemId(null);
+    setScanModalInboundStaff("");
   };
 
   // Initialize edited items when orders change - optimized with useMemo
@@ -3907,12 +3909,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
         // Update this product and set to active
         const updatedItems = prevItems.map((p) => {
           if (p.itemId === existingItem.itemId) {
+            // ✅ Har skanda 입고수량 1 ga oshadi (remainingQty dan oshmasin)
+            const currentQty = p.quantity ?? 0;
+            const maxQty = existingItem.remainingQty ?? currentQty;
+            const newQty = Math.min(currentQty + 1, maxQty);
             const updated = {
               ...p,
-              quantity:
-                existingItem.remainingQty > 0
-                  ? existingItem.remainingQty
-                  : p.quantity,
+              quantity: newQty,
               expiryDate: parsed.expiryDate || p.expiryDate,
               productionDate: parsed.productionDate || p.productionDate, // ✅ AI 11
               batchNumber: parsed.batchNumber || p.batchNumber,
@@ -4012,9 +4015,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
           setActiveItemId(prev[existingIndex].itemId);
           return prev.map((p, i) => {
             if (i === existingIndex) {
+              // ✅ Har skanda 입고수량 1 ga oshadi
+              const currentQty = p.quantity ?? 0;
+              const newQty = Math.min(currentQty + 1, remainingQty);
               return {
                 ...p,
-                quantity: remainingQty > 0 ? remainingQty : p.quantity,
+                quantity: newQty,
                 expiryDate: parsed.expiryDate || p.expiryDate,
                 batchNumber: parsed.batchNumber || p.batchNumber,
                 lotNumber: parsed.batchNumber || p.lotNumber,
@@ -4040,7 +4046,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
         productName: item.productName,
         brand: item.brand,
         barcode: parsed.originalBarcode,
-        quantity: remainingQty > 0 ? remainingQty : 0,
+        quantity: 1, // ✅ Birinchi skan = 1, keyingi skanlar +1 qo‘shadi
         expiryDate: parsed.expiryDate,
         productionDate: parsed.productionDate, // ✅ AI 11
         storageLocation: "",
@@ -4130,6 +4136,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
     if (scannedItems.length === 0) {
       alert("스캔된 제품이 없습니다.");
       return;
+    }
+    if (scanModalInboundStaff.trim()) {
+      setInboundManagers((prev) => {
+        const next = { ...prev };
+        scannedItems.forEach((it) => {
+          const oid = it.orderId;
+          if (oid) next[oid] = scanModalInboundStaff.trim();
+        });
+        return next;
+      });
     }
 
     // Instead of API call, auto-fill the order form fields
@@ -5162,7 +5178,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
         </div>
       )}
 
-      {/* ✅ NEW: Barcode Scanner Modal */}
+      {/* ✅ NEW: Barcode Scanner Modal - Design per reference image */}
       {scanModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -5172,18 +5188,20 @@ const PendingOrdersList = memo(function PendingOrdersList({
             }
           }}
         >
-          <div className="bg-white dark:bg-slate-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white ml-80 dark:bg-slate-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
-              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                🔍 바코드 스캔 입고
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                바코드 입고
               </h2>
               <button
+                type="button"
                 onClick={closeScanModal}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                aria-label="닫기"
               >
                 <svg
-                  className="w-6 h-6"
+                  className="w-5 h-5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -5198,69 +5216,101 @@ const PendingOrdersList = memo(function PendingOrdersList({
               </button>
             </div>
 
-            {/* Body - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Progress Indicator */}
-              {scannedItems.length > 0 && (
-                <div className="mb-4 text-center">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">
-                    입고 진행:{" "}
-                    <span className="font-bold text-emerald-600">
-                      {
-                        scannedItems.filter((i) => i.status === "completed")
-                          .length
-                      }
-                    </span>{" "}
-                    / {scannedItems.length}
-                  </span>
-                </div>
-              )}
+            {/* Info bar: company name, supplier manager, order no, date */}
+            {scannedItems.length > 0 &&
+              (() => {
+                const first = scannedItems[0];
+                const order = first?.order;
+                const companyName =
+                  order?.supplierName ??
+                  order?.supplier?.name ??
+                  order?.companyName ??
+                  "(유) 공급처";
+                const managerName = order?.managerName ?? order?.supplier?.managerName ?? "";
+                const managerPosition = order?.managerPosition ?? order?.supplier?.managerPosition ?? "";
+                const managerText = [managerName, managerPosition].filter(Boolean).join(" ");
+                const orderNo = first?.orderNo ?? "000000-000000";
+                const dateStr = new Date().toLocaleDateString("ko-KR", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                return (
+                  <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                          {companyName}
+                        </span>
+                        {managerText && (
+                          <span className="text-slate-600 dark:text-slate-400 truncate">
+                            {managerText}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
+                        주문번호 {orderNo}
+                      </span>
+                      <span className="text-slate-600 dark:text-slate-400 shrink-0">
+                        {dateStr}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
-              {/* Accordion Items List */}
+            {/* Body - Scrollable product list */}
+            <div className="flex-1 overflow-y-auto p-5">
               {scannedItems.length > 0 ? (
                 <div className="space-y-3">
                   {scannedItems
                     .slice()
                     .sort((a, b) => {
-                      // Sort order: active (진행) > pending (대기) > completed (완료)
                       const statusOrder: { [key: string]: number } = {
                         active: 0,
                         pending: 1,
                         completed: 2,
                       };
                       return (
-                        (statusOrder[a.status] || 1) -
-                        (statusOrder[b.status] || 1)
+                        (statusOrder[a.status] ?? 1) -
+                        (statusOrder[b.status] ?? 1)
                       );
                     })
                     .map((item) => {
                       const isActive = item.status === "active";
                       const isCompleted = item.status === "completed";
                       const isPending = item.status === "pending";
+                      const purchasePrice =
+                        item.item?.unit_price ?? item.item?.confirmedPrice ?? 0;
+                      const capacity =
+                        item.item?.quantity ??
+                        item.item?.confirmedQuantity ??
+                        0;
 
                       return (
                         <div
                           key={item.id}
-                          className={`border rounded-lg overflow-hidden transition-all ${
+                          className={`rounded-xl border overflow-hidden transition-all ${
                             isActive
-                              ? "border-blue-500 shadow-lg"
+                              ? "border-2 border-dashed border-violet-400 dark:border-violet-500 shadow-md"
                               : isCompleted
-                                ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/10"
-                                : "border-slate-200 dark:border-slate-700"
+                                ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10"
+                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                           }`}
                         >
-                          {/* Card Header */}
+                          {/* Card row: status circle + image placeholder + name/brand + details */}
                           <div
-                            className={`p-4 cursor-pointer ${
+                            className={`flex items-center gap-4 p-4 cursor-pointer ${
                               isActive
-                                ? "bg-blue-50 dark:bg-blue-900/20"
+                                ? "bg-violet-50/50 dark:bg-violet-900/10"
                                 : isCompleted
-                                  ? "bg-emerald-50 dark:bg-emerald-900/20"
+                                  ? "bg-emerald-50/30 dark:bg-emerald-900/20"
                                   : "bg-white dark:bg-slate-800"
                             }`}
                             onClick={() => {
                               if (!isCompleted) {
-                                // Set all others to pending, this one to active
                                 setScannedItems((prev) =>
                                   prev.map((p) => ({
                                     ...p,
@@ -5277,66 +5327,80 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               }
                             }}
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 flex-1">
-                                {/* Status Badge */}
-                                <span
-                                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                    isActive
-                                      ? "bg-blue-500 text-white"
-                                      : isCompleted
-                                        ? "bg-emerald-500 text-white"
-                                        : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                                  }`}
-                                >
-                                  {isActive
-                                    ? "진행"
-                                    : isCompleted
-                                      ? "완료"
-                                      : "대기"}
+                            {/* Status circle */}
+                            <span
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                                isActive
+                                  ? "bg-blue-500 text-white"
+                                  : isCompleted
+                                    ? "bg-emerald-500 text-white"
+                                    : "bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300"
+                              }`}
+                            >
+                              {isActive
+                                ? "진행"
+                                : isCompleted
+                                  ? "완료"
+                                  : "대기"}
+                            </span>
+                            {/* Image placeholder */}
+                            <div className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
+                              {item.product?.image_url ? (
+                                <img
+                                  src={item.product.image_url}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500 text-xs">
+                                  이미지
                                 </span>
-
-                                {/* Product Info */}
-                                <div className="flex-1">
-                                  <div className="font-semibold text-slate-800 dark:text-slate-100">
-                                    {item.productName}
-                                  </div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {item.brand} · 주문번호: {item.orderNo}
-                                  </div>
-                                </div>
+                              )}
+                            </div>
+                            {/* Name + brand */}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                {item.productName}
                               </div>
-
-                              {/* Actions */}
-                              <div className="flex items-center gap-2">
-                                {isCompleted && (
-                                  <span className="text-emerald-600 text-xl">
-                                    ✓
-                                  </span>
-                                )}
-                                {!isCompleted && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      removeScannedProduct(item.itemId);
-                                    }}
-                                    className="text-red-500 hover:text-red-700 text-sm"
-                                  >
-                                    삭제
-                                  </button>
-                                )}
+                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                {item.brand ?? ""}
                               </div>
                             </div>
+                            {/* Right: 총 입고수량 | 구매가 | 보관위치 */}
+                            <div className="hidden sm:flex flex-row justify-center items-center gap-32 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+                              <span>
+                                총 입고수량 {item.quantity ?? 0} | {capacity}개
+                              </span>
+                              <span>
+                                구매가 {Number(purchasePrice).toLocaleString()}
+                              </span>
+                            </div>
+                            {!isCompleted && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeScannedProduct(item.itemId);
+                                }}
+                                className="text-slate-400 hover:text-red-600 text-sm shrink-0"
+                              >
+                                삭제
+                              </button>
+                            )}
+                            {isCompleted && (
+                              <span className="text-emerald-600 dark:text-emerald-400 text-lg shrink-0">
+                                ✓
+                              </span>
+                            )}
                           </div>
 
-                          {/* Expanded Form - Only show for active item */}
+                          {/* Expanded: Lot, 제조일, 유효기간, 입고수량, 보관위치 (image layout) */}
                           {isActive && !isCompleted && (
                             <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                              <div className="space-y-3">
-                                {/* Lot Number */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    Lot 번호 {item.lotNumber && "✓"}
+                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    Lot 번호
                                   </label>
                                   <input
                                     type="text"
@@ -5346,35 +5410,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                         lotNumber: e.target.value,
                                       })
                                     }
-                                    placeholder="자동 입력됨"
+                                    placeholder="0000000000001"
                                     className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
                                   />
                                 </div>
-
-                                {/* Manufacture Date */}
-                                {/* <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    제조일{" "}
-                                    <span className="text-xs font-normal text-slate-500">
-                                      (선택가능)
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={item.manufactureDate || ""}
-                                    onChange={(e) =>
-                                      updateScannedProduct(item.itemId, {
-                                        manufactureDate: e.target.value,
-                                      })
-                                    }
-                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
-                                </div> */}
-
-                                {/* Production Date (AI 11) */}
                                 <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    제조일 {item.productionDate && "✓"}
+                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    제조일
                                   </label>
                                   <input
                                     type="date"
@@ -5384,16 +5426,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                         productionDate: e.target.value,
                                       })
                                     }
-                                    placeholder="바코드에서 자동 입력"
                                     className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                    readOnly={!!item.productionDate}
                                   />
                                 </div>
-
-                                {/* Expiry Date */}
                                 <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    유효기간 {item.expiryDate && "✓"}
+                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    유효기간
                                   </label>
                                   <input
                                     type="date"
@@ -5406,18 +5444,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                     className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
                                   />
                                 </div>
-
-                                {/* Quantity */}
                                 <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    입고수량{" "}
-                                    <span className="text-xs text-slate-500">
-                                      (남은: {item.remainingQty})
-                                    </span>
+                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    입고수량
                                   </label>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1">
                                     <input
                                       type="number"
+                                      min={0}
                                       value={item.quantity}
                                       onChange={(e) =>
                                         updateScannedProduct(item.itemId, {
@@ -5427,43 +5461,61 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                       }
                                       className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
                                     />
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">
-                                      개
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateScannedProduct(item.itemId, {
+                                          quantity: 0,
+                                        })
+                                      }
+                                      className="p-2 text-slate-400 hover:text-slate-600 rounded"
+                                      aria-label="지우기"
+                                    >
+                                      <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 18L18 6M6 6l12 12"
+                                        />
+                                      </svg>
+                                    </button>
                                   </div>
                                 </div>
-
-                                {/* Storage Location */}
-                                <div>
-                                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    보관위치
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={item.storageLocation || ""}
-                                    onChange={(e) =>
-                                      updateScannedProduct(item.itemId, {
-                                        storageLocation: e.target.value,
-                                      })
-                                    }
-                                    placeholder="예: 창고 A-01"
-                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                  />
-                                </div>
-
-                                {/* Complete Button */}
-                                <button
-                                  onClick={completeCurrentProduct}
-                                  disabled={
-                                    !item.quantity ||
-                                    item.quantity <= 0 ||
-                                    !item.storageLocation
-                                  }
-                                  className="w-full mt-4 px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
-                                >
-                                  입력 완료
-                                </button>
                               </div>
+                              <div className="mt-3">
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                  보관위치
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.storageLocation || ""}
+                                  onChange={(e) =>
+                                    updateScannedProduct(item.itemId, {
+                                      storageLocation: e.target.value,
+                                    })
+                                  }
+                                  placeholder="예: 창고 A-3, 냉장고"
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={completeCurrentProduct}
+                                disabled={
+                                  !item.quantity ||
+                                  item.quantity <= 0 ||
+                                  !item.storageLocation
+                                }
+                                className="mt-4 w-full py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                              >
+                                입력 완료
+                              </button>
                             </div>
                           )}
                         </div>
@@ -5471,31 +5523,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
                     })}
                 </div>
               ) : (
-                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-slate-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                    />
-                  </svg>
-                  <p className="text-sm font-medium">스캔된 제품이 없습니다</p>
-                  <p className="text-xs mt-2">바코드를 스캔하세요</p>
-                </div>
-              )}
-
-              {/* Scan Status */}
-              {scannedItems.length > 0 && (
-                <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4">
-                  <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400">
+                <div className="text-center py-16 text-slate-500 dark:text-slate-400">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center">
                     <svg
-                      className="w-5 h-5 animate-pulse"
+                      className="w-8 h-8 text-slate-400"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -5503,40 +5534,60 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                        strokeWidth={1.5}
+                        d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
                       />
                     </svg>
-                    <span className="text-sm font-medium">
-                      추가 제품을 스캔하세요
-                    </span>
                   </div>
+                  <p className="text-sm font-medium">스캔된 제품이 없습니다</p>
+                  <p className="text-xs mt-2">바코드를 스캔하세요</p>
+                </div>
+              )}
+
+              {scannedItems.length > 0 && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-sm">
+                  <svg
+                    className="w-4 h-4 animate-pulse"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  추가 제품을 스캔하세요
                 </div>
               )}
             </div>
 
-            {/* Footer */}
-            <div className="border-t border-slate-200 dark:border-slate-700 p-6 flex items-center justify-between bg-slate-50 dark:bg-slate-900">
+            {/* Footer: 입고 직원* + 입고 하기 (image design) */}
+            <div className="border-t border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center justify-between gap-4 bg-slate-50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 shrink-0">
+                  입고 직원*
+                </label>
+                <input
+                  type="text"
+                  value={scanModalInboundStaff}
+                  onChange={(e) => setScanModalInboundStaff(e.target.value)}
+                  placeholder="이름 입력"
+                  className="flex-1 min-w-0 max-w-xs px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-sm"
+                />
+              </div>
               <button
-                onClick={closeScanModal}
-                className="px-6 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                취소
-              </button>
-              <button
+                type="button"
                 onClick={submitAllScannedItems}
                 disabled={
                   scannedItems.length === 0 ||
-                  scannedItems.some((item) => item.status !== "completed")
+                  scannedItems.some((i) => i.status !== "completed")
                 }
-                className="px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold flex items-center gap-2"
+                className="shrink-0 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
               >
-                {scannedItems.every((item) => item.status === "completed")
-                  ? "✓ "
-                  : ""}
-                정보 입력 완료 (
-                {scannedItems.filter((i) => i.status === "completed").length}/
-                {scannedItems.length})
+                입고 하기
               </button>
             </div>
           </div>
