@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import Papa from "papaparse";
 import { getAccessToken } from "../lib/api";
+import { parseGS1Barcode } from "../utils/barcodeParser";
 
 interface ValidationError {
   row: number;
@@ -34,9 +35,92 @@ export default function CSVImportModal({
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [importMode, setImportMode] = useState<"strict" | "flexible">("strict");
   const [inboundManager, setInboundManager] = useState<string>("");
+  const [showDuplicateGtinModal, setShowDuplicateGtinModal] = useState(false);
+  const [showRequiredErrorModal, setShowRequiredErrorModal] = useState(false);
+  const [requiredFieldErrors, setRequiredFieldErrors] = useState<
+    { row: number; missingFields: string[] }[]
+  >([]);
+  const [importErrorMsg, setImportErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Required fields and Korean labels for error modal */
+  const REQUIRED_FIELDS: { label: string; check: (d: any) => boolean }[] = [
+    { label: "제품명", check: (d) => !String(d?.name ?? "").trim() },
+    { label: "제조사/유통사", check: (d) => !String(d?.brand ?? "").trim() },
+    { label: "카테고리", check: (d) => !String(d?.category ?? "").trim() },
+    { label: "재고 수량_단위", check: (d) => !String(d?.unit ?? "").trim() },
+    { label: "최소 제품 수량", check: (d) => { const v = d?.min_stock; return v === undefined || v === null || Number(v) < 0; } },
+    { label: "제품 용량", check: (d) => { const v = d?.capacity_per_product; return v === undefined || v === null || Number(v) < 0; } },
+    { label: "사용 용량_단위", check: (d) => !String(d?.capacity_unit ?? "").trim() },
+    { label: "사용 용량", check: (d) => { const v = d?.usage_capacity; return v === undefined || v === null || Number(v) < 0; } },
+    { label: "유효기간 임박 알림", check: (d) => { const v = d?.alert_days; return v === undefined || v === null || Number(v) < 0; } },
+    { label: "담당자 핸드폰번호", check: (d) => !String(d?.contact_phone ?? "").trim() },
+    { label: "바코드", check: (d) => !String(d?.barcode ?? "").trim() },
+  ];
+
+  const getRequiredFieldErrors = (): { row: number; missingFields: string[] }[] => {
+    if (!preview?.results?.length) return [];
+    const list: { row: number; missingFields: string[] }[] = [];
+    preview.results.forEach((r) => {
+      const missing = REQUIRED_FIELDS.filter((f) => f.check(r.data)).map((f) => f.label);
+      if (missing.length > 0) list.push({ row: r.row, missingFields: missing });
+    });
+    return list;
+  };
+
+  const normalizeToGtin = (barcode: string): string => {
+    if (!barcode?.trim()) return "";
+    try {
+      const parsed = parseGS1Barcode(barcode.trim());
+      return parsed?.gtin?.trim() || barcode.trim();
+    } catch {
+      return barcode.trim();
+    }
+  };
+
+  /** Map Korean CSV headers to English (backend expects name, brand, barcode, etc.) */
+  const mapCsvRowToEnglish = (row: any): any => {
+    const get = (en: string, kr: string) => row[en] ?? row[kr] ?? "";
+    const num = (en: string, kr: string) => {
+      const v = row[en] ?? row[kr];
+      if (v === "" || v === undefined || v === null) return undefined;
+      const n = Number(String(v).replace(/[,\s]/g, ""));
+      return isNaN(n) ? undefined : n;
+    };
+    return {
+      name: String(get("name", "제품명*")).trim(),
+      brand: String(get("brand", "제조사/유통사*")).trim(),
+      category: String(get("category", "카테고리*")).trim(),
+      unit: String(get("unit", "재고 수량_단위*")).trim(),
+      min_stock: num("min_stock", "최소 제품 수량*") ?? 0,
+      capacity_per_product: num("capacity_per_product", "제품 용량*") ?? 0,
+      capacity_unit: String(get("capacity_unit", "사용 용량_단위*")).trim(),
+      usage_capacity: num("usage_capacity", "사용 용량*") ?? 0,
+      alert_days: num("alert_days", "유효기간 임박 알림*") ?? 0,
+      contact_phone: String(get("contact_phone", "담당자 핸드폰번호*")).trim(),
+      barcode: String(get("barcode", "바코드")).trim(),
+      refund_amount: num("refund_amount", "반납가"),
+      purchase_price: num("purchase_price", "구매가"),
+      sale_price: num("sale_price", "판매가"),
+    };
+  };
+
+  const duplicateGtinList = (() => {
+    if (!preview?.results?.length) return [] as { gtin: string; rows: number[]; name: string }[];
+    const map = new Map<string, { rows: number[]; name: string }>();
+    preview.results.forEach((r) => {
+      const gtin = r.data?.barcode?.trim();
+      const name = (r.data?.name ?? "")?.trim() || "—";
+      if (gtin) {
+        if (!map.has(gtin)) map.set(gtin, { rows: [], name });
+        map.get(gtin)!.rows.push(r.row);
+      }
+    });
+    return [...map.entries()]
+      .filter(([, v]) => v.rows.length > 1)
+      .map(([gtin, v]) => ({ gtin, rows: v.rows, name: v.name }));
+  })();
 
   const handleFileSelect = (selectedFile: File) => {
     if (!selectedFile) return;
@@ -60,7 +144,6 @@ export default function CSVImportModal({
       dynamicTyping: false, // Keep all fields as strings
       complete: async (results) => {
         try {
-          // ✅ getAccessToken() ishlatish (localStorage emas)
           const token = await getAccessToken();
           if (!token) {
             alert("로그인이 필요합니다.");
@@ -68,7 +151,12 @@ export default function CSVImportModal({
             return;
           }
 
-          // Send to backend for preview
+          const rawRows = (results.data as any[]).map(mapCsvRowToEnglish);
+          const rows = rawRows.map((row: any) => ({
+            ...row,
+            barcode: normalizeToGtin(row.barcode || ""),
+          }));
+
           const response = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL}/products/import/preview`,
             {
@@ -77,7 +165,7 @@ export default function CSVImportModal({
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify({ rows: results.data }),
+              body: JSON.stringify({ rows }),
             }
           );
 
@@ -113,6 +201,13 @@ export default function CSVImportModal({
       return;
     }
 
+    const requiredErrors = getRequiredFieldErrors();
+    if (requiredErrors.length > 0) {
+      setRequiredFieldErrors(requiredErrors);
+      setShowRequiredErrorModal(true);
+      return;
+    }
+
     setImporting(true);
 
     try {
@@ -135,18 +230,28 @@ export default function CSVImportModal({
           },
           body: JSON.stringify({
             rows: preview.results.map((r) => r.data),
-            mode: importMode,
+            mode: "strict",
             inboundManager: inboundManager.trim(),
           }),
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status} error`);
-      }
+      const result = await response.json().catch(() => ({}));
 
-      const result = await response.json();
+      if (!response.ok) {
+        const msg = result?.message;
+        const message =
+          Array.isArray(msg)
+            ? msg.join(". ")
+            : (msg && String(msg).trim()) ||
+              response.statusText ||
+              (response.status === 400
+                ? "유효성 검사 오류가 발생했습니다. CSV 파일에서 오류를 수정한 뒤 다시 시도해 주세요."
+                : `요청 실패 (${response.status})`);
+        setImportErrorMsg(message);
+        setImporting(false);
+        return;
+      }
 
       const existingMsg =
         result.existingProductCount > 0
@@ -163,13 +268,13 @@ export default function CSVImportModal({
       // Reset and close
       setFile(null);
       setPreview(null);
-      setImportMode("strict");
       setInboundManager(""); // Reset inbound manager
       onImport();
       onClose();
     } catch (error: any) {
       console.error("Import error:", error);
-      alert(`Import 실패: ${error.message}`);
+      const msg = error?.message ?? error?.response?.data?.message ?? "Import 실패";
+      setImportErrorMsg(typeof msg === "string" ? msg : Array.isArray(msg) ? msg.join(". ") : "Import 실패");
     } finally {
       setImporting(false);
     }
@@ -198,9 +303,9 @@ export default function CSVImportModal({
 
   const handleDownloadTemplate = () => {
     const csvContent = [
-      "name,brand,category,inbound_qty,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,expiry_date,alert_days,storage,barcode,purchase_price,sale_price,contact_phone",
-      "시럽A,브랜드A,의약품,100,EA,10,50,ml,5,2026-12-31,30,냉장,1234567890,5000,8000,010-1234-5678",
-      "주사기B,브랜드B,의료기기,200,BOX,20,100,개,10,12/31/2027,60,상온,0987654321,7000,12000,",
+      "name,brand,category,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,alert_days,contact_phone,barcode,purchase_price,sale_price,refund_amount",
+      "시럽A,브랜드A,의약품,EA,10,50,ml,5,30,010-1234-5678,1234567890,5000,8000,",
+      "주사기B,브랜드B,의료기기,BOX,20,100,개,10,60,010-8765-4321,0987654321,7000,12000,0",
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], {
@@ -334,53 +439,16 @@ export default function CSVImportModal({
               </div>
 
               {/* Import Mode Selection (if errors exist) */}
-              {preview.errors > 0 && (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                  <h4 className="font-semibold text-yellow-900 dark:text-yellow-100 mb-3">
-                    ⚠️ 오류가 발견되었습니다
-                  </h4>
-                  <div className="space-y-2">
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="importMode"
-                        value="strict"
-                        checked={importMode === "strict"}
-                        onChange={(e) =>
-                          setImportMode(e.target.value as "strict")
-                        }
-                        className="w-4 h-4"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          Strict Mode (전체 또는 없음)
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          모든 데이터가 유효해야 Import 진행
-                        </div>
-                      </div>
-                    </label>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="importMode"
-                        value="flexible"
-                        checked={importMode === "flexible"}
-                        onChange={(e) =>
-                          setImportMode(e.target.value as "flexible")
-                        }
-                        className="w-4 h-4"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          Flexible Mode (유효한 데이터만)
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          오류가 있는 행은 건너뛰고 유효한 행만 Import
-                        </div>
-                      </div>
-                    </label>
-                  </div>
+              {/* 중복 GTIN 한 모달로 보기 */}
+              {duplicateGtinList.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                  <button
+                    type="button"
+                    onClick={() => setShowDuplicateGtinModal(true)}
+                    className="text-sm font-medium text-amber-800 hover:underline dark:text-amber-200"
+                  >
+                    중복 GTIN {duplicateGtinList.length}건 보기
+                  </button>
                 </div>
               )}
 
@@ -460,7 +528,6 @@ export default function CSVImportModal({
                 setFile(null);
                 setPreview(null);
                 setInboundManager("");
-                setImportMode("strict");
                 onClose();
               }}
               disabled={importing}
@@ -473,8 +540,7 @@ export default function CSVImportModal({
               disabled={
                 !preview ||
                 !inboundManager.trim() ||
-                importing ||
-                (importMode === "strict" && preview.errors > 0)
+                importing
               }
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -485,6 +551,197 @@ export default function CSVImportModal({
           </div>
         </div>
       </div>
+
+      {/* 중복 GTIN 모달 */}
+      {showDuplicateGtinModal && duplicateGtinList.length > 0 && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowDuplicateGtinModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border border-amber-200 bg-white shadow-xl dark:border-amber-800 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+              <h3 className="font-semibold text-slate-900 dark:text-white">
+                CSV 내 중복 GTIN
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowDuplicateGtinModal(false)}
+                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto px-4 py-3">
+              <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+                아래 GTIN이 파일 내에서 2회 이상 사용되었습니다. 행 번호를 확인하세요.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                    <th className="py-2 text-left font-semibold text-slate-700 dark:text-slate-300">
+                      GTIN
+                    </th>
+                    <th className="py-2 text-left font-semibold text-slate-700 dark:text-slate-300">
+                      제품명
+                    </th>
+                    <th className="py-2 text-left font-semibold text-slate-700 dark:text-slate-300">
+                      행 번호
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {duplicateGtinList.map(({ gtin, rows, name }, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-slate-100 dark:border-slate-800"
+                    >
+                      <td className="py-2 font-mono text-slate-900 dark:text-slate-100">
+                        {gtin}
+                      </td>
+                      <td className="py-2 text-slate-600 dark:text-slate-400">
+                        {name}
+                      </td>
+                      <td className="py-2 text-slate-600 dark:text-slate-400">
+                        {rows.sort((a, b) => a - b).join(", ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setShowDuplicateGtinModal(false)}
+                className="w-full rounded-lg bg-sky-600 py-2 text-sm font-medium text-white hover:bg-sky-700"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 필수 입력 누락 Error Alert 모달 */}
+      {showRequiredErrorModal && requiredFieldErrors.length > 0 && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowRequiredErrorModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border border-red-200 bg-white shadow-xl dark:border-red-800 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+              <h3 className="font-semibold text-red-700 dark:text-red-300">
+                필수 입력 누락
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowRequiredErrorModal(false)}
+                className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto px-4 py-3">
+              <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+                아래 행에서 필수 항목이 비어 있습니다. 해당 행을 수정한 뒤 다시 시도하세요.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                    <th className="py-2 text-left font-semibold text-slate-700 dark:text-slate-300">
+                      행 번호
+                    </th>
+                    <th className="py-2 text-left font-semibold text-slate-700 dark:text-slate-300">
+                      누락된 항목
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requiredFieldErrors.map(({ row, missingFields }, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-slate-100 dark:border-slate-800"
+                    >
+                      <td className="py-2 font-mono text-slate-900 dark:text-slate-100">
+                        {row}
+                      </td>
+                      <td className="py-2 text-red-600 dark:text-red-400">
+                        {missingFields.join(", ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setShowRequiredErrorModal(false)}
+                className="w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import 실패 Error Modal */}
+      {importErrorMsg && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setImportErrorMsg(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-red-200 bg-white shadow-xl dark:border-red-800 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </span>
+                <h3 className="font-semibold text-red-700 dark:text-red-300">
+                  Import 실패
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportErrorMsg(null)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                aria-label="닫기"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                {importErrorMsg}
+              </p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                오류를 수정한 뒤 CSV 파일을 다시 업로드해 주세요.
+              </p>
+            </div>
+            <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setImportErrorMsg(null)}
+                className="w-full rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white transition hover:bg-red-700"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

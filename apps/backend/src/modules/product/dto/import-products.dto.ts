@@ -2,7 +2,6 @@ import {
   IsString,
   IsNumber,
   IsOptional,
-  IsDateString,
   IsInt,
   Min,
   MaxLength,
@@ -10,7 +9,7 @@ import {
 import { Type } from "class-transformer";
 
 export class ImportProductRowDto {
-  // Basic Info (Required)
+  // Required
   @IsString()
   @MaxLength(200)
   name!: string;
@@ -23,22 +22,15 @@ export class ImportProductRowDto {
   @MaxLength(100)
   category!: string;
 
-  // Inventory Management (Required)
-  @IsInt()
-  @Min(0)
-  @Type(() => Number)
-  inbound_qty!: number;
-
   @IsString()
   @MaxLength(20)
-  unit!: string; // Dynamic unit (EA, BOX, 개, 병, etc.)
+  unit!: string;
 
   @IsInt()
   @Min(0)
   @Type(() => Number)
   min_stock!: number;
 
-  // Capacity Info (Required)
   @IsNumber()
   @Min(0)
   @Type(() => Number)
@@ -53,25 +45,25 @@ export class ImportProductRowDto {
   @Type(() => Number)
   usage_capacity!: number;
 
-  // Expiry Management (Required)
-  @IsDateString()
-  expiry_date!: string; // YYYY-MM-DD
-
   @IsInt()
   @Min(0)
   @Type(() => Number)
   alert_days!: number;
 
-  // Storage (Required)
   @IsString()
-  @MaxLength(50)
-  storage!: string;
+  @MaxLength(20)
+  contact_phone!: string;
 
-  // Optional Fields
-  @IsOptional()
   @IsString()
   @MaxLength(100)
-  barcode?: string;
+  barcode!: string;
+
+  // Optional
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  refund_amount?: number | null;
 
   @IsOptional()
   @IsNumber()
@@ -84,12 +76,6 @@ export class ImportProductRowDto {
   @Min(0)
   @Type(() => Number)
   sale_price?: number | null;
-
-  // Supplier Linking (Optional)
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  contact_phone?: string; // Optional: Auto-links to ClinicSupplierManager
 }
 
 export class PreviewImportDto {
@@ -101,5 +87,5 @@ export class ConfirmImportDto {
 
   @IsString()
   @MaxLength(100)
-  inboundManager!: string; // 입고 담당자 (Required)
+  inboundManager!: string;
 }
