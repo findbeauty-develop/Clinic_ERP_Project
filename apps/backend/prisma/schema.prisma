@@ -29,6 +29,7 @@ model Product {
   capacity_unit        String?
   usage_capacity       Float?
   alert_days           String? // 알림 일수 (유효기간 임박 alert)
+  has_expiry_period    Boolean  @default(false) // 유효기간 있음 (제품에 유효기간 추적 여부)
 
   // Relations
   batches          Batch[]

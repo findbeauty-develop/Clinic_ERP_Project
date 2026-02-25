@@ -55,6 +55,7 @@ export default function CSVImportModal({
     { label: "사용 용량_단위", check: (d) => !String(d?.capacity_unit ?? "").trim() },
     { label: "사용 용량", check: (d) => { const v = d?.usage_capacity; return v === undefined || v === null || Number(v) < 0; } },
     { label: "유효기간 임박 알림", check: (d) => { const v = d?.alert_days; return v === undefined || v === null || Number(v) < 0; } },
+    { label: "유효기간 있음", check: (d) => d?.has_expiry_period === undefined || d?.has_expiry_period === null },
     { label: "담당자 핸드폰번호", check: (d) => !String(d?.contact_phone ?? "").trim() },
     { label: "바코드", check: (d) => !String(d?.barcode ?? "").trim() },
   ];
@@ -79,6 +80,15 @@ export default function CSVImportModal({
     }
   };
 
+  /** Parse 유효기간 있음 (예/아니오, 1/0, true/false, Y/N) → boolean. Empty/invalid → undefined (required error). */
+  const parseHasExpiryPeriod = (val: unknown): boolean | undefined => {
+    const s = String(val ?? "").trim().toLowerCase();
+    if (s === "") return undefined;
+    if (s === "예" || s === "1" || s === "true" || s === "y" || s === "yes") return true;
+    if (s === "아니오" || s === "0" || s === "false" || s === "n" || s === "no") return false;
+    return undefined;
+  };
+
   /** Map Korean CSV headers to English (backend expects name, brand, barcode, etc.) */
   const mapCsvRowToEnglish = (row: any): any => {
     const get = (en: string, kr: string) => row[en] ?? row[kr] ?? "";
@@ -88,6 +98,7 @@ export default function CSVImportModal({
       const n = Number(String(v).replace(/[,\s]/g, ""));
       return isNaN(n) ? undefined : n;
     };
+    const hasExpiryRaw = get("has_expiry_period", "유효기간 있음*");
     return {
       name: String(get("name", "제품명*")).trim(),
       brand: String(get("brand", "제조사/유통사*")).trim(),
@@ -98,6 +109,7 @@ export default function CSVImportModal({
       capacity_unit: String(get("capacity_unit", "사용 용량_단위*")).trim(),
       usage_capacity: num("usage_capacity", "사용 용량*") ?? 0,
       alert_days: num("alert_days", "유효기간 임박 알림*") ?? 0,
+      has_expiry_period: parseHasExpiryPeriod(hasExpiryRaw),
       contact_phone: String(get("contact_phone", "담당자 핸드폰번호*")).trim(),
       barcode: String(get("barcode", "바코드")).trim(),
       refund_amount: num("refund_amount", "반납가"),
@@ -303,9 +315,9 @@ export default function CSVImportModal({
 
   const handleDownloadTemplate = () => {
     const csvContent = [
-      "name,brand,category,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,alert_days,contact_phone,barcode,purchase_price,sale_price,refund_amount",
-      "시럽A,브랜드A,의약품,EA,10,50,ml,5,30,010-1234-5678,1234567890,5000,8000,",
-      "주사기B,브랜드B,의료기기,BOX,20,100,개,10,60,010-8765-4321,0987654321,7000,12000,0",
+      "name,brand,category,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,alert_days,유효기간 있음*,contact_phone,barcode,purchase_price,sale_price,refund_amount",
+      "시럽A,브랜드A,의약품,EA,10,50,ml,5,30,예,010-1234-5678,1234567890,5000,8000,",
+      "주사기B,브랜드B,의료기기,BOX,20,100,개,10,60,아니오,010-8765-4321,0987654321,7000,12000,0",
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], {

@@ -1103,7 +1103,8 @@ export default function InboundNewPage() {
       if (formData.image) payload.image = formData.image;
       else if (formData.imageUrl) payload.image = formData.imageUrl;
 
-      // Add alert_days at product level if hasExpiryPeriod
+      // 유효기간 있음: DB Product.has_expiry_period (없으면 false)
+      payload.hasExpiryPeriod = !!formData.hasExpiryPeriod;
       if (
         formData.hasExpiryPeriod &&
         formData.alertDays &&

@@ -1436,11 +1436,6 @@ const ProductCard = memo(function ProductCard({
       // Only fill if card is expanded
       if (!isExpanded) return;
 
-      console.log("[fillBatchForm] Filling form for product:", productId, {
-        batchNumber,
-        expiryDate,
-      });
-
       // Fill batch form
       setBatchForm((prev) => ({
         ...prev,
@@ -2164,6 +2159,11 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
       },
     },
     {
+      label: "유효기간 있음",
+      check: (d) =>
+        d?.has_expiry_period === undefined || d?.has_expiry_period === null,
+    },
+    {
       label: "담당자 핸드폰번호",
       check: (d) => !String(d?.contact_phone ?? "").trim(),
     },
@@ -2220,7 +2220,13 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
             return;
           }
 
-          // ✅ Map Korean CSV headers to English (backend expects name, brand, barcode, etc.)
+          const parseHasExpiryPeriod = (val: unknown): boolean | undefined => {
+            const s = String(val ?? "").trim().toLowerCase();
+            if (s === "") return undefined;
+            if (s === "예" || s === "1" || s === "true" || s === "y" || s === "yes") return true;
+            if (s === "아니오" || s === "0" || s === "false" || s === "n" || s === "no") return false;
+            return undefined;
+          };
           const mapCsvRowToEnglish = (row: any): any => {
             const get = (en: string, kr: string) => row[en] ?? row[kr] ?? "";
             const num = (en: string, kr: string) => {
@@ -2229,6 +2235,7 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
               const n = Number(String(v).replace(/[,\s]/g, ""));
               return isNaN(n) ? undefined : n;
             };
+            const hasExpiryRaw = get("has_expiry_period", "유효기간 있음*");
             return {
               name: String(get("name", "제품명*")).trim(),
               brand: String(get("brand", "제조사/유통사*")).trim(),
@@ -2242,6 +2249,7 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
               ).trim(),
               usage_capacity: num("usage_capacity", "사용 용량*") ?? 0,
               alert_days: num("alert_days", "유효기간 임박 알림*") ?? 0,
+              has_expiry_period: parseHasExpiryPeriod(hasExpiryRaw),
               contact_phone: String(
                 get("contact_phone", "담당자 핸드폰번호*")
               ).trim(),
@@ -2420,9 +2428,9 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
 
   const handleDownloadTemplate = () => {
     const csvContent = [
-      "제품명*,제조사/유통사*,카테고리,재고 수량_단위*,최소 제품 수량*,제품 용량*,사용 용량_단위*,사용 용량*,유효기간 임박 알림*,담당자 핸드폰번호*,반납가,구매가,판매가,바코드",
-      "제오민,멀츠 에스테틱스 코리아,보톡스,box,10,2,ea,1,30,01012345678,5000,000.000,0000,238947239843249234234",
-      "제오민,멀츠 에스테틱스 코리아,보톡스,box,10,2,ea,1,30,01012345678,5000,000.000,0000,238947239843249234234",
+      "제품명*,제조사/유통사*,카테고리,재고 수량_단위*,최소 제품 수량*,제품 용량*,사용 용량_단위*,사용 용량*,유효기간 임박 알림*,유효기간 있음*,담당자 핸드폰번호*,반납가,구매가,판매가,바코드",
+      "제오민,멀츠 에스테틱스 코리아,보톡스,box,10,2,ea,1,30,예,01012345678,5000,000.000,0000,238947239843249234234",
+      "제오민,멀츠 에스테틱스 코리아,보톡스,box,10,2,ea,1,30,아니오,01012345678,5000,000.000,0000,238947239843249234234",
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], {

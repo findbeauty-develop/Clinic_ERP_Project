@@ -218,6 +218,11 @@ export class CreateProductDto {
   @IsString()
   alertDays?: string;
 
+  /** 유효기간 있음 (제품에 유효기간 추적 여부). 없으면 false */
+  @IsOptional()
+  @IsBoolean()
+  hasExpiryPeriod?: boolean;
+
   @IsOptional()
   @IsString()
   expiryDate?: string;

@@ -3,10 +3,11 @@ import {
   IsNumber,
   IsOptional,
   IsInt,
+  IsBoolean,
   Min,
   MaxLength,
 } from "class-validator";
-import { Type } from "class-transformer";
+import { Type, Transform } from "class-transformer";
 
 export class ImportProductRowDto {
   // Required
@@ -49,6 +50,17 @@ export class ImportProductRowDto {
   @Min(0)
   @Type(() => Number)
   alert_days!: number;
+
+  /** 유효기간 있음 (제품에 유효기간 추적 여부). Required: true or false. Accepts 예/아니오, 1/0, true/false. */
+  @IsBoolean({ message: "유효기간 있음(예/아니오) 필수 입력입니다." })
+  @Transform(({ value }) => {
+    if (typeof value === "boolean") return value;
+    const s = String(value ?? "").trim().toLowerCase();
+    if (s === "예" || s === "1" || s === "true" || s === "y" || s === "yes") return true;
+    if (s === "아니오" || s === "0" || s === "false" || s === "n" || s === "no") return false;
+    return undefined;
+  })
+  has_expiry_period!: boolean;
 
   @IsString()
   @MaxLength(20)

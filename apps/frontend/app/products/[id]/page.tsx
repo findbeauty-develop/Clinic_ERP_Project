@@ -65,6 +65,7 @@ type ProductDetail = {
   usageCapacity?: number | null;
   returnStorage?: string | null;
   alertDays?: string | number | null;
+  hasExpiryPeriod?: boolean;
   batches?: {
     id: string;
     batch_no: string;
@@ -175,6 +176,7 @@ export default function ProductDetailPage() {
           usageCapacity: data.usageCapacity || data.usage_capacity || null,
           returnStorage: data.returnStorage || data.return_storage || null,
           alertDays: data.alertDays || data.alert_days || null,
+          hasExpiryPeriod: data.hasExpiryPeriod ?? data.has_expiry_period ?? false,
           batches: data.batches,
         };
 
@@ -601,6 +603,10 @@ export default function ProductDetailPage() {
                 <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
                   <div className="grid gap-6 md:grid-cols-2">
                     <ReadOnlyField
+                      label="유효기간 있음"
+                      value={product.hasExpiryPeriod ? "예" : "아니오"}
+                    />
+                    <ReadOnlyField
                       label="유효기간"
                       value={
                         product.expiryDate
@@ -859,6 +865,7 @@ function ProductEditForm({
     refundAmount: product.refundAmount?.toString() || "",
     returnStorage: product.returnStorage || "",
     alertDays: product.alertDays?.toString() || "",
+    hasExpiryPeriod: product.hasExpiryPeriod ?? false,
   });
 
   const handleInputChange = (field: string, value: any) => {
@@ -1262,7 +1269,8 @@ function ProductEditForm({
         };
       }
 
-      // Alert days - must be string, not number (backend expects string)
+      // 유효기간 설정 (DB has_expiry_period)
+      payload.hasExpiryPeriod = !!formData.hasExpiryPeriod;
       if (formData.alertDays) {
         payload.alertDays = formData.alertDays.toString();
       }
@@ -1479,6 +1487,11 @@ function ProductEditForm({
           finalProductResponse.alert_days ||
           product.alertDays ||
           null,
+        hasExpiryPeriod:
+          finalProductResponse.hasExpiryPeriod ??
+          (finalProductResponse as any).has_expiry_period ??
+          product.hasExpiryPeriod ??
+          false,
         batches: finalProductResponse.batches || product.batches,
       };
 
@@ -2068,45 +2081,72 @@ function ProductEditForm({
         )}
       </div>
 
-      {/* 유통기한 정보 Section (유효기간 필드 제외 - 편집 불가) */}
+      {/* 유효기간 설정 Section */}
       <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
         <CalendarIcon className="h-5 w-5 text-emerald-500" />
-        유통기한 정보
+        유효기간 설정
       </h2>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="flex flex-col gap-2">
+        <div className="space-y-4">
+          {/* Switch: 유효기간 있음/없음 */}
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl dark:bg-slate-800/50">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              유효기간 임박 알림 기준
+              유효기간 있음
             </label>
-            <div className="relative">
-              <select
-                value={formData.alertDays || ""}
-                onChange={(e) => handleInputChange("alertDays", e.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <option value="">선택(30일전/60일전/90일전)</option>
-                <option value="30">30일전</option>
-                <option value="60">60일전</option>
-                <option value="90">90일전</option>
-              </select>
-              <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
-                <svg
-                  className="h-4 w-4 text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.hasExpiryPeriod}
+                onChange={(e) => {
+                  const isChecked = e.target.checked;
+                  handleInputChange("hasExpiryPeriod", isChecked);
+                  if (!isChecked) {
+                    handleInputChange("alertDays", "");
+                  }
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+
+          {/* 유효기간 임박 알림 기준 - only when 유효기간 있음 */}
+          {formData.hasExpiryPeriod && (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                유효기간 임박 알림 기준
+              </label>
+              <div className="relative">
+                <select
+                  value={formData.alertDays || ""}
+                  onChange={(e) =>
+                    handleInputChange("alertDays", e.target.value)
+                  }
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+                  <option value="">선택(30일전/60일전/90일전)</option>
+                  <option value="30">30일전</option>
+                  <option value="60">60일전</option>
+                  <option value="90">90일전</option>
+                </select>
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
+                  <svg
+                    className="h-4 w-4 text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

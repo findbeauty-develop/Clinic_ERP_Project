@@ -412,8 +412,8 @@ export class ProductsService {
               capacity_per_product: dto.capacityPerProduct ?? null,
               capacity_unit: dto.capacityUnit ?? null,
               usage_capacity: dto.usageCapacity ?? null,
-              // alert_days is kept
               alert_days: dto.alertDays ?? null,
+              has_expiry_period: dto.hasExpiryPeriod ?? false,
               // All removed fields: expiry_months, expiry_unit, inbound_manager, storage
               // has_different_packaging_quantity, packaging_from_unit, packaging_to_unit, etc.
               returnPolicy: dto.returnPolicy
@@ -725,6 +725,7 @@ export class ProductsService {
       refundAmount: product.returnPolicy?.refund_amount ?? null,
       returnStorage: product.returnPolicy?.return_storage ?? null,
       alertDays: product.alert_days ?? null,
+      hasExpiryPeriod: (product as any).has_expiry_period ?? false,
     };
   }
 
@@ -767,6 +768,7 @@ export class ProductsService {
             capacity_unit: true,
             capacity_per_product: true,
             alert_days: true,
+            has_expiry_period: true,
             created_at: true,
             batches: {
               select: {
@@ -867,6 +869,7 @@ export class ProductsService {
         expiryMonths: null, // Removed from Product table
         expiryUnit: null, // Removed from Product table
         alertDays: product.alert_days ?? null,
+        hasExpiryPeriod: (product as any).has_expiry_period ?? false,
         isLowStock: product.current_stock < product.min_stock,
         batches: (product.batches || []).map((batch: any) => {
           const expiryDate = batch.expiry_date
@@ -1037,7 +1040,10 @@ export class ProductsService {
             usage_capacity:
               dto.usageCapacity ?? (existing as any).usage_capacity,
             // Product table no longer has storage, inbound_manager, expiry_date, inbound_qty (removed in 20260217)
-            ...(dto.alertDays !== undefined && { alert_days: dto.alertDays }), // Update alert days
+            ...(dto.alertDays !== undefined && { alert_days: dto.alertDays }),
+            ...(dto.hasExpiryPeriod !== undefined && {
+              has_expiry_period: !!dto.hasExpiryPeriod,
+            }),
             updated_at: new Date(),
           } as any,
         });
@@ -2067,6 +2073,8 @@ export class ProductsService {
         errors.push("Usage capacity is required");
       if (row.alert_days === undefined || row.alert_days === null)
         errors.push("Alert days is required");
+      if (row.has_expiry_period === undefined || row.has_expiry_period === null)
+        errors.push("유효기간 있음 (has_expiry_period) is required");
       if (!row.contact_phone?.trim()) errors.push("Contact phone is required");
       if (!row.barcode?.trim()) errors.push("Barcode is required");
 
@@ -2264,6 +2272,7 @@ export class ProductsService {
                       capacity_unit: row.capacity_unit.trim(),
                       capacity_per_product: row.capacity_per_product,
                       alert_days: row.alert_days.toString(),
+                      has_expiry_period: !!row.has_expiry_period,
                       current_stock: 0,
                     },
                   });
