@@ -3481,6 +3481,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [pendingProduct, setPendingProduct] = useState<any>(null);
   const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
   const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
+  // Manual lot panel (스캐너 없이): which product's form is open
+  const [expandedManualLotItemId, setExpandedManualLotItemId] = useState<
+    number | null
+  >(null);
+  const [manualLotForm, setManualLotForm] = useState<{
+    lotNumber: string;
+    productionDate: string;
+    expiryDate: string;
+    quantity: number;
+  }>({
+    lotNumber: "",
+    productionDate: "",
+    expiryDate: "",
+    quantity: 0,
+  });
 
   // ✅ Ref so handleBarcodeScan always sees latest scannedItems (avoids stale closure + double setState overwrite)
   const scannedItemsRef = useRef<any[]>([]);
@@ -3628,6 +3643,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
     scannedItemsRef.current = [];
     setActiveItemId(null);
     setScanModalInboundStaff("");
+    setExpandedManualLotItemId(null);
+    setManualLotForm({
+      lotNumber: "",
+      productionDate: "",
+      expiryDate: "",
+      quantity: 0,
+    });
   };
 
   // Initialize edited items when orders change - optimized with useMemo
@@ -4213,24 +4235,100 @@ const PendingOrdersList = memo(function PendingOrdersList({
     );
   };
 
-  // ✅ NEW: Mark product as completed and move to next
-  const completeCurrentProduct = () => {
-    if (!activeItemId) {
-      console.warn("[completeCurrentProduct] No active item ID");
-      return;
+  // ✅ Manual lot 추가 (모달 내 스캐너 없이 수동 입력) — same logic as barcode scan
+  const addManualLotToScannedItem = (
+    itemId: number,
+    data: {
+      lotNumber: string;
+      productionDate: string;
+      expiryDate: string;
+      quantity: number;
     }
-
-    // Mark current as completed
+  ) => {
+    const qty = Math.max(0, data.quantity || 0);
+    if (qty <= 0) return;
+    const trimmedLot = (data.lotNumber || "").trim();
     setScannedItems((prev) =>
       prev.map((item) => {
-        if (item.itemId === activeItemId) {
-          return { ...item, status: "completed" };
+        if (item.itemId !== itemId) return item;
+        const prevLots = item.lotQuantities || {};
+        const hasExistingLots =
+          Object.keys(prevLots).length > 0 &&
+          (Object.values(prevLots) as number[]).some((n) => Number(n) > 0);
+        const existingQty = item.quantity ?? 0;
+        const prevDetails = item.lotDetails || {};
+        let lotKey: string;
+        if (trimmedLot) {
+          lotKey = trimmedLot;
+        } else {
+          lotKey = `__manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         }
-        return item;
+        let baseLots = { ...prevLots };
+        let baseDetails = { ...prevDetails };
+        if (!hasExistingLots && existingQty > 0) {
+          baseLots = { __default: existingQty };
+          if (item.productionDate || item.expiryDate) {
+            baseDetails = {
+              ...prevDetails,
+              __default: {
+                manufactureDate: item.productionDate,
+                expiryDate: item.expiryDate,
+              },
+            };
+          }
+        }
+        const lotQuantities = {
+          ...baseLots,
+          [lotKey]: (baseLots[lotKey] ?? 0) + qty,
+        };
+        let newQty = (Object.values(lotQuantities) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        const remainingQty = item.remainingQty ?? 99999;
+        if (newQty > remainingQty) {
+          const diff = newQty - remainingQty;
+          const cur = lotQuantities[lotKey] ?? 0;
+          lotQuantities[lotKey] = Math.max(0, cur - diff);
+          newQty = (Object.values(lotQuantities) as number[]).reduce(
+            (a, b) => a + b,
+            0
+          );
+        }
+        const lotDetails = {
+          ...baseDetails,
+          [lotKey]: {
+            manufactureDate:
+              data.productionDate || baseDetails[lotKey]?.manufactureDate,
+            expiryDate: data.expiryDate || baseDetails[lotKey]?.expiryDate,
+          },
+        };
+        return {
+          ...item,
+          lotQuantities: { ...lotQuantities },
+          lotDetails,
+          quantity: newQty,
+          expiryDate: data.expiryDate || item.expiryDate,
+          productionDate: data.productionDate || item.productionDate,
+          batchNumber: data.lotNumber || item.batchNumber,
+          lotNumber: data.lotNumber || item.lotNumber,
+          status: "active" as const,
+        };
       })
     );
+    setActiveItemId(itemId);
+  };
 
-    // Reset active item - user must scan next product manually
+  // ✅ Mark product as completed (xuddi skaner — faqat status)
+  const completeCurrentProduct = () => {
+    if (!activeItemId) return;
+    setScannedItems((prev) =>
+      prev.map((item) =>
+        item.itemId === activeItemId
+          ? { ...item, status: "completed" as const }
+          : item
+      )
+    );
     setActiveItemId(null);
   };
 
@@ -5558,6 +5656,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
                         item.item?.quantity ??
                         item.item?.confirmedQuantity ??
                         0;
+                      const hasLots =
+                        item.lotQuantities &&
+                        Object.keys(item.lotQuantities).length > 0 &&
+                        (Object.values(item.lotQuantities) as number[]).some((n) => Number(n) > 0);
+                      const totalQty =
+                        hasLots
+                          ? (Object.values(item.lotQuantities) as number[]).reduce(
+                              (a, b) => a + Number(b),
+                              0
+                            )
+                          : Number(item.quantity ?? 0) || 0;
 
                       return (
                         <div
@@ -5656,7 +5765,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             {/* Right: 구매가 (desktop) */}
                             <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
                               <span>
-                                총 입고수량 {item.quantity ?? 0} | {capacity}개
+                                총 입고수량 {totalQty} | {capacity}개
                               </span>
                               <span>
                                 구매가 {Number(purchasePrice).toLocaleString()}
@@ -5701,7 +5810,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                       const batchLabel =
                                         lotKey === "__default"
                                           ? "스캔"
-                                          : lotKey;
+                                          : lotKey.startsWith("__manual_")
+                                            ? "수동"
+                                            : lotKey;
                                       return (
                                         <div
                                           key={lotKey}
@@ -5934,6 +6045,173 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               >
                                 입력 완료
                               </button>
+                            </div>
+                          )}
+
+                          {/* Lot 배치번호 추가 — har bir product ostida, skaner bilan bir xil */}
+                          {!isCompleted && (
+                            <div
+                              className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {expandedManualLotItemId !== item.itemId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedManualLotItemId(item.itemId);
+                                    setManualLotForm({
+                                      lotNumber: "",
+                                      productionDate: "",
+                                      expiryDate: "",
+                                      quantity: 0,
+                                    });
+                                  }}
+                                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                                >
+                                  <span className="text-lg leading-none">+</span>
+                                  Lot 배치번호 추가
+                                </button>
+                              ) : (
+                                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        Lot 번호
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={manualLotForm.lotNumber}
+                                        onChange={(e) =>
+                                          setManualLotForm((f) => ({
+                                            ...f,
+                                            lotNumber: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="0000000000001"
+                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        제조일
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={manualLotForm.productionDate}
+                                        onChange={(e) =>
+                                          setManualLotForm((f) => ({
+                                            ...f,
+                                            productionDate: e.target.value,
+                                          }))
+                                        }
+                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        유효기간
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={manualLotForm.expiryDate}
+                                        onChange={(e) =>
+                                          setManualLotForm((f) => ({
+                                            ...f,
+                                            expiryDate: e.target.value,
+                                          }))
+                                        }
+                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        입고수량
+                                      </label>
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={manualLotForm.quantity || ""}
+                                          onChange={(e) =>
+                                            setManualLotForm((f) => ({
+                                              ...f,
+                                              quantity:
+                                                parseInt(e.target.value) || 0,
+                                            }))
+                                          }
+                                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setManualLotForm((f) => ({
+                                              ...f,
+                                              quantity: 0,
+                                            }))
+                                          }
+                                          className="rounded p-2 text-slate-400 hover:text-slate-600"
+                                          aria-label="지우기"
+                                        >
+                                          <svg
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M6 18L18 6M6 6l12 12"
+                                            />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (manualLotForm.quantity > 0) {
+                                          addManualLotToScannedItem(item.itemId, {
+                                            lotNumber: manualLotForm.lotNumber,
+                                            productionDate: manualLotForm.productionDate,
+                                            expiryDate: manualLotForm.expiryDate,
+                                            quantity: manualLotForm.quantity,
+                                          });
+                                          setManualLotForm({
+                                            lotNumber: "",
+                                            productionDate: "",
+                                            expiryDate: "",
+                                            quantity: 0,
+                                          });
+                                        }
+                                      }}
+                                      disabled={manualLotForm.quantity <= 0}
+                                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <span className="text-lg leading-none">+</span>
+                                      Lot 배치번호 추가
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedManualLotItemId(null);
+                                        setManualLotForm({
+                                          lotNumber: "",
+                                          productionDate: "",
+                                          expiryDate: "",
+                                          quantity: 0,
+                                        });
+                                      }}
+                                      className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    >
+                                      닫기
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -6271,33 +6549,47 @@ const OrderCard = memo(function OrderCard({
                   )}
                 </div>
 
-                {/* Editable Fields - Read-only for pending orders */}
+                {/* 주문 진행: read-only (입고 담당자 + 이번 구매가 tashqari). 주문 요청/거절: inputlar ma'lumot bilan, disabled */}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {/* 입고수량 (Editable with original qty shown) */}
+                  {/* 입고수량 */}
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       입고수량:
                     </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={edited.quantity || ""}
-                        onChange={(e) =>
-                          updateItemField(
-                            item.id,
-                            "quantity",
-                            parseInt(e.target.value) || 0
-                          )
-                        }
-                        disabled={isPending || isRejected}
-                        className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                      />
-                      <span className="text-sm text-slate-400">|</span>
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {item.pendingQuantity ?? item.confirmedQuantity}개
-                      </span>
-                    </div>
+                    {isSupplierConfirmed ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/50">
+                        <span className="text-sm text-slate-800 dark:text-slate-100">
+                          {edited.quantity !== "" && edited.quantity !== undefined
+                            ? Number(edited.quantity)
+                            : "-"}
+                        </span>
+                        <span className="text-sm text-slate-400">|</span>
+                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                          {item.pendingQuantity ?? item.confirmedQuantity}개
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={edited.quantity || ""}
+                          onChange={(e) =>
+                            updateItemField(
+                              item.id,
+                              "quantity",
+                              parseInt(e.target.value) || 0
+                            )
+                          }
+                          disabled={isPending || isRejected}
+                          className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                        />
+                        <span className="text-sm text-slate-400">|</span>
+                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                          {item.pendingQuantity ?? item.confirmedQuantity}개
+                        </span>
+                      </div>
+                    )}
                     {(isSupplierConfirmed || isRejected) && hasQtyChange && (
                       <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
                         요청 수량: {item.orderedQuantity}개{" "}
@@ -6310,41 +6602,53 @@ const OrderCard = memo(function OrderCard({
                     )}
                   </div>
 
-                  {/* 유통기간: (Editable) */}
+                  {/* 유통기간 */}
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       유통기간:
                     </label>
-                    <input
-                      type="date"
-                      value={edited.expiryDate || ""}
-                      onChange={(e) =>
-                        updateItemField(item.id, "expiryDate", e.target.value)
-                      }
-                      disabled={isPending || isRejected}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                    />
+                    {isSupplierConfirmed ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                        {edited.expiryDate || "-"}
+                      </div>
+                    ) : (
+                      <input
+                        type="date"
+                        value={edited.expiryDate || ""}
+                        onChange={(e) =>
+                          updateItemField(item.id, "expiryDate", e.target.value)
+                        }
+                        disabled={isPending || isRejected}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                      />
+                    )}
                   </div>
 
-                  {/* 보관위치 (Editable) */}
+                  {/* 보관위치 */}
                   <div>
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       보관위치
                     </label>
-                    <input
-                      type="text"
-                      placeholder="창고 A-3, 냉장실 선반 1"
-                      value={edited.storageLocation || ""}
-                      onChange={(e) =>
-                        updateItemField(
-                          item.id,
-                          "storageLocation",
-                          e.target.value
-                        )
-                      }
-                      disabled={isPending || isRejected}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                    />
+                    {isSupplierConfirmed ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                        {edited.storageLocation || "-"}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        placeholder="창고 A-3, 냉장실 선반 1"
+                        value={edited.storageLocation || ""}
+                        onChange={(e) =>
+                          updateItemField(
+                            item.id,
+                            "storageLocation",
+                            e.target.value
+                          )
+                        }
+                        disabled={isPending || isRejected}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                      />
+                    )}
                   </div>
 
                   {/* 이번 구매가 */}
@@ -6352,9 +6656,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       이번 구매가
                     </label>
-
                     {order.isPlatformSupplier ? (
-                      /* READONLY: Platform supplier - show confirmed and original prices */
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
                         <div className="space-y-1">
                           <div className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -6382,7 +6684,6 @@ const OrderCard = memo(function OrderCard({
                         </div>
                       </div>
                     ) : (
-                      /* EDITABLE: Non-platform supplier - allow manual input */
                       <>
                         <input
                           type="number"
@@ -6411,6 +6712,46 @@ const OrderCard = memo(function OrderCard({
                     )}
                   </div>
                 </div>
+
+                {/* Read-only Lot card — faqat 바코드 입고 modalida 입고 하기 bosilgandan keyin (inboundQuantity > 0) */}
+                {isSupplierConfirmed && (item.inboundQuantity ?? 0) > 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          Lot 번호
+                        </label>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                          {item.lotNumber || item.batchNumber || "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          제조일
+                        </label>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                          {item.productionDate || "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          유효기간
+                        </label>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                          {edited.expiryDate || item.expiryDate || "-"}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          입고수량
+                        </label>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                          {item.inboundQuantity ?? "-"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
