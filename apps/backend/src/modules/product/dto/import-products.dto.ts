@@ -97,7 +97,8 @@ export class PreviewImportDto {
 export class ConfirmImportDto {
   rows!: ImportProductRowDto[];
 
+  @IsOptional()
   @IsString()
   @MaxLength(100)
-  inboundManager!: string;
+  inboundManager?: string;
 }

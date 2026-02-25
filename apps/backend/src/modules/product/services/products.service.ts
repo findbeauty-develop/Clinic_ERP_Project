@@ -2162,14 +2162,10 @@ export class ProductsService {
     tenantId: string,
     rows: ImportProductRowDto[],
     mode: "strict" | "flexible" = "strict",
-    inboundManager: string
+    inboundManager: string = ""
   ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
-    }
-
-    if (!inboundManager?.trim()) {
-      throw new BadRequestException("입고 담당자는 필수입니다");
     }
 
     if (!rows || rows.length === 0) {

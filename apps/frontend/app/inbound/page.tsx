@@ -2315,11 +2315,6 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
   const handleConfirm = async () => {
     if (!preview || !file) return;
 
-    if (!inboundManager.trim()) {
-      alert("입고 담당자를 입력하세요.");
-      return;
-    }
-
     const requiredErrors = getRequiredFieldErrors();
     if (requiredErrors.length > 0) {
       setRequiredFieldErrors(requiredErrors);
@@ -2630,22 +2625,6 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
 
         {/* Footer */}
         <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4">
-          {/* Inbound Manager Input */}
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              입고 담당자*
-            </label>
-            <input
-              type="text"
-              value={inboundManager}
-              onChange={(e) => setInboundManager(e.target.value)}
-              placeholder="입고 담당자 이름을 입력하세요"
-              disabled={importing}
-              className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
-              required
-            />
-          </div>
-
           {/* Action Buttons */}
           <div className="flex items-center justify-end space-x-3">
             <button
@@ -2662,7 +2641,7 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
             </button>
             <button
               onClick={handleConfirm}
-              disabled={!preview || !inboundManager.trim() || importing}
+              disabled={!preview || importing}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {importing
