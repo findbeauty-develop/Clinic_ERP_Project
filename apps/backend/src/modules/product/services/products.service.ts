@@ -1038,6 +1038,7 @@ export class ProductsService {
               dto.usageCapacity ?? (existing as any).usage_capacity,
             // Product table no longer has storage, inbound_manager, expiry_date, inbound_qty (removed in 20260217)
             ...(dto.alertDays !== undefined && { alert_days: dto.alertDays }), // Update alert days
+            updated_at: new Date(),
           } as any,
         });
 

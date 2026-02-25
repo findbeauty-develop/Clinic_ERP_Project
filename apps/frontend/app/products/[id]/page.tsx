@@ -1216,13 +1216,7 @@ function ProductEditForm({
         salePrice: formData.salePrice ? Number(formData.salePrice) : undefined,
       };
 
-      // currentStock faqat o'zgartirilgan bo'lsa yuborilamiz (0 ga tushmasligi uchun)
-      if (formData.currentStock !== "" && formData.currentStock !== undefined) {
-        const newStock = Number(formData.currentStock);
-        if (newStock !== product.currentStock) {
-          payload.currentStock = newStock;
-        }
-      }
+      // 제품 재고 수량: edit form'dan olib tashlandi — yuborilmaydi
 
       // minStock faqat o'zgartirilgan bo'lsa yuborilamiz
       if (formData.minStock !== "" && formData.minStock !== undefined) {
@@ -1273,20 +1267,7 @@ function ProductEditForm({
         payload.alertDays = formData.alertDays.toString();
       }
 
-      // Expiry date
-      if (formData.expiryDate) {
-        payload.expiryDate = formData.expiryDate;
-      }
-
-      // Storage location
-      if (formData.storageLocation !== undefined) {
-        payload.storage = formData.storageLocation || null;
-      }
-
-      // Inbound manager
-      if (formData.inboundManager !== undefined) {
-        payload.inboundManager = formData.inboundManager || null;
-      }
+      // 유효기간, 보관 위치, 입고 담당자: edit form'dan olib tashlandi — yuborilmaydi
 
       // ✅ Manual Supplier Information (from newSupplierForm)
       if (showNewSupplierModal && newSupplierForm.companyName) {
@@ -1389,6 +1370,8 @@ function ProductEditForm({
           finalProductResponse.name ||
           product.productName,
         brand: finalProductResponse.brand || product.brand,
+        barcode:
+          finalProductResponse.barcode ?? product.barcode,
         productImage: formattedImageUrl,
         category: finalProductResponse.category || product.category,
         status: finalProductResponse.status || product.status,
@@ -1618,73 +1601,111 @@ function ProductEditForm({
                     handleInputChange("category", e.target.value)
                   }
                 />
-                <InputField
-                  label="바코드 번호"
-                  placeholder="바코드 번호"
-                  value={formData.barcode}
-                  onChange={(e) => handleInputChange("barcode", e.target.value)}
-                />
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    바코드 번호
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="바코드 번호 (스캔 후 포커스 아웃 시 GTIN 자동 추출)"
+                    value={formData.barcode}
+                    onChange={(e) =>
+                      handleInputChange("barcode", e.target.value)
+                    }
+                    onKeyDown={async (e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const raw = (formData.barcode || "").replace(
+                        /[^\x20-\x7E]/g,
+                        ""
+                      );
+                      if (!raw.trim()) return;
+                      if (/^\d{12,14}$/.test(raw)) {
+                        handleInputChange(
+                          "barcode",
+                          raw.padStart(14, "0")
+                        );
+                        return;
+                      }
+                      if (raw.startsWith("01") && raw.length >= 16) {
+                        try {
+                          const { parseGS1Barcode } = await import(
+                            "../../../utils/barcodeParser"
+                          );
+                          const parsed = parseGS1Barcode(raw);
+                          if (parsed.gtin) {
+                            handleInputChange("barcode", parsed.gtin);
+                          }
+                        } catch (_) {}
+                      }
+                    }}
+                    onBlur={async () => {
+                      const raw = (formData.barcode || "").replace(
+                        /[^\x20-\x7E]/g,
+                        ""
+                      );
+                      if (!raw.trim()) return;
+                      if (/^\d{12,14}$/.test(raw)) {
+                        handleInputChange(
+                          "barcode",
+                          raw.padStart(14, "0")
+                        );
+                        return;
+                      }
+                      if (raw.startsWith("01") && raw.length >= 16) {
+                        try {
+                          const { parseGS1Barcode } = await import(
+                            "../../../utils/barcodeParser"
+                          );
+                          const parsed = parseGS1Barcode(raw);
+                          if (parsed.gtin) {
+                            handleInputChange("barcode", parsed.gtin);
+                          }
+                        } catch (_) {}
+                      }
+                    }}
+                    onPaste={async (e) => {
+                      const pasted = (
+                        e.clipboardData?.getData("text") || ""
+                      ).replace(/[^\x20-\x7E]/g, "");
+                      if (!pasted.trim()) return;
+                      if (/^\d{12,14}$/.test(pasted)) {
+                        e.preventDefault();
+                        handleInputChange(
+                          "barcode",
+                          pasted.padStart(14, "0")
+                        );
+                        return;
+                      }
+                      if (pasted.startsWith("01") && pasted.length >= 16) {
+                        try {
+                          const { parseGS1Barcode } = await import(
+                            "../../../utils/barcodeParser"
+                          );
+                          const parsed = parseGS1Barcode(pasted);
+                          if (parsed.gtin) {
+                            e.preventDefault();
+                            handleInputChange("barcode", parsed.gtin);
+                          }
+                        } catch (_) {}
+                      }
+                    }}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 수량 및 용량 Section */}
+      {/* 수량 및 용량 Section (제품 재고 수량 제외 - 편집 불가) */}
       <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
         <InfoIcon className="h-5 w-5 text-sky-500" />
         수량 및 용량
       </h2>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              제품 재고 수량
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min="0"
-                value={formData.currentStock}
-                onChange={(e) =>
-                  handleInputChange("currentStock", e.target.value)
-                }
-                placeholder="0"
-                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <div className="relative w-28">
-                <select
-                  value={formData.currentStockUnit}
-                  onChange={(e) =>
-                    handleInputChange("currentStockUnit", e.target.value)
-                  }
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <option value="">단위 선택</option>
-                  {unitOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                  <svg
-                    className="h-4 w-4 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               최소 제품 재고
@@ -2047,19 +2068,13 @@ function ProductEditForm({
         )}
       </div>
 
-      {/* 유통기한 정보 Section */}
+      {/* 유통기한 정보 Section (유효기간 필드 제외 - 편집 불가) */}
       <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
         <CalendarIcon className="h-5 w-5 text-emerald-500" />
         유통기한 정보
       </h2>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
         <div className="grid gap-6 md:grid-cols-2">
-          <InputField
-            label="유효기간"
-            type="date"
-            value={formData.expiryDate}
-            onChange={(e) => handleInputChange("expiryDate", e.target.value)}
-          />
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               유효기간 임박 알림 기준
@@ -3115,31 +3130,6 @@ function ProductEditForm({
           </div>
         </div>
       )}
-
-      {/* 보관 정보 Section */}
-      <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-        <WarehouseIcon className="h-5 w-5 text-slate-500" />
-        보관 정보
-      </h2>
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="grid gap-6">
-          <InputField
-            label="보관 위치"
-            value={formData.storageLocation}
-            onChange={(e) =>
-              handleInputChange("storageLocation", e.target.value)
-            }
-          />
-          <InputField
-            label="입고 담당자"
-            value={formData.inboundManager}
-            onChange={(e) =>
-              handleInputChange("inboundManager", e.target.value)
-            }
-            placeholder="입고 담당자 이름을 입력하세요"
-          />
-        </div>
-      </div>
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-3 pt-4">

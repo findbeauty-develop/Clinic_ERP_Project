@@ -3727,13 +3727,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       // Convert to compatible format
       const expiryDate = parsed.expiry || "";
-      if (barcode) {
-        console.log("[parseGS1Barcode] barcode -> 유효기간:", {
-          raw: barcode,
-          expiryFromParser: parsed.expiry,
-          expiryDate,
-        });
-      }
+
       return {
         gtin: parsed.primary_gtin || "",
         gtinVariants,
@@ -3932,11 +3926,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
   // ✅ NEW: Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
     const parsed = await parseGS1Barcode(barcode);
-    console.log("[유효기간] handleBarcodeScan parse natija:", {
-      expiryDate: parsed.expiryDate,
-      batchNumber: parsed.batchNumber,
-      gtin: parsed.gtin,
-    });
+
     const searchVariants = [
       barcode,
       parsed.gtin,
@@ -5460,9 +5450,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              console.log(
-                "[ScanModal] Backdrop bosildi (overlay) — closeScanModal"
-              );
               closeScanModal();
             }
           }}
@@ -5485,9 +5472,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
               <button
                 type="button"
                 onClick={() => {
-                  console.log(
-                    "[ScanModal] X (닫기) tugmasi bosildi — closeScanModal"
-                  );
                   closeScanModal();
                 }}
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
