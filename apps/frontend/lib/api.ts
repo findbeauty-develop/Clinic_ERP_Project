@@ -410,9 +410,11 @@ export const apiRequest = async (
   };
 
   // Check for pending request (deduplication)
+  // Return a clone so each caller can read the body (body stream can only be read once)
   if (pendingRequests.has(requestKey)) {
     const pendingResponse = await pendingRequests.get(requestKey)!;
-    return pendingResponse as Response;
+    const response = pendingResponse as Response;
+    return response.clone();
   }
 
   // Create request with timeout
