@@ -301,7 +301,7 @@ export default function ProductDetailPage() {
                         }
 
                         alert("제품이 성공적으로 삭제되었습니다.");
-                        router.push("/inventory/products");
+                        router.push("/inbound");
                       } catch (err) {
                         console.error("Failed to delete product", err);
                         alert(

@@ -759,30 +759,24 @@ export default function OrderPage() {
     [products]
   );
 
-  // Save prices to Product table and add to order
+  // Save prices to Product table and add to order (구매가만 입력, 판매가는 기존 값 유지)
   const handleSavePrices = useCallback(async () => {
-    if (
-      !selectedProduct ||
-      !modalPrices.purchasePrice ||
-      !modalPrices.salePrice
-    ) {
-      alert("구매가와 판매가를 모두 입력하세요");
+    if (!selectedProduct || !modalPrices.purchasePrice) {
+      alert("구매가를 입력하세요");
       return;
     }
 
     const purchasePrice = Number(modalPrices.purchasePrice);
-    const salePrice = Number(modalPrices.salePrice);
 
-    if (purchasePrice <= 0 || salePrice <= 0) {
-      alert("가격은 0보다 커야 합니다");
+    if (purchasePrice <= 0) {
+      alert("구매가는 0보다 커야 합니다");
       return;
     }
 
     try {
-      // Save to Product table (global)
+      // Save to Product table (구매가만 업데이트, 판매가는 기존 값 유지)
       await apiPut(`${apiUrl}/products/${selectedProduct.id}`, {
         purchasePrice,
-        salePrice,
       });
 
       // Update local products state with new price
@@ -3098,63 +3092,13 @@ export default function OrderPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            const salePriceInput =
-                              document.getElementById("sale-price-input");
-                            if (salePriceInput) {
-                              salePriceInput.focus();
-                            }
+                            handleSavePrices();
                           }
                         }}
                         placeholder="구매가 입력"
                         className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
                         autoFocus
                       />{" "}
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        원
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="w-56">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      판매가*
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        id="sale-price-input"
-                        type="text"
-                        value={
-                          modalPrices.salePrice
-                            ? Number(modalPrices.salePrice).toLocaleString(
-                                "ko-KR"
-                              )
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/,/g, "");
-                          if (value === "" || /^\d+$/.test(value)) {
-                            setModalPrices((prev) => ({
-                              ...prev,
-                              salePrice: value,
-                            }));
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleSavePrices();
-                          } else if (e.key === "Escape") {
-                            setShowPriceModal(false);
-                            setSelectedProduct(null);
-                            setModalPrices({
-                              purchasePrice: "",
-                              salePrice: "",
-                            });
-                          }
-                        }}
-                        placeholder="판매가 입력"
-                        className="w-full px-2 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-800"
-                      />
                       <span className="text-sm text-slate-700 dark:text-slate-300">
                         원
                       </span>
@@ -3177,9 +3121,7 @@ export default function OrderPage() {
                 </button>
                 <button
                   onClick={handleSavePrices}
-                  disabled={
-                    !modalPrices.purchasePrice || !modalPrices.salePrice
-                  }
+                  disabled={!modalPrices.purchasePrice}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition"
                 >
                   저장 후 주문 추가

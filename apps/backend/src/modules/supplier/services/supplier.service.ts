@@ -163,6 +163,10 @@ export class SupplierService {
       return await this.prisma.executeWithRetry(async () => {
         // 1. Supplier upsert (business_number bo'yicha)
 
+        // Manual supplier uchun tenant_id har bir kompaniya uchun unique bo'lishi kerak
+        // (Supplier.tenant_id unique); keyin supplier ro'yxatdan o'tsa business_number bo'yicha update qilinadi
+        const manualSupplierTenantId = `supplier_${dto.businessNumber.replace(/-/g, "")}_${Date.now()}`;
+
         const supplier = await this.prisma.supplier.upsert({
           where: { business_number: dto.businessNumber },
           update: {
@@ -179,7 +183,7 @@ export class SupplierService {
             company_email: companyEmail,
             company_address: dto.companyAddress || null,
             status: "MANUAL_ONLY", // Clinic manual yaratgan supplier
-            tenant_id: tenantId,
+            tenant_id: manualSupplierTenantId,
           },
         });
 

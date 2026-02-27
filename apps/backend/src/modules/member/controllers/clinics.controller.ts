@@ -35,6 +35,7 @@ import {
 } from "@nestjs/swagger";
 import {
   getSerialForImage,
+  getUploadRoot,
   validMimeTypes,
 } from "../../../common/utils/upload.utils";
 import type { Request } from "express";
@@ -160,9 +161,9 @@ export class ClinicsController {
     @Tenant() tenantId: string,
     @ReqUser("id") userId: string
   ) {
-    // Generate unique tenant_id if not provided (new clinic registration)
+    // Generate unique tenant_id if not provided (new clinic registration); englishName aralashadi
     const resolvedTenantId =
-      tenantId ?? dto.tenantId ?? this.generateUniqueTenantId();
+      tenantId ?? dto.tenantId ?? this.generateUniqueTenantId(dto.englishName);
     if (!resolvedTenantId) {
       throw new BadRequestException("tenant_id is required");
     }
@@ -171,14 +172,31 @@ export class ClinicsController {
   }
 
   /**
-   * Generate unique tenant ID for new clinic
-   * Format: clinic_<timestamp>_<random>
-   * Example: clinic_1704348000000_a3b5c7d9
+   * Slug for tenant_id: only a-z, 0-9, underscore; max 24 chars.
    */
-  private generateUniqueTenantId(): string {
+  private slugForTenantId(name: string, maxLen = 24): string {
+    const slug = (name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .substring(0, maxLen);
+    return slug || "clinic";
+  }
+
+  /**
+   * Generate unique tenant ID for new clinic.
+   * Format: clinic_<englishName_slug>_<timestamp>_<random>
+   * Example: clinic_abc_medical_1704348000000_a3b5c7d9
+   */
+  private generateUniqueTenantId(englishName?: string): string {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 10);
-    return `clinic_${timestamp}_${random}`;
+    const slug = englishName ? this.slugForTenantId(englishName) : "";
+    const mid = slug ? `${slug}_` : "";
+    return `clinic_${mid}${timestamp}_${random}`;
   }
 
   @Put()
@@ -254,7 +272,7 @@ export class ClinicsController {
             (req as any).tenantId ||
             (req.query?.tenantId as string) ||
             "self-service-tenant";
-          const UPLOAD_ROOT = join(process.cwd(), "uploads");
+          const UPLOAD_ROOT = getUploadRoot();
           const targetDir = join(UPLOAD_ROOT, "clinic", tenantId);
           try {
             await fs.mkdir(targetDir, { recursive: true });
@@ -388,7 +406,7 @@ export class ClinicsController {
     // Option 2: File URL provided (from previous upload)
     else if (fileUrl) {
       try {
-        const filePath = join(process.cwd(), fileUrl);
+        const filePath = join(getUploadRoot(), fileUrl.replace(/^\/uploads\/?/, ""));
         buffer = await fs.readFile(filePath);
         // Try to detect mimetype from file extension
         const ext = fileUrl.split(".").pop()?.toLowerCase();
@@ -427,7 +445,7 @@ export class ClinicsController {
             (req as any).tenantId ||
             (req.query?.tenantId as string) ||
             "self-service-tenant";
-          const UPLOAD_ROOT = join(process.cwd(), "uploads");
+          const UPLOAD_ROOT = getUploadRoot();
           const targetDir = join(UPLOAD_ROOT, "clinic", tenantId, "logo");
           try {
             await fs.mkdir(targetDir, { recursive: true });

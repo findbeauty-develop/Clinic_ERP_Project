@@ -2221,10 +2221,26 @@ function CSVImportModal({ isOpen, onClose, onImport }: CSVImportModalProps) {
           }
 
           const parseHasExpiryPeriod = (val: unknown): boolean | undefined => {
-            const s = String(val ?? "").trim().toLowerCase();
+            const s = String(val ?? "")
+              .trim()
+              .toLowerCase();
             if (s === "") return undefined;
-            if (s === "예" || s === "1" || s === "true" || s === "y" || s === "yes") return true;
-            if (s === "아니오" || s === "0" || s === "false" || s === "n" || s === "no") return false;
+            if (
+              s === "예" ||
+              s === "1" ||
+              s === "true" ||
+              s === "y" ||
+              s === "yes"
+            )
+              return true;
+            if (
+              s === "아니오" ||
+              s === "0" ||
+              s === "false" ||
+              s === "n" ||
+              s === "no"
+            )
+              return false;
             return undefined;
           };
           const mapCsvRowToEnglish = (row: any): any => {
@@ -4347,10 +4363,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
     const inboundStaff = scanModalInboundStaff.trim();
-    if (!inboundStaff) {
-      alert("입고 직원 이름을 입력해주세요.");
-      return;
-    }
     setInboundManagers((prev) => {
       const next = { ...prev };
       scannedItems.forEach((it) => {
@@ -5659,14 +5671,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       const hasLots =
                         item.lotQuantities &&
                         Object.keys(item.lotQuantities).length > 0 &&
-                        (Object.values(item.lotQuantities) as number[]).some((n) => Number(n) > 0);
-                      const totalQty =
-                        hasLots
-                          ? (Object.values(item.lotQuantities) as number[]).reduce(
-                              (a, b) => a + Number(b),
-                              0
-                            )
-                          : Number(item.quantity ?? 0) || 0;
+                        (Object.values(item.lotQuantities) as number[]).some(
+                          (n) => Number(n) > 0
+                        );
+                      const totalQty = hasLots
+                        ? (
+                            Object.values(item.lotQuantities) as number[]
+                          ).reduce((a, b) => a + Number(b), 0)
+                        : Number(item.quantity ?? 0) || 0;
 
                       return (
                         <div
@@ -5771,7 +5783,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 구매가 {Number(purchasePrice).toLocaleString()}
                               </span>
                             </div>
-                            {!isCompleted && (
+                            {/* {!isCompleted && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -5782,7 +5794,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               >
                                 삭제
                               </button>
-                            )}
+                            )} */}
                             {isCompleted && (
                               <span className="text-emerald-600 dark:text-emerald-400 text-lg shrink-0">
                                 ✓
@@ -6068,7 +6080,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                   }}
                                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                                 >
-                                  <span className="text-lg leading-none">+</span>
+                                  <span className="text-lg leading-none">
+                                    +
+                                  </span>
                                   Lot 배치번호 추가
                                 </button>
                               ) : (
@@ -6174,12 +6188,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                       type="button"
                                       onClick={() => {
                                         if (manualLotForm.quantity > 0) {
-                                          addManualLotToScannedItem(item.itemId, {
-                                            lotNumber: manualLotForm.lotNumber,
-                                            productionDate: manualLotForm.productionDate,
-                                            expiryDate: manualLotForm.expiryDate,
-                                            quantity: manualLotForm.quantity,
-                                          });
+                                          addManualLotToScannedItem(
+                                            item.itemId,
+                                            {
+                                              lotNumber:
+                                                manualLotForm.lotNumber,
+                                              productionDate:
+                                                manualLotForm.productionDate,
+                                              expiryDate:
+                                                manualLotForm.expiryDate,
+                                              quantity: manualLotForm.quantity,
+                                            }
+                                          );
                                           setManualLotForm({
                                             lotNumber: "",
                                             productionDate: "",
@@ -6191,7 +6211,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                       disabled={manualLotForm.quantity <= 0}
                                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                      <span className="text-lg leading-none">+</span>
+                                      <span className="text-lg leading-none">
+                                        +
+                                      </span>
                                       Lot 배치번호 추가
                                     </button>
                                     <button
@@ -6260,20 +6282,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
               )}
             </div>
 
-            {/* Footer: 입고 직원* + 입고 하기 (image design) */}
-            <div className="border-t border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center justify-between gap-4 bg-slate-50 dark:bg-slate-900/50">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 shrink-0">
-                  입고 직원*
-                </label>
-                <input
-                  type="text"
-                  value={scanModalInboundStaff}
-                  onChange={(e) => setScanModalInboundStaff(e.target.value)}
-                  placeholder="이름 입력"
-                  className="flex-1 min-w-0 max-w-xs px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 text-sm"
-                />
-              </div>
+            {/* Footer: 입고 하기 */}
+            <div className="border-t border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center justify-end gap-4 bg-slate-50 dark:bg-slate-900/50">
               <button
                 type="button"
                 onClick={submitAllScannedItems}
@@ -6559,7 +6569,8 @@ const OrderCard = memo(function OrderCard({
                     {isSupplierConfirmed ? (
                       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/50">
                         <span className="text-sm text-slate-800 dark:text-slate-100">
-                          {edited.quantity !== "" && edited.quantity !== undefined
+                          {edited.quantity !== "" &&
+                          edited.quantity !== undefined
                             ? Number(edited.quantity)
                             : "-"}
                         </span>

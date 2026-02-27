@@ -9,6 +9,7 @@ import * as cookieParser from "cookie-parser";
 import * as helmet from "helmet";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
+import { getUploadRoot } from "./common/utils/upload.utils";
 
 async function bootstrap() {
   // ✅ Environment detection va logging (AppModule yaratilishidan oldin)
@@ -175,7 +176,7 @@ async function bootstrap() {
     })
   );
 
-  const uploadsDir = join(process.cwd(), "uploads");
+  const uploadsDir = getUploadRoot();
   app.use("/uploads", express.static(uploadsDir, {
     setHeaders: (res, path) => {
       // ✅ CORS header'larini qo'shish - image'lar uchun

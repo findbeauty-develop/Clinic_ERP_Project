@@ -14,10 +14,11 @@ import type { Request } from "express";
 import {
   getSerialForImage,
   getUploadCategory,
+  getUploadRoot,
   validMimeTypes,
 } from "../common/utils/upload.utils";
 
-const UPLOAD_ROOT = join(process.cwd(), "uploads");
+const UPLOAD_ROOT = getUploadRoot();
 
 @Controller("uploads")
 export class UploadsController {

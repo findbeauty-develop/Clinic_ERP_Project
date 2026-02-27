@@ -17,6 +17,8 @@ services:
     volumes:
       - ./apps/frontend/public/images:/app/apps/frontend/public/images:ro
       - ./apps/backend/keys:/app/apps/backend/keys:ro
+      # Logo va boshqa upload'lar restart'dan keyin saqlanishi uchun
+      - backend-uploads:/app/apps/backend/uploads
     networks:
       - clinic-erp-network
     healthcheck:
@@ -228,3 +230,4 @@ volumes:
   prometheus-data:
   grafana-data:
   grafana-provisioning:
+  backend-uploads:

@@ -34,6 +34,13 @@ const unitOptions = [
   "set",
   "roll",
 ];
+
+/** Barcode maydoni faqat 14 ta raqam qabul qiladi (GTIN-14). */
+const normalizeBarcode = (raw: string) =>
+  String(raw || "")
+    .replace(/\D/g, "")
+    .slice(0, 14);
+
 const positionOptions = [
   "직함 선택",
   "사원",
@@ -63,7 +70,9 @@ export default function InboundNewPage() {
   );
   const [showExistingProductModal, setShowExistingProductModal] =
     useState(false);
-  const [existingProductId, setExistingProductId] = useState<string | null>(null);
+  const [existingProductId, setExistingProductId] = useState<string | null>(
+    null
+  );
   const [isSaving, setIsSaving] = useState(false); // Flag to bypass unsaved changes check when saving
   const [supplierManagers, setSupplierManagers] = useState<
     Array<{
@@ -112,53 +121,63 @@ export default function InboundNewPage() {
 
   // USB Barcode Scanner Support
   useEffect(() => {
-    let buffer = '';
+    let buffer = "";
     let lastTime = 0;
     let timeout: NodeJS.Timeout;
-    
+
     const handleKeyPress = (e: KeyboardEvent) => {
       const now = Date.now();
-      
+
       // USB scanner types very fast (< 100ms between chars)
-      if (now - lastTime > 100) buffer = '';
-      
-      if (e.key === 'Enter' && buffer.length >= 8) {
+      if (now - lastTime > 100) buffer = "";
+
+      if (e.key === "Enter" && buffer.length >= 8) {
         handleBarcodeScanned(buffer);
-        buffer = '';
+        buffer = "";
       } else if (e.key.length === 1) {
         buffer += e.key;
         lastTime = now;
-        
+
         clearTimeout(timeout);
-        timeout = setTimeout(() => { buffer = ''; }, 500);
+        timeout = setTimeout(() => {
+          buffer = "";
+        }, 500);
       }
     };
-    
-    window.addEventListener('keypress', handleKeyPress);
+
+    window.addEventListener("keypress", handleKeyPress);
     return () => {
-      window.removeEventListener('keypress', handleKeyPress);
+      window.removeEventListener("keypress", handleKeyPress);
       clearTimeout(timeout);
     };
   }, [apiUrl]);
 
   const handleBarcodeScanned = async (scannedBarcode: string) => {
     try {
-      const { parseGS1Barcode } = await import('../../../utils/barcodeParser');
+      const { parseGS1Barcode } = await import("../../../utils/barcodeParser");
       const parsed = parseGS1Barcode(scannedBarcode);
-      
+
       if (!parsed.gtin) {
-        // If not GS1 format, just use the raw barcode
-        setFormData(prev => ({ ...prev, barcode: scannedBarcode }));
+        // If not GS1 format, just use the raw barcode (14 digits max)
+        setFormData((prev) => ({
+          ...prev,
+          barcode: normalizeBarcode(scannedBarcode),
+        }));
         return;
       }
-      
-      // Fill only GTIN to the barcode field
-      setFormData(prev => ({ ...prev, barcode: parsed.gtin || "" }));
-      
+
+      // Fill only GTIN to the barcode field (14 digits max)
+      setFormData((prev) => ({
+        ...prev,
+        barcode: normalizeBarcode(parsed.gtin || ""),
+      }));
     } catch (error) {
-      console.error('Barcode parsing error:', error);
-      // On any error, just use the raw barcode
-      setFormData(prev => ({ ...prev, barcode: scannedBarcode }));
+      console.error("Barcode parsing error:", error);
+      // On any error, just use the raw barcode (14 digits max)
+      setFormData((prev) => ({
+        ...prev,
+        barcode: normalizeBarcode(scannedBarcode),
+      }));
     }
   };
 
@@ -301,19 +320,17 @@ export default function InboundNewPage() {
       // minStockUnit is fixed to "box", no syncing needed
       // purchasePriceUnit is also fixed to "box"
 
-      // 제품 용량 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
-      // Faqat "사용 단위" checkbox o'chirilgan bo'lsa
+      // 제품 용량 unit o'zgarganda: 사용 단위 unit ham bir xil o'zgaradi; 판매가 unit ham (checkbox o'chirilgan bo'lsa)
       if (field === "capacityUnit") {
-        // Agar "사용 단위" checkbox o'chirilgan bo'lsa, 판매가 unit 제품 용량 unit'iga o'zgaradi
+        newData.usageCapacityUnit = value;
         if (!prev.enableUsageCapacity) {
           newData.salePriceUnit = value;
         }
       }
 
-      // 사용 단위 unit o'zgarganda, 판매가 unit ham o'zgaradi (readonly)
-      // Faqat "사용 단위" checkbox yoqilgan bo'lsa
+      // 사용 단위 unit o'zgarganda: 제품 용량 unit ham bir xil o'zgaradi; 판매가 unit ham (checkbox yoqilgan bo'lsa)
       if (field === "usageCapacityUnit") {
-        // Agar "사용 단위" checkbox yoqilgan bo'lsa, 판매가 unit 사용 단위 unit'iga o'zgaradi
+        newData.capacityUnit = value;
         if (prev.enableUsageCapacity) {
           newData.salePriceUnit = value;
         }
@@ -1170,7 +1187,10 @@ export default function InboundNewPage() {
       setPendingNavigation(null);
 
       // ✅ GTIN duplicate: barcode already registered → show modal, stay on page
-      if ((result as any)?.existingForBarcode || (result as any)?.code === "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE") {
+      if (
+        (result as any)?.existingForBarcode ||
+        (result as any)?.code === "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE"
+      ) {
         setExistingProductId((result as any)?.id ?? null);
         setShowExistingProductModal(true);
         return;
@@ -1219,15 +1239,15 @@ export default function InboundNewPage() {
             <p className="max-w-3xl text-base text-slate-500 dark:text-slate-300"></p>
           </div>
           <div className="flex flex-col items-end gap-3">
-        <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-  <span>입고날짜</span>
-  <span className="font-mono text-slate-500 dark:text-slate-400">
-    {inboundDate
-      .split("-")
-      .map((part, i) => (i === 0 ? part.slice(2) : part))
-      .join("-")}
-  </span>
-</div>
+            <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+              <span>입고날짜</span>
+              <span className="font-mono text-slate-500 dark:text-slate-400">
+                {inboundDate
+                  .split("-")
+                  .map((part, i) => (i === 0 ? part.slice(2) : part))
+                  .join("-")}
+              </span>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -1351,7 +1371,7 @@ export default function InboundNewPage() {
                     <div className="flex flex-col gap-6">
                       <InputField
                         label="제조사"
-                        placeholder="브랜트"
+                        placeholder="브랜드"
                         value={formData.brand}
                         onChange={(e) =>
                           handleInputChange("brand", e.target.value)
@@ -1364,17 +1384,21 @@ export default function InboundNewPage() {
                         <div className="flex gap-2">
                           <input
                             type="text"
-                            placeholder="바코드 스캔 또는 입력"
+                            inputMode="numeric"
+                            maxLength={14}
+                            placeholder="바코드 14자리 숫자"
                             value={formData.barcode}
                             onChange={(e) => {
-                              handleInputChange("barcode", e.target.value);
+                              const v = normalizeBarcode(e.target.value);
+                              handleInputChange("barcode", v);
                             }}
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                         </div>
                         {!formData.barcode?.trim() && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
-                            바코드는 필수 입력 항목입니다. 제품 중복 등록 방지를 위해 입력해 주세요.
+                            바코드는 필수 입력 항목입니다. 제품 중복 등록 방지를
+                            위해 입력해 주세요.
                           </p>
                         )}
                       </div>
@@ -1460,7 +1484,7 @@ export default function InboundNewPage() {
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-4">
               {/* REMOVED: 제품 재고 수량 - moved to /inbound page */}
-              
+
               {/* 최소 제품 재고 */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -2974,8 +2998,18 @@ export default function InboundNewPage() {
           <div className="relative w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-xl dark:border-amber-500/40 dark:bg-slate-900">
             <div className="mb-4 flex items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </span>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -2983,7 +3017,8 @@ export default function InboundNewPage() {
               </h2>
             </div>
             <p className="mb-6 text-base text-slate-600 dark:text-slate-300">
-              이 바코드로 등록된 제품이 이미 있습니다. 동일한 바코드로 새 제품을 등록할 수 없습니다.
+              이 바코드로 등록된 제품이 이미 있습니다. 동일한 바코드로 새 제품을
+              등록할 수 없습니다.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
               {existingProductId && (

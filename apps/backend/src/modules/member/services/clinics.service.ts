@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { ClinicsRepository } from "../repositories/clinics.repository";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
-import { saveBase64Images } from "../../../common/utils/upload.utils";
+import { getUploadRoot, saveBase64Images } from "../../../common/utils/upload.utils";
 import { GoogleVisionService } from "./google-vision.service";
 import { CertificateParserService } from "./certificate-parser.service";
 import { VerifyCertificateResponseDto } from "../dto/verify-certificate-response.dto";
@@ -199,7 +199,7 @@ export class ClinicsService {
     let fileUrl: string | null = null;
     if (tenantId) {
       try {
-        const UPLOAD_ROOT = join(process.cwd(), "uploads");
+        const UPLOAD_ROOT = getUploadRoot();
         const categoryDir = join(UPLOAD_ROOT, "clinic", tenantId);
         await fs.mkdir(categoryDir, { recursive: true });
 

@@ -431,9 +431,14 @@ HIRA_API_SECRET=your_hira_api_secret
 
 # Port
 PORT=3000
+
+# Logo va boshqa upload'lar restart'dan keyin saqlanishi uchun (ixtiyoriy). Masalan: /data/uploads
+# UPLOADS_DIR=/data/uploads
 ```
 
 **Saqlash:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+**Logo saqlanishi:** Production'da sidebar logosi restart'dan keyin yo'qolmasligi uchun `UPLOADS_DIR` ni doimiy papkaga (masalan EC2'da `/data/uploads`) qiling va docker-compose'da shu papkani volume qilib ulang.
 
 ### 5.3 Clinic Frontend .env.local
 

@@ -1,8 +1,15 @@
-import { parse, join } from "path";
+import { parse, join, resolve } from "path";
 import { v4 as uuidv4 } from "uuid";
 import { promises as fs } from "fs";
 
 export const validMimeTypes = ["image/png", "image/jpg", "image/jpeg"];
+
+/** Production'da restart'dan keyin logo saqlanishi uchun .env da UPLOADS_DIR=/data/uploads kabi doimiy path berish mumkin. */
+export function getUploadRoot(): string {
+  return process.env.UPLOADS_DIR
+    ? resolve(process.env.UPLOADS_DIR)
+    : join(process.cwd(), "uploads");
+}
 
 export const getSerialForImage = (filename: string) => {
   const ext = parse(filename).ext || ".png";
@@ -17,7 +24,7 @@ export const getUploadCategory = (category: string) => {
   return "misc";
 };
 
-const UPLOAD_ROOT = join(process.cwd(), "uploads");
+const UPLOAD_ROOT = getUploadRoot();
 
 const dataUrlRegex = /^data:(?<mime>[^;]+);base64,(?<data>.+)$/;
 
