@@ -170,6 +170,13 @@ export default function InboundPage() {
             : {},
         });
 
+        // ✅ Defensive: API must return an array (prevent products "disappearing" on bad response)
+        if (!Array.isArray(data)) {
+          setError("제품 데이터 형식이 올바르지 않습니다. 새로고침해 주세요.");
+          setProducts([]);
+          return;
+        }
+
         // Helper function to format image URL (relative path -> full URL)
         const formatImageUrl = (
           imageUrl: string | null | undefined
@@ -808,8 +815,23 @@ export default function InboundPage() {
                     등록된 제품이 없습니다. 새로운 제품을 추가해보세요.
                   </div>
                 ) : filteredAndSortedProducts.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                    검색 조건에 맞는 제품이 없습니다.
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <p className="text-slate-500 dark:text-slate-400">
+                      검색 조건에 맞는 제품이 없습니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedCategory("전체 카테고리");
+                        setSelectedStatus("전체 상태");
+                        setSelectedSupplier("전체 공급업체");
+                        setCurrentPage(1);
+                      }}
+                      className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      필터 초기화
+                    </button>
                   </div>
                 ) : (
                   <>
@@ -1493,6 +1515,11 @@ const ProductCard = memo(function ProductCard({
       return;
     }
 
+    if (!batchForm.batchNumber.trim()) {
+      alert("Lot 배치번호를 입력해주세요.");
+      return;
+    }
+
     if (batchQuantity < 1) {
       alert("입고 수량은 1개 이상이어야 합니다.");
       return;
@@ -1523,10 +1550,8 @@ const ProductCard = memo(function ProductCard({
         payload.purchase_price = parseInt(batchForm.purchasePrice);
       }
 
-      // ✅ Optional: Batch Number (LOT from barcode scan)
-      if (batchForm.batchNumber && batchForm.batchNumber.trim() !== "") {
-        payload.batch_no = batchForm.batchNumber;
-      }
+      // ✅ Required: Batch Number (LOT)
+      payload.batch_no = batchForm.batchNumber.trim();
 
       // ✅ 별도 구매 여부
       payload.is_separate_purchase = batchForm.isSeparatePurchase;
@@ -1809,7 +1834,7 @@ const ProductCard = memo(function ProductCard({
             {/* Title + Switch */}
             <div className="flex items-center justify-between border-b border-sky-200 pb-3 dark:border-sky-500/30">
               <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                {batchForm.isSeparatePurchase ? "별도 구매" : "바코드 입고"}
+                {batchForm.isSeparatePurchase ? "별도 구매" : "빠른 입고"}
               </h3>
 
               {/* Toggle Switch */}
@@ -1847,7 +1872,7 @@ const ProductCard = memo(function ProductCard({
               <p>
                 {batchForm.isSeparatePurchase
                   ? "별도 구매는 Jaclit을 통한 주문이 아닌 제품의 입고를 의미합니다."
-                  : "바코드 입고는 Supplier에서 주문한 제품의 입고를 의미합니다."}
+                  : "빠른 입고는 Supplier에서 주문한 제품의 입고를 의미합니다."}
               </p>
               <p className="mt-1">
                 <span className="font-semibold">
@@ -1859,17 +1884,15 @@ const ProductCard = memo(function ProductCard({
 
             {/* Row 1: 배치번호 + 입고 수량 */}
             <div className="grid grid-cols-2 gap-4">
-              {/* 배치번호 (선택가능) */}
+              {/* 배치번호 (필수) */}
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  배치번호
-                  <span className="text-xs font-normal text-slate-500">
-                    (선택가능)
-                  </span>
+                  Lot 배치번호 <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   placeholder="제품의 LOT 배치번호 [QR 코드 옆에 (10) 다음 숫자]를 입력해주세요"
+                  required
                   value={batchForm.batchNumber}
                   onChange={(e) => {
                     e.stopPropagation();
@@ -2061,7 +2084,7 @@ const ProductCard = memo(function ProductCard({
                       d="M12 4v16m8-8H4"
                     />
                   </svg>
-                  {submittingBatch ? "처리 중..." : "바코드 입고"}
+                  {submittingBatch ? "처리 중..." : "입고 하기"}
                 </button>
               </div>
             </div>
@@ -5664,10 +5687,14 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       const isPending = item.status === "pending";
                       const purchasePrice =
                         item.item?.unit_price ?? item.item?.confirmedPrice ?? 0;
-                      const capacity =
-                        item.item?.quantity ??
-                        item.item?.confirmedQuantity ??
-                        0;
+                      // 재입고: qolgan miqdorni ko'rsatish (remainingQty); catalog uchun order quantity
+                      const capacity = item.fromCatalog
+                        ? (item.item?.quantity ??
+                           item.item?.confirmedQuantity ??
+                           0)
+                        : (item.remainingQty ??
+                           item.item?.confirmedQuantity ??
+                           0);
                       const hasLots =
                         item.lotQuantities &&
                         Object.keys(item.lotQuantities).length > 0 &&
@@ -5750,14 +5777,26 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             </div> */}
                             {/* Name + brand + quantity (always visible on all screens) */}
                             <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                              <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                                {item.productName}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                  {item.productName}
+                                </span>
+                                {!item.fromCatalog && (
+                                  <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 shrink-0">
+                                    재입고 대기
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                                 {item.brand ?? ""}
                               </div>
-                              {/* 총 입고수량 + lot breakdown — always visible (was hidden on mobile) */}
+                              {/* 총 입고수량 + 재입고 qolgan miqdor (mobile ham ko'rinsin) */}
                               <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
+                                <span className="sm:hidden">
+                                  {item.fromCatalog
+                                    ? `총 입고수량 ${totalQty} | ${capacity}개`
+                                    : `총 입고수량 ${totalQty} / ${capacity}개 (재입고)`}
+                                </span>
                                 {/* {item.lotQuantities &&
                                   Object.keys(item.lotQuantities).length >
                                     0 && (
@@ -5777,7 +5816,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             {/* Right: 구매가 (desktop) */}
                             <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
                               <span>
-                                총 입고수량 {totalQty} | {capacity}개
+                                {item.fromCatalog
+                                  ? `총 입고수량 ${totalQty} | ${capacity}개`
+                                  : `총 입고수량 ${totalQty} / ${capacity}개 (재입고)`}
                               </span>
                               <span>
                                 구매가 {Number(purchasePrice).toLocaleString()}
@@ -6331,6 +6372,7 @@ const OrderCard = memo(function OrderCard({
   const isPending = order.status === "pending";
   const isSupplierConfirmed = order.status === "supplier_confirmed";
   const isRejected = order.status === "rejected";
+  const isPendingInbound = order.status === "pending_inbound"; // 재입고 대기
 
   // Extract rejection reasons from order items
   const rejectionReasons =
@@ -6533,13 +6575,18 @@ const OrderCard = memo(function OrderCard({
               >
                 {/* Product Name + Reasons */}
                 <div className="mb-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-base font-semibold text-slate-900 dark:text-white">
                       {item.productName || "알 수 없음"}
                     </h4>
                     {item.brand && (
                       <span className="text-sm text-slate-500 dark:text-slate-400">
                         {item.brand}
+                      </span>
+                    )}
+                    {isPendingInbound && (
+                      <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                        재입고 대기
                       </span>
                     )}
                   </div>
@@ -6566,7 +6613,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       입고수량:
                     </label>
-                    {isSupplierConfirmed ? (
+                    {(isSupplierConfirmed || isPendingInbound) ? (
                       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/50">
                         <span className="text-sm text-slate-800 dark:text-slate-100">
                           {edited.quantity !== "" &&
@@ -6618,7 +6665,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       유통기간:
                     </label>
-                    {isSupplierConfirmed ? (
+                    {(isSupplierConfirmed || isPendingInbound) ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                         {edited.expiryDate || "-"}
                       </div>
@@ -6640,7 +6687,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       보관위치
                     </label>
-                    {isSupplierConfirmed ? (
+                    {(isSupplierConfirmed || isPendingInbound) ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                         {edited.storageLocation || "-"}
                       </div>

@@ -606,6 +606,28 @@ export const apiGet = async <T = any>(
     ...options,
   })
     .then(async (response) => {
+      // 304 Not Modified: body bo'sh, response.json() xato beradi — cache-bust bilan qayta so'rov
+      if (response.status === 304) {
+        const cacheBuster = endpoint.includes("?") ? "&_t=304" : "?_t=304";
+        const retryResponse = await apiRequest(
+          endpoint + cacheBuster,
+          {
+            method: "GET",
+            ...options,
+            headers: {
+              ...options.headers,
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+            },
+          }
+        );
+        if (!retryResponse.ok) {
+          const errText = await retryResponse.text();
+          throw new Error(errText || `HTTP ${retryResponse.status}`);
+        }
+        return retryResponse.json();
+      }
+
       if (!response.ok) {
         let errorMessage = "Request failed";
         try {

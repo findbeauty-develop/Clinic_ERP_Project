@@ -743,7 +743,17 @@ export class ProductsService {
           // Error handling (user'ga ko'rsatilmaydi)
         });
       }
-      return cached.data; // ✅ Stale yoki fresh, lekin har doim data
+      // ✅ Bo'sh ro'yxat + stale cache bo'lsa: DB da productlar bor lekin cache eski bo'lishi mumkin — cache'ni bekor qilib DB dan qayta o'qish
+      const isEmptyAndStale =
+        Array.isArray(cached.data) &&
+        cached.data.length === 0 &&
+        cached.isStale;
+      if (isEmptyAndStale) {
+        this.clearProductsCache(tenantId);
+        // Fall through to fetch from DB below
+      } else {
+        return cached.data;
+      }
     }
 
     // Parallel fetching - 3 ta query bir vaqtda (3x tezroq)
