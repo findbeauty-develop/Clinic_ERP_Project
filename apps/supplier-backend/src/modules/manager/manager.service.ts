@@ -32,6 +32,38 @@ export class ManagerService {
     private readonly configService: ConfigService
   ) {}
 
+  /**
+   * Slug for tenant_id: only a-z, 0-9, underscore; max 24 chars.
+   */
+  private slugForTenantId(name: string, maxLen = 24): string {
+    const slug = (name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .substring(0, maxLen);
+    return slug || "company";
+  }
+
+  /**
+   * Generate unique tenant_id for new supplier.
+   * Format: supplier_<company_name_slug>_<timestamp>
+   * Fallback: supplier_<business_number>_<timestamp> if slug is empty.
+   */
+  private generateSupplierTenantId(
+    companyName: string,
+    businessNumber: string
+  ): string {
+    const slug = this.slugForTenantId(companyName || "");
+    const idPart =
+      slug && slug !== "company"
+        ? slug
+        : (businessNumber || "").replace(/[^0-9]/g, "") || "0";
+    return `supplier_${idPart}_${Date.now()}`;
+  }
+
   async registerManager(dto: RegisterManagerDto) {
     // 1. Duplicate phone number check
     const existingManager = await this.prisma.executeWithRetry(async () => {
@@ -411,10 +443,10 @@ export class ManagerService {
                   product_categories: dto.company.productCategories || [],
                   share_consent: dto.company.shareConsent || false,
                   status: "ACTIVE", // New supplier signup - immediately ACTIVE (no approval needed)
-                  tenant_id: `supplier_${dto.company.businessNumber.replace(
-                    /[^0-9]/g,
-                    ""
-                  )}_${Date.now()}`, // Generate unique tenant_id for new company
+                  tenant_id: this.generateSupplierTenantId(
+                    dto.company.companyName,
+                    dto.company.businessNumber
+                  ), // supplier_<company_slug>_<timestamp>
                 },
               });
 
