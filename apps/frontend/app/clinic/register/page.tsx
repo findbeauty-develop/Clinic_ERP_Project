@@ -67,6 +67,7 @@ export default function ClinicRegisterPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState("");
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
@@ -332,15 +333,15 @@ export default function ClinicRegisterPage() {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-     const response = await fetch(
-      `${apiUrl}/iam/members/clinics/verify-certificate`,
-      {
-        method: "POST",
-        headers, // ✅ Faqat Authorization header
-        body: formData, // ✅ FormData - browser Content-Type'ni o'zi qo'shadi
-        credentials: "include", // ✅ Cookie'lar uchun
-      }
-    );
+      const response = await fetch(
+        `${apiUrl}/iam/members/clinics/verify-certificate`,
+        {
+          method: "POST",
+          headers, // ✅ Faqat Authorization header
+          body: formData, // ✅ FormData - browser Content-Type'ni o'zi qo'shadi
+          credentials: "include", // ✅ Cookie'lar uchun
+        }
+      );
 
       if (!response.ok) {
         // 500 error yoki boshqa server error
@@ -511,6 +512,36 @@ export default function ClinicRegisterPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // Check for duplicate clinic before showing confirmation modal
+    try {
+      const checkResponse = await fetch(
+        `${apiUrl}/iam/members/clinics/check-duplicate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            documentIssueNumber: form.documentIssueNumber,
+            licenseNumber: form.licenseNumber,
+          }),
+        }
+      );
+
+      if (checkResponse.ok) {
+        const checkResult = await checkResponse.json();
+        if (checkResult.isDuplicate) {
+          // Show duplicate modal
+          setShowDuplicateModal(true);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Duplicate check failed:", error);
+      // Continue with registration if check fails
+    }
+
     // Show confirmation modal instead of submitting directly
     setShowConfirmModal(true);
   };
@@ -539,85 +570,45 @@ export default function ClinicRegisterPage() {
 
     setLoading(true);
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      // If clinicId exists, update existing clinic; otherwise create new one
-      const isUpdateMode = clinicId !== null;
-
-      const url = isUpdateMode
-        ? `${apiUrl}/iam/members/clinics/${clinicId}`
-        : `${apiUrl}/iam/members/clinics`;
-      const method = isUpdateMode ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        const errorMessage =
-          typeof result?.message === "string"
-            ? result.message
-            : isUpdateMode
-              ? "클리닉 수정 중 오류가 발생했습니다."
-              : "클리닉 등록 중 오류가 발생했습니다.";
-
-        // Show alert for duplicate registration
-        window.alert(errorMessage);
-        throw new Error(errorMessage);
-      }
+      // Deferred save: only cache the clinic data, no API call yet
+      // DB write will happen on success page after terms agreement
 
       setForm(initialForm);
       setClinicId(null);
       if (typeof window !== "undefined") {
-        // Clear form data from both sessionStorage and localStorage after successful submission
+        // Clear form data from both sessionStorage and localStorage
         sessionStorage.removeItem("clinic_register_form");
         localStorage.removeItem("clinic_register_form");
 
         // Clear editing clinic ID
         sessionStorage.removeItem("erp_editing_clinic_id");
 
-        // Save tenant_id for use in complete page and member creation
-        if (result && result.tenant_id) {
-          sessionStorage.setItem("erp_tenant_id", result.tenant_id);
-        }
-
-        // Update sessionStorage with new clinic data
+        // Save pending clinic data for later (success page will use this to create clinic)
         sessionStorage.setItem(
-          "erp_clinic_summary",
+          "erp_clinic_pending",
           JSON.stringify({
-            id: result.id,
-            name: result.name,
-            englishName: result.english_name,
-            category: result.category,
-            location: result.location,
-            medicalSubjects: result.medical_subjects,
-            description: result.description,
-            licenseType: result.license_type,
-            licenseNumber: result.license_number,
-            documentIssueNumber: result.document_issue_number,
-            tenantId: result.tenant_id, // Include tenant_id
+            name: payload.name,
+            englishName: payload.englishName,
+            category: payload.category,
+            location: payload.location,
+            medicalSubjects: payload.medicalSubjects,
+            description: payload.description,
+            licenseType: payload.licenseType,
+            licenseNumber: payload.licenseNumber,
+            documentIssueNumber: payload.documentIssueNumber,
+            documentImageUrls: payload.documentImageUrls,
+            openDate: payload.openDate,
+            doctorName: payload.doctorName,
           })
         );
+
         window.location.href = "/clinic/register/member";
       }
     } catch (error) {
-      // Error message is already shown in the if (!response.ok) block
-      // Only show alert here if it's a network error or other unexpected error
-      if (
-        error instanceof Error &&
-        !error.message.includes("클리닉 등록 중 오류가 발생했습니다") &&
-        !error.message.includes("이미 등록된 클리닉")
-      ) {
-        window.alert(error.message || "클리닉 등록 중 오류가 발생했습니다.");
+      if (error instanceof Error) {
+        window.alert(
+          error.message || "클리닉 정보 저장 중 오류가 발생했습니다."
+        );
       }
     } finally {
       setLoading(false);
@@ -936,10 +927,8 @@ export default function ClinicRegisterPage() {
                 <input
                   type="text"
                   value={form.documentIssueNumber}
-                  onChange={(event) =>
-                    updateField("documentIssueNumber", event.target.value)
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-900 shadow-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  readOnly
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-900 shadow-sm cursor-not-allowed"
                   placeholder="문서 발급번호를 입력하세요."
                   required
                 />
@@ -1155,6 +1144,76 @@ export default function ClinicRegisterPage() {
                   {loading ? "처리 중..." : "다음 단계"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Clinic Modal */}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative mx-4 w-full max-w-md rounded-2xl border border-red-200 bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowDuplicateModal(false)}
+              className="absolute right-4 top-4 text-slate-400 transition hover:text-slate-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-8 text-center">
+              {/* Warning Icon */}
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-10 w-10 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h2 className="mb-2 text-2xl font-bold text-slate-900">
+                이미 등록된 클리닉입니다!
+              </h2>
+
+              {/* Message */}
+              <p className="mb-6 text-sm leading-relaxed text-slate-600">
+                이미 등록된 클리닉입니다. 문서발급번호 또는 면허번호를
+                확인해주세요.
+              </p>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowDuplicateModal(false)}
+                className="w-full rounded-xl bg-gradient-to-r from-red-500 to-rose-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-red-600 hover:to-rose-600 focus:outline-none focus:ring-2 focus:ring-red-200"
+              >
+                확인
+              </button>
             </div>
           </div>
         </div>

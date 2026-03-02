@@ -28,12 +28,10 @@ export class ClinicsRepository {
     data: Partial<Clinic>,
     tenantId?: string
   ): Promise<Clinic> {
-    const where: any = { id };
-    if (tenantId) {
-      where.tenant_id = tenantId;
-    }
+    // Since id is UUID and primary key, we can update by id only
+    // tenantId parameter is kept for API compatibility but not used in where clause
     return this.prisma.clinic.update({
-      where,
+      where: { id },
       data,
     });
   }
@@ -62,6 +60,24 @@ export class ClinicsRepository {
         id: {
           not: excludeId,
         },
+      },
+    });
+  }
+
+  findByDocumentIssueNumber(
+    documentIssueNumber: string
+  ): Promise<Clinic | null> {
+    return this.prisma.clinic.findFirst({
+      where: {
+        document_issue_number: documentIssueNumber,
+      },
+    });
+  }
+
+  findByLicenseNumber(licenseNumber: string): Promise<Clinic | null> {
+    return this.prisma.clinic.findFirst({
+      where: {
+        license_number: licenseNumber,
       },
     });
   }

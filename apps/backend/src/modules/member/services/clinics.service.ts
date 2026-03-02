@@ -69,6 +69,7 @@ export class ClinicsService {
       open_date: recognized.openDate ? new Date(recognized.openDate) : null,
       doctor_name: recognized.doctorName || null,
       created_by: userId ?? null,
+      terms_of_service_agreed: recognized.termsOfServiceAgreed ?? false, // Add terms agreement
     });
 
     // Return clinic with tenant_id so frontend can use it
@@ -457,5 +458,71 @@ export class ClinicsService {
       name: clinic.name,
       logo_url: (clinic as any).logo_url ?? null,
     };
+  }
+
+  /**
+   * Agree to terms of service for a newly registered clinic (public endpoint)
+   * Only allows agreement within 48 hours of clinic creation and only once
+   */
+  async agreeTermsOfService(clinicId: string): Promise<Clinic> {
+    const clinic = await this.repository.findById(clinicId, null as any);
+    if (!clinic) {
+      throw new NotFoundException("Clinic not found");
+    }
+
+    // Check if terms were already agreed
+    if ((clinic as any).terms_of_service_agreed === true) {
+      throw new BadRequestException("Terms of service already agreed");
+    }
+
+    // Check if clinic was created within the last 48 hours
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    if (clinic.created_at < fortyEightHoursAgo) {
+      throw new BadRequestException(
+        "Terms agreement period expired (48 hours after registration)"
+      );
+    }
+
+    // Update terms agreement - use the clinic's tenant_id
+    return this.repository.update(
+      clinicId,
+      {
+        terms_of_service_agreed: true,
+        updated_at: new Date(),
+      },
+      clinic.tenant_id
+    );
+  }
+
+  /**
+   * Check if clinic already exists by document_issue_number or license_number
+   */
+  async checkDuplicateClinic(
+    documentIssueNumber?: string,
+    licenseNumber?: string
+  ): Promise<{ isDuplicate: boolean; message?: string }> {
+    if (documentIssueNumber) {
+      const existingByDocument =
+        await this.repository.findByDocumentIssueNumber(documentIssueNumber);
+      if (existingByDocument) {
+        return {
+          isDuplicate: true,
+          message: "이미 등록된 문서발급번호입니다.",
+        };
+      }
+    }
+
+    if (licenseNumber) {
+      const existingByLicense =
+        await this.repository.findByLicenseNumber(licenseNumber);
+      if (existingByLicense) {
+        return {
+          isDuplicate: true,
+          message: "이미 등록된 면허번호입니다.",
+        };
+      }
+    }
+
+    return { isDuplicate: false };
   }
 }

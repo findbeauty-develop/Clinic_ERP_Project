@@ -509,4 +509,35 @@ export class ClinicsController {
       mimetype: file.mimetype,
     };
   }
+
+  @Post("register/agree-terms")
+  @SetMetadata("skipJwtGuard", true)
+  @ApiOperation({
+    summary: "Agree to terms of service for newly registered clinic (public endpoint)",
+  })
+  async agreeTermsOfService(@Body() dto: { clinicId: string }) {
+    if (!dto.clinicId) {
+      throw new BadRequestException("clinicId is required");
+    }
+    return this.service.agreeTermsOfService(dto.clinicId);
+  }
+
+  @Post("check-duplicate")
+  @SetMetadata("skipJwtGuard", true)
+  @ApiOperation({
+    summary: "Check if clinic already exists by document_issue_number or license_number (public endpoint)",
+  })
+  async checkDuplicate(
+    @Body() dto: { documentIssueNumber?: string; licenseNumber?: string }
+  ) {
+    if (!dto.documentIssueNumber && !dto.licenseNumber) {
+      throw new BadRequestException(
+        "documentIssueNumber or licenseNumber is required"
+      );
+    }
+    return this.service.checkDuplicateClinic(
+      dto.documentIssueNumber,
+      dto.licenseNumber
+    );
+  }
 }

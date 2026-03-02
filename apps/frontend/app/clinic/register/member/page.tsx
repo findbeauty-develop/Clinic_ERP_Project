@@ -66,6 +66,56 @@ export default function ClinicMemberSetupPage() {
       }
       setLoading(true);
       try {
+        // Check if we have pending clinic data (deferred save flow)
+        const pendingClinicRaw = sessionStorage.getItem("erp_clinic_pending");
+        
+        if (pendingClinicRaw) {
+          // Deferred save flow: use cached clinic data instead of fetching from API
+          try {
+            const pendingClinic = JSON.parse(pendingClinicRaw) as {
+              name: string;
+              englishName: string;
+              category: string;
+              location: string;
+              medicalSubjects: string;
+              description?: string;
+              licenseType: string;
+              licenseNumber: string;
+              documentIssueNumber: string;
+              documentImageUrls?: string[];
+              openDate?: string;
+              doctorName?: string;
+            };
+            
+            // Create a virtual clinic object for display
+            const virtualClinic: Clinic = {
+              id: "pending", // Synthetic ID
+              name: pendingClinic.name,
+              english_name: pendingClinic.englishName,
+              category: pendingClinic.category,
+              location: pendingClinic.location,
+              medical_subjects: pendingClinic.medicalSubjects,
+              description: pendingClinic.description || null,
+              license_type: pendingClinic.licenseType,
+              license_number: pendingClinic.licenseNumber,
+              document_issue_number: pendingClinic.documentIssueNumber,
+              document_image_urls: pendingClinic.documentImageUrls || [],
+              tenant_id: null,
+              created_at: new Date().toISOString(),
+            };
+            
+            setClinics([virtualClinic]);
+            setSelectedClinicId(virtualClinic.id);
+            setLoading(false);
+            setOwnerAddress("");
+            return;
+          } catch (err) {
+            console.error("Failed to parse pending clinic data", err);
+            // Fall through to normal API fetch
+          }
+        }
+        
+        // Normal flow or fallback: fetch from API
         // Get tenant_id from sessionStorage (saved during clinic registration)
         const tenantId = sessionStorage.getItem("erp_tenant_id");
         const url = tenantId
@@ -312,21 +362,11 @@ export default function ClinicMemberSetupPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/iam/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(
-          typeof body?.message === "string"
-            ? body.message
-            : "계정을 생성하지 못했습니다."
-        );
-      }
-      const result = (await response.json()) as CreatedMember[];
+      // Deferred save: only cache the member data, no API call yet
+      // DB write will happen on success page after terms agreement
+      
       if (typeof window !== "undefined") {
+        // Save clinic summary for success page display
         const clinicSummary = {
           name: selectedClinic.name,
           englishName: selectedClinic.english_name,
@@ -342,6 +382,8 @@ export default function ClinicMemberSetupPage() {
           "erp_clinic_summary",
           JSON.stringify(clinicSummary)
         );
+        
+        // Save owner profile
         sessionStorage.setItem(
           "erp_owner_profile",
           JSON.stringify({
@@ -353,14 +395,21 @@ export default function ClinicMemberSetupPage() {
             ownerAddress,
           })
         );
-        sessionStorage.setItem("erp_created_members", JSON.stringify(result));
-        // Clear editing clinic ID after successful submission
+        
+        // Save members payload for later (success page will use this to create members)
+        sessionStorage.setItem(
+          "erp_members_payload",
+          JSON.stringify(payload)
+        );
+        
+        // Clear editing clinic ID
         sessionStorage.removeItem("erp_editing_clinic_id");
+        
         window.location.href = "/clinic/register/success";
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "계정을 생성하지 못했습니다."
+        err instanceof Error ? err.message : "정보 저장 중 오류가 발생했습니다."
       );
     } finally {
       setLoading(false);

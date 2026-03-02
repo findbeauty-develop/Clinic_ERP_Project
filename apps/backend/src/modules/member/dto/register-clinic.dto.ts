@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -59,4 +60,8 @@ export class RegisterClinicDto {
   @IsString()
   @IsNotEmpty()
   doctorName!: string; // 성명 (Doctor name from OCR)
+
+  @IsOptional()
+  @IsBoolean()
+  termsOfServiceAgreed?: boolean; // Terms of service agreement
 }

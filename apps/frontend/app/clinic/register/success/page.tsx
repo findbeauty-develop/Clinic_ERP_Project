@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TERMS_OF_SERVICE_TEXT } from "../../../../constants/terms-of-service";
 
 type Clinic = {
   id: string;
@@ -45,6 +46,8 @@ type CreatedMember = {
   memberId: string;
   role: string;
   password: string;
+  name?: string;
+  phoneNumber?: string;
 };
 
 const normalizeClinicName = (name: string) =>
@@ -52,6 +55,21 @@ const normalizeClinicName = (name: string) =>
     .replace(/[^a-zA-Z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, "");
+
+/**
+ * Generate random password (8-12 characters with letters and numbers)
+ * Similar to backend's generateTemporaryPassword
+ */
+const generateRandomPassword = (): string => {
+  const length = 8 + Math.floor(Math.random() * 5); // 8-12 characters
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
 
 const STEP_ITEMS = [
   { step: 1, label: "클리닉 인증" },
@@ -93,37 +111,114 @@ export default function ClinicRegisterSuccessPage() {
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(
     new Set()
   );
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const loadData = async () => {
       try {
-        const clinicRaw = sessionStorage.getItem("erp_clinic_summary");
-        const ownerRaw = sessionStorage.getItem("erp_owner_profile");
-        const membersRaw = sessionStorage.getItem("erp_created_members");
+        // Support both deferred flow and legacy flow
+        // Try erp_clinic_pending first (deferred), fallback to erp_clinic_summary (legacy)
+        const clinicPendingRaw = sessionStorage.getItem("erp_clinic_pending");
+        const clinicSummaryRaw = sessionStorage.getItem("erp_clinic_summary");
+        const clinicRaw = clinicPendingRaw || clinicSummaryRaw;
 
-        if (!clinicRaw || !ownerRaw || !membersRaw) {
+        const ownerRaw = sessionStorage.getItem("erp_owner_profile");
+
+        // Try erp_members_payload first (deferred), fallback to erp_created_members (legacy)
+        const membersPayloadRaw = sessionStorage.getItem("erp_members_payload");
+        const createdMembersRaw = sessionStorage.getItem("erp_created_members");
+
+        if (!clinicRaw || !ownerRaw) {
           setMissingData(true);
           setLoading(false);
           return;
         }
 
-        const parsedClinic = JSON.parse(clinicRaw) as ClinicSummary;
         const parsedOwner = JSON.parse(ownerRaw) as OwnerProfile;
-        const parsedMembers = JSON.parse(membersRaw) as CreatedMember[];
-
-      
-    
-
-        setClinic(parsedClinic);
         setOwner(parsedOwner);
-        setMembers(parsedMembers);
 
-        // Fetch clinic from API to get english_name
-        if (apiUrl) {
+        // Parse clinic data (from pending or summary)
+        if (clinicPendingRaw) {
+          // Deferred flow: clinic not yet created in DB
+          const pendingClinic = JSON.parse(clinicPendingRaw) as {
+            name: string;
+            englishName: string;
+            category: string;
+            location: string;
+            medicalSubjects: string;
+            description?: string;
+            licenseType: string;
+            licenseNumber: string;
+            documentIssueNumber: string;
+            documentImageUrls?: string[];
+            openDate?: string;
+            doctorName?: string;
+          };
+
+          const clinicSummary: ClinicSummary = {
+            name: pendingClinic.name,
+            englishName: pendingClinic.englishName,
+            category: pendingClinic.category,
+            location: pendingClinic.location,
+            medicalSubjects: pendingClinic.medicalSubjects,
+            description: pendingClinic.description,
+            licenseType: pendingClinic.licenseType,
+            licenseNumber: pendingClinic.licenseNumber,
+            documentIssueNumber: pendingClinic.documentIssueNumber,
+          };
+          setClinic(clinicSummary);
+        } else {
+          // Legacy flow: clinic already in DB
+          const parsedClinic = JSON.parse(clinicSummaryRaw!) as ClinicSummary;
+          setClinic(parsedClinic);
+        }
+
+        // Parse members data (from payload or created)
+        if (membersPayloadRaw) {
+          // Deferred flow: members not yet created in DB
+          // Create virtual members for display with random passwords
+          const payload = JSON.parse(membersPayloadRaw);
+          const clinicSlug = payload.clinicEnglishName
+            ? normalizeClinicName(payload.clinicEnglishName)
+            : normalizeClinicName(payload.clinicName);
+
+          const virtualMembers: CreatedMember[] = [
+            {
+              memberId: `owner1@${clinicSlug}`,
+              role: "owner",
+              password: payload.ownerPassword,
+            },
+            {
+              memberId: `manager1@${clinicSlug}`,
+              role: "manager",
+              password: generateRandomPassword(),
+            },
+            {
+              memberId: `member1@${clinicSlug}`,
+              role: "member",
+              password: generateRandomPassword(),
+            },
+          ];
+
+          setMembers(virtualMembers);
+        } else if (createdMembersRaw) {
+          // Legacy flow: members already created
+          const parsedMembers = JSON.parse(
+            createdMembersRaw
+          ) as CreatedMember[];
+          setMembers(parsedMembers);
+        } else {
+          // No member data at all
+          setMembers([]);
+        }
+
+        // Try to fetch clinic from API if we have tenant_id (legacy flow only)
+        if (apiUrl && !clinicPendingRaw) {
           try {
-            // Get tenant_id from sessionStorage
             const tenantId = sessionStorage.getItem("erp_tenant_id");
             const url = tenantId
               ? `${apiUrl}/iam/members/clinics?tenantId=${encodeURIComponent(tenantId)}`
@@ -132,9 +227,11 @@ export default function ClinicRegisterSuccessPage() {
             const response = await fetch(url);
             if (response.ok) {
               const clinics = (await response.json()) as Clinic[];
-              // Find the clinic that matches the stored clinic name
+              const parsedClinic = clinicSummaryRaw
+                ? (JSON.parse(clinicSummaryRaw) as ClinicSummary)
+                : null;
               const matchedClinic = clinics.find(
-                (c) => c.name === parsedClinic.name
+                (c) => c.name === parsedClinic?.name
               );
               if (matchedClinic) {
                 setClinicFromApi(matchedClinic);
@@ -238,6 +335,140 @@ export default function ClinicRegisterSuccessPage() {
     ],
     [owner]
   );
+
+  const handleFinalizeRegistration = async () => {
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      // Check if we're in deferred flow
+      const pendingClinicRaw = sessionStorage.getItem("erp_clinic_pending");
+      const membersPayloadRaw = sessionStorage.getItem("erp_members_payload");
+
+      if (!pendingClinicRaw || !membersPayloadRaw) {
+        // Legacy flow: clinic and members already created
+        // Just call agree-terms and redirect
+        const clinicId = clinicFromApi?.id || clinic?.id;
+        if (clinicId) {
+          try {
+            const response = await fetch(
+              `${apiUrl}/iam/members/clinics/register/agree-terms`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ clinicId }),
+              }
+            );
+            if (!response.ok) {
+              console.error("Failed to save terms agreement");
+            }
+          } catch (error) {
+            console.error("Error saving terms agreement:", error);
+          }
+        }
+
+        setShowCompletionModal(false);
+        router.push("/login");
+        return;
+      }
+
+      // Deferred flow: create clinic, create members, agree terms
+      const pendingClinic = JSON.parse(pendingClinicRaw);
+      const membersPayload = JSON.parse(membersPayloadRaw);
+
+      // Step 1: Create clinic with terms agreement
+      const clinicPayload = {
+        name: pendingClinic.name,
+        englishName: pendingClinic.englishName,
+        category: pendingClinic.category,
+        location: pendingClinic.location,
+        medicalSubjects: pendingClinic.medicalSubjects,
+        description: pendingClinic.description,
+        licenseType: pendingClinic.licenseType,
+        licenseNumber: pendingClinic.licenseNumber,
+        documentIssueNumber: pendingClinic.documentIssueNumber,
+        documentImageUrls: pendingClinic.documentImageUrls,
+        openDate: pendingClinic.openDate,
+        doctorName: pendingClinic.doctorName,
+        termsOfServiceAgreed: termsAgreed, // Include terms agreement status
+      };
+
+      const clinicResponse = await fetch(`${apiUrl}/iam/members/clinics`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(clinicPayload),
+      });
+
+      if (!clinicResponse.ok) {
+        const errorBody = await clinicResponse.json().catch(() => ({}));
+        throw new Error(
+          typeof errorBody?.message === "string"
+            ? errorBody.message
+            : "클리닉 등록 중 오류가 발생했습니다."
+        );
+      }
+
+      const createdClinic = await clinicResponse.json();
+      const clinicId = createdClinic.id;
+      const tenantId = createdClinic.tenant_id;
+
+      // Step 2: Create members with displayed passwords
+      // Get the virtual members that were shown to user
+      const displayedMembers = members; // These are the members with passwords shown on screen
+
+      const createMembersPayload = {
+        ...membersPayload,
+        clinicId,
+        tenantId,
+        // Override with displayed passwords
+        managerPassword: displayedMembers.find((m) => m.role === "manager")
+          ?.password,
+        memberPassword: displayedMembers.find((m) => m.role === "member")
+          ?.password,
+      };
+
+      const membersResponse = await fetch(`${apiUrl}/iam/members`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(createMembersPayload),
+      });
+
+      if (!membersResponse.ok) {
+        const errorBody = await membersResponse.json().catch(() => ({}));
+        throw new Error(
+          typeof errorBody?.message === "string"
+            ? errorBody.message
+            : "계정 생성 중 오류가 발생했습니다."
+        );
+      }
+
+      const createdMembers = await membersResponse.json();
+
+      // Clear all cache
+      sessionStorage.removeItem("erp_clinic_pending");
+      sessionStorage.removeItem("erp_clinic_summary");
+      sessionStorage.removeItem("erp_tenant_id");
+      sessionStorage.removeItem("erp_owner_profile");
+      sessionStorage.removeItem("erp_members_payload");
+      sessionStorage.removeItem("erp_created_members");
+      sessionStorage.removeItem("erp_editing_clinic_id");
+
+      // Redirect to login
+      setShowCompletionModal(false);
+      router.push("/login");
+    } catch (error) {
+      setIsSubmitting(false);
+      if (error instanceof Error) {
+        window.alert(error.message || "등록 처리 중 오류가 발생했습니다.");
+      }
+    }
+  };
 
   if (loading) {
     return (
@@ -565,10 +796,49 @@ export default function ClinicRegisterSuccessPage() {
                   );
                 })
               ) : (
-                <p className="text-sm text-slate-500">
-                  생성된 계정 정보를 불러오지 못했습니다.
-                </p>
+                <div className="text-center py-6">
+                  <p className="text-sm text-slate-600 mb-4">
+                    아래 "완료" 버튼을 클릭하여 계정을 생성하세요.
+                  </p>
+                </div>
               )}
+            </div>
+
+            {/* Terms of Service Agreement */}
+            <div className="mt-8 flex items-start gap-3 border-t pt-6">
+              <input
+                type="checkbox"
+                id="terms-agreement"
+                checked={termsAgreed}
+                onChange={(e) => setTermsAgreed(e.target.checked)}
+                className="cb mt-0.5 cursor-pointer focus:ring-2 focus:ring-indigo-200"
+              />
+
+              {/* label o‘rniga oddiy container: endi matn bosilganda checkbox toggle bo‘lmaydi */}
+              <div className="flex-1 text-sm text-slate-700">
+                <span className="text-red-500 font-medium">[필수]</span>{" "}
+                <span>재클릿 서비스 </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowTermsModal(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowTermsModal(true);
+                    }
+                  }}
+                  className="underline text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                >
+                  이용약관
+                </span>
+                에 동의합니다
+              </div>
             </div>
           </div>
         </section>
@@ -576,15 +846,58 @@ export default function ClinicRegisterSuccessPage() {
         <footer className="mx-auto flex w-full max-w-4xl justify-end">
           <button
             type="button"
+            disabled={!termsAgreed}
             onClick={() => {
               setShowCompletionModal(true);
             }}
-            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-indigo-500 disabled:hover:via-purple-500 disabled:hover:to-indigo-500"
           >
             완료
           </button>
         </footer>
       </div>
+
+      {/* Terms of Service Modal */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="relative mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h2 className="text-xl font-bold text-slate-900">
+                재클릿 서비스 이용약관
+              </h2>
+            </div>
+
+            {/* Modal Content - Scrollable */}
+            <div className="flex-1  overflow-y-auto px-6 py-4">
+              <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed">
+                {TERMS_OF_SERVICE_TEXT}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="rounded-xl border border-slate-200 px-6 py-2.5 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTermsAgreed(true);
+                  setShowTermsModal(false);
+                }}
+                className="rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              >
+                동의하고 계속하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Completion Modal */}
       {showCompletionModal && (
@@ -625,13 +938,11 @@ export default function ClinicRegisterSuccessPage() {
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCompletionModal(false);
-                    router.push("/login");
-                  }}
-                  className="rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-teal-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  disabled={isSubmitting}
+                  onClick={handleFinalizeRegistration}
+                  className="rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-teal-600 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  확인
+                  {isSubmitting ? "처리 중..." : "확인"}
                 </button>
               </div>
             </div>
