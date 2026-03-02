@@ -798,7 +798,7 @@ export default function ClinicRegisterSuccessPage() {
               ) : (
                 <div className="text-center py-6">
                   <p className="text-sm text-slate-600 mb-4">
-                    아래 "완료" 버튼을 클릭하여 계정을 생성하세요.
+                    아래 &ldquo;완료&rdquo; 버튼을 클릭하여 계정을 생성하세요.
                   </p>
                 </div>
               )}
