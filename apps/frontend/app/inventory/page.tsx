@@ -4,6 +4,32 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiGet } from "../../lib/api";
 
+// Scrollbar styling for white scrollbars on cards
+const scrollbarStyles = `
+  /* White scrollbar for risky items table */
+  .white-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .white-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+  }
+  .white-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  .white-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.95);
+  }
+  /* Firefox */
+  .white-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.8) rgba(255, 255, 255, 0.3);
+  }
+`;
+
 type InventorySummary = {
   inbound: {
     total: number;
@@ -182,6 +208,9 @@ export default function InventoryPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
+      {/* Inject scrollbar styles */}
+      <style dangerouslySetInnerHTML={{ __html: scrollbarStyles }} />
+      
       {/* Header */}
       <div className="bg-white p-4 shadow-sm">
         <div className="flex justify-between items-start">
@@ -424,7 +453,7 @@ export default function InventoryPage() {
               위험재고가 없습니다.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-amber-200/60 bg-white/80 dark:bg-slate-900/50 dark:border-amber-500/30">
+            <div className="overflow-x-auto white-scrollbar rounded-lg border border-amber-200/60 bg-white/80 dark:bg-slate-900/50 dark:border-amber-500/30">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-amber-200/80 bg-amber-100/50 dark:bg-amber-900/20 dark:border-amber-500/30">
@@ -511,7 +540,7 @@ export default function InventoryPage() {
               재고 부족 제품이 없습니다.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto white-scrollbar">
               <table className="w-full bg-white rounded-lg">
                 <thead>
                   <tr className="border-b border-slate-200">

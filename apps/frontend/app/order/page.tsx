@@ -780,6 +780,9 @@ export default function OrderPage() {
         purchasePrice,
       });
 
+      // ✅ Cache'ni invalidate qilish - yangi price darhol ko'rinsin
+      invalidateCache("products");
+
       // Update local products state with new price
       setProducts((prevProducts) =>
         prevProducts.map((p) =>

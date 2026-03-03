@@ -1395,12 +1395,12 @@ export default function InboundNewPage() {
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                         </div>
-                        {!formData.barcode?.trim() && (
+                        {/* {!formData.barcode?.trim() && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
                             바코드는 필수 입력 항목입니다. 제품 중복 등록 방지를
                             위해 입력해 주세요.
                           </p>
-                        )}
+                        )} */}
                       </div>
                     </div>
                   </div>

@@ -8,7 +8,14 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config({ path: '.env.production' });
+const path = require('path');
+
+// Determine which .env file to use based on command line argument
+const envFile = process.argv[2] === 'production' ? '.env.production' : '.env';
+require('dotenv').config({ path: path.resolve(__dirname, '..', envFile) });
+
+console.log(`📝 Using environment: ${envFile}`);
+console.log(`🔗 Supabase URL: ${process.env.SUPABASE_URL}\n`);
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
