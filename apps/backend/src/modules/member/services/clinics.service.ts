@@ -55,7 +55,7 @@ export class ClinicsService {
     }
 
     const documentUrls = recognized.documentImageUrls ?? [];
-    const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId);
+    const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId, this.storageService);
 
     const clinic = await this.repository.create({
       tenant_id: tenantId,
@@ -162,7 +162,8 @@ export class ClinicsService {
     const storedNewUrls = await saveBase64Images(
       "clinic",
       newBase64Images,
-      tenantId
+      tenantId,
+      this.storageService
     );
     const allUrls = [...existingUrls, ...storedNewUrls];
 

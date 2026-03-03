@@ -130,6 +130,7 @@ export default function OrderPage() {
     "low-stock"
   );
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false); // ✅ Order yaratish loading state
   const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
   const [orders, setOrders] = useState<any[]>([]);
   const [rejectedOrders, setRejectedOrders] = useState<any[]>([]);
@@ -2595,6 +2596,10 @@ export default function OrderPage() {
                     </button>
                     <button
                       onClick={async () => {
+                        // ✅ Duplicate order oldini olish
+                        if (isCreatingOrder) return;
+                        
+                        setIsCreatingOrder(true);
                         try {
                           // ✅ getAccessToken() ishlatish (localStorage emas)
                           const token = await getAccessToken();
@@ -2637,11 +2642,18 @@ export default function OrderPage() {
                         } catch (err) {
                           console.error("Failed to create order", err);
                           alert("주문서 생성에 실패했습니다.");
+                        } finally {
+                          setIsCreatingOrder(false);
                         }
                       }}
-                      className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                      disabled={isCreatingOrder}
+                      className={`rounded-lg px-6 py-2 font-medium text-white transition ${
+                        isCreatingOrder
+                          ? "bg-blue-400 cursor-not-allowed opacity-50"
+                          : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                      }`}
                     >
-                      주문서 생성
+                      {isCreatingOrder ? "생성 중..." : "주문서 생성"}
                     </button>
                   </div>
                 </div>

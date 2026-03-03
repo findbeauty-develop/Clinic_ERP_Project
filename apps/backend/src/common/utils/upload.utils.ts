@@ -1,6 +1,7 @@
 import { parse, join, resolve } from "path";
 import { v4 as uuidv4 } from "uuid";
 import { promises as fs } from "fs";
+import { StorageService } from "../../core/storage/storage.service";
 
 export const validMimeTypes = ["image/png", "image/jpg", "image/jpeg"];
 
@@ -37,21 +38,17 @@ const getExtensionFromMime = (mime: string) => {
 export const saveBase64Images = async (
   category: string,
   images: string[],
-  tenantId?: string
+  tenantId?: string,
+  storageService?: StorageService
 ): Promise<string[]> => {
   if (!images?.length) return [];
 
   const normalizedCategory = getUploadCategory(category);
-  // Create tenant-specific directory structure: uploads/{category}/{tenantId}/
-  const categoryDir = tenantId
-    ? join(UPLOAD_ROOT, normalizedCategory, tenantId)
-    : join(UPLOAD_ROOT, normalizedCategory);
-  await fs.mkdir(categoryDir, { recursive: true });
-
   const results: string[] = [];
 
   for (const image of images) {
     if (!image) continue;
+    
     const match = image.match(dataUrlRegex);
     if (!match?.groups) {
       results.push(image);
@@ -67,9 +64,34 @@ export const saveBase64Images = async (
 
     const buffer = Buffer.from(base64Data, "base64");
     const filename = uuidv4() + getExtensionFromMime(mime ?? "image/png");
+
+    // ✅ Try Supabase Storage first, fallback to local
+    if (storageService && storageService.isAvailable()) {
+      try {
+        // Upload to Supabase Storage
+        const storagePath = `${normalizedCategory}/${tenantId || 'default'}/${filename}`;
+        const publicUrl = await storageService.uploadBuffer(
+          buffer,
+          storagePath,
+          mime
+        );
+        results.push(publicUrl);
+        continue;
+      } catch (error) {
+        console.error('Supabase upload failed, falling back to local:', error);
+        // Fall through to local storage
+      }
+    }
+
+    // ❌ Fallback to local storage (if Supabase not available or failed)
+    const categoryDir = tenantId
+      ? join(UPLOAD_ROOT, normalizedCategory, tenantId)
+      : join(UPLOAD_ROOT, normalizedCategory);
+    await fs.mkdir(categoryDir, { recursive: true });
+
     const filePath = join(categoryDir, filename);
     await fs.writeFile(filePath, buffer);
-    // Return path with tenant ID if provided
+    
     const relativePath = tenantId
       ? `/uploads/${normalizedCategory}/${tenantId}/${filename}`
       : `/uploads/${normalizedCategory}/${filename}`;

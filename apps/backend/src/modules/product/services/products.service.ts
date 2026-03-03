@@ -14,6 +14,7 @@ import { UpdateProductDto } from "../dto/update-product.dto";
 import { ImportProductRowDto } from "../dto/import-products.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
 import { CacheManager } from "../../../common/cache";
+import { StorageService } from "../../../core/storage/storage.service";
 
 @Injectable()
 export class ProductsService {
@@ -24,6 +25,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clinicSupplierHelper: ClinicSupplierHelperService,
+    private readonly storageService: StorageService,
     @Inject(
       forwardRef(() => {
         // Lazy import to avoid circular dependency
@@ -347,7 +349,8 @@ export class ProductsService {
       const [savedImage] = await saveBase64Images(
         "product",
         [dto.image],
-        tenantId
+        tenantId,
+        this.storageService
       );
       imageUrl = savedImage;
     }
@@ -987,7 +990,8 @@ export class ProductsService {
         const [savedImage] = await saveBase64Images(
           "product",
           [dto.image],
-          tenantId
+          tenantId,
+          this.storageService
         );
         imageUrl = savedImage;
       }
