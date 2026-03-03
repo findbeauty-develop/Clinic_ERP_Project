@@ -90,7 +90,11 @@ export default function AccountManagementPage() {
           // Set logo preview if logo_url exists
           if (clinicsData[0].logo_url) {
             setLogoUrl(clinicsData[0].logo_url);
-            setLogoPreview(`${apiUrl}${clinicsData[0].logo_url}`);
+            // ✅ Check if URL is already full URL (starts with http)
+            const logoUrl = clinicsData[0].logo_url;
+            setLogoPreview(
+              logoUrl.startsWith('http') ? logoUrl : `${apiUrl}${logoUrl}`
+            );
           }
         }
 
@@ -356,8 +360,8 @@ export default function AccountManagementPage() {
       }
 
       setLogoUrl(uploadResult.url);
-      const fullUrl = `${apiUrl}${uploadResult.url}`;
-      setLogoPreview(fullUrl);
+      // ✅ URL already full from Supabase, no need to prepend apiUrl
+      setLogoPreview(uploadResult.url);
 
       // Clinic state'ni yangilash
       if (clinic) {

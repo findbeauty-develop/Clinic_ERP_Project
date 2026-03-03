@@ -249,8 +249,11 @@ export function Sidebar() {
           setClinicName(clinicInfo.name || "");
 
           if (clinicInfo.logo_url) {
-            const apiUrl = getApiUrl();
-            setClinicLogo(`${apiUrl}${clinicInfo.logo_url}`);
+            // ✅ Check if URL is already full URL (starts with http)
+            const logoUrl = clinicInfo.logo_url;
+            setClinicLogo(
+              logoUrl.startsWith('http') ? logoUrl : `${getApiUrl()}${logoUrl}`
+            );
           } else {
             setClinicLogo(""); // Default logo
           }
@@ -294,8 +297,11 @@ export function Sidebar() {
     const handleLogoUpdate = (e: CustomEvent) => {
       // Logo yangilanganda sidebar'ni yangilash
       if (e.detail?.logoUrl) {
-        const apiUrl = getApiUrl();
-        setClinicLogo(`${apiUrl}${e.detail.logoUrl}`);
+        // ✅ Check if URL is already full URL
+        const logoUrl = e.detail.logoUrl;
+        setClinicLogo(
+          logoUrl.startsWith('http') ? logoUrl : `${getApiUrl()}${logoUrl}`
+        );
       }
     };
 
