@@ -5,50 +5,23 @@ import {
   Post,
   UploadedFile,
   UseInterceptors,
+  Req,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { diskStorage } from "multer";
-import { join } from "path";
-import { promises as fs } from "fs";
+import { StorageService } from "../core/storage/storage.service";
 import type { Request } from "express";
 import {
-  getSerialForImage,
-  getUploadCategory,
-  getUploadRoot,
   validMimeTypes,
 } from "../common/utils/upload.utils";
 
-const UPLOAD_ROOT = getUploadRoot();
-
 @Controller("uploads")
 export class UploadsController {
+  constructor(private readonly storageService: StorageService) {}
+
   @Post(":category")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: async (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, destination: string) => void
-        ) => {
-          const category = getUploadCategory(req.params?.category);
-          const targetDir = join(UPLOAD_ROOT, category);
-          try {
-            await fs.mkdir(targetDir, { recursive: true });
-            callback(null, targetDir);
-          } catch (error) {
-            callback(error as Error, targetDir);
-          }
-        },
-        filename: (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, filename: string) => void
-        ) => {
-          const filename = getSerialForImage(file.originalname);
-          callback(null, filename);
-        },
-      }),
+      storage: undefined, // Use memory storage to get buffer
       fileFilter: (
         req: Request,
         file: Express.Multer.File,
@@ -67,22 +40,48 @@ export class UploadsController {
       },
     })
   )
-  upload(
+  async upload(
     @Param("category") category: string,
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request
   ) {
     if (!file) {
       throw new BadRequestException("File is required");
     }
-    const normalized = getUploadCategory(category);
-    const filename = file.filename;
-    const url = `/uploads/${normalized}/${filename}`;
-    return {
-      filename,
-      url,
-      category: normalized,
-      size: file.size,
-      mimetype: file.mimetype,
-    };
+
+    // Get tenant ID from request (for multi-tenant isolation)
+    const tenantId =
+      (req as any).tenantId ||
+      (req.query?.tenantId as string) ||
+      "default-tenant";
+
+    // Generate storage path
+    const storagePath = this.storageService.generateFilename(
+      file.originalname,
+      tenantId,
+      category as any
+    );
+
+    try {
+      // Upload to Supabase Storage
+      const publicUrl = await this.storageService.uploadFile(file, storagePath, {
+        optimize: true,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        quality: 85,
+      });
+
+      return {
+        filename: storagePath.split('/').pop(),
+        url: publicUrl, // Return Supabase public URL
+        category,
+        size: file.size,
+        mimetype: file.mimetype,
+      };
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Upload failed: ${error.message || "Unknown error"}`
+      );
+    }
   }
 }

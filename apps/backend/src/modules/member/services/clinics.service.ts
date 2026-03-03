@@ -11,6 +11,7 @@ import { GoogleVisionService } from "./google-vision.service";
 import { CertificateParserService } from "./certificate-parser.service";
 import { VerifyCertificateResponseDto } from "../dto/verify-certificate-response.dto";
 import { HiraService } from "../../hira/services/hira.service";
+import { StorageService } from "../../../core/storage/storage.service";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { v4 as uuidv4 } from "uuid";
@@ -24,7 +25,8 @@ export class ClinicsService {
     private readonly repository: ClinicsRepository,
     private readonly googleVisionService: GoogleVisionService,
     private readonly certificateParserService: CertificateParserService,
-    private readonly hiraService: HiraService
+    private readonly hiraService: HiraService,
+    private readonly storageService: StorageService
   ) {}
 
   async clinicRegister(
@@ -524,5 +526,21 @@ export class ClinicsService {
     }
 
     return { isDuplicate: false };
+  }
+
+  /**
+   * Upload file to Supabase Storage (used for logos, certificates, etc.)
+   */
+  async uploadToStorage(
+    file: Express.Multer.File,
+    storagePath: string,
+    options?: {
+      optimize?: boolean;
+      maxWidth?: number;
+      maxHeight?: number;
+      quality?: number;
+    }
+  ): Promise<string> {
+    return this.storageService.uploadFile(file, storagePath, options);
   }
 }

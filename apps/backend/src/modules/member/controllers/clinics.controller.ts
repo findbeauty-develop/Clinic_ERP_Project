@@ -262,34 +262,7 @@ export class ClinicsController {
   @ApiConsumes("multipart/form-data")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: async (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, destination: string) => void
-        ) => {
-          const tenantId =
-            (req as any).tenantId ||
-            (req.query?.tenantId as string) ||
-            "self-service-tenant";
-          const UPLOAD_ROOT = getUploadRoot();
-          const targetDir = join(UPLOAD_ROOT, "clinic", tenantId);
-          try {
-            await fs.mkdir(targetDir, { recursive: true });
-            callback(null, targetDir);
-          } catch (error) {
-            callback(error as Error, targetDir);
-          }
-        },
-        filename: (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, filename: string) => void
-        ) => {
-          const filename = getSerialForImage(file.originalname);
-          callback(null, filename);
-        },
-      }),
+      storage: undefined, // Use memory storage
       fileFilter: (
         req: Request,
         file: Express.Multer.File,
@@ -326,15 +299,31 @@ export class ClinicsController {
     }
 
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-    const url = `/uploads/clinic/${resolvedTenantId}/${file.filename}`;
+    
+    // Generate storage path for certificate
+    const storagePath = `certificate/${resolvedTenantId}/${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${file.originalname.split('.').pop()?.toLowerCase() || 'jpg'}`;
 
-    return {
-      filename: file.filename,
-      url,
-      category: "clinic",
-      size: file.size,
-      mimetype: file.mimetype,
-    };
+    try {
+      // Upload to Supabase Storage
+      const publicUrl = await this.service.uploadToStorage(file, storagePath, {
+        optimize: true,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        quality: 90,
+      });
+
+      return {
+        filename: storagePath.split('/').pop(),
+        url: publicUrl, // Return Supabase public URL
+        category: "clinic",
+        size: file.size,
+        mimetype: file.mimetype,
+      };
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Upload failed: ${error.message || "Unknown error"}`
+      );
+    }
   }
 
   @Post("verify-certificate")
@@ -435,34 +424,7 @@ export class ClinicsController {
   @ApiConsumes("multipart/form-data")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: async (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, destination: string) => void
-        ) => {
-          const tenantId =
-            (req as any).tenantId ||
-            (req.query?.tenantId as string) ||
-            "self-service-tenant";
-          const UPLOAD_ROOT = getUploadRoot();
-          const targetDir = join(UPLOAD_ROOT, "clinic", tenantId, "logo");
-          try {
-            await fs.mkdir(targetDir, { recursive: true });
-            callback(null, targetDir);
-          } catch (error) {
-            callback(error as Error, targetDir);
-          }
-        },
-        filename: (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, filename: string) => void
-        ) => {
-          const filename = getSerialForImage(file.originalname);
-          callback(null, filename);
-        },
-      }),
+      storage: undefined, // Use memory storage
       fileFilter: (
         req: Request,
         file: Express.Multer.File,
@@ -499,15 +461,31 @@ export class ClinicsController {
     }
 
     const resolvedTenantId = tenantId ?? tenantQuery ?? "self-service-tenant";
-    const url = `/uploads/clinic/${resolvedTenantId}/logo/${file.filename}`;
+    
+    // Generate storage path for logo
+    const storagePath = `logo/${resolvedTenantId}/${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${file.originalname.split('.').pop()?.toLowerCase() || 'jpg'}`;
 
-    return {
-      filename: file.filename,
-      url,
-      category: "clinic-logo",
-      size: file.size,
-      mimetype: file.mimetype,
-    };
+    try {
+      // Upload to Supabase Storage with optimization
+      const publicUrl = await this.service.uploadToStorage(file, storagePath, {
+        optimize: true,
+        maxWidth: 500,
+        maxHeight: 500,
+        quality: 90,
+      });
+
+      return {
+        filename: storagePath.split('/').pop(),
+        url: publicUrl, // Return Supabase public URL
+        category: "clinic-logo",
+        size: file.size,
+        mimetype: file.mimetype,
+      };
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Upload failed: ${error.message || "Unknown error"}`
+      );
+    }
   }
 
   @Post("register/agree-terms")

@@ -5,6 +5,7 @@ import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrometheusInterceptor } from "./common/interceptors/prometheus.interceptor";
 import { AttackDetectionInterceptor } from "./common/interceptors/attack-detection.interceptor";
 import { PrismaModule } from "./core/prisma.module";
+import { StorageModule } from "./core/storage/storage.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { IamModule } from "./modules/iam/iam.module";
 import { MemberModule } from "./modules/member/member.module";
@@ -57,6 +58,7 @@ import { CommonModule } from "./common/common.module";
       },
     ]),
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
+    StorageModule, // Global StorageModule - Supabase Storage for file uploads
     IamModule,
     ProductModule,
     MemberModule,
