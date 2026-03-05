@@ -1200,12 +1200,10 @@ function OutboundPageContent() {
           product.usageCapacity !== undefined &&
           product.usageCapacity > 0
         ) {
-          // Jami miqdor: inbound_qty * capacity_per_product
           const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
-          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
           const usedCount = batch.used_count || 0;
-          // Qolgan miqdor: totalQuantity - usedCount
-          availableQuantity = Math.max(0, totalQuantity - usedCount);
+          const volumeUsed = usedCount * product.usageCapacity;
+          availableQuantity = Math.max(0, Math.round(totalQuantity - volumeUsed));
         } else if (
           batch.inbound_qty !== null &&
           batch.inbound_qty !== undefined &&
@@ -1213,7 +1211,6 @@ function OutboundPageContent() {
           product.capacityPerProduct !== undefined &&
           product.capacityPerProduct > 0
         ) {
-          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
           availableQuantity = batch.inbound_qty * product.capacityPerProduct;
         }
         return item.quantity <= availableQuantity;
@@ -1277,12 +1274,10 @@ function OutboundPageContent() {
           product.usageCapacity !== undefined &&
           product.usageCapacity > 0
         ) {
-          // Jami miqdor: inbound_qty * capacity_per_product
           const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
-          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
           const usedCount = batch.used_count || 0;
-          // Qolgan miqdor: totalQuantity - usedCount
-          availableQuantity = Math.max(0, totalQuantity - usedCount);
+          const volumeUsed = usedCount * product.usageCapacity;
+          availableQuantity = Math.max(0, Math.round(totalQuantity - volumeUsed));
         } else if (
           batch.inbound_qty !== null &&
           batch.inbound_qty !== undefined &&
@@ -1290,7 +1285,6 @@ function OutboundPageContent() {
           product.capacityPerProduct !== undefined &&
           product.capacityPerProduct > 0
         ) {
-          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
           availableQuantity = batch.inbound_qty * product.capacityPerProduct;
         }
 
@@ -3088,15 +3082,13 @@ function OutboundPageContent() {
                           product.usageCapacity !== undefined &&
                           product.usageCapacity > 0
                         ) {
-                          // Jami miqdor: inbound_qty * capacity_per_product
                           const totalQuantity =
                             batch.inbound_qty * product.capacityPerProduct;
-                          // Ishlatilgan miqdor: used_count (agar mavjud bo'lsa)
                           const usedCount = batch.used_count || 0;
-                          // Qolgan miqdor: totalQuantity - usedCount
+                          const volumeUsed = usedCount * product.usageCapacity;
                           availableQuantity = Math.max(
                             0,
-                            totalQuantity - usedCount
+                            Math.round(totalQuantity - volumeUsed)
                           );
                         } else if (
                           batch.inbound_qty !== null &&
@@ -3105,7 +3097,6 @@ function OutboundPageContent() {
                           product.capacityPerProduct !== undefined &&
                           product.capacityPerProduct > 0
                         ) {
-                          // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
                           availableQuantity =
                             batch.inbound_qty * product.capacityPerProduct;
                         }
@@ -3289,16 +3280,7 @@ const ProductCard = memo(function ProductCard({
 }) {
   // Helper function to calculate available quantity for a batch
   const calculateAvailableQuantity = (batch: Batch): number => {
-    // ✅ First: Use available_quantity from database if available
-    if (
-      batch.available_quantity !== null &&
-      batch.available_quantity !== undefined
-    ) {
-      return batch.available_quantity;
-    }
-
     // Fallback: Calculate if available_quantity not in database
-    // If inbound_qty, capacity_per_product, and outbound_count exist, use them
     if (
       batch.inbound_qty !== null &&
       batch.inbound_qty !== undefined &&
@@ -3306,11 +3288,34 @@ const ProductCard = memo(function ProductCard({
       product.capacityPerProduct !== undefined &&
       product.capacityPerProduct > 0
     ) {
-      // ✅ NEW FORMULA: (inbound_qty * capacity_per_product) - outbound_count
-      // outbound_count tracks total warehouse outbound (all types)
       const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
-      const outboundCount = batch.outbound_count || 0;
+      // ✅ 사용 단위(usage_capacity) bo'lsa: used_count = foydalanishlar soni. Hajm = used_count * usage_capacity → qolgan = total - hajm
+      if (
+        product.usageCapacity != null &&
+        product.usageCapacity !== undefined &&
+        product.usageCapacity > 0
+      ) {
+        const usedCount = batch.used_count ?? 0;
+        const volumeUsed = usedCount * product.usageCapacity;
+        return Math.max(0, Math.round(totalQuantity - volumeUsed));
+      }
+      // ✅ available_quantity from DB (when no usage_capacity) yoki outbound_count dan hisoblash
+      if (
+        batch.available_quantity !== null &&
+        batch.available_quantity !== undefined
+      ) {
+        return batch.available_quantity;
+      }
+      const outboundCount = batch.outbound_count ?? 0;
       return Math.max(0, totalQuantity - outboundCount);
+    }
+
+    // ✅ Use available_quantity from database if no capacity logic
+    if (
+      batch.available_quantity !== null &&
+      batch.available_quantity !== undefined
+    ) {
+      return batch.available_quantity;
     }
 
     // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty

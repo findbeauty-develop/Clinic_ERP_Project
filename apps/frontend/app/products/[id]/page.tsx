@@ -1851,12 +1851,14 @@ function ProductEditForm({
               <input
                 type="number"
                 min="0"
+                step="any"
                 value={formData.usageCapacity || ""}
                 onChange={(e) =>
                   handleInputChange("usageCapacity", e.target.value)
                 }
+                onWheel={(e) => e.currentTarget.blur()}
                 disabled={!formData.enableUsageCapacity}
-                placeholder="전체 사용 아닌 경우, 실제 사용량을 입력하세요"
+                placeholder="전체 사용 아닌 경우, 실제 사용량을 입력하세요 (소수 입력 가능)"
                 className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <div className="relative w-28">

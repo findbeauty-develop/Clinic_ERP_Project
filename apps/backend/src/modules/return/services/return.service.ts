@@ -232,19 +232,17 @@ export class ReturnService {
           product.capacity_per_product &&
           product.capacity_per_product > 0
         ) {
-          // ✅ FIX: BARCHA batch'larning used_count'ini yig'ish (faqat birinchi batch emas!)
-          // ✅ IMPORTANT: Faqat is_separate_purchase = false bo'lgan batch'larni hisobga olish
-          // Bu yangi inbound bo'lsa ham, eski batch'larning empty boxes'i saqlanadi
-          const usedCount = (product.batches || [])
-            .filter((batch: any) => !batch.is_separate_purchase) // ✅ 별도 구매 batch'larni exclude qilish
+          // ✅ used_count = foydalanishlar soni. Hajm = used_count * usage_capacity. Empty boxes = floor(hajm / capacity_per_product)
+          const totalVolumeUsed = (product.batches || [])
+            .filter((batch: any) => !batch.is_separate_purchase)
             .reduce(
-              (sum: number, batch: any) => sum + (batch.used_count || 0),
+              (sum: number, batch: any) =>
+                sum + (batch.used_count || 0) * (product.usage_capacity || 0),
               0
             );
 
-          // previousEmptyBoxes = Math.floor(used_count / capacity_per_product)
           const previousEmptyBoxes = Math.floor(
-            usedCount / product.capacity_per_product
+            totalVolumeUsed / product.capacity_per_product
           );
 
           // Return qilingan empty box'lar sonini olish (faqat empty box return'lar)
@@ -487,12 +485,11 @@ export class ReturnService {
               productDetails?.capacity_per_product &&
               productDetails.capacity_per_product > 0
             ) {
-              // Batch'ning used_count'ini olish (allaqachon olingan, lekin select'da bor)
               const usedCount = batch.used_count || 0;
+              const volumeUsed = usedCount * (productDetails.usage_capacity || 0);
 
-              // Qolgan empty box'lar sonini hisoblash
               const previousEmptyBoxes = Math.floor(
-                usedCount / productDetails.capacity_per_product
+                volumeUsed / productDetails.capacity_per_product
               );
 
               // Return qilingan empty box'lar sonini olish (hozirgi return'dan oldin)

@@ -150,6 +150,37 @@ export default function OrderPage() {
   const [orderManagerName, setOrderManagerName] = useState("");
   const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
+  // ✅ Recent 주문 담당자 names for autocomplete dropdown (focus 시 이전 입력값 선택)
+  const [recentOrderManagers, setRecentOrderManagers] = useState<string[]>(
+    () => {
+      if (typeof window === "undefined") return [];
+      try {
+        const raw = localStorage.getItem("order_recent_manager_names");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    }
+  );
+  const [showOrderManagerSuggestions, setShowOrderManagerSuggestions] =
+    useState(false);
+  const addRecentOrderManager = useCallback((name: string) => {
+    const v = name.trim();
+    if (!v) return;
+    setRecentOrderManagers((prev) => {
+      const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            "order_recent_manager_names",
+            JSON.stringify(next)
+          );
+        } catch (_) {}
+      }
+      return next;
+    });
+  }, []);
+
   // Client-side mount state (hydration error'dan qochish uchun)
   const [isMounted, setIsMounted] = useState(false);
 
@@ -1325,8 +1356,8 @@ export default function OrderPage() {
                     주문 요약
                   </h2>
 
-                  {/* 주문 담당자 (현재 로그인한 사용자) */}
-                  <div className="flex items-center gap-2">
+                  {/* 주문 담당자 (focus 시 이전 입력값 드롭다운) */}
+                  <div className="flex items-center gap-2 relative">
                     <label className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                       주문 담당자
                     </label>
@@ -1334,9 +1365,35 @@ export default function OrderPage() {
                       type="text"
                       value={orderManagerName}
                       onChange={(e) => setOrderManagerName(e.target.value)}
+                      onFocus={() => setShowOrderManagerSuggestions(true)}
+                      onBlur={() =>
+                        setTimeout(() => setShowOrderManagerSuggestions(false), 200)
+                      }
                       placeholder="주문 담당자 이름을 입력하세요"
                       className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
                     />
+                    {showOrderManagerSuggestions &&
+                      recentOrderManagers.length > 0 && (
+                        <ul
+                          className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                          style={{ minWidth: "10rem" }}
+                          onMouseDown={(e) => e.preventDefault()}
+                        >
+                          {recentOrderManagers.map((name) => (
+                            <li
+                              key={name}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setOrderManagerName(name);
+                                setShowOrderManagerSuggestions(false);
+                              }}
+                              className="cursor-pointer px-3 py-2 text-xs text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                   </div>
                 </div>
               </div>
@@ -2682,6 +2739,8 @@ export default function OrderPage() {
                           });
 
                           if (response.ok) {
+                            if (orderManagerName.trim())
+                              addRecentOrderManager(orderManagerName.trim());
                             alert("주문서가 생성되었습니다.");
                             setShowOrderModal(false);
                             setOrderMemos({});

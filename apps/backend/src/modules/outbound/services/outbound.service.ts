@@ -309,17 +309,19 @@ export class OutboundService {
             const currentUsedCount = currentBatch?.used_count || 0;
             const currentBatchQty = currentBatch?.qty || 0;
 
-            // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
-            // Masalan: outboundQty = 5, usage_capacity = 1 → usageIncrement = 5 (1 * 5)
-            const usageIncrement = product.usage_capacity * dto.outboundQty;
-            const newUsedCount = currentUsedCount + usageIncrement;
+            // ✅ used_count = "foydalanishlar soni" (butun). Hajm = used_count * usage_capacity
+            // Masalan: 10 marta × 1.5 cc → used_count += 10, hajm 15 cc
+            const usedCountIncrement = dto.outboundQty;
+            const newUsedCount = currentUsedCount + usedCountIncrement;
 
-            // Bo'sh box aniqlash: yangilanishdan oldin va keyin
+            // Bo'sh box: hajmda ishlatilgan = used_count * usage_capacity, keyin capacity_per_product ga bo'lamiz
+            const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+            const newVolumeUsed = newUsedCount * product.usage_capacity;
             const previousEmptyBoxes = Math.floor(
-              currentUsedCount / product.capacity_per_product
+              currentVolumeUsed / product.capacity_per_product
             );
             const newEmptyBoxes = Math.floor(
-              newUsedCount / product.capacity_per_product
+              newVolumeUsed / product.capacity_per_product
             );
             const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
 
@@ -330,14 +332,14 @@ export class OutboundService {
             // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
             batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
-            // used_count ni yangilash
+            // used_count ni yangilash (foydalanishlar soni, butun)
             const updatedBatch = await tx.batch.update({
               where: { id: dto.batchId },
               data: { used_count: newUsedCount },
             });
 
             this.logger.debug(
-              `✅ [createOutbound] Updated used_count for batch ${dto.batchId}: ${currentUsedCount} → ${newUsedCount} (emptyBoxes: ${previousEmptyBoxes} → ${newEmptyBoxes})`
+              `✅ [createOutbound] Updated used_count for batch ${dto.batchId}: ${currentUsedCount} → ${newUsedCount} (volumeUsed: ${currentVolumeUsed} → ${newVolumeUsed}, emptyBoxes: ${previousEmptyBoxes} → ${newEmptyBoxes})`
             );
 
             // Empty box'lar avtomatik Return jadvaliga yozilmaydi
@@ -519,28 +521,22 @@ export class OutboundService {
               const currentUsedCount = currentBatch?.used_count || 0;
               const currentBatchQty = currentBatch?.qty || 0;
 
-              // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
-              // Masalan: outboundQty = 5, usage_capacity = 1 → usageIncrement = 5 (1 * 5)
-              const usageIncrement = product.usage_capacity * item.outboundQty;
-              const newUsedCount = currentUsedCount + usageIncrement;
+              // ✅ used_count = foydalanishlar soni (butun). Hajm = used_count * usage_capacity
+              const usedCountIncrement = item.outboundQty;
+              const newUsedCount = currentUsedCount + usedCountIncrement;
+              const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+              const newVolumeUsed = newUsedCount * product.usage_capacity;
 
-              // Bo'sh box aniqlash: yangilanishdan oldin va keyin
               const previousEmptyBoxes = Math.floor(
-                currentUsedCount / product.capacity_per_product
+                currentVolumeUsed / product.capacity_per_product
               );
               const newEmptyBoxes = Math.floor(
-                newUsedCount / product.capacity_per_product
+                newVolumeUsed / product.capacity_per_product
               );
               const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
 
-              // ✅ YANGI: Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
-              // Masalan: capacity_per_product = 5, outboundQty = 5, usage_capacity = 1
-              // usageIncrement = 5, emptyBoxesToCreate = 1
-              // batchQtyDecrement = 1 box (5 emas!)
-              // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
               batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
-              // used_count ni yangilash
               const updatedBatch = await tx.batch.update({
                 where: { id: item.batchId },
                 data: { used_count: newUsedCount },
@@ -1289,24 +1285,22 @@ export class OutboundService {
 
               const currentUsedCount = currentBatch?.used_count || 0;
 
-              // usage_capacity qo'shish: har bir outbound product uchun usage_capacity qo'shiladi
-              const usageIncrement = product.usage_capacity * item.outboundQty;
-              const newUsedCount = currentUsedCount + usageIncrement;
+              // ✅ used_count = foydalanishlar soni (butun). Hajm = used_count * usage_capacity
+              const usedCountIncrement = item.outboundQty;
+              const newUsedCount = currentUsedCount + usedCountIncrement;
+              const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+              const newVolumeUsed = newUsedCount * product.usage_capacity;
 
-              // Bo'sh box aniqlash: yangilanishdan oldin va keyin
               const previousEmptyBoxes = Math.floor(
-                currentUsedCount / product.capacity_per_product
+                currentVolumeUsed / product.capacity_per_product
               );
               const newEmptyBoxes = Math.floor(
-                newUsedCount / product.capacity_per_product
+                newVolumeUsed / product.capacity_per_product
               );
               const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
 
-              // ✅ Batch qty dan faqat to'liq ishlatilgan box'larni kamaytirish
-              // ✅ Manfiy bo'lmasligi kerak (agar manfiy bo'lsa, 0 qilamiz)
               batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
-              // used_count ni yangilash
               await tx.batch.update({
                 where: { id: item.batchId },
                 data: { used_count: newUsedCount },
@@ -1587,20 +1581,20 @@ export class OutboundService {
               const currentInboundQty = currentBatch?.inbound_qty || 0;
               const currentBatchQty = currentBatch?.qty || 0;
 
-              // ✅ usage_capacity qo'shish
-              const usageIncrement = product.usage_capacity * batchData.totalOutboundQty;
-              
-              if (!isDamagedOrDefective) {
-                // ✅ ODDIY PRODUCT: used_count yangilanadi
-                usedCountIncrement = usageIncrement;
-                const newUsedCount = Math.max(0, currentUsedCount + usageIncrement);
+              // ✅ used_count = foydalanishlar soni (butun). Hajm = used_count * usage_capacity
+              const usedCountAdd = batchData.totalOutboundQty;
 
-                // ✅ Empty boxes hisoblanadi
+              if (!isDamagedOrDefective) {
+                usedCountIncrement = usedCountAdd;
+                const newUsedCount = Math.max(0, currentUsedCount + usedCountAdd);
+                const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+                const newVolumeUsed = newUsedCount * product.usage_capacity;
+
                 const previousEmptyBoxes = Math.floor(
-                  currentUsedCount / product.capacity_per_product
+                  currentVolumeUsed / product.capacity_per_product
                 );
                 const newEmptyBoxes = Math.floor(
-                  newUsedCount / product.capacity_per_product
+                  newVolumeUsed / product.capacity_per_product
                 );
                 const emptyBoxesToCreate = newEmptyBoxes - previousEmptyBoxes;
                 batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
@@ -1609,16 +1603,16 @@ export class OutboundService {
                   `✅ [NORMAL] batch ${batchId}: used_count ${currentUsedCount} → ${newUsedCount}, empty boxes: ${emptyBoxesToCreate}, qty decrement: ${batchQtyDecrement}`
                 );
               } else {
-                // ✅ DAMAGED/DEFECTIVE: used_count yangilanMAYdi, faqat ombordan chiqadi
                 usedCountIncrement = 0;
-                
-                // Virtual empty boxes hisoblash (faqat qty kamaytirish uchun)
-                const virtualUsedCount = currentUsedCount + usageIncrement;
+
+                const virtualUsedCount = currentUsedCount + usedCountAdd;
+                const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+                const virtualVolumeUsed = virtualUsedCount * product.usage_capacity;
                 const previousEmptyBoxes = Math.floor(
-                  currentUsedCount / product.capacity_per_product
+                  currentVolumeUsed / product.capacity_per_product
                 );
                 const virtualEmptyBoxes = Math.floor(
-                  virtualUsedCount / product.capacity_per_product
+                  virtualVolumeUsed / product.capacity_per_product
                 );
                 const emptyBoxesToDecrement = virtualEmptyBoxes - previousEmptyBoxes;
                 batchQtyDecrement = Math.max(0, emptyBoxesToDecrement);
@@ -1628,7 +1622,7 @@ export class OutboundService {
                 );
               }
 
-              // ✅ Update used_count (faqat oddiy uchun)
+              // ✅ Update used_count (faqat oddiy uchun; Int uchun rounded increment)
               if (usedCountIncrement > 0) {
                 await tx.batch.update({
                   where: { id: batchId },
@@ -1990,23 +1984,22 @@ export class OutboundService {
         ) {
           const currentUsedCount = batch.used_count || 0;
 
-          // usage_capacity kamaytirish: outbound qilingan miqdorni olib tashlash
-          const usageDecrement = product.usage_capacity * outbound.outbound_qty;
-          const newUsedCount = Math.max(0, currentUsedCount - usageDecrement);
+          // ✅ used_count = foydalanishlar soni → outbound_qty ni ayiramiz
+          const usedCountDecrement = outbound.outbound_qty;
+          const newUsedCount = Math.max(0, currentUsedCount - usedCountDecrement);
 
-          // Qancha box qaytarilishini hisoblash
+          const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+          const newVolumeUsed = newUsedCount * product.usage_capacity;
           const previousEmptyBoxes = Math.floor(
-            currentUsedCount / product.capacity_per_product
+            currentVolumeUsed / product.capacity_per_product
           );
           const newEmptyBoxes = Math.floor(
-            newUsedCount / product.capacity_per_product
+            newVolumeUsed / product.capacity_per_product
           );
           const emptyBoxesToReturn = previousEmptyBoxes - newEmptyBoxes;
 
-          // Faqat qaytarilgan box'lar sonini qo'shish
           batchQtyIncrement = emptyBoxesToReturn;
 
-          // used_count ni yangilash
           await tx.batch.update({
             where: { id: outbound.batch_id },
             data: { used_count: newUsedCount },
