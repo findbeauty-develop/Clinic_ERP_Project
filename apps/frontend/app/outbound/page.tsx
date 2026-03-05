@@ -140,7 +140,10 @@ function OutboundPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const itemsPerPage = 3;
+
+  // ✅ Ref to track pending scroll target after page change (for barcode scanner)
+  const pendingScrollTargetRef = useRef<string | null>(null);
 
   // Outbound processing form state (ikkala rejim uchun umumiy)
   const [managerName, setManagerName] = useState("");
@@ -213,10 +216,8 @@ function OutboundPageContent() {
         // Add random parameter to prevent Safari/Chrome aggressive caching
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(7);
-        const cacheBuster = forceRefresh 
-          ? `&_t=${timestamp}&_r=${random}` 
-          : "";
-        
+        const cacheBuster = forceRefresh ? `&_t=${timestamp}&_r=${random}` : "";
+
         const searchParam = searchQuery
           ? `?search=${encodeURIComponent(searchQuery)}`
           : "?";
@@ -237,8 +238,9 @@ function OutboundPageContent() {
           .map((product) => ({
             ...product,
             // ✅ Add cache busting to product images (all browsers)
-            productImage: formatImageUrl(product.productImage) + 
-              (product.productImage ? `?v=${Date.now()}` : ''),
+            productImage:
+              formatImageUrl(product.productImage) +
+              (product.productImage ? `?v=${Date.now()}` : ""),
             // Filter out batches with 0 quantity
             batches: product.batches.filter((batch) => batch.qty > 0),
           }))
@@ -351,7 +353,7 @@ function OutboundPageContent() {
     // ✅ Check if we should force refresh (e.g., after outbound completion)
     const shouldForceRefresh =
       sessionStorage.getItem("outbound_force_refresh") === "true";
-    
+
     if (shouldForceRefresh) {
       sessionStorage.removeItem("outbound_force_refresh");
       if (isPackageMode) {
@@ -372,19 +374,19 @@ function OutboundPageContent() {
   // ✅ Universal bfcache handler for outbound page (all browsers)
   useEffect(() => {
     let shouldRefreshOnShow = false;
-    
+
     // Track when page is about to be hidden (user navigating away)
     const handlePageHide = () => {
       shouldRefreshOnShow = true;
-      console.log('[Outbound] Page hidden - will refresh on return');
+      console.log("[Outbound] Page hidden - will refresh on return");
     };
-    
+
     // Detect when page is shown (initial load or back/forward navigation)
     const handlePageShow = (event: PageTransitionEvent) => {
       // event.persisted = true means page loaded from bfcache (back/forward button)
       // shouldRefreshOnShow = true means we previously hid the page
       if (event.persisted || shouldRefreshOnShow) {
-        console.log('[Outbound] Page restored from cache - forcing refresh');
+        console.log("[Outbound] Page restored from cache - forcing refresh");
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
           if (isPackageMode) {
@@ -397,12 +399,12 @@ function OutboundPageContent() {
       }
     };
 
-    window.addEventListener('pagehide', handlePageHide);
-    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
 
     return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
     };
   }, [fetchProducts, fetchPackages, isPackageMode]);
 
@@ -461,106 +463,167 @@ function OutboundPageContent() {
   useEffect(() => {
     // Only active on product mode (not package mode)
     if (isPackageMode) return;
-    
-    let buffer = '';
+
+    let buffer = "";
     let lastTime = 0;
     let timeout: NodeJS.Timeout;
-    
+
     const handleGlobalKeyPress = (e: KeyboardEvent) => {
       // Skip if user is typing in an input field
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
         return;
       }
-      
+
       const now = Date.now();
-      
+
       // USB scanner types very fast (< 100ms between chars)
-      if (now - lastTime > 100) buffer = '';
-      
-      if (e.key === 'Enter' && buffer.length >= 8) {
+      if (now - lastTime > 100) buffer = "";
+
+      if (e.key === "Enter" && buffer.length >= 8) {
         handleBarcodeScanned(buffer);
-        buffer = '';
+        buffer = "";
       } else if (e.key.length === 1) {
         buffer += e.key;
         lastTime = now;
-        
+
         clearTimeout(timeout);
-        timeout = setTimeout(() => { buffer = ''; }, 500);
+        timeout = setTimeout(() => {
+          buffer = "";
+        }, 500);
       }
     };
-    
-    window.addEventListener('keypress', handleGlobalKeyPress);
+
+    window.addEventListener("keypress", handleGlobalKeyPress);
     return () => {
-      window.removeEventListener('keypress', handleGlobalKeyPress);
+      window.removeEventListener("keypress", handleGlobalKeyPress);
       clearTimeout(timeout);
     };
   }, [isPackageMode, products, scheduledItems]);
 
-  const handleBarcodeScanned = useCallback(async (scannedBarcode: string) => {
-    try {
-      const { parseGS1Barcode } = await import('../../utils/barcodeParser');
-      const parsed = parseGS1Barcode(scannedBarcode);
-      
-      const gtin = parsed.gtin || scannedBarcode;
-      
-      // Find product by GTIN
-      const matchedProduct = products.find(p => p.barcode === gtin);
-      
-      if (!matchedProduct) {
-        alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${gtin}`);
-        return;
-      }
-      
-      // Find first available batch
-      const availableBatch = matchedProduct.batches.find(b => b.qty > 0);
-      
-      if (!availableBatch) {
-        alert(`⚠️ ${matchedProduct.productName}\n재고가 없습니다.`);
-        return;
-      }
-      
-      // Check if already in cart
-      const existingItem = scheduledItems.find(
-        item => item.productId === matchedProduct.id && item.batchId === availableBatch.id
-      );
-      
-      let newQuantity = 1;
-      
-      if (existingItem) {
-        // Increment quantity
-        newQuantity = existingItem.quantity + 1;
-        setScheduledItems(prev => prev.map(item => 
-          item.productId === matchedProduct.id && item.batchId === availableBatch.id
-            ? { ...item, quantity: newQuantity }
-            : item
-        ));
-      } else {
-        // Add new item
-        const newItem: ScheduledItem = {
-          productId: matchedProduct.id,
+  const handleBarcodeScanned = useCallback(
+    async (scannedBarcode: string) => {
+      try {
+        const { parseGS1Barcode } = await import("../../utils/barcodeParser");
+        const parsed = parseGS1Barcode(scannedBarcode);
+
+        const gtin = parsed.gtin || scannedBarcode;
+
+        // Find product by GTIN
+        const matchedProduct = products.find((p) => p.barcode === gtin);
+
+        if (!matchedProduct) {
+          alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${gtin}`);
+          return;
+        }
+
+        // ✅ NEW: Calculate which page the product is on
+        const productIndex = products.findIndex(
+          (p) => p.id === matchedProduct.id
+        );
+        if (productIndex !== -1) {
+          const targetPage = Math.floor(productIndex / itemsPerPage) + 1;
+          const needsPageChange = targetPage !== currentPage;
+
+          // Navigate to correct page if needed
+          if (needsPageChange) {
+            console.log(
+              `🚀 [Outbound] Navigating from Page ${currentPage} to Page ${targetPage}`
+            );
+            pendingScrollTargetRef.current = matchedProduct.id;
+            setCurrentPage(targetPage);
+          } else {
+            // Same page - scroll immediately
+            pendingScrollTargetRef.current = null;
+            setTimeout(() => {
+              const element = document.getElementById(
+                `product-card-${matchedProduct.id}`
+              );
+              if (element) {
+                element.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }, 300);
+          }
+        }
+
+        // Find first available batch
+        const availableBatch = matchedProduct.batches.find((b) => b.qty > 0);
+
+        if (!availableBatch) {
+          alert(`⚠️ ${matchedProduct.productName}\n재고가 없습니다.`);
+          return;
+        }
+
+        // Check if already in cart
+        const existingItem = scheduledItems.find(
+          (item) =>
+            item.productId === matchedProduct.id &&
+            item.batchId === availableBatch.id
+        );
+
+        let newQuantity = 1;
+
+        if (existingItem) {
+          // Increment quantity
+          newQuantity = existingItem.quantity + 1;
+          setScheduledItems((prev) =>
+            prev.map((item) =>
+              item.productId === matchedProduct.id &&
+              item.batchId === availableBatch.id
+                ? { ...item, quantity: newQuantity }
+                : item
+            )
+          );
+        } else {
+          // Add new item
+          const newItem: ScheduledItem = {
+            productId: matchedProduct.id,
+            productName: matchedProduct.productName,
+            batchId: availableBatch.id,
+            batchNo: availableBatch.batch_no,
+            quantity: 1,
+            unit: matchedProduct.unit || "EA",
+          };
+          setScheduledItems((prev) => [...prev, newItem]);
+        }
+
+        // Show success modal
+        setScanSuccessModal({
+          show: true,
           productName: matchedProduct.productName,
-          batchId: availableBatch.id,
           batchNo: availableBatch.batch_no,
-          quantity: 1,
-          unit: matchedProduct.unit || "EA",
-        };
-        setScheduledItems(prev => [...prev, newItem]);
+          quantity: newQuantity,
+        });
+      } catch (error) {
+        console.error("Barcode scan error:", error);
+        alert("바코드 스캔 오류가 발생했습니다.");
       }
-      
-      // Show success modal
-      setScanSuccessModal({
-        show: true,
-        productName: matchedProduct.productName,
-        batchNo: availableBatch.batch_no,
-        quantity: newQuantity,
-      });
-      
-    } catch (error) {
-      console.error('Barcode scan error:', error);
-      alert('바코드 스캔 오류가 발생했습니다.');
+    },
+    [products, scheduledItems, currentPage, itemsPerPage]
+  );
+
+  // ✅ Scroll to product after page change (for barcode scanner pagination navigation)
+  useEffect(() => {
+    if (pendingScrollTargetRef.current) {
+      const targetId = pendingScrollTargetRef.current;
+      console.log(
+        `📍 [Outbound After Page Change] Attempting to scroll to product-card-${targetId}`
+      );
+
+      setTimeout(() => {
+        const element = document.getElementById(`product-card-${targetId}`);
+        if (element) {
+          console.log(
+            "✅ [Outbound] Element found after page change, scrolling..."
+          );
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          console.log("❌ [Outbound] Element not found after page change");
+        }
+        pendingScrollTargetRef.current = null;
+      }, 500); // Wait for page to re-render
     }
-  }, [products, scheduledItems]);
+  }, [currentPage]);
 
   // Handle highlight from URL parameter (when navigating from package mode)
   useEffect(() => {
@@ -1306,7 +1369,7 @@ function OutboundPageContent() {
         setPackageCounts({});
 
         // ✅ Set flag to force refresh outbound page
-        if (typeof window !== 'undefined') {
+        if (typeof window !== "undefined") {
           sessionStorage.setItem("outbound_force_refresh", "true");
         }
 
@@ -2539,9 +2602,8 @@ function OutboundPageContent() {
                                     {item.packageName
                                       ? `${item.packageName} - `
                                       : ""}
-                                    {item.productName} {item.batchNo}{" "}
-                                   [ {item.quantity}]
-                                    {item.capacity_unit || "개"}
+                                    {item.productName} {item.batchNo} [{" "}
+                                    {item.quantity}]{item.capacity_unit || "개"}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -2856,9 +2918,8 @@ function OutboundPageContent() {
                                       : "text-slate-700 dark:text-slate-200"
                                   }`}
                                 >
-                                  {item.productName} {item.batchNo}{" "}
-                                  [{item.quantity}]
-                                  {item.capacity_unit || "개"}
+                                  {item.productName} {item.batchNo} [
+                                  {item.quantity}]{item.capacity_unit || "개"}
                                   {isFailed && (
                                     <span className="ml-2 text-xs text-red-600 dark:text-red-400">
                                       (실패)
@@ -2898,39 +2959,32 @@ function OutboundPageContent() {
                             );
                           });
                         })()}
-                        
                       </div>
                     )}
                   </div>
 
                   {/* Memo Field */}
                 </div>
-               
 
-<div className="mt-6 flex-shrink-0">
-  {/* Divider */}
-  <div className="border-t border-slate-200 dark:border-slate-700 mb-2" />
+                <div className="mt-6 flex-shrink-0">
+                  {/* Divider */}
+                  <div className="border-t border-slate-200 dark:border-slate-700 mb-2" />
 
-  {/* Text under divider */}
-  <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-    총 {scheduledItems.length}항목
-    {failedItems.length > 0 && (
-      <span className="ml-2 text-red-600 dark:text-red-400">
-        (실패: {failedItems.length}개)
-      </span>
-    )}
-  </div>
+                  {/* Text under divider */}
+                  <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    총 {scheduledItems.length}항목
+                    {failedItems.length > 0 && (
+                      <span className="ml-2 text-red-600 dark:text-red-400">
+                        (실패: {failedItems.length}개)
+                      </span>
+                    )}
+                  </div>
 
- 
-
-
-  {/* Content under divider */}
- 
-</div>
+                  {/* Content under divider */}
+                </div>
 
                 {/* Action Buttons - Fixed at bottom */}
                 <div className="flex gap-3 pt-4">
-                   
                   <button
                     onClick={handleSubmit}
                     disabled={
@@ -2991,7 +3045,6 @@ function OutboundPageContent() {
                     }
                     className="flex-1 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    
                     {submitting ? "처리 중..." : "출고 하기"}
                   </button>
                   <button
@@ -3066,8 +3119,18 @@ function OutboundPageContent() {
           <div className="relative w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-8 shadow-2xl dark:border-emerald-500/30 dark:bg-slate-900">
             {/* Success Icon */}
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
-              <svg className="h-12 w-12 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-12 w-12 text-emerald-600 dark:text-emerald-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
 
@@ -3110,7 +3173,14 @@ function OutboundPageContent() {
 
             {/* OK Button */}
             <button
-              onClick={() => setScanSuccessModal({ show: false, productName: "", batchNo: "", quantity: 0 })}
+              onClick={() =>
+                setScanSuccessModal({
+                  show: false,
+                  productName: "",
+                  batchNo: "",
+                  quantity: 0,
+                })
+              }
               className="mt-6 w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700"
             >
               OK
@@ -3170,7 +3240,7 @@ const ProductCard = memo(function ProductCard({
       const outboundCount = batch.outbound_count || 0;
       return Math.max(0, totalQuantity - outboundCount);
     }
-    
+
     // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
     if (
       batch.inbound_qty !== null &&

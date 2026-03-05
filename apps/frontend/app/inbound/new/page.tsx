@@ -1388,7 +1388,7 @@ export default function InboundNewPage() {
                             maxLength={14}
                             placeholder="바코드 14자리 숫자"
                             value={formData.barcode}
-                            onChange={(e) => {
+                            onChange={(e: any) => {
                               const v = normalizeBarcode(e.target.value);
                               handleInputChange("barcode", v);
                             }}
