@@ -1316,19 +1316,6 @@ const ProductCard = memo(function ProductCard({
   }, [batches, product.currentStock, product.id]);
 
   // ✅ DEBUG: Log render data (only in development)
-  if (process.env.NODE_ENV === "development") {
-    console.log("[ProductCard Debug]", {
-      productId: product.id,
-      productName: product.productName,
-      currentStock: product.currentStock,
-      calculatedCurrentStock,
-      batchesLength: batches.length,
-      supplierName: product.supplierName,
-      managerName: product.managerName,
-      managerPosition: product.managerPosition,
-      isExpanded,
-    });
-  }
 
   const isLowStock = calculatedCurrentStock <= product.minStock;
 
@@ -1437,7 +1424,7 @@ const ProductCard = memo(function ProductCard({
     const fetchBatches = async () => {
       // ✅ ALWAYS fetch batches (even when collapsed) for accurate currentStock display
       // Previously: Only fetched when expanded → calculatedCurrentStock was wrong on initial render
-      
+
       // Check cache first
       const cacheKey = `${product.id}`;
       const cached = globalBatchesCache.get(cacheKey);

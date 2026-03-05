@@ -176,7 +176,8 @@ export default function ProductDetailPage() {
           usageCapacity: data.usageCapacity || data.usage_capacity || null,
           returnStorage: data.returnStorage || data.return_storage || null,
           alertDays: data.alertDays || data.alert_days || null,
-          hasExpiryPeriod: data.hasExpiryPeriod ?? data.has_expiry_period ?? false,
+          hasExpiryPeriod:
+            data.hasExpiryPeriod ?? data.has_expiry_period ?? false,
           batches: data.batches,
         };
 
@@ -1199,11 +1200,11 @@ function ProductEditForm({
         return;
       }
 
-      if (!newSupplierForm.companyEmail) {
-        alert("회사 이메일은 필수 입력 사항입니다.");
-        setLoading(false);
-        return;
-      }
+      // if (!newSupplierForm.companyEmail) {
+      //   alert("회사 이메일은 필수 입력 사항입니다.");
+      //   setLoading(false);
+      //   return;
+      // }
     }
 
     setLoading(true);
@@ -1333,7 +1334,7 @@ function ProductEditForm({
       clearCache(`/products`);
 
       // ✅ Set flag to force refresh inbound page when user navigates back
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         sessionStorage.setItem("inbound_force_refresh", "true");
       }
 
@@ -1383,8 +1384,7 @@ function ProductEditForm({
           finalProductResponse.name ||
           product.productName,
         brand: finalProductResponse.brand || product.brand,
-        barcode:
-          finalProductResponse.barcode ?? product.barcode,
+        barcode: finalProductResponse.barcode ?? product.barcode,
         productImage: formattedImageUrl,
         category: finalProductResponse.category || product.category,
         status: finalProductResponse.status || product.status,
@@ -1639,17 +1639,13 @@ function ProductEditForm({
                       );
                       if (!raw.trim()) return;
                       if (/^\d{12,14}$/.test(raw)) {
-                        handleInputChange(
-                          "barcode",
-                          raw.padStart(14, "0")
-                        );
+                        handleInputChange("barcode", raw.padStart(14, "0"));
                         return;
                       }
                       if (raw.startsWith("01") && raw.length >= 16) {
                         try {
-                          const { parseGS1Barcode } = await import(
-                            "../../../utils/barcodeParser"
-                          );
+                          const { parseGS1Barcode } =
+                            await import("../../../utils/barcodeParser");
                           const parsed = parseGS1Barcode(raw);
                           if (parsed.gtin) {
                             handleInputChange("barcode", parsed.gtin);
@@ -1664,17 +1660,13 @@ function ProductEditForm({
                       );
                       if (!raw.trim()) return;
                       if (/^\d{12,14}$/.test(raw)) {
-                        handleInputChange(
-                          "barcode",
-                          raw.padStart(14, "0")
-                        );
+                        handleInputChange("barcode", raw.padStart(14, "0"));
                         return;
                       }
                       if (raw.startsWith("01") && raw.length >= 16) {
                         try {
-                          const { parseGS1Barcode } = await import(
-                            "../../../utils/barcodeParser"
-                          );
+                          const { parseGS1Barcode } =
+                            await import("../../../utils/barcodeParser");
                           const parsed = parseGS1Barcode(raw);
                           if (parsed.gtin) {
                             handleInputChange("barcode", parsed.gtin);
@@ -1689,17 +1681,13 @@ function ProductEditForm({
                       if (!pasted.trim()) return;
                       if (/^\d{12,14}$/.test(pasted)) {
                         e.preventDefault();
-                        handleInputChange(
-                          "barcode",
-                          pasted.padStart(14, "0")
-                        );
+                        handleInputChange("barcode", pasted.padStart(14, "0"));
                         return;
                       }
                       if (pasted.startsWith("01") && pasted.length >= 16) {
                         try {
-                          const { parseGS1Barcode } = await import(
-                            "../../../utils/barcodeParser"
-                          );
+                          const { parseGS1Barcode } =
+                            await import("../../../utils/barcodeParser");
                           const parsed = parseGS1Barcode(pasted);
                           if (parsed.gtin) {
                             e.preventDefault();
@@ -2625,7 +2613,7 @@ function ProductEditForm({
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    이메일 *
+                    이메일
                   </label>
                   <input
                     type="email"
