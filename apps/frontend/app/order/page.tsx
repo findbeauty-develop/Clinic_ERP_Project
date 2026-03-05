@@ -284,8 +284,12 @@ export default function OrderPage() {
     setLoading(true);
     setError(null);
     try {
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      
       // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
-      const data = await apiGet<any[]>(`${apiUrl}/order/products`);
+      const data = await apiGet<any[]>(`${apiUrl}/order/products?_t=${timestamp}&_r=${random}`);
 
       setProducts(data);
       // Update cache
@@ -302,6 +306,46 @@ export default function OrderPage() {
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
+
+  // ✅ Safari bfcache handler: Force refresh when page restored from back/forward cache
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page loaded from bfcache (Safari back button)
+        console.log('[Order] Loaded from bfcache - forcing refresh');
+        invalidateCache("products");
+        invalidateCache("orders");
+        invalidateCache("draft");
+        invalidateCache("rejectedOrders");
+        fetchProducts();
+      }
+    };
+
+    const handlePageHide = () => {
+      // Mark page as potentially cached
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('order_was_cached', 'true');
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener('pagehide', handlePageHide);
+
+    // Check if returning from cache
+    if (typeof window !== 'undefined') {
+      const wasCached = sessionStorage.getItem('order_was_cached');
+      if (wasCached === 'true') {
+        sessionStorage.removeItem('order_was_cached');
+        invalidateCache("products");
+        fetchProducts();
+      }
+    }
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [fetchProducts, invalidateCache]);
 
   // Refresh products when page becomes visible (after inbound processing)
   useEffect(() => {
@@ -358,7 +402,11 @@ export default function OrderPage() {
       // ✅ getAccessToken() ishlatish (localStorage emas)
       const token = await getAccessToken();
 
-      const response = await fetch(`${apiUrl}/order/draft`, {
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+
+      const response = await fetch(`${apiUrl}/order/draft?_t=${timestamp}&_r=${random}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "x-session-id": sessionId,
@@ -454,6 +502,12 @@ export default function OrderPage() {
         queryParams.append("search", debouncedOrderSearchQuery.trim());
       }
 
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      queryParams.append("_t", timestamp.toString());
+      queryParams.append("_r", random);
+
       const response = await fetch(
         `${apiUrl}/order?${queryParams.toString()}`,
         {
@@ -495,8 +549,12 @@ export default function OrderPage() {
     }
 
     try {
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      
       const rejectedData = await apiGet<any[]>(
-        `${apiUrl}/order/rejected-orders`
+        `${apiUrl}/order/rejected-orders?_t=${timestamp}&_r=${random}`
       );
 
       const rejectedOrdersData = rejectedData || [];

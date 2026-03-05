@@ -70,6 +70,9 @@ export class OrderController {
    * Order draft'ni olish yoki yaratish
    */
   @Get("draft")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({ summary: "Get or create order draft" })
   async getDraft(@Tenant() tenantId: string, @Req() req: any) {
     // Session ID olish (frontend'dan header yoki query param orqali)
@@ -171,6 +174,9 @@ export class OrderController {
    * Order'lar ro'yxatini olish
    */
   @Get()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({ summary: "Get all orders" })
   async getOrders(
     @Tenant() tenantId: string,
@@ -201,6 +207,9 @@ export class OrderController {
    */
   @Get("rejected-orders")
   @UseGuards(JwtTenantGuard)
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({ summary: "Get rejected orders" })
   async getRejectedOrders(@Tenant() tenantId: string) {
     return this.orderService.getRejectedOrders(tenantId);
