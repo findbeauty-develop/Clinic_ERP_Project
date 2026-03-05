@@ -140,7 +140,7 @@ function OutboundPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 3;
+  const itemsPerPage = 10;
 
   // ✅ Ref to track pending scroll target after page change (for barcode scanner)
   const pendingScrollTargetRef = useRef<string | null>(null);
@@ -179,6 +179,11 @@ function OutboundPageContent() {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     new Set()
   );
+
+  // ✅ Highlight state for scanned product (visual feedback)
+  const [highlightedProductId, setHighlightedProductId] = useState<
+    string | null
+  >(null);
 
   // Manager name should be empty on page load - user must enter it manually
 
@@ -525,11 +530,23 @@ function OutboundPageContent() {
           const targetPage = Math.floor(productIndex / itemsPerPage) + 1;
           const needsPageChange = targetPage !== currentPage;
 
+          // ✅ Auto-expand the product dropdown
+          setExpandedProducts((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(matchedProduct.id);
+            return newSet;
+          });
+
+          // ✅ Highlight the product card
+          setHighlightedProductId(matchedProduct.id);
+
+          // Auto-remove highlight after 3 seconds
+          setTimeout(() => {
+            setHighlightedProductId(null);
+          }, 3000);
+
           // Navigate to correct page if needed
           if (needsPageChange) {
-            console.log(
-              `🚀 [Outbound] Navigating from Page ${currentPage} to Page ${targetPage}`
-            );
             pendingScrollTargetRef.current = matchedProduct.id;
             setCurrentPage(targetPage);
           } else {
@@ -606,19 +623,12 @@ function OutboundPageContent() {
   useEffect(() => {
     if (pendingScrollTargetRef.current) {
       const targetId = pendingScrollTargetRef.current;
-      console.log(
-        `📍 [Outbound After Page Change] Attempting to scroll to product-card-${targetId}`
-      );
 
       setTimeout(() => {
         const element = document.getElementById(`product-card-${targetId}`);
         if (element) {
-          console.log(
-            "✅ [Outbound] Element found after page change, scrolling..."
-          );
           element.scrollIntoView({ behavior: "smooth", block: "center" });
         } else {
-          console.log("❌ [Outbound] Element not found after page change");
         }
         pendingScrollTargetRef.current = null;
       }, 500); // Wait for page to re-render
@@ -1917,7 +1927,7 @@ function OutboundPageContent() {
                 {/* Fixed Header Section */}
                 <div className="flex-shrink-0">
                   {/* Segmented Control - Product/Package Outbound */}
-                  <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                  {/* <div className="mb-4 flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
                     <button
                       onClick={() => setIsPackageMode(false)}
                       className={`relative flex-1 rounded-md px-4 py-2 text-center text-sm font-semibold transition ${
@@ -1938,7 +1948,7 @@ function OutboundPageContent() {
                     >
                       패키지 출고
                     </button>
-                  </div>
+                  </div> */}
 
                   <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
                     {isPackageMode ? "전체 패키지" : "전체 제품"}
@@ -2304,7 +2314,11 @@ function OutboundPageContent() {
                           <div
                             key={product.id}
                             id={`product-card-${product.id}`}
-                            className="transition-all duration-300"
+                            className={`transition-all duration-300 ${
+                              highlightedProductId === product.id
+                                ? "ring-4 ring-blue-500 ring-opacity-50 rounded-lg"
+                                : ""
+                            }`}
                           >
                             <ProductCard
                               product={product}

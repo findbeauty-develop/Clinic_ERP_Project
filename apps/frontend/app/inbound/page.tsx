@@ -140,6 +140,43 @@ export default function InboundPage() {
   const [selectedSupplier, setSelectedSupplier] = useState("전체 공급업체");
   const [showCSVImportModal, setShowCSVImportModal] = useState(false);
 
+  // ✅ Recent values for 빠른 입고 (보관 위치, 입고 직원) - max 10 each, most recent first
+  const [recentStorageLocations, setRecentStorageLocations] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("inbound_recent_storage_locations");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [recentInboundStaff, setRecentInboundStaff] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("inbound_recent_inbound_staff");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+
+  const addRecentBatchValues = useCallback(
+    (payload: { storageLocation?: string; inboundManager?: string }) => {
+      const add = (key: string, setter: React.Dispatch<React.SetStateAction<string[]>>, value: string) => {
+        const v = value.trim();
+        if (!v) return;
+        setter((prev) => {
+          const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem(key, JSON.stringify(next));
+            } catch (_) {}
+          }
+          return next;
+        });
+      };
+      if (payload.storageLocation) add("inbound_recent_storage_locations", setRecentStorageLocations, payload.storageLocation);
+      if (payload.inboundManager) add("inbound_recent_inbound_staff", setRecentInboundStaff, payload.inboundManager);
+    },
+    []
+  );
+
   // Fetch products for "빠른 입고" tab - memoized to prevent duplicate requests
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
@@ -251,7 +288,6 @@ export default function InboundPage() {
     // Track when page is about to be hidden (user navigating away)
     const handlePageHide = () => {
       shouldRefreshOnShow = true;
-      console.log("[Inbound] Page hidden - will refresh on return");
     };
 
     // Detect when page is shown (initial load or back/forward navigation)
@@ -259,7 +295,6 @@ export default function InboundPage() {
       // event.persisted = true means page loaded from bfcache (back/forward button)
       // shouldRefreshOnShow = true means we previously hid the page
       if (event.persisted || shouldRefreshOnShow) {
-        console.log("[Inbound] Page restored from cache - forcing refresh");
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
           fetchProducts(true);
@@ -330,7 +365,9 @@ export default function InboundPage() {
 
         // Supplier filter
         if (selectedSupplier !== "전체 공급업체") {
-          filtered = filtered.filter((p) => p.supplierName === selectedSupplier);
+          filtered = filtered.filter(
+            (p) => p.supplierName === selectedSupplier
+          );
         }
 
         // Sort
@@ -355,23 +392,14 @@ export default function InboundPage() {
         );
 
         // ✅ DEBUG: Log to see what's happening
-        console.log('[Barcode Navigation Debug]', {
-          scannedGTIN: parsed.gtin,
-          productName: matchedProduct.productName,
-          totalProducts: products.length,
-          filteredProducts: filtered.length,
-          productIndex,
-          currentPage,
-          itemsPerPage,
-        });
 
         if (productIndex === -1) {
           // Product is filtered out by search/category/supplier/status
           alert(
             `⚠️ 제품이 현재 필터에서 제외되었습니다.\n\n` +
-            `제품명: ${matchedProduct.productName}\n` +
-            `브랜드: ${matchedProduct.brand || '(없음)'}\n\n` +
-            `필터를 초기화하거나 검색어를 제거해주세요.`
+              `제품명: ${matchedProduct.productName}\n` +
+              `브랜드: ${matchedProduct.brand || "(없음)"}\n\n` +
+              `필터를 초기화하거나 검색어를 제거해주세요.`
           );
           return;
         }
@@ -380,17 +408,8 @@ export default function InboundPage() {
         const targetPage = Math.floor(productIndex / itemsPerPage) + 1;
         const needsPageChange = targetPage !== currentPage;
 
-        // ✅ DEBUG: Log page navigation details
-        console.log('[Page Navigation]', {
-          targetPage,
-          currentPage,
-          needsPageChange,
-          willNavigate: needsPageChange ? 'YES' : 'NO',
-        });
-
         // ✅ Navigate to correct page if needed
         if (needsPageChange) {
-          console.log(`🚀 Navigating from Page ${currentPage} to Page ${targetPage}`);
           // Store the target product ID for scrolling after page change
           pendingScrollTargetRef.current = matchedProduct.id;
           setCurrentPage(targetPage);
@@ -398,15 +417,15 @@ export default function InboundPage() {
           // Same page - scroll immediately
           pendingScrollTargetRef.current = null;
           setTimeout(() => {
-            console.log(`📍 Attempting to scroll to product-card-${matchedProduct.id}`);
             const element = document.getElementById(
               `product-card-${matchedProduct.id}`
             );
             if (element) {
-              console.log('✅ Element found, scrolling...');
               element.scrollIntoView({ behavior: "smooth", block: "center" });
             } else {
-              console.error(`❌ Element not found: product-card-${matchedProduct.id}`);
+              console.error(
+                `❌ Element not found: product-card-${matchedProduct.id}`
+              );
             }
           }, 300);
         }
@@ -415,18 +434,21 @@ export default function InboundPage() {
         setExpandedCardId(matchedProduct.id);
 
         // Wait for card to expand, then dispatch fill event
-        setTimeout(() => {
-          // Trigger batch form fill via custom event
-          window.dispatchEvent(
-            new CustomEvent("fillBatchForm", {
-              detail: {
-                productId: matchedProduct.id,
-                batchNumber: parsed.batchNumber,
-                expiryDate: parsed.expiryDate,
-              },
-            })
-          );
-        }, needsPageChange ? 600 : 200); // Wait longer if page changed
+        setTimeout(
+          () => {
+            // Trigger batch form fill via custom event
+            window.dispatchEvent(
+              new CustomEvent("fillBatchForm", {
+                detail: {
+                  productId: matchedProduct.id,
+                  batchNumber: parsed.batchNumber,
+                  expiryDate: parsed.expiryDate,
+                },
+              })
+            );
+          },
+          needsPageChange ? 600 : 200
+        ); // Wait longer if page changed
 
         // Remove the old scroll setTimeout - handled by useEffect now
 
@@ -441,7 +463,16 @@ export default function InboundPage() {
         console.error("Global barcode scan error:", error);
       }
     },
-    [products, searchQuery, selectedCategory, selectedStatus, selectedSupplier, sortBy, currentPage, itemsPerPage]
+    [
+      products,
+      searchQuery,
+      selectedCategory,
+      selectedStatus,
+      selectedSupplier,
+      sortBy,
+      currentPage,
+      itemsPerPage,
+    ]
   );
 
   // ✅ Listen for product deletion events and update state immediately
@@ -868,22 +899,20 @@ export default function InboundPage() {
   useEffect(() => {
     if (pendingScrollTargetRef.current && activeTab === "quick") {
       const targetId = pendingScrollTargetRef.current;
-      
+
       // Wait for page to render with new products
       const timeoutId = setTimeout(() => {
-        console.log(`📍 [After Page Change] Attempting to scroll to product-card-${targetId}`);
+       
         const element = document.getElementById(`product-card-${targetId}`);
-        
+
         if (element) {
-          console.log('✅ Element found after page change, scrolling...');
           element.scrollIntoView({ behavior: "smooth", block: "center" });
         } else {
-          console.error(`❌ Element still not found after page change: product-card-${targetId}`);
-          console.log('Current page products:', 
-            Array.from(document.querySelectorAll('[id^="product-card-"]')).map(el => el.id)
+          console.error(
+            `❌ Element still not found after page change: product-card-${targetId}`
           );
         }
-        
+
         // Clear the pending target
         pendingScrollTargetRef.current = null;
       }, 500); // Wait 500ms for React to re-render with new page
@@ -1064,6 +1093,9 @@ export default function InboundPage() {
                         product={product}
                         isExpanded={expandedCardId === product.id}
                         onToggle={() => handleCardToggle(product.id)}
+                        recentStorageLocations={recentStorageLocations}
+                        recentInboundStaff={recentInboundStaff}
+                        onBatchCreated={addRecentBatchValues}
                       />
                     ))}
                     {totalPages > 1 && (
@@ -1371,15 +1403,25 @@ const ProductCard = memo(function ProductCard({
   product,
   isExpanded,
   onToggle,
+  recentStorageLocations = [],
+  recentInboundStaff = [],
+  onBatchCreated,
 }: {
   product: ProductListItem;
   isExpanded: boolean;
   onToggle: () => void;
+  recentStorageLocations?: string[];
+  recentInboundStaff?: string[];
+  onBatchCreated?: (payload: { storageLocation?: string; inboundManager?: string }) => void;
 }) {
   const [batchQuantity, setBatchQuantity] = useState(1);
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [submittingBatch, setSubmittingBatch] = useState(false);
+
+  // Auto-dropdown visibility for 보관 위치 / 입고 직원 (open on input focus)
+  const [showStorageSuggestions, setShowStorageSuggestions] = useState(false);
+  const [showStaffSuggestions, setShowStaffSuggestions] = useState(false);
 
   // Batch form state
   const [batchForm, setBatchForm] = useState({
@@ -1834,6 +1876,14 @@ const ProductCard = memo(function ProductCard({
 
       const result = await response.json();
 
+      // Save current values to recent lists (for dropdown autocomplete)
+      if (onBatchCreated) {
+        onBatchCreated({
+          storageLocation: batchForm.storageLocation?.trim() || undefined,
+          inboundManager: batchForm.inboundManager?.trim() || undefined,
+        });
+      }
+
       // Reset form
       setBatchForm({
         inboundManager: "",
@@ -2269,8 +2319,8 @@ const ProductCard = memo(function ProductCard({
                 </div>
               </div>
 
-              {/* 보관 위치 */}
-              <div className="space-y-2">
+              {/* 보관 위치 (focus 시 이전 입력값 드롭다운) */}
+              <div className="space-y-2 relative">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   보관 위치
                 </label>
@@ -2285,15 +2335,39 @@ const ProductCard = memo(function ProductCard({
                       storageLocation: e.target.value,
                     });
                   }}
+                  onFocus={() => setShowStorageSuggestions(true)}
+                  onBlur={() => {
+                    setTimeout(() => setShowStorageSuggestions(false), 200);
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
+                {showStorageSuggestions && recentStorageLocations.length > 0 && (
+                  <ul
+                    className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {recentStorageLocations.map((loc) => (
+                      <li
+                        key={loc}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setBatchForm((prev) => ({ ...prev, storageLocation: loc }));
+                          setShowStorageSuggestions(false);
+                        }}
+                        className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        {loc}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 
-            {/* Row 4: 입고 직원 */}
+            {/* Row 4: 입고 직원 (focus 시 이전 입력값 드롭다운) */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   입고 직원 *
                 </label>
@@ -2308,9 +2382,33 @@ const ProductCard = memo(function ProductCard({
                       inboundManager: e.target.value,
                     });
                   }}
+                  onFocus={() => setShowStaffSuggestions(true)}
+                  onBlur={() => {
+                    setTimeout(() => setShowStaffSuggestions(false), 200);
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 />
+                {showStaffSuggestions && recentInboundStaff.length > 0 && (
+                  <ul
+                    className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {recentInboundStaff.map((name) => (
+                      <li
+                        key={name}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setBatchForm((prev) => ({ ...prev, inboundManager: name }));
+                          setShowStaffSuggestions(false);
+                        }}
+                        className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="space-y-2 ml-auto mt-8">
                 <button
