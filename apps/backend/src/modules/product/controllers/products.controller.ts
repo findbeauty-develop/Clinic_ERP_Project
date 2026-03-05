@@ -169,7 +169,9 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get all batches for a product" })
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   getProductBatches(
     @Param("id") productId: string,
     @Tenant() tenantId: string

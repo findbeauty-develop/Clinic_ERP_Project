@@ -160,10 +160,20 @@ export default function InboundPage() {
           clearCache("products");
         }
 
-        // Add cache-busting parameter to bypass browser HTTP cache when force refresh
-        const cacheBuster = forceRefresh ? `?_t=${Date.now()}` : "";
+        // ✅ Safari-specific cache busting: Safari has aggressive HTTP cache
+        const isSafari = typeof navigator !== 'undefined' && 
+          /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        // Safari always needs cache busting, other browsers only when force refresh
+        const timestamp = Date.now();
+        const cacheBuster = isSafari
+          ? `?_t=${timestamp}&_safari=1` // Safari: always bust cache
+          : forceRefresh 
+            ? `?_t=${timestamp}` // Other browsers: only on force refresh
+            : "";
+        
         const data = await apiGet<any[]>(`${apiUrl}/products${cacheBuster}`, {
-          headers: forceRefresh
+          headers: (forceRefresh || isSafari)
             ? {
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 Pragma: "no-cache",
@@ -236,19 +246,35 @@ export default function InboundPage() {
     }
   }, [fetchProducts]);
 
-  // ✅ Safari bfcache handler: Detect back/forward cache restore
+  // ✅ Universal bfcache handler: Detect back/forward navigation (all browsers)
   useEffect(() => {
+    let shouldRefreshOnShow = false;
+    
+    // Track when page is about to be hidden (user navigating away)
+    const handlePageHide = () => {
+      shouldRefreshOnShow = true;
+      console.log('[Inbound] Page hidden - will refresh on return');
+    };
+    
+    // Detect when page is shown (initial load or back/forward navigation)
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        // Page loaded from bfcache (Safari back button)
-        console.log('[Inbound] Loaded from bfcache - forcing refresh');
-        fetchProducts(true);
+      // event.persisted = true means page loaded from bfcache (back/forward button)
+      // shouldRefreshOnShow = true means we previously hid the page
+      if (event.persisted || shouldRefreshOnShow) {
+        console.log('[Inbound] Page restored from cache - forcing refresh');
+        // Small delay to ensure page is fully loaded
+        setTimeout(() => {
+          fetchProducts(true);
+          shouldRefreshOnShow = false;
+        }, 100);
       }
     };
 
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('pageshow', handlePageShow as EventListener);
 
     return () => {
+      window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('pageshow', handlePageShow as EventListener);
     };
   }, [fetchProducts]);
@@ -1127,7 +1153,7 @@ export default function InboundPage() {
 
 // ✅ Global cache for batches (shared across all ProductCard instances)
 // This prevents data loss when navigating between pages and on force refresh
-const CACHE_TTL = 5 * 1000; // 5 seconds
+const CACHE_TTL = 0; // Disabled - batch data must be real-time (was 5 seconds)
 const CACHE_STORAGE_KEY = "jaclit-batches-cache";
 
 // Initialize cache from localStorage on first load
@@ -1367,8 +1393,20 @@ const ProductCard = memo(function ProductCard({
       setLoadingBatches(true);
       try {
         const { apiGet } = await import("../../lib/api");
+        
+        // ✅ Universal cache busting: Always fetch fresh batch data (all browsers)
+        // Batch data is inventory-critical and must be accurate
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        
         const data = await apiGet<ProductBatch[]>(
-          `${apiUrl}/products/${product.id}/batches`
+          `${apiUrl}/products/${product.id}/batches?_t=${timestamp}&_r=${random}`,
+          {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+          }
         );
         setBatches(data);
         // Update cache
@@ -1642,9 +1680,13 @@ const ProductCard = memo(function ProductCard({
       globalBatchesCache.delete(cacheKey);
       saveCacheToStorage(); // Update localStorage
 
-      // Fetch fresh batches with cache-busting
+      // ✅ Universal aggressive cache busting (all browsers)
+      // Fetch fresh batches with timestamp + random to bypass all caches
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      
       const updatedBatches = await apiGet<ProductBatch[]>(
-        `${apiUrl}/products/${product.id}/batches?_t=${Date.now()}`,
+        `${apiUrl}/products/${product.id}/batches?_t=${timestamp}&_r=${random}`,
         {
           headers: {
             "Cache-Control": "no-cache, no-store, must-revalidate",
