@@ -50,11 +50,13 @@ import { CommonModule } from "./common/common.module";
       ignoreEnvVars: false, // Always read from process.env
       expandVariables: true,
     }),
-    // ✅ Rate Limiting - Global throttler configuration
+    // ✅ Rate Limiting - Auth-only throttler configuration
+    // Global throttler removed to prevent "Too Many Requests" errors on data-heavy pages
+    // Throttling now applied selectively only to auth endpoints (login, signup, etc.)
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minute (milliseconds)
-        limit: 100, // 100 requests per minute (global default)
+        limit: 10, // Strict limit for auth endpoints only
       },
     ]),
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
@@ -78,11 +80,12 @@ import { CommonModule } from "./common/common.module";
     CommonModule, // ✅ Global monitoring va notification services
   ],
   providers: [
-    // ✅ Global throttler guard (barcha endpoint'lar uchun)
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    // ❌ REMOVED: Global throttler guard (caused "Too Many Requests" on cache-disabled pages)
+    // Throttling now applied selectively only to auth endpoints via @Throttle() decorator
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: ThrottlerGuard,
+    // },
     // ✅ Global exception filter (error handling uchun)
     {
       provide: APP_FILTER,

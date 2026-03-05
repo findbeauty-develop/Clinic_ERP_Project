@@ -272,6 +272,7 @@ export class MembersController {
   }
 
   @Post("send-phone-verification")
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // ✅ 3 requests per minute (SMS spam oldini olish)
   @ApiOperation({ summary: "Send phone verification code via SMS" })
   async sendPhoneVerification(@Body() body: { phone_number: string }) {
     if (!body.phone_number) {
@@ -283,6 +284,7 @@ export class MembersController {
   }
 
   @Post("verify-phone-code")
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // ✅ 10 requests per minute (kod kiritish uchun)
   @ApiOperation({ summary: "Verify phone verification code" })
   async verifyPhoneCode(@Body() body: { phone_number: string; code: string }) {
     if (!body.phone_number || !body.code) {

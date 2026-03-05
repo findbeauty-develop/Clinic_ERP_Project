@@ -3253,13 +3253,19 @@ export class OrderService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const cached = this.getCachedPendingInbound(tenantId);
-    if (cached) {
-      if (cached.isStale) {
-        this.refreshPendingInboundCacheInBackground(tenantId).catch(() => {});
-      }
-      return cached.data; // ✅ Stale yoki fresh
-    }
+    // ✅ DISABLED CACHE: Always fetch fresh data from database
+    // Cache disabled for real-time order updates (입고 대기 must show latest data)
+    // Previous issue: Stale cache returned old data even with TTL=0
+    // BYPASS CACHE LOGIC to ensure real-time accuracy
+    
+    // Commented out cache check:
+    // const cached = this.getCachedPendingInbound(tenantId);
+    // if (cached) {
+    //   if (cached.isStale) {
+    //     this.refreshPendingInboundCacheInBackground(tenantId).catch(() => {});
+    //   }
+    //   return cached.data;
+    // }
 
     const orders = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findMany({
@@ -3507,8 +3513,9 @@ export class OrderService {
 
     const result = Object.values(grouped);
 
-    // Cache the result
-    this.setCachedPendingInbound(tenantId, result);
+    // ✅ DISABLED CACHE: Don't cache the result for real-time accuracy
+    // Commented out cache set:
+    // this.setCachedPendingInbound(tenantId, result);
 
     return result;
   }
