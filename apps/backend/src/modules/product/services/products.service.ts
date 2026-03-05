@@ -41,7 +41,7 @@ export class ProductsService {
     // Initialize CacheManager with auto-cleanup
     this.productsCache = new CacheManager({
       maxSize: 100, // Max 100 tenants cached
-      ttl: 5000, // 30 seconds
+      ttl: 0, // Disabled - inventory data must be real-time (was 5 seconds)
       cleanupInterval: 60000, // Cleanup every minute
       name: "ProductsService",
     });
@@ -133,6 +133,7 @@ export class ProductsService {
                   name: true,
                   phone_number: true,
                   business_number: true,
+                  position: true, // ✅ Added for managerPosition
                 },
               },
             },
@@ -175,6 +176,7 @@ export class ProductsService {
           supplierName: supplierManager?.company_name ?? null,
           managerName: supplierManager?.name ?? null,
           supplierId: supplierManager?.id ?? null,
+          managerPosition: supplierManager?.position ?? null, // ✅ Added
           expiryDate: latestBatch?.expiry_date ?? null,
           storageLocation: latestBatch?.storage ?? null, // Only from batch now
           productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
@@ -740,27 +742,9 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const cached = this.getCachedData(tenantId);
-    if (cached) {
-      // Background'da yangilash (stale bo'lsa)
-      if (cached.isStale) {
-        // Background refresh (await qilmaymiz)
-        this.refreshProductsCacheInBackground(tenantId).catch(() => {
-          // Error handling (user'ga ko'rsatilmaydi)
-        });
-      }
-      // ✅ Bo'sh ro'yxat + stale cache bo'lsa: DB da productlar bor lekin cache eski bo'lishi mumkin — cache'ni bekor qilib DB dan qayta o'qish
-      const isEmptyAndStale =
-        Array.isArray(cached.data) &&
-        cached.data.length === 0 &&
-        cached.isStale;
-      if (isEmptyAndStale) {
-        this.clearProductsCache(tenantId);
-        // Fall through to fetch from DB below
-      } else {
-        return cached.data;
-      }
-    }
+    // ✅ DISABLED CACHE: Always fetch fresh data from database
+    // Cache disabled for real-time inventory accuracy (qty, available_quantity)
+    // Previous issue: Stale cache returned old data even with TTL=0
 
     // Parallel fetching - 3 ta query bir vaqtda (3x tezroq)
     const [products, returnPolicies, productSuppliers] = await Promise.all([

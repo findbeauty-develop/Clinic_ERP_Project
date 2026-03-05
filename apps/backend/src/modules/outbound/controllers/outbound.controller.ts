@@ -31,7 +31,9 @@ export class OutboundController {
   @Get("products")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({
     summary:
       "Get all products with batches for outbound processing (FEFO sorted)",

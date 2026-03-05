@@ -84,6 +84,12 @@ export default function OutboundHistoryPage() {
       }
       queryParams.append("page", currentPage.toString());
       queryParams.append("limit", itemsPerPage.toString());
+      
+      // ✅ Universal cache busting (all browsers)
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      queryParams.append("_t", timestamp.toString());
+      queryParams.append("_r", random);
 
       const url = `${apiUrl}/outbound/history?${queryParams.toString()}`;
 
@@ -93,7 +99,12 @@ export default function OutboundHistoryPage() {
         page: number;
         limit: number;
         totalPages: number;
-      }>(url);
+      }>(url, {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+        },
+      });
 
       // ✅ Filter items based on filter states
       let filteredItems = data.items || [];

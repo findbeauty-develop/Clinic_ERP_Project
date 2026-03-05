@@ -154,24 +154,26 @@ export default function InboundPage() {
         }
 
         // ✅ Safari-specific cache busting: Safari has aggressive HTTP cache
-        const isSafari = typeof navigator !== 'undefined' && 
+        const isSafari =
+          typeof navigator !== "undefined" &&
           /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        
+
         // Safari always needs cache busting, other browsers only when force refresh
         const timestamp = Date.now();
         const cacheBuster = isSafari
           ? `?_t=${timestamp}&_safari=1` // Safari: always bust cache
-          : forceRefresh 
+          : forceRefresh
             ? `?_t=${timestamp}` // Other browsers: only on force refresh
             : "";
-        
+
         const data = await apiGet<any[]>(`${apiUrl}/products${cacheBuster}`, {
-          headers: (forceRefresh || isSafari)
-            ? {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                Pragma: "no-cache",
-              }
-            : {},
+          headers:
+            forceRefresh || isSafari
+              ? {
+                  "Cache-Control": "no-cache, no-store, must-revalidate",
+                  Pragma: "no-cache",
+                }
+              : {},
         });
 
         // ✅ Defensive: API must return an array (prevent products "disappearing" on bad response)
@@ -242,19 +244,19 @@ export default function InboundPage() {
   // ✅ Universal bfcache handler: Detect back/forward navigation (all browsers)
   useEffect(() => {
     let shouldRefreshOnShow = false;
-    
+
     // Track when page is about to be hidden (user navigating away)
     const handlePageHide = () => {
       shouldRefreshOnShow = true;
-      console.log('[Inbound] Page hidden - will refresh on return');
+      console.log("[Inbound] Page hidden - will refresh on return");
     };
-    
+
     // Detect when page is shown (initial load or back/forward navigation)
     const handlePageShow = (event: PageTransitionEvent) => {
       // event.persisted = true means page loaded from bfcache (back/forward button)
       // shouldRefreshOnShow = true means we previously hid the page
       if (event.persisted || shouldRefreshOnShow) {
-        console.log('[Inbound] Page restored from cache - forcing refresh');
+        console.log("[Inbound] Page restored from cache - forcing refresh");
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
           fetchProducts(true);
@@ -263,12 +265,12 @@ export default function InboundPage() {
       }
     };
 
-    window.addEventListener('pagehide', handlePageHide);
-    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
 
     return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
     };
   }, [fetchProducts]);
 
@@ -583,12 +585,12 @@ export default function InboundPage() {
       setError(null);
       try {
         const { apiGet } = await import("../../lib/api");
-        
+
         // ✅ Universal aggressive cache busting (all browsers)
         // Add random parameter to prevent Safari/Chrome aggressive caching
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(7);
-        
+
         const groupedData = await apiGet<any[]>(
           `${apiUrl}/order/pending-inbound?_t=${timestamp}&_r=${random}`,
           {
@@ -637,7 +639,7 @@ export default function InboundPage() {
       // ✅ Check if we should force refresh (e.g., after order completion)
       const shouldForceRefresh =
         sessionStorage.getItem("pending_inbound_force_refresh") === "true";
-      
+
       if (shouldForceRefresh) {
         sessionStorage.removeItem("pending_inbound_force_refresh");
         fetchPendingOrders(true); // Force refresh
@@ -650,21 +652,21 @@ export default function InboundPage() {
   // ✅ Universal bfcache handler for pending orders tab (all browsers)
   useEffect(() => {
     if (activeTab !== "pending") return;
-    
+
     let shouldRefreshOnShow = false;
-    
+
     // Track when page is about to be hidden (user navigating away)
     const handlePageHide = () => {
       shouldRefreshOnShow = true;
-      console.log('[Pending] Page hidden - will refresh on return');
+      console.log("[Pending] Page hidden - will refresh on return");
     };
-    
+
     // Detect when page is shown (initial load or back/forward navigation)
     const handlePageShow = (event: PageTransitionEvent) => {
       // event.persisted = true means page loaded from bfcache (back/forward button)
       // shouldRefreshOnShow = true means we previously hid the page
       if (event.persisted || shouldRefreshOnShow) {
-        console.log('[Pending] Page restored from cache - forcing refresh');
+        console.log("[Pending] Page restored from cache - forcing refresh");
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
           fetchPendingOrders(true);
@@ -673,12 +675,12 @@ export default function InboundPage() {
       }
     };
 
-    window.addEventListener('pagehide', handlePageHide);
-    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
 
     return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
     };
   }, [fetchPendingOrders, activeTab]);
 
@@ -1313,6 +1315,21 @@ const ProductCard = memo(function ProductCard({
     return product.currentStock ?? 0;
   }, [batches, product.currentStock, product.id]);
 
+  // ✅ DEBUG: Log render data (only in development)
+  if (process.env.NODE_ENV === "development") {
+    console.log("[ProductCard Debug]", {
+      productId: product.id,
+      productName: product.productName,
+      currentStock: product.currentStock,
+      calculatedCurrentStock,
+      batchesLength: batches.length,
+      supplierName: product.supplierName,
+      managerName: product.managerName,
+      managerPosition: product.managerPosition,
+      isExpanded,
+    });
+  }
+
   const isLowStock = calculatedCurrentStock <= product.minStock;
 
   // USB Barcode Scanner for Batch
@@ -1418,11 +1435,9 @@ const ProductCard = memo(function ProductCard({
 
   useEffect(() => {
     const fetchBatches = async () => {
-      if (!isExpanded) {
-        // Don't clear batches when collapsed, just don't fetch
-        return;
-      }
-
+      // ✅ ALWAYS fetch batches (even when collapsed) for accurate currentStock display
+      // Previously: Only fetched when expanded → calculatedCurrentStock was wrong on initial render
+      
       // Check cache first
       const cacheKey = `${product.id}`;
       const cached = globalBatchesCache.get(cacheKey);
@@ -1434,18 +1449,18 @@ const ProductCard = memo(function ProductCard({
       setLoadingBatches(true);
       try {
         const { apiGet } = await import("../../lib/api");
-        
+
         // ✅ Universal cache busting: Always fetch fresh batch data (all browsers)
         // Batch data is inventory-critical and must be accurate
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(7);
-        
+
         const data = await apiGet<ProductBatch[]>(
           `${apiUrl}/products/${product.id}/batches?_t=${timestamp}&_r=${random}`,
           {
             headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
             },
           }
         );
@@ -1725,7 +1740,7 @@ const ProductCard = memo(function ProductCard({
       // Fetch fresh batches with timestamp + random to bypass all caches
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      
+
       const updatedBatches = await apiGet<ProductBatch[]>(
         `${apiUrl}/products/${product.id}/batches?_t=${timestamp}&_r=${random}`,
         {
@@ -1776,15 +1791,15 @@ const ProductCard = memo(function ProductCard({
               <img
                 src={
                   product.productImage +
-                  (product.productImage.includes('?') ? '&' : '?') +
-                  'v=' +
+                  (product.productImage.includes("?") ? "&" : "?") +
+                  "v=" +
                   (product.updated_at || Date.now())
                 }
                 alt={product.productName}
                 className="h-full w-full rounded-xl object-cover"
                 onError={(e) => {
                   // Fallback if image fails to load
-                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
             ) : (
@@ -5202,7 +5217,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
 
       // ✅ Set flag to force refresh pending orders list
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         sessionStorage.setItem("pending_inbound_force_refresh", "true");
       }
 
@@ -5805,11 +5820,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       // 재입고: qolgan miqdorni ko'rsatish (remainingQty); catalog uchun order quantity
                       const capacity = item.fromCatalog
                         ? (item.item?.quantity ??
-                           item.item?.confirmedQuantity ??
-                           0)
+                          item.item?.confirmedQuantity ??
+                          0)
                         : (item.remainingQty ??
-                           item.item?.confirmedQuantity ??
-                           0);
+                          item.item?.confirmedQuantity ??
+                          0);
                       const hasLots =
                         item.lotQuantities &&
                         Object.keys(item.lotQuantities).length > 0 &&
@@ -6728,7 +6743,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       입고수량:
                     </label>
-                    {(isSupplierConfirmed || isPendingInbound) ? (
+                    {isSupplierConfirmed || isPendingInbound ? (
                       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/50">
                         <span className="text-sm text-slate-800 dark:text-slate-100">
                           {edited.quantity !== "" &&
@@ -6780,7 +6795,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       유통기간:
                     </label>
-                    {(isSupplierConfirmed || isPendingInbound) ? (
+                    {isSupplierConfirmed || isPendingInbound ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                         {edited.expiryDate || "-"}
                       </div>
@@ -6802,7 +6817,7 @@ const OrderCard = memo(function OrderCard({
                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                       보관위치
                     </label>
-                    {(isSupplierConfirmed || isPendingInbound) ? (
+                    {isSupplierConfirmed || isPendingInbound ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                         {edited.storageLocation || "-"}
                       </div>

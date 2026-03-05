@@ -189,7 +189,7 @@ function OutboundPageContent() {
     data: PackageForOutbound[];
     timestamp: number;
   } | null>(null);
-  const CACHE_TTL = 5000; // 5 seconds
+  const CACHE_TTL = 0; // Disabled - outbound data must be real-time (was 5 seconds)
 
   const fetchProducts = useCallback(
     async (forceRefresh = false) => {
@@ -209,8 +209,14 @@ function OutboundPageContent() {
       setLoading(true);
       setError(null);
       try {
-        // Add cache-busting parameter when force refresh
-        const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
+        // ✅ Universal aggressive cache busting (all browsers)
+        // Add random parameter to prevent Safari/Chrome aggressive caching
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        const cacheBuster = forceRefresh 
+          ? `&_t=${timestamp}&_r=${random}` 
+          : "";
+        
         const searchParam = searchQuery
           ? `?search=${encodeURIComponent(searchQuery)}`
           : "?";
@@ -230,7 +236,9 @@ function OutboundPageContent() {
         const formattedProducts = data
           .map((product) => ({
             ...product,
-            productImage: formatImageUrl(product.productImage),
+            // ✅ Add cache busting to product images (all browsers)
+            productImage: formatImageUrl(product.productImage) + 
+              (product.productImage ? `?v=${Date.now()}` : ''),
             // Filter out batches with 0 quantity
             batches: product.batches.filter((batch) => batch.qty > 0),
           }))
@@ -340,13 +348,63 @@ function OutboundPageContent() {
   );
 
   useEffect(() => {
-    if (isPackageMode) {
-      fetchPackages();
+    // ✅ Check if we should force refresh (e.g., after outbound completion)
+    const shouldForceRefresh =
+      sessionStorage.getItem("outbound_force_refresh") === "true";
+    
+    if (shouldForceRefresh) {
+      sessionStorage.removeItem("outbound_force_refresh");
+      if (isPackageMode) {
+        fetchPackages(true); // Force refresh
+      } else {
+        fetchProducts(true); // Force refresh
+      }
     } else {
-      fetchProducts();
+      if (isPackageMode) {
+        fetchPackages();
+      } else {
+        fetchProducts();
+      }
     }
     setCurrentPage(1); // Reset to first page when search changes
   }, [isPackageMode, searchQuery, fetchProducts, fetchPackages]);
+
+  // ✅ Universal bfcache handler for outbound page (all browsers)
+  useEffect(() => {
+    let shouldRefreshOnShow = false;
+    
+    // Track when page is about to be hidden (user navigating away)
+    const handlePageHide = () => {
+      shouldRefreshOnShow = true;
+      console.log('[Outbound] Page hidden - will refresh on return');
+    };
+    
+    // Detect when page is shown (initial load or back/forward navigation)
+    const handlePageShow = (event: PageTransitionEvent) => {
+      // event.persisted = true means page loaded from bfcache (back/forward button)
+      // shouldRefreshOnShow = true means we previously hid the page
+      if (event.persisted || shouldRefreshOnShow) {
+        console.log('[Outbound] Page restored from cache - forcing refresh');
+        // Small delay to ensure page is fully loaded
+        setTimeout(() => {
+          if (isPackageMode) {
+            fetchPackages(true);
+          } else {
+            fetchProducts(true);
+          }
+          shouldRefreshOnShow = false;
+        }, 100);
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+    };
+  }, [fetchProducts, fetchPackages, isPackageMode]);
 
   // ✅ Listen for product deletion events and update state immediately
   useEffect(() => {
@@ -1246,6 +1304,11 @@ function OutboundPageContent() {
         setStatusType(null);
         setChartNumber("");
         setPackageCounts({});
+
+        // ✅ Set flag to force refresh outbound page
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem("outbound_force_refresh", "true");
+        }
 
         // ✅ Clear ALL caches (frontend API cache + component cache)
         // Clear with different endpoint formats to ensure all variants are cleared
