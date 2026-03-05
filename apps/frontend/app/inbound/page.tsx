@@ -129,13 +129,6 @@ export default function InboundPage() {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
-  // Cache for pending orders to prevent duplicate requests
-  const pendingOrdersCacheRef = useRef<{
-    data: any[];
-    timestamp: number;
-  } | null>(null);
-  const PENDING_ORDERS_CACHE_TTL = 0; // ✅ DISABLED: No cache for real-time updates
-
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
@@ -590,9 +583,14 @@ export default function InboundPage() {
       setError(null);
       try {
         const { apiGet } = await import("../../lib/api");
-        // Add cache-busting parameter for real-time updates
+        
+        // ✅ Universal aggressive cache busting (all browsers)
+        // Add random parameter to prevent Safari/Chrome aggressive caching
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        
         const groupedData = await apiGet<any[]>(
-          `${apiUrl}/order/pending-inbound?_t=${Date.now()}`,
+          `${apiUrl}/order/pending-inbound?_t=${timestamp}&_r=${random}`,
           {
             headers: {
               "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -636,9 +634,53 @@ export default function InboundPage() {
   // Fetch pending orders for "입고 대기" tab - only when tab is active
   useEffect(() => {
     if (activeTab === "pending") {
-      fetchPendingOrders();
+      // ✅ Check if we should force refresh (e.g., after order completion)
+      const shouldForceRefresh =
+        sessionStorage.getItem("pending_inbound_force_refresh") === "true";
+      
+      if (shouldForceRefresh) {
+        sessionStorage.removeItem("pending_inbound_force_refresh");
+        fetchPendingOrders(true); // Force refresh
+      } else {
+        fetchPendingOrders();
+      }
     }
   }, [activeTab, fetchPendingOrders]);
+
+  // ✅ Universal bfcache handler for pending orders tab (all browsers)
+  useEffect(() => {
+    if (activeTab !== "pending") return;
+    
+    let shouldRefreshOnShow = false;
+    
+    // Track when page is about to be hidden (user navigating away)
+    const handlePageHide = () => {
+      shouldRefreshOnShow = true;
+      console.log('[Pending] Page hidden - will refresh on return');
+    };
+    
+    // Detect when page is shown (initial load or back/forward navigation)
+    const handlePageShow = (event: PageTransitionEvent) => {
+      // event.persisted = true means page loaded from bfcache (back/forward button)
+      // shouldRefreshOnShow = true means we previously hid the page
+      if (event.persisted || shouldRefreshOnShow) {
+        console.log('[Pending] Page restored from cache - forcing refresh');
+        // Small delay to ensure page is fully loaded
+        setTimeout(() => {
+          fetchPendingOrders(true);
+          shouldRefreshOnShow = false;
+        }, 100);
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+    };
+  }, [fetchPendingOrders, activeTab]);
 
   // Filter and sort products
   const filteredAndSortedProducts = useMemo(() => {
@@ -910,7 +952,6 @@ export default function InboundPage() {
               setShowKeyboardWarning={setShowKeyboardWarning}
               setBarcodeNotFoundModal={setBarcodeNotFoundModal}
               onRefresh={() => {
-                pendingOrdersCacheRef.current = null;
                 fetchPendingOrders(true);
                 // ✅ 스캔 입고 / 입고 완료 후 products·batches yangilansin (inbound pageda ko'rinsin)
                 import("../../lib/api").then(({ clearCache }) => {
@@ -5158,6 +5199,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
         alert(
           `${inboundProductNames}\n남은 ${totalInboundQty}개 입고 완료되었습니다.`
         );
+      }
+
+      // ✅ Set flag to force refresh pending orders list
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem("pending_inbound_force_refresh", "true");
       }
 
       onRefresh();
