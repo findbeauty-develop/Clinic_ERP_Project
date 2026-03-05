@@ -182,6 +182,7 @@ export class ProductsService {
           expiryMonths: null, // Removed from Product table
           expiryUnit: null, // Removed from Product table
           isLowStock: product.current_stock < product.min_stock,
+          updated_at: product.updated_at, // ✅ For image cache busting
           batches: product.batches || [],
         };
       });
@@ -634,6 +635,8 @@ export class ProductsService {
     // Use the product returned from transaction for cache
     if (createdProductFromTransaction) {
       this.addProductToCache(tenantId, createdProductFromTransaction);
+      // ✅ Cache invalidation: Force full cache refresh after create
+      this.clearProductsCache(tenantId);
       return createdProductFromTransaction;
     }
 
@@ -1398,6 +1401,8 @@ export class ProductsService {
 
     if (updatedProduct) {
       this.addProductToCache(tenantId, updatedProduct);
+      // ✅ Cache invalidation: Force full cache refresh after update
+      this.clearProductsCache(tenantId);
     } else {
       // Fallback: invalidate if product not found
       this.clearProductsCache(tenantId);
@@ -1709,6 +1714,8 @@ export class ProductsService {
 
     if (updatedProduct) {
       this.addProductToCache(tenantId, updatedProduct);
+      // ✅ Cache invalidation: Force full cache refresh after batch create
+      this.clearProductsCache(tenantId);
     } else {
       // Fallback: invalidate if product not found
       this.clearProductsCache(tenantId);

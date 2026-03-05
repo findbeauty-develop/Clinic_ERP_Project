@@ -19,7 +19,7 @@ let cacheStats = {
 };
 
 // Cache configuration
-const CACHE_TTL = 5; // 5 seconds
+const CACHE_TTL = 0; // Disabled (was 5 seconds) - no TTL caching for fresh data
 const REQUEST_TIMEOUT = 10000; // 10 seconds
 
 export const getApiUrl = () => {

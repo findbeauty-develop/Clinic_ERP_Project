@@ -78,6 +78,7 @@ type ProductListItem = {
   expiryUnit?: string | null;
   alertDays?: string | null;
   productStorage?: string | null;
+  updated_at?: string | null;
 };
 
 export default function InboundPage() {
@@ -233,6 +234,23 @@ export default function InboundPage() {
     } else {
       fetchProducts();
     }
+  }, [fetchProducts]);
+
+  // ✅ Safari bfcache handler: Detect back/forward cache restore
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page loaded from bfcache (Safari back button)
+        console.log('[Inbound] Loaded from bfcache - forcing refresh');
+        fetchProducts(true);
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+    };
   }, [fetchProducts]);
 
   // ✅ Global barcode scanner handler - works even when cards are collapsed
@@ -1673,9 +1691,18 @@ const ProductCard = memo(function ProductCard({
           <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50">
             {product.productImage ? (
               <img
-                src={product.productImage}
+                src={
+                  product.productImage +
+                  (product.productImage.includes('?') ? '&' : '?') +
+                  'v=' +
+                  (product.updated_at || Date.now())
+                }
                 alt={product.productName}
                 className="h-full w-full rounded-xl object-cover"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">

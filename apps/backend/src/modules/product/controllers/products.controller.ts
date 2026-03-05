@@ -78,7 +78,9 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "List all products for current tenant" })
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   async getAllProducts(@Tenant() tenantId: string, @Res() res: Response) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");

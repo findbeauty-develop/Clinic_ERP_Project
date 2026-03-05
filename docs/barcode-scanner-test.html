@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Barcode Scanner Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 800px;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      color: #1a202c;
+    }
+
+    .subtitle {
+      color: #718096;
+      margin-bottom: 30px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .status.active {
+      background: #48bb78;
+      color: white;
+    }
+
+    .status.inactive {
+      background: #e2e8f0;
+      color: #4a5568;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary {
+      background: #4c51bf;
+      color: white;
+    }
+
+    .btn-danger {
+      background: #f56565;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #cbd5e0;
+      color: #2d3748;
+    }
+
+    .results {
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .scan-item {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border-left: 4px solid #48bb78;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .scan-time {
+      font-size: 12px;
+      color: #a0aec0;
+    }
+
+    .scan-code {
+      font-size: 18px;
+      font-weight: 700;
+      color: #2d3748;
+      margin: 5px 0;
+      font-family: 'Courier New', monospace;
+    }
+
+    .scan-parsed {
+      font-size: 14px;
+      color: #4a5568;
+      margin-top: 5px;
+    }
+
+    .scan-parsed span {
+      display: inline-block;
+      background: #edf2f7;
+      padding: 4px 8px;
+      border-radius: 6px;
+      margin-right: 8px;
+      margin-top: 4px;
+    }
+
+    .debug {
+      background: #fffaf0;
+      border: 1px solid #f6ad55;
+      border-radius: 8px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .debug-line {
+      margin-bottom: 4px;
+      color: #744210;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 20px;
+      transition: border-color 0.2s ease;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #4c51bf;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    .flash {
+      animation: flash 0.5s ease;
+    }
+
+    @keyframes flash {
+      0%, 100% { background: white; }
+      50% { background: #c6f6d5; }
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📷 Global Barcode Scanner Test</h1>
+    <p class="subtitle">Layout-independent, IME-safe, focus-free scanner</p>
+
+    <div class="status inactive" id="status">⚪ Scanner: OFF</div>
+
+    <div class="controls">
+      <button class="btn-primary" onclick="startScanner()">🟢 Start Scanner</button>
+      <button class="btn-danger" onclick="stopScanner()">🔴 Stop Scanner</button>
+      <button class="btn-secondary" onclick="clearResults()">🗑️ Clear Results</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="scanCount">0</div>
+        <div class="stat-label">Total Scans</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgLength">0</div>
+        <div class="stat-label">Avg Length</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="lastSpeed">0ms</div>
+        <div class="stat-label">Last Speed</div>
+      </div>
+    </div>
+
+    <label>Test Input Field (type normally here):</label>
+    <input 
+      type="text" 
+      id="testInput" 
+      placeholder="Type here to test if scanner interferes..."
+      autocomplete="off"
+      spellcheck="false"
+    >
+
+    <label>Scan Results:</label>
+    <div class="results" id="results">
+      <p style="color: #a0aec0; text-align: center;">No scans yet. Start scanner and scan a barcode...</p>
+    </div>
+
+    <label>Debug Log:</label>
+    <div class="debug" id="debug">
+      <div class="debug-line">Debug log will appear here...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Copy the GlobalBarcodeScanner class here or import it
+    class GlobalBarcodeScanner {
+      constructor() {
+        this.buffer = '';
+        this.lastTs = 0;
+        this.fastCount = 0;
+        this.scanStarted = false;
+        this.resetTimer = null;
+        this.completionTimer = null;
+        this.isActive = false;
+        this.config = {
+          onScan: () => {},
+          minLen: 6,
+          maxIntervalMs: 80,
+          fastStartCount: 3,
+          endKey: 'Enter',
+          allowInInputs: true,
+          useTimeout: true,
+          completionTimeoutMs: 120,
+          debug: false,
+        };
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+      }
+
+      start(options) {
+        if (this.isActive) {
+          console.warn('⚠️ GlobalBarcodeScanner already active');
+          return;
+        }
+        this.config = { ...this.config, ...options };
+        this.isActive = true;
+        this._hardReset();
+        document.addEventListener('keydown', this.handleKeyDown, true);
+        if (this.config.debug) {
+          console.log('✅ GlobalBarcodeScanner started', this.config);
+        }
+      }
+
+      stop() {
+        if (!this.isActive) return;
+        document.removeEventListener('keydown', this.handleKeyDown, true);
+        this.isActive = false;
+        this._hardReset();
+        if (this.config.debug) {
+          console.log('🛑 GlobalBarcodeScanner stopped');
+        }
+      }
+
+      handleKeyDown(e) {
+        if (!this.isActive) return;
+        if (!this.config.allowInInputs && this._isEditableTarget(e.target)) return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        if (this._isIgnorableCode(e.code)) return;
+
+        const now = performance.now();
+        const dt = this.lastTs ? now - this.lastTs : 0;
+        this.lastTs = now;
+
+        if (dt && dt > this.config.maxIntervalMs) {
+          this._softReset();
+        }
+
+        if (e.code === this.config.endKey || e.key === this.config.endKey) {
+          if (this.scanStarted && this.buffer.length >= this.config.minLen) {
+            const code = this.buffer;
+            this._hardReset();
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.config.debug) {
+              console.log('✅ Scan complete (Enter):', code);
+            }
+            this.config.onScan(code);
+          } else {
+            this._softReset();
+          }
+          return;
+        }
+
+        const ch = this._codeToAscii(e.code);
+        if (!ch) {
+          if (this.scanStarted) {
+            this._softReset();
+          }
+          return;
+        }
+
+        if (dt && dt <= this.config.maxIntervalMs) {
+          this.fastCount += 1;
+        } else {
+          this.fastCount = 1;
+        }
+
+        this.buffer += ch;
+
+        if (!this.scanStarted && this.fastCount >= this.config.fastStartCount) {
+          this.scanStarted = true;
+          if (this.config.debug) {
+            console.log('🎬 Scan started!');
+          }
+        }
+
+        if (this.scanStarted) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+
+        if (this.config.debug) {
+          console.log(`📷 Buffer: "${this.buffer}" (${this.buffer.length} chars, ${this.fastCount} fast)`);
+        }
+
+        this._armTimers();
+      }
+
+      _armTimers() {
+        if (this.resetTimer) clearTimeout(this.resetTimer);
+        if (this.completionTimer) clearTimeout(this.completionTimer);
+
+        this.resetTimer = setTimeout(() => {
+          if (this.config.debug) {
+            console.log('⏱️ Reset timeout');
+          }
+          this._softReset();
+        }, this.config.maxIntervalMs * 3);
+
+        if (this.config.useTimeout && this.scanStarted) {
+          this.completionTimer = setTimeout(() => {
+            if (this.buffer.length >= this.config.minLen) {
+              const code = this.buffer;
+              this._hardReset();
+              if (this.config.debug) {
+                console.log('✅ Scan complete (Timeout):', code);
+              }
+              this.config.onScan(code);
+            } else {
+              this._softReset();
+            }
+          }, this.config.completionTimeoutMs);
+        }
+      }
+
+      _softReset() {
+        this.buffer = '';
+        this.fastCount = 0;
+        this.scanStarted = false;
+        if (this.resetTimer) clearTimeout(this.resetTimer);
+        if (this.completionTimer) clearTimeout(this.completionTimer);
+      }
+
+      _hardReset() {
+        this._softReset();
+        this.lastTs = 0;
+      }
+
+      _isEditableTarget(target) {
+        if (!target) return false;
+        const el = target;
+        const tag = (el.tagName || '').toLowerCase();
+        return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+      }
+
+      _isIgnorableCode(code) {
+        return code === 'ShiftLeft' || code === 'ShiftRight' || code === 'CapsLock' || code === 'Tab' || code === 'Escape';
+      }
+
+      _codeToAscii(code) {
+        if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+        if (/^Digit\d$/.test(code)) return code.slice(5);
+        if (/^Numpad\d$/.test(code)) return code.slice(6);
+        const specials = { Minus: '-', NumpadSubtract: '-', Slash: '/', NumpadDivide: '/', Period: '.', NumpadDecimal: '.' };
+        return specials[code] || '';
+      }
+    }
+
+    const scanner = new GlobalBarcodeScanner();
+    let scanCount = 0;
+    let totalLength = 0;
+    let lastScanStart = 0;
+
+    window.startScanner = function() {
+      scanner.start({
+        onScan: handleScan,
+        minLen: 6,
+        maxIntervalMs: 80,
+        useTimeout: true,
+        completionTimeoutMs: 120,
+        debug: true,
+      });
+      document.getElementById('status').textContent = '🟢 Scanner: ON';
+      document.getElementById('status').className = 'status active';
+      addDebugLog('✅ Scanner started');
+      document.body.classList.add('flash');
+      setTimeout(() => document.body.classList.remove('flash'), 500);
+    };
+
+    window.stopScanner = function() {
+      scanner.stop();
+      document.getElementById('status').textContent = '⚪ Scanner: OFF';
+      document.getElementById('status').className = 'status inactive';
+      addDebugLog('🛑 Scanner stopped');
+    };
+
+    window.clearResults = function() {
+      document.getElementById('results').innerHTML = '<p style="color: #a0aec0; text-align: center;">No scans yet. Start scanner and scan a barcode...</p>';
+      scanCount = 0;
+      totalLength = 0;
+      updateStats();
+      addDebugLog('🗑️ Results cleared');
+    };
+
+    function handleScan(barcode) {
+      const now = new Date();
+      const scanSpeed = lastScanStart ? now - lastScanStart : 0;
+      lastScanStart = now;
+
+      scanCount++;
+      totalLength += barcode.length;
+
+      const resultsEl = document.getElementById('results');
+      if (resultsEl.querySelector('p')) {
+        resultsEl.innerHTML = '';
+      }
+
+      const scanItem = document.createElement('div');
+      scanItem.className = 'scan-item';
+      scanItem.innerHTML = `
+        <div class="scan-time">#${scanCount} - ${now.toLocaleTimeString()}</div>
+        <div class="scan-code">${barcode}</div>
+        <div class="scan-parsed">
+          <span>Length: ${barcode.length}</span>
+          <span>Speed: ${scanSpeed}ms</span>
+        </div>
+      `;
+      resultsEl.insertBefore(scanItem, resultsEl.firstChild);
+
+      updateStats(scanSpeed);
+      addDebugLog(`✅ Scanned: ${barcode}`);
+
+      // Flash effect
+      document.body.classList.add('flash');
+      setTimeout(() => document.body.classList.remove('flash'), 500);
+    }
+
+    function updateStats(lastSpeed = 0) {
+      document.getElementById('scanCount').textContent = scanCount;
+      document.getElementById('avgLength').textContent = scanCount > 0 ? Math.round(totalLength / scanCount) : 0;
+      if (lastSpeed) {
+        document.getElementById('lastSpeed').textContent = lastSpeed + 'ms';
+      }
+    }
+
+    function addDebugLog(message) {
+      const debugEl = document.getElementById('debug');
+      const time = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      line.className = 'debug-line';
+      line.textContent = `[${time}] ${message}`;
+      debugEl.insertBefore(line, debugEl.firstChild);
+
+      // Keep only last 50 lines
+      while (debugEl.children.length > 50) {
+        debugEl.removeChild(debugEl.lastChild);
+      }
+    }
+
+    // Auto-start on load
+    window.addEventListener('load', () => {
+      addDebugLog('📄 Page loaded. Click "Start Scanner" button.');
+    });
+  </script>
+</body>
+</html>

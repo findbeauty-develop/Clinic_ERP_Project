@@ -1332,6 +1332,11 @@ function ProductEditForm({
       clearCache(`/products/${product.id}`);
       clearCache(`/products`);
 
+      // ✅ Set flag to force refresh inbound page when user navigates back
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem("inbound_force_refresh", "true");
+      }
+
       const updatedProductResponse = await apiPut<any>(
         `${apiUrl}/products/${product.id}`,
         payload
