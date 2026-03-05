@@ -30,7 +30,9 @@ export class ReturnController {
   constructor(private readonly returnService: ReturnService) {}
 
   @Get("available-products")
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({
     summary: "Qaytarilishi mumkin bo'lgan mahsulotlar ro'yxati",
     description:
@@ -61,6 +63,9 @@ export class ReturnController {
   }
 
   @Get("history")
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @ApiOperation({
     summary: "Return tarixi",
     description: "반납 내역 - Qaytarish tarixini olish",

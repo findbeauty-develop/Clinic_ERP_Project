@@ -62,7 +62,7 @@ export default function ReturnHistoryPage() {
     page: number;
     searchQuery: string;
   } | null>(null);
-  const CACHE_TTL = 5; // 5 seconds
+  const CACHE_TTL = 0; // ✅ Cache disabled for real-time data accuracy
 
   // Cache invalidation helper
   const invalidateCache = useCallback(() => {
@@ -91,13 +91,18 @@ export default function ReturnHistoryPage() {
       const searchParam = debouncedSearchQuery
         ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
         : "";
+      
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      
       const response = await apiGet<{
         items: any[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
-      }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}`);
+      }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}&_t=${timestamp}&_r=${random}`);
 
       // Format history items
       const formattedItems: ReturnHistoryItem[] = response.items.map(
@@ -150,6 +155,51 @@ export default function ReturnHistoryPage() {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  // ✅ Safari bfcache handler: Force refresh when page restored from back/forward cache
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page loaded from bfcache (Safari back button)
+        console.log('[Returns History] Loaded from bfcache - forcing refresh');
+        invalidateCache();
+        fetchHistory();
+      }
+    };
+
+    const handlePageHide = () => {
+      // Mark page as potentially cached
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('returns_history_was_cached', 'true');
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener('pagehide', handlePageHide);
+
+    // Check if returning from cache or force refresh flag
+    if (typeof window !== 'undefined') {
+      const wasCached = sessionStorage.getItem('returns_history_was_cached');
+      const forceRefresh = sessionStorage.getItem('returns_history_force_refresh');
+      
+      if (wasCached === 'true') {
+        sessionStorage.removeItem('returns_history_was_cached');
+        invalidateCache();
+        fetchHistory();
+      }
+      
+      if (forceRefresh === 'true') {
+        sessionStorage.removeItem('returns_history_force_refresh');
+        invalidateCache();
+        fetchHistory();
+      }
+    }
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [fetchHistory, invalidateCache]);
 
   const groupedHistory = useMemo(() => {
     const groups: Record<string, GroupedReturnHistory> = {};

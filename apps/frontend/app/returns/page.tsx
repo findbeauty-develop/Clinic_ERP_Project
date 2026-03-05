@@ -89,12 +89,17 @@ export default function ReturnsPage() {
       const searchParam = debouncedSearchQuery
         ? `?search=${encodeURIComponent(debouncedSearchQuery)}`
         : "";
+      
+      // ✅ Universal cache busting for all browsers
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const separator = searchParam ? '&' : '?';
+      
       const data = await apiGet<AvailableProduct[]>(
-        `${apiUrl}/returns/available-products${searchParam}`
+        `${apiUrl}/returns/available-products${searchParam}${separator}_t=${timestamp}&_r=${random}`
       );
       const productsData = data || [];
       setProducts(productsData);
-      // ✅ API-level cache allaqachon mavjud, page-level cache kerak emas
     } catch (err) {
       setError("반납 가능한 제품 정보를 불러오지 못했습니다.");
     } finally {
@@ -104,6 +109,41 @@ export default function ReturnsPage() {
 
   useEffect(() => {
     fetchAvailableProducts();
+  }, [fetchAvailableProducts]);
+
+  // ✅ Safari bfcache handler: Force refresh when page restored from back/forward cache
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page loaded from bfcache (Safari back button)
+        console.log('[Returns] Loaded from bfcache - forcing refresh');
+        fetchAvailableProducts();
+      }
+    };
+
+    const handlePageHide = () => {
+      // Mark page as potentially cached
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('returns_was_cached', 'true');
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow as EventListener);
+    window.addEventListener('pagehide', handlePageHide);
+
+    // Check if returning from cache
+    if (typeof window !== 'undefined') {
+      const wasCached = sessionStorage.getItem('returns_was_cached');
+      if (wasCached === 'true') {
+        sessionStorage.removeItem('returns_was_cached');
+        fetchAvailableProducts();
+      }
+    }
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow as EventListener);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
   }, [fetchAvailableProducts]);
 
   // Set last update time after mount to prevent hydration mismatch
@@ -287,6 +327,11 @@ export default function ReturnsPage() {
 
       if (response.success) {
         alert("반납이 성공적으로 처리되었습니다.");
+
+        // ✅ Set force refresh flag for history page
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('returns_history_force_refresh', 'true');
+        }
 
         // Clear selected items
         setSelectedItems([]);
