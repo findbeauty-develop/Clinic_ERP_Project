@@ -96,6 +96,9 @@ export default function InboundPage() {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 10;
 
+  // ✅ Ref to track pending scroll target after page change
+  const pendingScrollTargetRef = useRef<string | null>(null);
+
   // ✅ State for barcode scan success modal
   const [scanSuccessModal, setScanSuccessModal] = useState<{
     show: boolean;
@@ -296,6 +299,118 @@ export default function InboundPage() {
           return;
         }
 
+        // ✅ NEW: Apply same filters as filteredAndSortedProducts to find product position
+        // This ensures we calculate the correct page even with active filters
+        let filtered = [...products];
+
+        // Search filter
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          filtered = filtered.filter(
+            (p) =>
+              p.productName.toLowerCase().includes(query) ||
+              p.brand?.toLowerCase().includes(query) ||
+              p.barcode?.toLowerCase().includes(query)
+          );
+        }
+
+        // Category filter
+        if (selectedCategory !== "전체 카테고리") {
+          filtered = filtered.filter((p) => p.category === selectedCategory);
+        }
+
+        // Status filter
+        if (selectedStatus !== "전체 상태") {
+          if (selectedStatus === "재고 부족") {
+            filtered = filtered.filter((p) => p.currentStock <= p.minStock);
+          } else if (selectedStatus === "재고 충분") {
+            filtered = filtered.filter((p) => p.currentStock > p.minStock);
+          }
+        }
+
+        // Supplier filter
+        if (selectedSupplier !== "전체 공급업체") {
+          filtered = filtered.filter((p) => p.supplierName === selectedSupplier);
+        }
+
+        // Sort
+        filtered.sort((a, b) => {
+          switch (sortBy) {
+            case "최신순":
+              return 0;
+            case "이름순":
+              return a.productName.localeCompare(b.productName);
+            case "재고 적은순":
+              return a.currentStock - b.currentStock;
+            case "재고 많은순":
+              return b.currentStock - a.currentStock;
+            default:
+              return 0;
+          }
+        });
+
+        // Find product's position in filtered/sorted list
+        const productIndex = filtered.findIndex(
+          (p) => p.id === matchedProduct.id
+        );
+
+        // ✅ DEBUG: Log to see what's happening
+        console.log('[Barcode Navigation Debug]', {
+          scannedGTIN: parsed.gtin,
+          productName: matchedProduct.productName,
+          totalProducts: products.length,
+          filteredProducts: filtered.length,
+          productIndex,
+          currentPage,
+          itemsPerPage,
+        });
+
+        if (productIndex === -1) {
+          // Product is filtered out by search/category/supplier/status
+          alert(
+            `⚠️ 제품이 현재 필터에서 제외되었습니다.\n\n` +
+            `제품명: ${matchedProduct.productName}\n` +
+            `브랜드: ${matchedProduct.brand || '(없음)'}\n\n` +
+            `필터를 초기화하거나 검색어를 제거해주세요.`
+          );
+          return;
+        }
+
+        // ✅ Calculate target page (1-indexed)
+        const targetPage = Math.floor(productIndex / itemsPerPage) + 1;
+        const needsPageChange = targetPage !== currentPage;
+
+        // ✅ DEBUG: Log page navigation details
+        console.log('[Page Navigation]', {
+          targetPage,
+          currentPage,
+          needsPageChange,
+          willNavigate: needsPageChange ? 'YES' : 'NO',
+        });
+
+        // ✅ Navigate to correct page if needed
+        if (needsPageChange) {
+          console.log(`🚀 Navigating from Page ${currentPage} to Page ${targetPage}`);
+          // Store the target product ID for scrolling after page change
+          pendingScrollTargetRef.current = matchedProduct.id;
+          setCurrentPage(targetPage);
+        } else {
+          // Same page - scroll immediately
+          pendingScrollTargetRef.current = null;
+          setTimeout(() => {
+            console.log(`📍 Attempting to scroll to product-card-${matchedProduct.id}`);
+            const element = document.getElementById(
+              `product-card-${matchedProduct.id}`
+            );
+            if (element) {
+              console.log('✅ Element found, scrolling...');
+              element.scrollIntoView({ behavior: "smooth", block: "center" });
+            } else {
+              console.error(`❌ Element not found: product-card-${matchedProduct.id}`);
+            }
+          }, 300);
+        }
+
         // Auto expand the matched product
         setExpandedCardId(matchedProduct.id);
 
@@ -311,17 +426,9 @@ export default function InboundPage() {
               },
             })
           );
-        }, 200); // Wait 200ms for card expansion
+        }, needsPageChange ? 600 : 200); // Wait longer if page changed
 
-        // Scroll to the product card
-        setTimeout(() => {
-          const element = document.getElementById(
-            `product-card-${matchedProduct.id}`
-          );
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, 300);
+        // Remove the old scroll setTimeout - handled by useEffect now
 
         // Show success modal instead of alert
         setScanSuccessModal({
@@ -334,7 +441,7 @@ export default function InboundPage() {
         console.error("Global barcode scan error:", error);
       }
     },
-    [products]
+    [products, searchQuery, selectedCategory, selectedStatus, selectedSupplier, sortBy, currentPage, itemsPerPage]
   );
 
   // ✅ Listen for product deletion events and update state immediately
@@ -756,6 +863,34 @@ export default function InboundPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, sortBy, selectedCategory, selectedStatus, selectedSupplier]);
+
+  // ✅ Scroll to product after page change (for barcode scanner navigation)
+  useEffect(() => {
+    if (pendingScrollTargetRef.current && activeTab === "quick") {
+      const targetId = pendingScrollTargetRef.current;
+      
+      // Wait for page to render with new products
+      const timeoutId = setTimeout(() => {
+        console.log(`📍 [After Page Change] Attempting to scroll to product-card-${targetId}`);
+        const element = document.getElementById(`product-card-${targetId}`);
+        
+        if (element) {
+          console.log('✅ Element found after page change, scrolling...');
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          console.error(`❌ Element still not found after page change: product-card-${targetId}`);
+          console.log('Current page products:', 
+            Array.from(document.querySelectorAll('[id^="product-card-"]')).map(el => el.id)
+          );
+        }
+        
+        // Clear the pending target
+        pendingScrollTargetRef.current = null;
+      }, 500); // Wait 500ms for React to re-render with new page
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [currentPage, activeTab]); // Trigger when currentPage changes
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
