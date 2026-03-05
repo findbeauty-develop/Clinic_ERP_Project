@@ -1118,6 +1118,8 @@ export default function InboundPage() {
               isRefreshing={isRefreshing}
               error={error}
               apiUrl={apiUrl}
+              recentInboundStaff={recentInboundStaff}
+              onAddRecentInboundStaff={(name) => addRecentBatchValues({ inboundManager: name })}
               setShowKeyboardWarning={setShowKeyboardWarning}
               setBarcodeNotFoundModal={setBarcodeNotFoundModal}
               onRefresh={() => {
@@ -3813,6 +3815,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
   isRefreshing,
   error,
   apiUrl,
+  recentInboundStaff = [],
+  onAddRecentInboundStaff,
   onRefresh,
   setShowKeyboardWarning,
   setBarcodeNotFoundModal,
@@ -3822,6 +3826,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
   isRefreshing?: boolean;
   error: string | null;
   apiUrl: string;
+  recentInboundStaff?: string[];
+  onAddRecentInboundStaff?: (name: string) => void;
   onRefresh: () => void;
   setShowKeyboardWarning: (show: boolean) => void;
   setBarcodeNotFoundModal: (data: {
@@ -4862,6 +4868,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
             : "")
       );
 
+      if (inboundStaff && onAddRecentInboundStaff) {
+        onAddRecentInboundStaff(inboundStaff);
+      }
+
       closeScanModal();
     } catch (error: any) {
       console.error("Auto-fill error:", error);
@@ -5222,6 +5232,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
         alert(msg);
       }
 
+      if (!isPartial && inboundManager?.trim() && onAddRecentInboundStaff) {
+        onAddRecentInboundStaff(inboundManager.trim());
+      }
+
       onRefresh();
     } catch (err: any) {
       console.error("Failed to process order:", err);
@@ -5439,6 +5453,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // ✅ Set flag to force refresh pending orders list
       if (typeof window !== "undefined") {
         sessionStorage.setItem("pending_inbound_force_refresh", "true");
+      }
+
+      if (inboundManager?.trim() && onAddRecentInboundStaff) {
+        onAddRecentInboundStaff(inboundManager.trim());
       }
 
       onRefresh();
@@ -5697,6 +5715,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                   setInboundManagers((prev) => ({ ...prev, [orderId]: value }));
                 }
               }}
+              recentInboundStaff={recentInboundStaff}
               onRefresh={onRefresh}
               apiUrl={apiUrl}
               onOpenBarcodeScan={openBarcodeScanForOrder}
@@ -6703,6 +6722,7 @@ const OrderCard = memo(function OrderCard({
   processing,
   inboundManagerName,
   onInboundManagerChange,
+  recentInboundStaff = [],
   onRefresh,
   apiUrl,
   onOpenBarcodeScan,
@@ -6714,10 +6734,13 @@ const OrderCard = memo(function OrderCard({
   processing: string | null;
   inboundManagerName: string;
   onInboundManagerChange: (value: string) => void;
+  recentInboundStaff?: string[];
   onRefresh: () => void;
   apiUrl: string;
   onOpenBarcodeScan?: (orderId: string) => void;
 }) {
+  const [showStaffSuggestions, setShowStaffSuggestions] = useState(false);
+
   // Determine order status
   const isPending = order.status === "pending";
   const isSupplierConfirmed = order.status === "supplier_confirmed";
@@ -7165,10 +7188,10 @@ const OrderCard = memo(function OrderCard({
           })}
         </div>
 
-        {/* Footer - 입고 담당자 + Button */}
+        {/* Footer - 입고 담당자 (focus 시 이전 입력값 드롭다운) + Button */}
         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
           {(isSupplierConfirmed || isRejected) && (
-            <div className="flex items-center gap-2 flex-1 mr-4">
+            <div className="flex items-center gap-2 flex-1 mr-4 relative">
               <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                 입고 담당자:
               </label>
@@ -7176,12 +7199,35 @@ const OrderCard = memo(function OrderCard({
                 type="text"
                 value={inboundManagerName}
                 onChange={(e) => onInboundManagerChange(e.target.value)}
+                onFocus={() => setShowStaffSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowStaffSuggestions(false), 200)}
                 placeholder="입고 담당자 이름을 입력하세요"
                 className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 
                            focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200
                            dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
                            dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
               />
+              {showStaffSuggestions && recentInboundStaff.length > 0 && (
+                <ul
+                  className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                  style={{ minWidth: "12rem" }}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {recentInboundStaff.map((name) => (
+                    <li
+                      key={name}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onInboundManagerChange(name);
+                        setShowStaffSuggestions(false);
+                      }}
+                      className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {isPending ? (

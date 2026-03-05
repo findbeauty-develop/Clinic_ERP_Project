@@ -185,6 +185,34 @@ function OutboundPageContent() {
     string | null
   >(null);
 
+  // ✅ Recent 출고 담당자 names for autocomplete dropdown (focus 시 이전 입력값 선택)
+  const [recentOutboundManagers, setRecentOutboundManagers] = useState<
+    string[]
+  >(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("outbound_recent_manager_names");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showManagerSuggestions, setShowManagerSuggestions] = useState(false);
+
+  const addRecentOutboundManager = useCallback((name: string) => {
+    const v = name.trim();
+    if (!v) return;
+    setRecentOutboundManagers((prev) => {
+      const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("outbound_recent_manager_names", JSON.stringify(next));
+        } catch (_) {}
+      }
+      return next;
+    });
+  }, []);
+
   // Manager name should be empty on page load - user must enter it manually
 
   // Cache for products and packages to prevent duplicate requests
@@ -1369,6 +1397,7 @@ function OutboundPageContent() {
 
       // Natijalarni ko'rsatish
       if (allSuccess) {
+        if (managerName.trim()) addRecentOutboundManager(managerName.trim());
         alert("출고가 완료되었습니다.");
         setFailedItems([]);
         setScheduledItems([]);
@@ -1413,6 +1442,7 @@ function OutboundPageContent() {
           await fetchProducts(true);
         }
       } else if (allFailed.length > 0) {
+        if (managerName.trim()) addRecentOutboundManager(managerName.trim());
         setFailedItems(allFailed);
         alert(
           `${successCount}개 항목 출고 완료, ${failedCount}개 항목 실패했습니다. 실패한 항목만 재시도할 수 있습니다.`
@@ -1633,6 +1663,7 @@ function OutboundPageContent() {
           (i) => !(i.productId === item.productId && i.batchId === item.batchId)
         )
       );
+      if (managerName.trim()) addRecentOutboundManager(managerName.trim());
       alert("재시도 성공");
 
       // ✅ Clear ALL caches (frontend API cache + component cache)
@@ -1751,6 +1782,7 @@ function OutboundPageContent() {
       });
 
       if (allSuccess) {
+        if (managerName.trim()) addRecentOutboundManager(managerName.trim());
         setFailedItems([]);
         // Failed items'ni scheduled items'dan o'chirish (product/package farqi bilan)
         setScheduledItems((prev) =>
@@ -1766,6 +1798,7 @@ function OutboundPageContent() {
         );
         alert("모든 항목 재시도 성공");
       } else {
+        if (managerName.trim()) addRecentOutboundManager(managerName.trim());
         setFailedItems(remainingFailed);
         alert(
           `${failedItems.length - remainingFailed.length}개 항목 재시도 성공, ${remainingFailed.length}개 항목 실패`
@@ -2454,9 +2487,9 @@ function OutboundPageContent() {
                     </div>
                     출고 처리
                   </h2>
-                  {/* 출고 담당자 */}
+                  {/* 출고 담당자 (focus 시 이전 입력값 드롭다운) */}
                 </div>
-                <div className="flex items-center gap-2  mb-6">
+                <div className="flex items-center gap-2 mb-6 relative">
                   <label className="w-42 shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
                     출고 담당자 <span className="text-red-500">*</span>
                   </label>
@@ -2465,9 +2498,34 @@ function OutboundPageContent() {
                     type="text"
                     value={managerName}
                     onChange={(e) => setManagerName(e.target.value)}
+                    onFocus={() => setShowManagerSuggestions(true)}
+                    onBlur={() =>
+                      setTimeout(() => setShowManagerSuggestions(false), 200)
+                    }
                     placeholder="담당자 이름"
-                    className="flex-1  rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
                   />
+                  {showManagerSuggestions && recentOutboundManagers.length > 0 && (
+                    <ul
+                      className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                      style={{ minWidth: "12rem" }}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      {recentOutboundManagers.map((name) => (
+                        <li
+                          key={name}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setManagerName(name);
+                            setShowManagerSuggestions(false);
+                          }}
+                          className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 {/* Content - Scrollable */}
