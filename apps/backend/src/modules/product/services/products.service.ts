@@ -1096,104 +1096,137 @@ export class ProductsService {
             if (supplier.contact_name || supplier.contact_phone) {
               let clinicSupplierManagerId: string;
 
-              // 1. Faqat phone_number bo'yicha qidirish (manager unique identifier)
-              // Business number bir xil bo'lishi mumkin (bir kompaniyada ko'p manager)
-              let existingClinicSupplierManager = null;
+              const isUuid =
+                supplier.supplier_id &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                  supplier.supplier_id
+                );
 
-              if (supplier.contact_phone) {
+              // 0. Agar frontend mavjud supplier id yuborsa (product edit: 수정) — shu yozuvni UPDATE qilish
+              let existingClinicSupplierManager = null;
+              if (isUuid) {
                 existingClinicSupplierManager =
                   await tx.clinicSupplierManager.findFirst({
                     where: {
+                      id: supplier.supplier_id,
                       tenant_id: tenantId,
-                      phone_number: supplier.contact_phone,
                     },
                   });
               }
 
-              // ❌ REMOVED: Business number search
-              // Business number is company identifier, not manager identifier
-              // One company can have multiple managers!
-
-              // 2. Agar topilsa, yangilash (UPDATE)
               if (existingClinicSupplierManager) {
+                // Mavjud ClinicSupplierManager — faqat UPDATE (telefon/ism va boshqalar yangilanadi)
                 await tx.clinicSupplierManager.update({
                   where: { id: existingClinicSupplierManager.id },
                   data: {
                     company_name:
-                      supplier.company_name ||
+                      supplier.company_name ??
                       existingClinicSupplierManager.company_name,
                     business_number:
-                      supplier.business_number ||
+                      supplier.business_number ??
                       existingClinicSupplierManager.business_number,
                     company_phone:
-                      supplier.company_phone ||
+                      supplier.company_phone ??
                       existingClinicSupplierManager.company_phone,
                     company_email:
-                      supplier.company_email ||
+                      supplier.company_email ??
                       existingClinicSupplierManager.company_email,
                     company_address:
-                      supplier.company_address ||
+                      supplier.company_address ??
                       existingClinicSupplierManager.company_address,
                     name:
-                      supplier.contact_name ||
+                      supplier.contact_name ??
                       existingClinicSupplierManager.name,
                     phone_number:
-                      supplier.contact_phone ||
+                      supplier.contact_phone ??
                       existingClinicSupplierManager.phone_number,
                     email1:
-                      supplier.contact_email ||
+                      supplier.contact_email ??
                       existingClinicSupplierManager.email1,
                   },
                 });
                 clinicSupplierManagerId = existingClinicSupplierManager.id;
               } else {
-                // 3. Agar topilmasa, yangi yaratish (CREATE)
-
-                // ✅ Validation: Check uniqueness before creating
-
-                // Check if phone number already exists (phone is unique per manager)
+                // Mavjud id yo'q — telefon bo'yicha qidirish yoki yangi yaratish
                 if (supplier.contact_phone) {
-                  const phoneExists = await tx.clinicSupplierManager.findFirst({
-                    where: {
-                      tenant_id: tenantId,
-                      phone_number: supplier.contact_phone,
-                    },
-                  });
-
-                  if (phoneExists) {
-                  }
+                  existingClinicSupplierManager =
+                    await tx.clinicSupplierManager.findFirst({
+                      where: {
+                        tenant_id: tenantId,
+                        phone_number: supplier.contact_phone,
+                      },
+                    });
                 }
 
-                // ❌ REMOVED: Business number uniqueness check
-                // Business number is company identifier, not manager identifier
-                // Multiple managers can have the same business_number (same company)
-
-                // Proceed with CREATE
-
-                const newClinicSupplierManager =
-                  await tx.clinicSupplierManager.create({
+                if (existingClinicSupplierManager) {
+                  await tx.clinicSupplierManager.update({
+                    where: { id: existingClinicSupplierManager.id },
                     data: {
-                      tenant_id: tenantId,
-                      company_name: supplier.company_name || "공급업체 없음",
-                      business_number: supplier.business_number || null,
-                      company_phone: supplier.company_phone || null,
-                      company_email: supplier.company_email || null,
-                      company_address: supplier.company_address || null,
-                      name: supplier.contact_name || "담당자 없음",
-                      phone_number: supplier.contact_phone || "000-0000-0000",
-                      email1: supplier.contact_email || null,
-                      // linked_supplier_manager_id ni faqat supplier_id UUID bo'lsa qo'shish
-                      linked_supplier_manager_id:
-                        supplier.supplier_id &&
-                        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                          supplier.supplier_id
-                        )
-                          ? supplier.supplier_id
-                          : null,
+                      company_name:
+                        supplier.company_name ||
+                        existingClinicSupplierManager.company_name,
+                      business_number:
+                        supplier.business_number ||
+                        existingClinicSupplierManager.business_number,
+                      company_phone:
+                        supplier.company_phone ||
+                        existingClinicSupplierManager.company_phone,
+                      company_email:
+                        supplier.company_email ||
+                        existingClinicSupplierManager.company_email,
+                      company_address:
+                        supplier.company_address ||
+                        existingClinicSupplierManager.company_address,
+                      name:
+                        supplier.contact_name ||
+                        existingClinicSupplierManager.name,
+                      phone_number:
+                        supplier.contact_phone ||
+                        existingClinicSupplierManager.phone_number,
+                      email1:
+                        supplier.contact_email ||
+                        existingClinicSupplierManager.email1,
                     },
                   });
+                  clinicSupplierManagerId = existingClinicSupplierManager.id;
+                } else {
+                  // Yangi ClinicSupplierManager yaratish
+                  let linkedSupplierManagerId: string | null = null;
+                  if (isUuid) {
+                    const existingBySupplierId =
+                      await tx.clinicSupplierManager.findFirst({
+                        where: {
+                          id: supplier.supplier_id,
+                          tenant_id: tenantId,
+                        },
+                        select: { linked_supplier_manager_id: true },
+                      });
+                    if (existingBySupplierId?.linked_supplier_manager_id) {
+                      linkedSupplierManagerId =
+                        existingBySupplierId.linked_supplier_manager_id;
+                    }
+                  }
 
-                clinicSupplierManagerId = newClinicSupplierManager.id;
+                  const newClinicSupplierManager =
+                    await tx.clinicSupplierManager.create({
+                      data: {
+                        tenant_id: tenantId,
+                        company_name:
+                          supplier.company_name || "공급업체 없음",
+                        business_number: supplier.business_number || null,
+                        company_phone: supplier.company_phone || null,
+                        company_email: supplier.company_email || null,
+                        company_address: supplier.company_address || null,
+                        name: supplier.contact_name || "담당자 없음",
+                        phone_number:
+                          supplier.contact_phone || "000-0000-0000",
+                        email1: supplier.contact_email || null,
+                        linked_supplier_manager_id: linkedSupplierManagerId,
+                      },
+                    });
+
+                  clinicSupplierManagerId = newClinicSupplierManager.id;
+                }
               }
 
               // 4. ProductSupplier'ni upsert qilish (mapping table)

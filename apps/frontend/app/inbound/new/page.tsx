@@ -28,6 +28,7 @@ const unitOptions = [
   "unit / U",
   "mg",
   "vial",
+  "bottel",
   "shot",
   "ea",
   "box",
@@ -49,6 +50,9 @@ const positionOptions = [
   "과장",
   "차장",
   "부장",
+  "대표",
+  "이사",
+  "담당자",
 ];
 
 export default function InboundNewPage() {
