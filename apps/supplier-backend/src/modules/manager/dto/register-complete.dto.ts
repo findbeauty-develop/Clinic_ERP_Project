@@ -1,9 +1,26 @@
-import { IsString, IsNotEmpty, IsOptional, IsObject, ValidateNested, IsIn } from "class-validator";
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsObject,
+  ValidateNested,
+  IsIn,
+} from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty } from "@nestjs/swagger";
 
-export const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
-export type JobTitle = typeof JOB_TITLES[number];
+export const JOB_TITLES = [
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장",
+  "대표",
+  "이사",
+  "담당자",
+] as const;
+export type JobTitle = (typeof JOB_TITLES)[number];
 
 class ManagerDataDto {
   @ApiProperty()
@@ -23,13 +40,17 @@ class ManagerDataDto {
 
   @ApiProperty({
     enum: JOB_TITLES,
-    description: "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장",
+    description:
+      "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자",
     required: false,
     example: "대리",
   })
   @IsString()
   @IsOptional()
-  @IsIn(JOB_TITLES, { message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" })
+  @IsIn(JOB_TITLES, {
+    message:
+      "직함은 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자 중 하나여야 합니다",
+  })
   position?: JobTitle;
 }
 
@@ -112,4 +133,3 @@ export class RegisterCompleteDto {
   @IsNotEmpty()
   managerId!: string;
 }
-

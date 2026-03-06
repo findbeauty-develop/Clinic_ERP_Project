@@ -1,7 +1,25 @@
-import { IsString, IsNotEmpty, Matches, MinLength, MaxLength, IsOptional, IsIn } from "class-validator";
+import {
+  IsString,
+  IsNotEmpty,
+  Matches,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  IsIn,
+} from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
-const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
+const JOB_TITLES = [
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장",
+  "대표",
+  "이사",
+  "담당자",
+] as const;
 
 export class RegisterManagerDto {
   @ApiProperty({
@@ -26,13 +44,17 @@ export class RegisterManagerDto {
 
   @ApiProperty({
     example: "대리",
-    description: "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장",
+    description:
+      "직함 (Job Title): 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자",
     required: false,
     enum: JOB_TITLES,
   })
   @IsString()
   @IsOptional()
-  @IsIn(JOB_TITLES, { message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다" })
+  @IsIn(JOB_TITLES, {
+    message:
+      "직함은 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자 중 하나여야 합니다",
+  })
   position?: string;
 
   @ApiProperty({
@@ -43,4 +65,3 @@ export class RegisterManagerDto {
   @IsNotEmpty({ message: "사업자등록증 이미지를 업로드하세요" })
   certificateImageUrl!: string;
 }
-

@@ -1,10 +1,35 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsOptional, IsEmail, Matches, IsIn } from "class-validator";
+import {
+  IsString,
+  IsOptional,
+  IsEmail,
+  Matches,
+  IsIn,
+  IsUUID,
+} from "class-validator";
 
 // Job titles enum
-const JOB_TITLES = ["사원", "주임", "대리", "과장", "차장", "부장"] as const;
+const JOB_TITLES = [
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장",
+  "대표",
+  "이사",
+  "담당자",
+] as const;
 
 export class CreateSupplierManualDto {
+  @ApiProperty({
+    description: "ClinicSupplierManager id (edit时必传，新建时不传)",
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @ApiProperty({
     description: "회사명 (Company name)",
     example: "ABC 제약회사",
@@ -88,7 +113,8 @@ export class CreateSupplierManualDto {
   @IsString()
   @IsOptional()
   @IsIn(JOB_TITLES, {
-    message: "직함은 사원, 주임, 대리, 과장, 차장, 부장 중 하나여야 합니다",
+    message:
+      "직함은 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자 중 하나여야 합니다",
   })
   position?: string;
 

@@ -190,6 +190,7 @@ export default function SupplierFormModal({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          ...(supplier?.id && { id: supplier.id }),
           companyName: formData.company_name,
           businessNumber: formData.business_number,
           companyPhone: formData.company_phone || undefined,

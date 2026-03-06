@@ -187,62 +187,92 @@ export class SupplierService {
           },
         });
 
-        // 2. ClinicSupplierManager upsert (tenant_id + phone_number bo'yicha, agar berilgan bo'lsa)
+        // 2. ClinicSupplierManager upsert
         let clinicManager = null;
         if (dto.phoneNumber && dto.managerName) {
-          // Clinic context'da phone_number + tenant_id bo'yicha qidirish
-          const existingClinicManager =
-            await this.prisma.clinicSupplierManager.findFirst({
-              where: {
-                tenant_id: tenantId,
-                phone_number: dto.phoneNumber,
-              },
-            });
+          // Edit: id berilgan bo'lsa shu ClinicSupplierManager'ni UPDATE qilish (yangi yaratmaslik)
+          if (dto.id) {
+            const existingById =
+              await this.prisma.clinicSupplierManager.findFirst({
+                where: { id: dto.id, tenant_id: tenantId },
+              });
+            if (existingById) {
+              clinicManager = await this.prisma.clinicSupplierManager.update({
+                where: { id: existingById.id },
+                data: {
+                  company_name: dto.companyName,
+                  business_number: dto.businessNumber || null,
+                  company_phone: dto.companyPhone || null,
+                  company_email: companyEmail,
+                  company_address: dto.companyAddress || null,
+                  name: dto.managerName,
+                  phone_number: dto.phoneNumber,
+                  email1: dto.managerEmail || null,
+                  email2: null,
+                  position: dto.position || null,
+                  responsible_products: dto.responsibleProducts
+                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
+                    : [],
+                  memo: dto.memo || null,
+                  updated_at: new Date(),
+                },
+              });
+            }
+          }
 
-          if (existingClinicManager) {
-            // Update existing clinic manager
-            clinicManager = await this.prisma.clinicSupplierManager.update({
-              where: { id: existingClinicManager.id },
-              data: {
-                company_name: dto.companyName,
-                business_number: dto.businessNumber || null,
-                company_phone: dto.companyPhone || null,
-                company_email: companyEmail,
-                company_address: dto.companyAddress || null,
-                name: dto.managerName,
-                email1: dto.managerEmail || null,
-                email2: null,
-                position: dto.position || null,
-                responsible_products: dto.responsibleProducts
-                  ? dto.responsibleProducts.split(",").map((p) => p.trim())
-                  : [],
-                memo: dto.memo || null,
-                updated_at: new Date(),
-              },
-            });
-          } else {
-            // Create new clinic manager
-            clinicManager = await this.prisma.clinicSupplierManager.create({
-              data: {
-                tenant_id: tenantId,
-                company_name: dto.companyName,
-                business_number: dto.businessNumber || null,
-                company_phone: dto.companyPhone || null,
-                company_email: companyEmail,
-                company_address: dto.companyAddress || null,
-                name: dto.managerName,
-                phone_number: dto.phoneNumber,
-                email1: dto.managerEmail || null,
-                email2: null,
-                position: dto.position || null,
-                certificate_image_url: null,
-                responsible_regions: [],
-                responsible_products: dto.responsibleProducts
-                  ? dto.responsibleProducts.split(",").map((p) => p.trim())
-                  : [],
-                memo: dto.memo || null,
-              },
-            });
+          if (!clinicManager) {
+            // Create yoki phone bo'yicha topib update (id yo'q yoki topilmadi)
+            const existingClinicManager =
+              await this.prisma.clinicSupplierManager.findFirst({
+                where: {
+                  tenant_id: tenantId,
+                  phone_number: dto.phoneNumber,
+                },
+              });
+
+            if (existingClinicManager) {
+              clinicManager = await this.prisma.clinicSupplierManager.update({
+                where: { id: existingClinicManager.id },
+                data: {
+                  company_name: dto.companyName,
+                  business_number: dto.businessNumber || null,
+                  company_phone: dto.companyPhone || null,
+                  company_email: companyEmail,
+                  company_address: dto.companyAddress || null,
+                  name: dto.managerName,
+                  email1: dto.managerEmail || null,
+                  email2: null,
+                  position: dto.position || null,
+                  responsible_products: dto.responsibleProducts
+                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
+                    : [],
+                  memo: dto.memo || null,
+                  updated_at: new Date(),
+                },
+              });
+            } else {
+              clinicManager = await this.prisma.clinicSupplierManager.create({
+                data: {
+                  tenant_id: tenantId,
+                  company_name: dto.companyName,
+                  business_number: dto.businessNumber || null,
+                  company_phone: dto.companyPhone || null,
+                  company_email: companyEmail,
+                  company_address: dto.companyAddress || null,
+                  name: dto.managerName,
+                  phone_number: dto.phoneNumber,
+                  email1: dto.managerEmail || null,
+                  email2: null,
+                  position: dto.position || null,
+                  certificate_image_url: null,
+                  responsible_regions: [],
+                  responsible_products: dto.responsibleProducts
+                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
+                    : [],
+                  memo: dto.memo || null,
+                },
+              });
+            }
           }
         }
 
