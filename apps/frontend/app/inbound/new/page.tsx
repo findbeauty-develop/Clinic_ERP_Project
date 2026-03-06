@@ -24,8 +24,9 @@ const barcodeMethods = [
 const statusOptions = ["활성", "재고 부족", "만료", "단종"];
 const unitOptions = [
   "단위 선택",
-  "cc / mL",
-  "unit / U",
+  "cc",
+  "mL",
+  "unit",
   "mg",
   "vial",
   "bottel",

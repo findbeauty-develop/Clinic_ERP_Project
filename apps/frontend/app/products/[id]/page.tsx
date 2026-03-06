@@ -725,8 +725,9 @@ function ProductEditForm({
   onSuccess,
 }: ProductEditFormProps) {
   const unitOptions = [
-    "cc / mL",
-    "unit / U",
+    "cc",
+    "mL",
+    "unit",
     "mg",
     "vial",
     "bottel",

@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { apiGet, getTenantId, getMemberData, getApiUrl } from "../../lib/api";
-import { Settings } from "lucide-react";
+import { Settings, X } from "lucide-react";
+
+export type SidebarProps = {
+  isOpen?: boolean;
+  onClose?: () => void;
+};
 
 const navItems = [
   {
@@ -193,7 +198,7 @@ const navItems = [
   // },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -344,7 +349,23 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sticky top-0 z-40 flex h-screen w-80 flex-col bg-[#fcfcfc] px-6 py-8 text-black border border-gray-400 dark:border-gray-700">
+    <aside
+      className={`fixed left-0 top-0 z-40 flex h-screen w-80 flex-col bg-[#fcfcfc] px-6 py-8 text-black border border-gray-400 dark:border-gray-700 transition-transform duration-300 ease-in-out ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
+      {/* Close (hamburger yopish) tugmasi */}
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          aria-label="메뉴 닫기"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
+
       {/* Logo & Clinic Info Section */}
       <div className="flex flex-col items-center gap-4 border-b border-slate-200 pb-6">
         {/* Logo Display Area */}
