@@ -6,6 +6,7 @@ import {
   BadRequestException,
   Get,
   Param,
+  Patch,
   Put,
   Delete,
   Header,
@@ -13,7 +14,7 @@ import {
 } from "@nestjs/common";
 import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
-import { CreateProductDto, CreateBatchDto } from "../dto/create-product.dto";
+import { CreateProductDto, CreateBatchDto, UpdateBatchDto } from "../dto/create-product.dto";
 import { PreviewImportDto, ConfirmImportDto } from "../dto/import-products.dto";
 import { ProductsService } from "../services/products.service";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
@@ -195,6 +196,27 @@ export class ProductsController {
       throw new BadRequestException("Tenant ID is required");
     }
     return this.productsService.createBatchForProduct(productId, dto, tenantId);
+  }
+
+  @Patch(":id/batches/:batchId")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update an existing batch" })
+  updateBatch(
+    @Param("id") productId: string,
+    @Param("batchId") batchId: string,
+    @Body() dto: UpdateBatchDto,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.productsService.updateBatchForProduct(
+      productId,
+      batchId,
+      dto,
+      tenantId
+    );
   }
 
   @Post("import/preview")

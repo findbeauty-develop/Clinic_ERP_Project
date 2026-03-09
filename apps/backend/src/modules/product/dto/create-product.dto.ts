@@ -87,6 +87,42 @@ export class CreateBatchDto {
   alert_days?: string;
 }
 
+export class UpdateBatchDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  qty?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  inbound_qty?: number;
+
+  @IsOptional()
+  @IsString()
+  expiry_date?: string;
+
+  @IsOptional()
+  @IsString()
+  manufacture_date?: string;
+
+  @IsOptional()
+  @IsInt()
+  purchase_price?: number;
+
+  @IsOptional()
+  @IsString()
+  storage?: string;
+
+  @IsOptional()
+  @IsString()
+  inbound_manager?: string;
+
+  @IsOptional()
+  @IsString()
+  reason_for_modification?: string;
+}
+
 export class LinkSupplierDto {
   @IsOptional()
   @IsString()

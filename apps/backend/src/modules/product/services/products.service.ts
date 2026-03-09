@@ -9,7 +9,7 @@ import {
 import { Prisma } from "../../../../node_modules/.prisma/client-backend";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
-import { CreateBatchDto, CreateProductDto } from "../dto/create-product.dto";
+import { CreateBatchDto, CreateProductDto, UpdateBatchDto } from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
 import { ImportProductRowDto } from "../dto/import-products.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
@@ -1515,17 +1515,22 @@ export class ProductsService {
         id: true,
         batch_no: true,
         expiry_date: true,
+        expiry_months: true,
+        expiry_unit: true,
+        manufacture_date: true,
         alert_days: true,
         storage: true,
         created_at: true,
         qty: true,
         inbound_qty: true,
-        used_count: true, // ✅ Ishlatilgan miqdor (empty box uchun)
-        outbound_count: true, // ✅ Ombordan chiqgan jami miqdor
+        used_count: true,
+        outbound_count: true,
         unit: true,
         min_stock: true,
-        purchase_price: true, // ✅ 구매가 (Purchase price)
-        is_separate_purchase: true, // ✅ 별도 구매 여부
+        purchase_price: true,
+        is_separate_purchase: true,
+        inbound_manager: true,
+        reason_for_modification: true,
       },
     });
 
@@ -1539,14 +1544,21 @@ export class ProductsService {
           ? `${batch.expiry_months} ${batch.expiry_unit}`
           : null,
       보관위치: batch.storage ?? null,
-      "입고 수량": batch.qty, // ✅ Current stock (for display in inbound page)
-      inbound_qty: batch.inbound_qty ?? null, // ✅ Original immutable inbound qty
+      "입고 수량": batch.qty,
+      inbound_qty: batch.inbound_qty ?? null,
       unit: batch.unit ?? null,
-      min_stock: batch.min_stock ?? null, // ✅ Minimum stock from product (immutable)
-      purchase_price: batch.purchase_price ?? null, // ✅ 구매가 (Purchase price)
+      min_stock: batch.min_stock ?? null,
+      purchase_price: batch.purchase_price ?? null,
       created_at: batch.created_at,
-      is_separate_purchase: batch.is_separate_purchase ?? false, // ✅ 별도 구매 여부
-      // Raw fields for batch copying (입고 대기 page uchun)
+      is_separate_purchase: batch.is_separate_purchase ?? false,
+      manufacture_date: batch.manufacture_date
+        ? batch.manufacture_date.toISOString().split("T")[0]
+        : null,
+      expiry_date: batch.expiry_date
+        ? batch.expiry_date.toISOString().split("T")[0]
+        : null,
+      inbound_manager: batch.inbound_manager ?? null,
+      reason_for_modification: batch.reason_for_modification ?? null,
       expiry_months: batch.expiry_months,
       expiry_unit: batch.expiry_unit,
       alert_days: batch.alert_days,
@@ -1737,6 +1749,76 @@ export class ProductsService {
       // Fallback: invalidate if product not found
       this.clearProductsCache(tenantId);
     }
+  }
+
+  /**
+   * Update an existing batch (no new batch created).
+   */
+  async updateBatchForProduct(
+    productId: string,
+    batchId: string,
+    dto: UpdateBatchDto,
+    tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const batch = await this.prisma.batch.findFirst({
+      where: {
+        id: batchId,
+        product_id: productId,
+        tenant_id: tenantId,
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException("Batch not found");
+    }
+
+    const updateData: any = { updated_at: new Date() };
+    if (dto.qty !== undefined) {
+      updateData.qty = dto.qty;
+      if (dto.inbound_qty === undefined) updateData.inbound_qty = dto.qty;
+    }
+    if (dto.inbound_qty !== undefined) updateData.inbound_qty = dto.inbound_qty;
+    if (dto.expiry_date !== undefined) {
+      updateData.expiry_date = dto.expiry_date
+        ? new Date(dto.expiry_date)
+        : null;
+    }
+    if (dto.manufacture_date !== undefined) {
+      updateData.manufacture_date = dto.manufacture_date
+        ? new Date(dto.manufacture_date)
+        : null;
+    }
+    if (dto.purchase_price !== undefined) updateData.purchase_price = dto.purchase_price;
+    if (dto.storage !== undefined) updateData.storage = dto.storage;
+    if (dto.inbound_manager !== undefined)
+      updateData.inbound_manager = dto.inbound_manager;
+    if (dto.reason_for_modification !== undefined)
+      updateData.reason_for_modification = dto.reason_for_modification;
+
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.batch.update({
+        where: { id: batchId },
+        data: updateData,
+      });
+
+      const totalStock = await tx.batch.aggregate({
+        where: { product_id: productId, tenant_id: tenantId },
+        _sum: { qty: true },
+      });
+      const newCurrentStock = totalStock._sum.qty ?? 0;
+      await tx.product.update({
+        where: { id: productId },
+        data: { current_stock: newCurrentStock } as any,
+      });
+    });
+
+    return this.prisma.batch.findUnique({
+      where: { id: batchId },
+    });
   }
 
   /**

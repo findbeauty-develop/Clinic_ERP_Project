@@ -165,6 +165,7 @@ model Batch {
   updated_at       DateTime?
   expiry_unit      String?
   inbound_manager  String?
+  reason_for_modification String? // 수정 이유 (when batch is edited)
   product          Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
   orderItems       OrderItem[]
   outbounds        Outbound[]
