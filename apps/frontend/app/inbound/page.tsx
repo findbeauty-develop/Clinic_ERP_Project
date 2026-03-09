@@ -105,6 +105,12 @@ export default function InboundPage() {
   // ✅ Ref to track pending scroll target after page change
   const pendingScrollTargetRef = useRef<string | null>(null);
 
+  // ✅ Last barcode consumed from local helper (avoid duplicate when polling)
+  const lastHelperBarcodeRef = useRef<string>("");
+  // ✅ When true, use only helper for barcode (no keypress) — Hangul’da ham to‘g‘ri ishlashi uchun dastlab helper’ga tayanamiz
+  const helperAvailableRef = useRef(true);
+  const helperFailCountRef = useRef(0);
+
   // ✅ State for barcode scan success modal
   const [scanSuccessModal, setScanSuccessModal] = useState<{
     show: boolean;
@@ -342,8 +348,14 @@ export default function InboundPage() {
   const handleGlobalBarcodeScanned = useCallback(
     async (scannedBarcode: string) => {
       try {
+        // Normalize: only 0-9 A-Z (no π / Hangul / non-ASCII), uppercase
+        const normalized = (scannedBarcode || "")
+          .replace(/[^0-9A-Za-z]/g, "")
+          .toUpperCase();
+        if (normalized.length < 8) return;
+
         const { parseGS1Barcode } = await import("../../utils/barcodeParser");
-        const parsed = parseGS1Barcode(scannedBarcode);
+        const parsed = parseGS1Barcode(normalized);
 
         if (!parsed.gtin) {
           alert("잘못된 바코드 형식입니다.");
@@ -633,6 +645,8 @@ export default function InboundPage() {
     let globalKoreanCharDetected = false;
 
     const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      // When helper is available, use only helper for barcode (avoids Hangul double-input and warnings)
+      if (helperAvailableRef.current) return;
       // Skip if user is typing in an input field
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
@@ -658,8 +672,8 @@ export default function InboundPage() {
       if (now - lastTime > 100) buffer = "";
 
       if (e.key === "Enter" && buffer.length >= 8) {
-        // ✅ STRICT: Only allow alphanumeric characters (GS1 standard)
-        const cleanedBarcode = buffer.replace(/[^0-9A-Za-z]/g, "");
+        // ✅ STRICT: Only allow alphanumeric, normalize to uppercase (GS1)
+        const cleanedBarcode = buffer.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
 
         handleGlobalBarcodeScanned(cleanedBarcode);
         buffer = "";
@@ -697,6 +711,56 @@ export default function InboundPage() {
     return () => {
       window.removeEventListener("keypress", handleGlobalKeyPress);
       clearTimeout(timeout);
+    };
+  }, [activeTab, handleGlobalBarcodeScanned]);
+
+  // ✅ Barcode scanner helper (macOS): SSE — faqat skaner paytida ma'lumot keladi (tinmay so'rov yo'q)
+  const HELPER_SSE_URL = "http://127.0.0.1:38473/events";
+  const HELPER_FRESH_SCAN_SEC = 4;
+  useEffect(() => {
+    if (activeTab !== "quick") return;
+
+    helperAvailableRef.current = true;
+    helperFailCountRef.current = 0;
+
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource(HELPER_SSE_URL);
+    } catch {
+      helperAvailableRef.current = false;
+      return;
+    }
+
+    eventSource.onmessage = (event) => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const data = JSON.parse(event.data) as {
+          barcode?: string;
+          scannedAt?: number;
+        };
+        const barcode = (data?.barcode ?? "").trim();
+        const scannedAt = data?.scannedAt ?? 0;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const isFreshScan =
+          scannedAt > 0 && nowSec - scannedAt <= HELPER_FRESH_SCAN_SEC;
+        if (!barcode || !isFreshScan) return;
+        const cleaned = barcode.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+        if (cleaned.length >= 8) handleGlobalBarcodeScanned(cleaned);
+      } catch (_) {}
+    };
+
+    eventSource.onerror = () => {
+      helperFailCountRef.current += 1;
+      if (helperFailCountRef.current >= 2) helperAvailableRef.current = false;
+    };
+
+    eventSource.onopen = () => {
+      helperFailCountRef.current = 0;
+      helperAvailableRef.current = true;
+    };
+
+    return () => {
+      eventSource?.close();
     };
   }, [activeTab, handleGlobalBarcodeScanned]);
 
@@ -2504,7 +2568,7 @@ const ProductCard = memo(function ProductCard({
           {/* Batch edit modal (배치번호 수정) */}
           {editingBatch && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+              <div className="w-full max-w-2xl ml-[320px] rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
                   <h3 className="text-lg font-bold text-slate-800 dark:text-white">
                     배치번호 {editingBatch.batch.batch_no}

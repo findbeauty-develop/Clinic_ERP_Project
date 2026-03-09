@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/master.swiftdeps"
+  },
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/USKeyboardMap.swift": {
+    "dependencies": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/USKeyboardMap.d",
+    "object": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/USKeyboardMap.swift.o",
+    "swiftmodule": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/USKeyboardMap~partial.swiftmodule",
+    "swift-dependencies": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/USKeyboardMap.swiftdeps",
+    "diagnostics": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/USKeyboardMap.dia"
+  },
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/main.swift": {
+    "dependencies": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/main.d",
+    "object": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/main.swift.o",
+    "swiftmodule": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/main.swiftdeps",
+    "diagnostics": "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/debug/BarcodeScannerHelper.build/main.dia"
+  }
+}

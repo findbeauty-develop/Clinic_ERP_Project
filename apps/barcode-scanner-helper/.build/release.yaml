@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe": ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe>"]
+  "BarcodeScannerHelper-arm64-apple-macosx15.0-release.module": ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe>","<BarcodeScannerHelper-arm64-apple-macosx15.0-release.module>"]
+  "test": ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe>","<BarcodeScannerHelper-arm64-apple-macosx15.0-release.module>"]
+default: "main"
+nodes:
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/USKeyboardMap.swift","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/main.swift"]
+    outputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/sources"]
+    description: "Write auxiliary file /Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/sources"
+
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/USKeyboardMap.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/main.swift.o"]
+    outputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.product/Objects.LinkFileList"
+
+  "/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper"]
+    outputs: ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe>"]
+
+  "<BarcodeScannerHelper-arm64-apple-macosx15.0-release.module>":
+    tool: phony
+    inputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/USKeyboardMap.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/main.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/Modules/BarcodeScannerHelper.swiftmodule"]
+    outputs: ["<BarcodeScannerHelper-arm64-apple-macosx15.0-release.module>"]
+
+  "C.BarcodeScannerHelper-arm64-apple-macosx15.0-release.exe":
+    tool: shell
+    inputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/USKeyboardMap.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/main.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.product/Objects.LinkFileList"]
+    outputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper"]
+    description: "Linking ./.build/arm64-apple-macosx/release/BarcodeScannerHelper"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release","-o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper","-module-name","BarcodeScannerHelper","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_BarcodeScannerHelper_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx","-target","arm64-apple-macosx10.15","-framework","IOKit","-framework","CoreFoundation","-framework","Foundation","-framework","Network","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.BarcodeScannerHelper-arm64-apple-macosx15.0-release.module":
+    tool: shell
+    inputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/USKeyboardMap.swift","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/main.swift","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/sources"]
+    outputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/USKeyboardMap.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/main.swift.o","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/Modules/BarcodeScannerHelper.swiftmodule"]
+    description: "Compiling Swift Module 'BarcodeScannerHelper' (2 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","BarcodeScannerHelper","-emit-dependencies","-emit-module","-emit-module-path","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/Modules/BarcodeScannerHelper.swiftmodule","-output-file-map","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/output-file-map.json","-whole-module-optimization","-num-threads","10","-c","@/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/BarcodeScannerHelper.build/sources","-I","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx10.15","-whole-module-optimization","-num-threads","10","-serialize-diagnostics","-O","-j10","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","BarcodeScannerHelper_main","-color-diagnostics","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Sources/BarcodeScannerHelper/","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Package.swift","/Users/Development/Desktop/Clinic_ERP_Project/apps/barcode-scanner-helper/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
