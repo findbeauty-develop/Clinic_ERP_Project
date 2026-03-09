@@ -2141,6 +2141,15 @@ const ProductCard = memo(function ProductCard({
                           별도 구매
                         </span>
                       )}
+                      {batch.is_separate_purchase &&
+                        batch.reason_for_modification && (
+                          <span
+                            className="inline-flex max-w-[200px] truncate rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                            title={batch.reason_for_modification}
+                          >
+                            수정 사유: {batch.reason_for_modification}
+                          </span>
+                        )}
                     </div>
                     {batch.is_separate_purchase && (
                       <button
@@ -2212,11 +2221,14 @@ const ProductCard = memo(function ProductCard({
 
           <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-6 dark:border-sky-500/30 dark:bg-sky-500/5">
             <h3 className="border-b border-sky-200 pb-3 text-base font-bold text-slate-800 dark:border-sky-500/30 dark:text-slate-100">
-              빠른 입고
+              별도 구매 입고
             </h3>
 
             <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-              <p>빠른 입고는 Supplier에서 주문한 제품의 입고를 의미합니다.</p>
+              <p>
+                별도 구매 입고는 Jaclit을 통한 주문이 아닌 제품의 입고를
+                의미합니다.
+              </p>
               <p className="mt-1">
                 <span className="font-semibold">
                   Jaclit을 통해 주문한 제품은

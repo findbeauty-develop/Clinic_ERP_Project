@@ -11,6 +11,7 @@ import {
   Delete,
   Header,
   Res,
+  Query,
 } from "@nestjs/common";
 import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
@@ -163,6 +164,29 @@ export class ProductsController {
       name.trim(),
       category,
       items || []
+    );
+  }
+
+  @Get(":id/batches/history")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get batch history for a product (includes qty 0)" })
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  getProductBatchHistory(
+    @Param("id") productId: string,
+    @Tenant() tenantId: string,
+    @Query("months") months?: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    const monthsNum = months != null ? parseInt(months, 10) : 3;
+    return this.productsService.getProductBatchHistory(
+      productId,
+      tenantId,
+      isNaN(monthsNum) || monthsNum < 1 ? 3 : monthsNum
     );
   }
 

@@ -1568,6 +1568,91 @@ export class ProductsService {
   }
 
   /**
+   * Product batch history: barcha batchlar (qty 0 ham), created_at so'nggi N oy
+   */
+  async getProductBatchHistory(
+    productId: string,
+    tenantId: string,
+    months: number = 3
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, tenant_id: tenantId },
+    });
+
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const since = new Date();
+    since.setMonth(since.getMonth() - months);
+
+    const batches = await (this.prisma.batch.findMany as any)({
+      where: {
+        product_id: productId,
+        tenant_id: tenantId,
+        created_at: { gte: since },
+      },
+      orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        batch_no: true,
+        expiry_date: true,
+        expiry_months: true,
+        expiry_unit: true,
+        manufacture_date: true,
+        alert_days: true,
+        storage: true,
+        created_at: true,
+        qty: true,
+        inbound_qty: true,
+        used_count: true,
+        outbound_count: true,
+        unit: true,
+        min_stock: true,
+        purchase_price: true,
+        is_separate_purchase: true,
+        inbound_manager: true,
+        reason_for_modification: true,
+      },
+    });
+
+    return batches.map((batch: any) => ({
+      id: batch.id,
+      batch_no: batch.batch_no,
+      유효기간: batch.expiry_date
+        ? batch.expiry_date.toISOString().split("T")[0]
+        : batch.expiry_months && batch.expiry_unit
+          ? `${batch.expiry_months} ${batch.expiry_unit}`
+          : null,
+      보관위치: batch.storage ?? null,
+      "입고 수량": batch.qty,
+      inbound_qty: batch.inbound_qty ?? null,
+      unit: batch.unit ?? null,
+      min_stock: batch.min_stock ?? null,
+      purchase_price: batch.purchase_price ?? null,
+      created_at: batch.created_at,
+      is_separate_purchase: batch.is_separate_purchase ?? false,
+      manufacture_date: batch.manufacture_date
+        ? batch.manufacture_date.toISOString().split("T")[0]
+        : null,
+      expiry_date: batch.expiry_date
+        ? batch.expiry_date.toISOString().split("T")[0]
+        : null,
+      inbound_manager: batch.inbound_manager ?? null,
+      reason_for_modification: batch.reason_for_modification ?? null,
+      expiry_months: batch.expiry_months,
+      expiry_unit: batch.expiry_unit,
+      alert_days: batch.alert_days,
+      storage: batch.storage,
+      qty: batch.qty,
+    }));
+  }
+
+  /**
    * Mavjud productga batch yaratish
    * @param productId - Product ID
    * @param dto - Batch ma'lumotlari
