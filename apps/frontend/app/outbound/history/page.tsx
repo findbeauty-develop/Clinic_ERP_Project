@@ -28,6 +28,7 @@ type OutboundHistoryItem = {
   outboundVolume?: number;
   isDamaged?: boolean;
   isDefective?: boolean;
+  wasteProduct?: boolean; // 폐기
   product?: {
     id: string;
     name: string;
@@ -579,6 +580,12 @@ export default function OutboundHistoryPage() {
                           </span>
                         )}
 
+                        {items.some((i) => i.wasteProduct) && (
+                          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">
+                            폐기
+                          </span>
+                        )}
+
                         {/* ✅ Badge'lar - ikkala tur uchun ham ko'rsatish */}
 
                         {/* {hasPackageOutbound && (
@@ -594,6 +601,16 @@ export default function OutboundHistoryPage() {
                           차트번호: {chartNumber}
                         </span>
                       )}
+                      {/* Memo (폐기/파손/불량 시) */}
+                      {(() => {
+                        const groupMemo = items.map((i) => i.memo).find(Boolean);
+                        const showMemo = groupMemo && (items.some((i) => i.isDamaged) || items.some((i) => i.isDefective) || items.some((i) => i.wasteProduct));
+                        return showMemo ? (
+                          <span className="text-sm text-slate-600 dark:text-slate-400" title={groupMemo}>
+                            메모: {groupMemo}
+                          </span>
+                        ) : null;
+                      })()}
                       {/* Cancel Button */}
                       <button
                         onClick={() =>

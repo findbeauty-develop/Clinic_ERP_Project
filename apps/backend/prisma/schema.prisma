@@ -248,13 +248,14 @@ model Outbound {
   created_at    DateTime  @default(now())
   updated_at    DateTime?
   created_by    String?
-  is_damaged    Boolean   @default(false)
-  is_defective  Boolean   @default(false)
-  outbound_type String    @default("제품")
-  package_id    String?
-  batch         Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  returns       Return[]
+  is_damaged     Boolean   @default(false)
+  is_defective   Boolean   @default(false)
+  waste_product  Boolean   @default(false) // 폐기 (disposal) — same as normal outbound for stock, badge in history
+  outbound_type  String    @default("제품")
+  package_id     String?
+  batch          Batch     @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+  product        Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  returns        Return[]
 
   @@index([tenant_id])
   @@index([product_id])

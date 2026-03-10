@@ -1629,7 +1629,7 @@ export default function InboundNewPage() {
                     disabled={!formData.enableUsageCapacity}
                     className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                   >
-                    <option value=""> 사용 선택</option>
+                    <option value=""> 사용량 선택</option>
                     {USAGE_CAPACITY_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}

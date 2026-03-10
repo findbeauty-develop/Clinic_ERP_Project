@@ -40,6 +40,10 @@ export class CreateOutboundDto {
   isDefective?: boolean; // 불량 (Defective - optional)
 
   @IsOptional()
+  @IsBoolean()
+  isWaste?: boolean; // 폐기 (Waste - optional)
+
+  @IsOptional()
   @IsString()
   memo?: string; // 메모 (optional)
 }

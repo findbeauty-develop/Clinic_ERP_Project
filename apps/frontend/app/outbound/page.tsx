@@ -165,7 +165,9 @@ function OutboundPageContent() {
 
   // Outbound processing form state (ikkala rejim uchun umumiy)
   const [managerName, setManagerName] = useState("");
-  const [statusType, setStatusType] = useState<"damaged" | "defective" | null>(
+  const [statusType, setStatusType] = useState<
+    "damaged" | "defective" | "waste" | null
+  >(
     null
   );
   const [chartNumber, setChartNumber] = useState("");
@@ -1388,6 +1390,7 @@ function OutboundPageContent() {
         memo: memo.trim() || undefined,
         isDamaged: statusType === "damaged",
         isDefective: statusType === "defective",
+        isWaste: statusType === "waste",
         items: allItems,
       };
 
@@ -1674,6 +1677,7 @@ function OutboundPageContent() {
               memo: memo.trim() || undefined,
               isDamaged: statusType === "damaged",
               isDefective: statusType === "defective",
+              isWaste: statusType === "waste",
             },
           ],
         };
@@ -1742,6 +1746,7 @@ function OutboundPageContent() {
               memo: memo.trim() || undefined,
               isDamaged: statusType === "damaged",
               isDefective: statusType === "defective",
+              isWaste: statusType === "waste",
             };
           }),
         };
@@ -2628,9 +2633,37 @@ function OutboundPageContent() {
                           불량
                         </span>
                       </label>
+
+                      {/* 폐기 */}
+                      <label
+                        className="flex items-center gap-2 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setStatusType(
+                            statusType === "waste" ? null : "waste"
+                          );
+                        }}
+                      >
+                        <div className="relative flex h-4 w-4 items-center justify-center">
+                          <input
+                            type="radio"
+                            name="status"
+                            checked={statusType === "waste"}
+                            readOnly
+                            className="h-4 w-4 appearance-none rounded-full border-2 border-slate-300 bg-white checked:border-sky-500 focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 pointer-events-none"
+                          />
+                          {statusType === "waste" && (
+                            <div className="absolute h-2 w-2 rounded-full bg-sky-500"></div>
+                          )}
+                        </div>
+                        <span className="text-sm text-slate-700 dark:text-slate-200">
+                          폐기
+                        </span>
+                      </label>
                     </div>
 
-                    {/* Memo Field - faqat 파손 yoki 불량 tanlanganida */}
+                    {/* Memo Field - faqat 파손, 불량 yoki 폐기 tanlanganida */}
                     {statusType && (
                       <div className="mt-4">
                         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
@@ -2646,7 +2679,7 @@ function OutboundPageContent() {
                       </div>
                     )}
 
-                    {/* 차트번호 Field - faqat 파손 yoki 불량 tanlanmaganida */}
+                    {/* 차트번호 Field - faqat 파손, 불량 yoki 폐기 tanlanmaganida */}
                     {!statusType && (
                       <div className="mt-4 flex flex-row items-center gap-3">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">

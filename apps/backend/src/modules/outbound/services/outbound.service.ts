@@ -278,6 +278,7 @@ export class OutboundService {
               chart_number: dto.chartNumber ?? null,
               is_damaged: dto.isDamaged ?? false,
               is_defective: dto.isDefective ?? false,
+              waste_product: dto.isWaste ?? false,
               memo: dto.memo ?? null,
               created_by: null, // TODO: User ID qo'shish
             },
@@ -494,6 +495,7 @@ export class OutboundService {
                 chart_number: item.chartNumber ?? null,
                 is_damaged: item.isDamaged ?? false,
                 is_defective: item.isDefective ?? false,
+                waste_product: item.isWaste ?? false,
                 memo: item.memo ?? null,
                 package_id: null,
                 created_by: null, // TODO: User ID qo'shish
@@ -848,6 +850,7 @@ export class OutboundService {
               updated_at: true,
               is_damaged: true,
               is_defective: true,
+              waste_product: true,
               outbound_type: true,
               package_id: true,
               product: {
@@ -1048,6 +1051,7 @@ export class OutboundService {
             memo: item.memo,
             isDamaged: item.is_damaged,
             isDefective: item.is_defective,
+            wasteProduct: item.waste_product,
             packageId: item.package_id,
             packageName: item.package_id ? item.package?.name || null : null, // 패키지 출고인 경우 패키지명
             product: {
@@ -1770,6 +1774,7 @@ export class OutboundService {
                     chart_number: dto.chartNumber ?? null,
                     is_damaged: dto.isDamaged || false,
                     is_defective: dto.isDefective || false,
+                    waste_product: dto.isWaste || false,
                     memo: dto.memo ?? null,
                     package_id: null,
                     created_by: null,

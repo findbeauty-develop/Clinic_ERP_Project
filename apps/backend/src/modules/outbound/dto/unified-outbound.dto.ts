@@ -65,6 +65,10 @@ export class UnifiedOutboundDto {
   @IsBoolean()
   isDefective?: boolean; // 불량 (optional)
 
+  @IsOptional()
+  @IsBoolean()
+  isWaste?: boolean; // 폐기 (optional) — same as normal outbound for stock, badge in history
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UnifiedOutboundItemDto)
