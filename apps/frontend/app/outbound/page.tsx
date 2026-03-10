@@ -145,6 +145,15 @@ function OutboundPageContent() {
   // ✅ Ref to track pending scroll target after page change (for barcode scanner)
   const pendingScrollTargetRef = useRef<string | null>(null);
 
+  // ✅ Auto-focus main content when page opens (sidebar dan 출고 tanlaganda barcode skaner darhol ishlashi uchun)
+  const mainContentRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = mainContentRef.current;
+    if (!el) return;
+    const t = setTimeout(() => el.focus(), 0);
+    return () => clearTimeout(t);
+  }, []);
+
   // Outbound processing form state (ikkala rejim uchun umumiy)
   const [managerName, setManagerName] = useState("");
   const [statusType, setStatusType] = useState<"damaged" | "defective" | null>(
@@ -1882,7 +1891,12 @@ function OutboundPageContent() {
   };
 
   return (
-    <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
+    <main
+      ref={mainContentRef}
+      tabIndex={-1}
+      className="flex-1 bg-slate-50 dark:bg-slate-900/60 outline-none"
+      aria-label="출고 관리 메인 콘텐츠"
+    >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pt-10 sm:px-6 lg:px-8 lg:pb-4">
         {/* Header */}
         <header className="space-y-4">

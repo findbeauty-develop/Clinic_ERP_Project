@@ -31,10 +31,10 @@ export function parseGS1Barcode(barcode: string): GS1BarcodeData {
     result.gtin = gtinMatch[1];
   }
 
-  // Batch/Lot Number (10) - alphanumeric, max 20 chars
-  const lotMatch = barcode.match(/\(10\)([A-Z0-9\-]+?)(?:\(|$)/);
+  // Batch/Lot Number (10) - alphanumeric, max 20 chars (lowercase qabul qilib uppercase qaytaramiz)
+  const lotMatch = barcode.match(/\(10\)([A-Za-z0-9\-]+?)(?:\(|$)/);
   if (lotMatch) {
-    result.lot = lotMatch[1];
+    result.lot = lotMatch[1].toUpperCase();
   }
 
   // Expiration Date (17) - YYMMDD format
@@ -43,10 +43,10 @@ export function parseGS1Barcode(barcode: string): GS1BarcodeData {
     result.expiry = expiryMatch[1];
   }
 
-  // Serial Number (21) - alphanumeric, max 20 chars
-  const serialMatch = barcode.match(/\(21\)([A-Z0-9\-]+?)(?:\(|$)/);
+  // Serial Number (21) - alphanumeric, max 20 chars (lowercase qabul qilib uppercase qaytaramiz)
+  const serialMatch = barcode.match(/\(21\)([A-Za-z0-9\-]+?)(?:\(|$)/);
   if (serialMatch) {
-    result.serialNumber = serialMatch[1];
+    result.serialNumber = serialMatch[1].toUpperCase();
   }
 
   // Quantity (30) - variable count

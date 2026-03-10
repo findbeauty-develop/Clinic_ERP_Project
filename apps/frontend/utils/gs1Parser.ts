@@ -457,9 +457,9 @@ export function parseGS1Barcode(
       if (ai === "01" && !result.primary_gtin) {
         result.primary_gtin = payload;
       } else if (ai === "10" && !result.batch) {
-        result.batch = payload;
+        result.batch = payload.toUpperCase();
       } else if (ai === "21" && !result.serial) {
-        result.serial = payload;
+        result.serial = payload.toUpperCase();
       }
     }
 

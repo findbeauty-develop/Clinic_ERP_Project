@@ -144,6 +144,15 @@ export default function InboundPage() {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
+  // ✅ Auto-focus main content when page opens (sidebar dan 입고 tanlaganda barcode skaner darhol ishlashi uchun)
+  const mainContentRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = mainContentRef.current;
+    if (!el) return;
+    const t = setTimeout(() => el.focus(), 0);
+    return () => clearTimeout(t);
+  }, [activeTab]);
+
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
@@ -348,8 +357,8 @@ export default function InboundPage() {
   const handleGlobalBarcodeScanned = useCallback(
     async (scannedBarcode: string) => {
       try {
-        // Normalize: only 0-9 A-Z (no π / Hangul / non-ASCII), uppercase
-        const normalized = (scannedBarcode || "")
+        // ✅ Korean (Hangul) → English, keyin faqat 0-9 A-Z, uppercase
+        const normalized = fixBarcodeKoreanToEng(scannedBarcode || "")
           .replace(/[^0-9A-Za-z]/g, "")
           .toUpperCase();
         if (normalized.length < 8) return;
@@ -975,7 +984,12 @@ export default function InboundPage() {
   };
 
   return (
-    <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
+    <main
+      ref={mainContentRef}
+      tabIndex={-1}
+      className="flex-1 bg-slate-50 dark:bg-slate-900/60 outline-none"
+      aria-label="입고 관리 메인 콘텐츠"
+    >
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
@@ -1588,16 +1602,22 @@ const ProductCard = memo(function ProductCard({
       if (now - lastTime > 100) buffer = "";
 
       if (e.key === "Enter" && buffer.length >= 8) {
-        handleBatchBarcodeScanned(buffer);
+        const cleaned = fixBarcodeKoreanToEng(buffer)
+          .replace(/[^0-9A-Za-z]/g, "")
+          .toUpperCase();
+        handleBatchBarcodeScanned(cleaned);
         buffer = "";
       } else if (e.key.length === 1) {
-        buffer += e.key;
-        lastTime = now;
+        const mappedKey = fixBarcodeKoreanToEng(e.key);
+        if (/[0-9A-Za-z]/.test(mappedKey)) {
+          buffer += mappedKey;
+          lastTime = now;
 
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-          buffer = "";
-        }, 500);
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            buffer = "";
+          }, 500);
+        }
       }
     };
 
