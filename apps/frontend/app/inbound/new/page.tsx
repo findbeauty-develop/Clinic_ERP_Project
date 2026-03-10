@@ -22,6 +22,8 @@ const barcodeMethods = [
 
 // inboundManagers will be loaded from API
 const statusOptions = ["활성", "재고 부족", "만료", "단종"];
+/** 사용 단위 dropdown: faqat shu qiymatlar DB usage_capacity ga yoziladi */
+const USAGE_CAPACITY_OPTIONS = [0.1, 0.5, 1, 10, 100] as const;
 const unitOptions = [
   "단위 선택",
   "cc",
@@ -1609,55 +1611,40 @@ export default function InboundNewPage() {
       "
                   />
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
-                    사용 단위
+                    일부 사용
                   </label>
                 </div>
                 <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={formData.usageCapacity || ""}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "usageCapacity",
-                        e.target.value ? parseFloat(e.target.value) : 0
-                      )
+                  <select
+                    value={
+                      formData.usageCapacity != null &&
+                      Number(formData.usageCapacity) !== 0
+                        ? String(formData.usageCapacity)
+                        : ""
                     }
-                    placeholder="전제 사용 아닌 경우,실제 사용량을 입력하세요"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      handleInputChange("usageCapacity", v ? parseFloat(v) : 0);
+                    }}
                     disabled={!formData.enableUsageCapacity}
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <div className="relative w-28">
-                    <select
-                      value={formData.usageCapacityUnit}
-                      onChange={(e) =>
-                        handleInputChange("usageCapacityUnit", e.target.value)
-                      }
-                      disabled={!formData.enableUsageCapacity}
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-                    >
-                      {unitOptions.slice(0).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                      <svg
-                        className="h-4 w-4 text-slate-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </div>
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                  >
+                    <option value=""> 사용 선택</option>
+                    {USAGE_CAPACITY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative w-28 flex items-center">
+                    <input
+                      type="text"
+                      readOnly
+                      value={formData.capacityUnit || ""}
+                      className="h-11 w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      tabIndex={-1}
+                      aria-label="사용 단위 (제품 용량과 동일)"
+                    />
                   </div>
                 </div>
               </div>
