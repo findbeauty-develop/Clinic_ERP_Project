@@ -859,6 +859,7 @@ export class OutboundService {
                   sale_price: true,
                   unit: true,
                   capacity_unit: true,
+                  usage_capacity: true,
                 },
               },
               batch: {
@@ -1029,12 +1030,18 @@ export class OutboundService {
             updatedAt: null,
           };
         } else {
-          // Regular Outbound record
+          // Regular Outbound record — outbound_qty is "number of uses"; for display return volume (uses × usage_capacity)
+          const usageCapacity = item.product?.usage_capacity;
+          const outboundVolume =
+            usageCapacity != null && usageCapacity > 0
+              ? item.outbound_qty * usageCapacity
+              : item.outbound_qty;
           return {
             id: item.id,
             outboundType: item.outbound_type || "제품", // 단품 출고
             outboundDate: item.outbound_date,
             outboundQty: item.outbound_qty,
+            outboundVolume, // 실제 출고된 양 (cc 등) — 프론트에서 이 값 표시
             managerName: item.manager_name,
             patientName: item.patient_name,
             chartNumber: item.chart_number,

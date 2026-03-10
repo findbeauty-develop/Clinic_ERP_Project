@@ -23,8 +23,9 @@ type OutboundHistoryItem = {
     quantity: number;
     salePrice: number;
   }[]; // Only for package outbounds
-  // For regular outbounds
+  // For regular outbounds — outboundQty = uses, outboundVolume = actual amount (cc etc.) for display
   outboundQty?: number;
+  outboundVolume?: number;
   isDamaged?: boolean;
   isDefective?: boolean;
   product?: {
@@ -637,7 +638,7 @@ export default function OutboundHistoryPage() {
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span className="font-bold text-base text-slate-900 dark:text-white">
-                                  -{item.outboundQty}
+                                  -{Number(item.outboundVolume ?? item.outboundQty).toFixed(2)}
                                 </span>
                                 {item.product.capacity_unit && (
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -672,7 +673,7 @@ export default function OutboundHistoryPage() {
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <span className="font-bold text-base text-slate-900 dark:text-white">
-                                    -{item.packageQty || 1}
+                                    -{Number(item.packageQty || 1).toFixed(2)}
                                   </span>
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
                                     패키지 Set
@@ -707,8 +708,10 @@ export default function OutboundHistoryPage() {
                                           <div className="flex items-center gap-2 shrink-0">
                                             {/* ✅ Jami outbound qty = package item quantity * package qty */}
                                             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                              {pkgItem.quantity *
-                                                (item.packageQty || 1)}
+                                              {Number(
+                                                pkgItem.quantity *
+                                                  (item.packageQty || 1)
+                                              ).toFixed(2)}
                                             </span>
                                             {pkgItem.unit && (
                                               <span className="text-xs text-slate-500 dark:text-slate-400">

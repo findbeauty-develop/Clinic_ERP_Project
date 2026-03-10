@@ -1,5 +1,6 @@
 import {
   IsString,
+  IsNumber,
   IsInt,
   IsOptional,
   IsArray,
@@ -23,9 +24,9 @@ export class UnifiedOutboundItemDto {
   @IsString()
   batchId!: string;
 
-  @IsInt()
-  @Min(1)
-  outboundQty!: number; // 출고 수량
+  @IsNumber()
+  @Min(0.01)
+  outboundQty!: number; // 출고 수량 (float: 0.1, 0.5, 1, 10, 100)
 
   @IsOptional()
   @IsString()

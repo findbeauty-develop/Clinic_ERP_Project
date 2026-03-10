@@ -120,6 +120,15 @@ function OutboundPageContent() {
     []
   );
 
+  // Backend expects outboundQty = "number of uses" when usage_capacity is set (volume / usage_capacity)
+  const getOutboundQty = (
+    quantity: number,
+    product: ProductForOutbound | undefined
+  ) =>
+    product?.usageCapacity != null && product.usageCapacity > 0
+      ? quantity / product.usageCapacity
+      : quantity;
+
   // Product outbound state
   const [products, setProducts] = useState<ProductForOutbound[]>([]);
 
@@ -615,11 +624,16 @@ function OutboundPageContent() {
             item.batchId === availableBatch.id
         );
 
-        let newQuantity = 1;
+        // usage_capacity qancha bo'lsa shuncha qo'shamiz (yo'q bo'lsa 1)
+        const qtyStep =
+          matchedProduct.usageCapacity != null && matchedProduct.usageCapacity > 0
+            ? matchedProduct.usageCapacity
+            : 1;
+        let newQuantity = qtyStep;
 
         if (existingItem) {
           // Increment quantity
-          newQuantity = existingItem.quantity + 1;
+          newQuantity = existingItem.quantity + qtyStep;
           setScheduledItems((prev) =>
             prev.map((item) =>
               item.productId === matchedProduct.id &&
@@ -629,13 +643,13 @@ function OutboundPageContent() {
             )
           );
         } else {
-          // Add new item
+          // Add new item (0.5 when usage_capacity 0.1, else 1)
           const newItem: ScheduledItem = {
             productId: matchedProduct.id,
             productName: matchedProduct.productName,
             batchId: availableBatch.id,
             batchNo: availableBatch.batch_no,
-            quantity: 1,
+            quantity: qtyStep,
             unit: matchedProduct.unit || "EA",
           };
           setScheduledItems((prev) => [...prev, newItem]);
@@ -1342,22 +1356,28 @@ function OutboundPageContent() {
 
       // ✅ Bitta unified payload yaratish (product + package items)
       const allItems = [
-        // Product items (packageId yo'q)
-        ...productItems.map((item) => ({
-          productId: item.productId,
-          batchId: item.batchId,
-          outboundQty: item.quantity,
-          packageId: undefined, // Product item
-          packageQty: undefined,
-        })),
-        // Package items (packageId bor)
-        ...Object.values(itemsByPackage).map((item) => ({
-          productId: item.productId,
-          batchId: item.batchId,
-          outboundQty: item.quantity, // Already multiplied by packageCount
-          packageId: item.packageId,
-          packageQty: item.packageQty,
-        })),
+        // Product items (packageId yo'q) — outboundQty = "foydalanishlar soni" (volume / usage_capacity)
+        ...productItems.map((item) => {
+          const product = products.find((p) => p.id === item.productId);
+          return {
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: getOutboundQty(item.quantity, product),
+            packageId: undefined, // Product item
+            packageQty: undefined,
+          };
+        }),
+        // Package items (packageId bor) — item.quantity already multiplied by packageCount
+        ...Object.values(itemsByPackage).map((item) => {
+          const product = products.find((p) => p.id === item.productId);
+          return {
+            productId: item.productId,
+            batchId: item.batchId,
+            outboundQty: getOutboundQty(item.quantity, product),
+            packageId: item.packageId,
+            packageQty: item.packageQty,
+          };
+        }),
       ];
 
       // ✅ Bitta unified request yuborish
@@ -1622,6 +1642,9 @@ function OutboundPageContent() {
     try {
       if (item.isPackageItem) {
         // Package item uchun
+        const product = products.find((p) => p.id === item.productId);
+        const totalQty =
+          item.quantity * (packageCounts[item.packageId || ""] || 1);
         const payload = {
           outboundType: "패키지",
           managerName: managerName.trim(),
@@ -1631,8 +1654,7 @@ function OutboundPageContent() {
             {
               productId: item.productId,
               batchId: item.batchId,
-              outboundQty:
-                item.quantity * (packageCounts[item.packageId || ""] || 1),
+              outboundQty: getOutboundQty(totalQty, product),
               packageId: item.packageId,
             },
           ],
@@ -1640,12 +1662,13 @@ function OutboundPageContent() {
         await apiPost(`${apiUrl}/outbound/unified`, payload);
       } else {
         // Product item uchun
+        const product = products.find((p) => p.id === item.productId);
         const payload = {
           items: [
             {
               productId: item.productId,
               batchId: item.batchId,
-              outboundQty: item.quantity,
+              outboundQty: getOutboundQty(item.quantity, product),
               managerName: managerName.trim(),
               chartNumber: chartNumber.trim() || undefined,
               memo: memo.trim() || undefined,
@@ -1708,16 +1731,19 @@ function OutboundPageContent() {
 
       if (productFailed.length > 0) {
         const payload = {
-          items: productFailed.map((item) => ({
-            productId: item.productId,
-            batchId: item.batchId,
-            outboundQty: item.quantity,
-            managerName: managerName.trim(),
-            chartNumber: chartNumber.trim() || undefined,
-            memo: memo.trim() || undefined,
-            isDamaged: statusType === "damaged",
-            isDefective: statusType === "defective",
-          })),
+          items: productFailed.map((item) => {
+            const product = products.find((p) => p.id === item.productId);
+            return {
+              productId: item.productId,
+              batchId: item.batchId,
+              outboundQty: getOutboundQty(item.quantity, product),
+              managerName: managerName.trim(),
+              chartNumber: chartNumber.trim() || undefined,
+              memo: memo.trim() || undefined,
+              isDamaged: statusType === "damaged",
+              isDefective: statusType === "defective",
+            };
+          }),
         };
         promises.push(apiPost(`${apiUrl}/outbound/bulk`, payload));
       }
@@ -1743,12 +1769,15 @@ function OutboundPageContent() {
           managerName: managerName.trim(),
           chartNumber: chartNumber.trim() || undefined,
           memo: memo.trim() || undefined,
-          items: Object.values(itemsByPackage).map((item) => ({
-            productId: item.productId,
-            batchId: item.batchId,
-            outboundQty: item.quantity,
-            packageId: item.packageId,
-          })),
+          items: Object.values(itemsByPackage).map((item) => {
+            const product = products.find((p) => p.id === item.productId);
+            return {
+              productId: item.productId,
+              batchId: item.batchId,
+              outboundQty: getOutboundQty(item.quantity, product),
+              packageId: item.packageId,
+            };
+          }),
         };
         promises.push(apiPost(`${apiUrl}/outbound/unified`, payload));
       }
@@ -2189,7 +2218,7 @@ function OutboundPageContent() {
                                               : "";
                                           const quantityStr =
                                             item.quantity > 0
-                                              ? `${item.quantity}${capacityUnitStr ? ` ${capacityUnitStr}` : ""}`
+                                              ? `${Number(item.quantity).toFixed(2)}${capacityUnitStr ? ` ${capacityUnitStr}` : ""}`
                                               : "";
                                           const itemText = quantityStr
                                             ? `${item.productName}-${quantityStr}`
@@ -2683,7 +2712,7 @@ function OutboundPageContent() {
                                       ? `${item.packageName} - `
                                       : ""}
                                     {item.productName} {item.batchNo} [{" "}
-                                    {item.quantity}]{item.capacity_unit || "개"}
+                                    {Number(item.quantity).toFixed(2)}]{item.capacity_unit || "개"}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -2999,7 +3028,7 @@ function OutboundPageContent() {
                                   }`}
                                 >
                                   {item.productName} {item.batchNo} [
-                                  {item.quantity}]{item.capacity_unit || "개"}
+                                  {Number(item.quantity).toFixed(2)}]{item.capacity_unit || "개"}
                                   {isFailed && (
                                     <span className="ml-2 text-xs text-red-600 dark:text-red-400">
                                       (실패)
@@ -3311,7 +3340,7 @@ const ProductCard = memo(function ProductCard({
       ) {
         const usedCount = batch.used_count ?? 0;
         const volumeUsed = usedCount * product.usageCapacity;
-        return Math.max(0, Math.round(totalQuantity - volumeUsed));
+        return Math.max(0, totalQuantity - volumeUsed);
       }
       // ✅ available_quantity from DB (when no usage_capacity) yoki outbound_count dan hisoblash
       if (
@@ -3469,7 +3498,13 @@ const ProductCard = memo(function ProductCard({
               );
               const quantity = scheduledItem?.quantity || 0;
 
-              // Calculate available quantity for this batch
+              // usage_capacity qancha bo'lsa step shuncha (yo'q bo'lsa 1)
+              const qtyStep =
+                product.usageCapacity != null && product.usageCapacity > 0
+                  ? product.usageCapacity
+                  : 1;
+
+              // Calculate available quantity for this batch (float)
               const availableQuantity = calculateAvailableQuantity(batch);
 
               // Format expiry date
@@ -3539,13 +3574,13 @@ const ProductCard = memo(function ProductCard({
                         product.usageCapacity !== null &&
                         product.usageCapacity !== undefined &&
                         product.usageCapacity > 0
-                          ? `${batch.qty.toLocaleString()} [${availableQuantity.toLocaleString()}]`
+                          ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
                           : batch.inbound_qty !== null &&
                               batch.inbound_qty !== undefined &&
                               product.capacityPerProduct !== null &&
                               product.capacityPerProduct !== undefined &&
                               product.capacityPerProduct > 0
-                            ? `${batch.qty.toLocaleString()} [${availableQuantity.toLocaleString()}]`
+                            ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
                             : `${batch.qty.toString().padStart(2, "0")}`}{" "}
                         {displayUnit}
                       </span>
@@ -3572,7 +3607,7 @@ const ProductCard = memo(function ProductCard({
                           batch.batch_no,
                           product.productName,
                           displayUnit,
-                          Math.max(0, quantity - 1),
+                          Math.max(0, quantity - qtyStep),
                           availableQuantity,
                           product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
                         )
@@ -3584,10 +3619,11 @@ const ProductCard = memo(function ProductCard({
                     <input
                       type="number"
                       min="0"
+                      step={qtyStep}
                       max={availableQuantity}
-                      value={quantity}
+                      value={Number(quantity).toFixed(2)}
                       onChange={(e) => {
-                        const newQty = parseInt(e.target.value) || 0;
+                        const newQty = parseFloat(e.target.value) || 0;
                         onQuantityChange(
                           product.id,
                           batch.id,
@@ -3609,7 +3645,7 @@ const ProductCard = memo(function ProductCard({
                           batch.batch_no,
                           product.productName,
                           displayUnit,
-                          Math.min(quantity + 1, availableQuantity),
+                          Math.min(quantity + qtyStep, availableQuantity),
                           availableQuantity,
                           product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
                         )
@@ -3619,7 +3655,7 @@ const ProductCard = memo(function ProductCard({
                       +
                     </button>
                     <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {(product.usageCapacity ?? 0).toLocaleString()}{" "}
+                      {Number(product.usageCapacity ?? 0).toFixed(2)}{" "}
                       {displayUnit}
                     </span>
                   </div>
