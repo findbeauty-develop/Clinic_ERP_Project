@@ -108,8 +108,7 @@ export default function InboundPage() {
   // ✅ Last barcode consumed from local helper (avoid duplicate when polling)
   const lastHelperBarcodeRef = useRef<string>("");
   // ✅ When true, use only helper for barcode (no keypress) — Hangul’da ham to‘g‘ri ishlashi uchun dastlab helper’ga tayanamiz
-  const helperAvailableRef = useRef(true);
-  const helperFailCountRef = useRef(0);
+  const helperAvailableRef = useRef(false); // Helper o‘chirilgani uchun faqat keypress ishlatamiz
 
   // ✅ State for barcode scan success modal
   const [scanSuccessModal, setScanSuccessModal] = useState<{
@@ -714,55 +713,7 @@ export default function InboundPage() {
     };
   }, [activeTab, handleGlobalBarcodeScanned]);
 
-  // ✅ Barcode scanner helper (macOS): SSE — faqat skaner paytida ma'lumot keladi (tinmay so'rov yo'q)
-  const HELPER_SSE_URL = "http://127.0.0.1:38473/events";
-  const HELPER_FRESH_SCAN_SEC = 4;
-  useEffect(() => {
-    if (activeTab !== "quick") return;
-
-    helperAvailableRef.current = true;
-    helperFailCountRef.current = 0;
-
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource(HELPER_SSE_URL);
-    } catch {
-      helperAvailableRef.current = false;
-      return;
-    }
-
-    eventSource.onmessage = (event) => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const data = JSON.parse(event.data) as {
-          barcode?: string;
-          scannedAt?: number;
-        };
-        const barcode = (data?.barcode ?? "").trim();
-        const scannedAt = data?.scannedAt ?? 0;
-        const nowSec = Math.floor(Date.now() / 1000);
-        const isFreshScan =
-          scannedAt > 0 && nowSec - scannedAt <= HELPER_FRESH_SCAN_SEC;
-        if (!barcode || !isFreshScan) return;
-        const cleaned = barcode.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-        if (cleaned.length >= 8) handleGlobalBarcodeScanned(cleaned);
-      } catch (_) {}
-    };
-
-    eventSource.onerror = () => {
-      helperFailCountRef.current += 1;
-      if (helperFailCountRef.current >= 2) helperAvailableRef.current = false;
-    };
-
-    eventSource.onopen = () => {
-      helperFailCountRef.current = 0;
-      helperAvailableRef.current = true;
-    };
-
-    return () => {
-      eventSource?.close();
-    };
-  }, [activeTab, handleGlobalBarcodeScanned]);
+  // ✅ Barcode scanner: helper o‘chirilgan — faqat keypress (klaviatura) orqali skaner ishlaydi. SSE o‘chirildi, ERR_CONNECTION_REFUSED chiqmaydi.
 
   // ✅ Refresh products when page becomes visible (after product deletion from other pages)
   useEffect(() => {
