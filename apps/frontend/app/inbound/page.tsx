@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import Papa from "papaparse";
 import { getAccessToken, getTenantId } from "../../lib/api";
+import { fixBarcodeKoreanToEng } from "../../utils/koreanBarcodeFix";
 
 const inboundFilters = [
   { label: "최근 업데이트순", value: "recent" },
@@ -671,15 +672,18 @@ export default function InboundPage() {
       if (now - lastTime > 100) buffer = "";
 
       if (e.key === "Enter" && buffer.length >= 8) {
-        // ✅ STRICT: Only allow alphanumeric, normalize to uppercase (GS1)
-        const cleanedBarcode = buffer.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+        // ✅ Korean (Hangul) → English, keyin faqat raqam/harf, uppercase (GS1)
+        const cleanedBarcode = fixBarcodeKoreanToEng(buffer)
+          .replace(/[^0-9A-Za-z]/g, "")
+          .toUpperCase();
 
         handleGlobalBarcodeScanned(cleanedBarcode);
         buffer = "";
       } else if (e.key.length === 1) {
-        // ✅ STRICT: Only accept digits and letters (0-9, A-Z, a-z)
-        if (/[0-9A-Za-z]/.test(e.key)) {
-          buffer += e.key;
+        // ✅ Avval Korean belgini English ga o'girish (skaner Korean layoutda yuborsa)
+        const mappedKey = fixBarcodeKoreanToEng(e.key);
+        if (/[0-9A-Za-z]/.test(mappedKey)) {
+          buffer += mappedKey;
           lastTime = now;
 
           clearTimeout(timeout);
@@ -687,9 +691,9 @@ export default function InboundPage() {
             buffer = "";
           }, 500);
         } else {
-          // ✅ Non-alphanumeric detected - likely Korean keyboard
+          // ✅ Map qilingandan keyin ham alphanumeric emas — ogohlantirish
           if (!globalKoreanCharDetected) {
-            setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+            setShowKeyboardWarning(true);
             globalKoreanCharDetected = true;
             setTimeout(() => {
               globalKoreanCharDetected = false;
@@ -4715,15 +4719,19 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Enter = scan complete
       if (e.key === "Enter" && buffer.length > 0) {
         e.preventDefault();
-        // ✅ STRICT: Only allow alphanumeric characters (GS1 standard)
-        const cleanedBarcode = buffer.trim().replace(/[^0-9A-Za-z]/g, "");
+        // ✅ Korean → English, keyin faqat alphanumeric (GS1)
+        const cleanedBarcode = fixBarcodeKoreanToEng(buffer.trim()).replace(
+          /[^0-9A-Za-z]/g,
+          ""
+        );
 
         handleBarcodeScan(cleanedBarcode);
         buffer = "";
       } else if (e.key.length === 1) {
-        // ✅ STRICT: Only accept digits and letters (0-9, A-Z, a-z)
-        if (/[0-9A-Za-z]/.test(e.key)) {
-          buffer += e.key;
+        // ✅ Avval Korean belgini English ga o'girish (skaner Korean layoutda yuborsa)
+        const mappedKey = fixBarcodeKoreanToEng(e.key);
+        if (/[0-9A-Za-z]/.test(mappedKey)) {
+          buffer += mappedKey;
           lastTime = now;
 
           clearTimeout(timeout);
@@ -4731,9 +4739,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
             buffer = "";
           }, 500);
         } else {
-          // ✅ Non-alphanumeric detected - likely Korean keyboard
           if (!koreanCharDetected) {
-            setShowKeyboardWarning(true); // ✅ Show modal instead of alert
+            setShowKeyboardWarning(true);
             koreanCharDetected = true;
             setTimeout(() => {
               koreanCharDetected = false;
