@@ -29,6 +29,7 @@ type OutboundHistoryItem = {
   isDamaged?: boolean;
   isDefective?: boolean;
   wasteProduct?: boolean; // 폐기
+  memo?: string;
   product?: {
     id: string;
     name: string;
@@ -86,7 +87,7 @@ export default function OutboundHistoryPage() {
       }
       queryParams.append("page", currentPage.toString());
       queryParams.append("limit", itemsPerPage.toString());
-      
+
       // ✅ Universal cache busting (all browsers)
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
@@ -104,7 +105,7 @@ export default function OutboundHistoryPage() {
       }>(url, {
         headers: {
           "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
+          Pragma: "no-cache",
         },
       });
 
@@ -603,10 +604,19 @@ export default function OutboundHistoryPage() {
                       )}
                       {/* Memo (폐기/파손/불량 시) */}
                       {(() => {
-                        const groupMemo = items.map((i) => i.memo).find(Boolean);
-                        const showMemo = groupMemo && (items.some((i) => i.isDamaged) || items.some((i) => i.isDefective) || items.some((i) => i.wasteProduct));
+                        const groupMemo = items
+                          .map((i) => i.memo)
+                          .find(Boolean);
+                        const showMemo =
+                          groupMemo &&
+                          (items.some((i) => i.isDamaged) ||
+                            items.some((i) => i.isDefective) ||
+                            items.some((i) => i.wasteProduct));
                         return showMemo ? (
-                          <span className="text-sm text-slate-600 dark:text-slate-400" title={groupMemo}>
+                          <span
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            title={groupMemo}
+                          >
                             메모: {groupMemo}
                           </span>
                         ) : null;
@@ -655,7 +665,10 @@ export default function OutboundHistoryPage() {
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span className="font-bold text-base text-slate-900 dark:text-white">
-                                  -{Number(item.outboundVolume ?? item.outboundQty).toFixed(2)}
+                                  -
+                                  {Number(
+                                    item.outboundVolume ?? item.outboundQty
+                                  ).toFixed(2)}
                                 </span>
                                 {item.product.capacity_unit && (
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
