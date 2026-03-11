@@ -2445,7 +2445,7 @@ function ProductEditForm({
                 일부 사용
               </label>
               <label className="text-xs text-slate-500 dark:text-slate-400">
-                (제품을 일부만 사용하는 경우, '일부 사용'을 체크하고 사용량을
+                (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고 사용량을
                 선택해주세요.)
               </label>
             </div>
