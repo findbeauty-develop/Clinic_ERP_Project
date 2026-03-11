@@ -167,9 +167,7 @@ function OutboundPageContent() {
   const [managerName, setManagerName] = useState("");
   const [statusType, setStatusType] = useState<
     "damaged" | "defective" | "waste" | null
-  >(
-    null
-  );
+  >(null);
   const [chartNumber, setChartNumber] = useState("");
   const [memo, setMemo] = useState("");
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
@@ -226,7 +224,10 @@ function OutboundPageContent() {
       const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
       if (typeof window !== "undefined") {
         try {
-          localStorage.setItem("outbound_recent_manager_names", JSON.stringify(next));
+          localStorage.setItem(
+            "outbound_recent_manager_names",
+            JSON.stringify(next)
+          );
         } catch (_) {}
       }
       return next;
@@ -628,7 +629,8 @@ function OutboundPageContent() {
 
         // usage_capacity qancha bo'lsa shuncha qo'shamiz (yo'q bo'lsa 1)
         const qtyStep =
-          matchedProduct.usageCapacity != null && matchedProduct.usageCapacity > 0
+          matchedProduct.usageCapacity != null &&
+          matchedProduct.usageCapacity > 0
             ? matchedProduct.usageCapacity
             : 1;
         let newQuantity = qtyStep;
@@ -1228,7 +1230,10 @@ function OutboundPageContent() {
           const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
           const usedCount = batch.used_count || 0;
           const volumeUsed = usedCount * product.usageCapacity;
-          availableQuantity = Math.max(0, Math.round(totalQuantity - volumeUsed));
+          availableQuantity = Math.max(
+            0,
+            Math.round(totalQuantity - volumeUsed)
+          );
         } else if (
           batch.inbound_qty !== null &&
           batch.inbound_qty !== undefined &&
@@ -1302,7 +1307,10 @@ function OutboundPageContent() {
           const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
           const usedCount = batch.used_count || 0;
           const volumeUsed = usedCount * product.usageCapacity;
-          availableQuantity = Math.max(0, Math.round(totalQuantity - volumeUsed));
+          availableQuantity = Math.max(
+            0,
+            Math.round(totalQuantity - volumeUsed)
+          );
         } else if (
           batch.inbound_qty !== null &&
           batch.inbound_qty !== undefined &&
@@ -2547,27 +2555,28 @@ function OutboundPageContent() {
                     placeholder="담당자 이름"
                     className="flex-1 rounded-lg border border-slate-300 bg-white px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
                   />
-                  {showManagerSuggestions && recentOutboundManagers.length > 0 && (
-                    <ul
-                      className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                      style={{ minWidth: "12rem" }}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      {recentOutboundManagers.map((name) => (
-                        <li
-                          key={name}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setManagerName(name);
-                            setShowManagerSuggestions(false);
-                          }}
-                          className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {name}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {showManagerSuggestions &&
+                    recentOutboundManagers.length > 0 && (
+                      <ul
+                        className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                        style={{ minWidth: "12rem" }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {recentOutboundManagers.map((name) => (
+                          <li
+                            key={name}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setManagerName(name);
+                              setShowManagerSuggestions(false);
+                            }}
+                            className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            {name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                 </div>
 
                 {/* Content - Scrollable */}
@@ -2745,7 +2754,8 @@ function OutboundPageContent() {
                                       ? `${item.packageName} - `
                                       : ""}
                                     {item.productName} {item.batchNo} [{" "}
-                                    {Number(item.quantity).toFixed(2)}]{item.capacity_unit || "개"}
+                                    {Number(item.quantity).toFixed(2)}]
+                                    {item.capacity_unit || "개"}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -3054,49 +3064,29 @@ function OutboundPageContent() {
                                 }`}
                               >
                                 <span
-                                  className={`text-sm flex-1 ${
+                                  className={`text-sm flex-1 min-w-0 truncate ${
                                     isFailed
                                       ? "text-red-700 dark:text-red-300"
                                       : "text-slate-700 dark:text-slate-200"
                                   }`}
                                 >
-                                  {item.productName} {item.batchNo} [
-                                  {Number(item.quantity).toFixed(2)}]{item.capacity_unit || "개"}
+                                  {item.productName} {item.batchNo}
                                   {isFailed && (
                                     <span className="ml-2 text-xs text-red-600 dark:text-red-400">
                                       (실패)
                                     </span>
                                   )}
                                 </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleQuantityChange(
-                                      item.productId,
-                                      item.batchId,
-                                      item.batchNo,
-                                      item.productName,
-
-                                      item.unit || "개",
-                                      item.quantity - 1
-                                    );
-                                  }}
-                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                <span
+                                  className={`text-sm flex-shrink-0 ${
+                                    isFailed
+                                      ? "text-red-700 dark:text-red-300"
+                                      : "text-blue-600 dark:text-blue-400"
+                                  }`}
                                 >
-                                  <svg
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M20 12H4"
-                                    />
-                                  </svg>
-                                </button>
+                                  {Number(item.quantity).toFixed(2)}{" "}
+                                  {item.capacity_unit || "개"}
+                                </span>
                               </div>
                             );
                           });
@@ -3414,6 +3404,11 @@ const ProductCard = memo(function ProductCard({
       ?.filter((batch) => batch.qty > 0)
       .reduce((sum, batch) => sum + calculateAvailableQuantity(batch), 0) ?? 0;
 
+  const displayTotalQty =
+    product.currentStock != null && product.currentStock !== undefined
+      ? Number(product.currentStock)
+      : totalStock;
+
   // Filter batches (only qty > 0) and sort (qty ascending, then FEFO)
   const availableBatches =
     product.batches
@@ -3466,7 +3461,8 @@ const ProductCard = memo(function ProductCard({
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
             <span className="font-semibold text-slate-900 dark:text-white">
-              총 재고: {totalStock.toLocaleString()} {displayUnit}
+              총 재고: {displayTotalQty.toLocaleString()} box [
+              {totalStock.toLocaleString()} {displayUnit}]
             </span>
             {product.supplierName && (
               <span>공급처: {product.supplierName}</span>
@@ -3607,7 +3603,7 @@ const ProductCard = memo(function ProductCard({
                         product.usageCapacity !== null &&
                         product.usageCapacity !== undefined &&
                         product.usageCapacity > 0
-                          ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
+                          ? `${batch.qty.toLocaleString()} box [${Number(availableQuantity).toFixed(2)} ${displayUnit}]`
                           : batch.inbound_qty !== null &&
                               batch.inbound_qty !== undefined &&
                               product.capacityPerProduct !== null &&
@@ -3615,7 +3611,7 @@ const ProductCard = memo(function ProductCard({
                               product.capacityPerProduct > 0
                             ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
                             : `${batch.qty.toString().padStart(2, "0")}`}{" "}
-                        {displayUnit}
+                        {/* {displayUnit} */}
                       </span>
                       <span
                         className={

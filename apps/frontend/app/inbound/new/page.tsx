@@ -27,7 +27,7 @@ const USAGE_CAPACITY_OPTIONS = [0.1, 0.5, 1, 10, 100] as const;
 const unitOptions = [
   "단위 선택",
   "cc",
-  "mL",
+  "ml",
   "unit",
   "mg",
   "vial",
@@ -285,13 +285,13 @@ export default function InboundNewPage() {
     minStock: 0,
     minStockUnit: "box", // ✅ Changed to always be "box"
     capacityPerProduct: 0,
-    capacityUnit: unitOptions[0] || "cc / mL", // 제품 용량 unit
+    capacityUnit: unitOptions[0] || "cc", // 제품 용량 unit
     usageCapacity: 0,
-    usageCapacityUnit: unitOptions[0] || "cc / mL", // 사용 단위 unit (alohida)
+    usageCapacityUnit: unitOptions[0] || "cc", // 사용 단위 unit (alohida)
     purchasePrice: "",
     purchasePriceUnit: "box", // Fixed to "box" only
     salePrice: "",
-    salePriceUnit: unitOptions[0] || "cc / mL",
+    salePriceUnit: unitOptions[0] || "cc",
     usageSalePrice: "", // 사용량에 대한 별도 판매가
     // Return policy
     refundAmount: "",
@@ -1613,6 +1613,10 @@ export default function InboundNewPage() {
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
                     일부 사용
                   </label>
+                  <label className="text-xs text-slate-500 dark:text-slate-400">
+                    (제품을 일부만 사용하는 경우, '일부 사용'을 체크하고
+                    사용량을 선택해주세요.)
+                  </label>
                 </div>
                 <div className="flex gap-2">
                   <select
@@ -1688,7 +1692,7 @@ export default function InboundNewPage() {
                   공급업체로부터 구매하는 가격
                 </div> */}
               </div>
-              <div>
+              {/* <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                   판매가
                 </label>
@@ -1705,37 +1709,8 @@ export default function InboundNewPage() {
                       }}
                       className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     />
-                    {/* <div className="relative w-28">
-                      <select
-                        value={formData.salePriceUnit}
-                        disabled={true} // Readonly
-                        className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-8 text-sm text-slate-600 cursor-not-allowed transition dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
-                        title="제품 용량 또는 사용 단위에 따라 자동으로 설정됩니다"
-                      >
-                        {unitOptions.slice(1).map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                        <svg
-                          className="h-4 w-4 text-slate-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                    </div> */}
                   </div>
-                  {/* Unit Display Card */}
+
                   {(formData.enableUsageCapacity && formData.usageCapacity) ||
                   formData.capacityPerProduct ? (
                     <div className="mt-0 flex-shrink-0">
@@ -1761,10 +1736,7 @@ export default function InboundNewPage() {
                     </div>
                   ) : null}
                 </div>
-                {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                  고객에게 판매하는 가격
-                </div> */}
-              </div>
+              </div> */}
             </div>
 
             {/* 사용량에 대한 별도 판매가 - 사용량이 입력된 경우에만 표시

@@ -67,6 +67,7 @@ export default function OutboundHistoryPage() {
   const [filterNormal, setFilterNormal] = useState(true); // 정상 (Normal)
   const [filterDamaged, setFilterDamaged] = useState(true); // 파손 (Damaged)
   const [filterDefective, setFilterDefective] = useState(true); // 불량 (Defective)
+  const [filterWaste, setFilterWaste] = useState(true); // 폐기 (Waste)
 
   // Cancel outbound modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -113,16 +114,17 @@ export default function OutboundHistoryPage() {
       let filteredItems = data.items || [];
 
       // Agar barcha filter'lar false bo'lsa, hech narsa ko'rsatilmaydi
-      if (!filterNormal && !filterDamaged && !filterDefective) {
+      if (!filterNormal && !filterDamaged && !filterDefective && !filterWaste) {
         filteredItems = [];
       } else {
-        // Filter items based on isDamaged and isDefective
+        // Filter items based on isDamaged, isDefective, wasteProduct
         filteredItems = filteredItems.filter((item) => {
           const isDamaged = item.isDamaged || false;
           const isDefective = item.isDefective || false;
+          const isWaste = item.wasteProduct || false;
 
-          // 정상 (Normal) - isDamaged va isDefective false
-          if (filterNormal && !isDamaged && !isDefective) {
+          // 정상 (Normal) - isDamaged, isDefective, wasteProduct hammasi false
+          if (filterNormal && !isDamaged && !isDefective && !isWaste) {
             return true;
           }
 
@@ -133,6 +135,11 @@ export default function OutboundHistoryPage() {
 
           // 불량 (Defective) - isDefective true
           if (filterDefective && isDefective) {
+            return true;
+          }
+
+          // 폐기 (Waste) - wasteProduct true
+          if (filterWaste && isWaste) {
             return true;
           }
 
@@ -159,6 +166,7 @@ export default function OutboundHistoryPage() {
     filterNormal,
     filterDamaged,
     filterDefective,
+    filterWaste,
   ]);
 
   useEffect(() => {
@@ -434,6 +442,22 @@ export default function OutboundHistoryPage() {
                 />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   불량
+                </span>
+              </label>
+
+              {/* 폐기 (Waste) */}
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={filterWaste}
+                  onChange={(e) => {
+                    setFilterWaste(e.target.checked);
+                    setCurrentPage(1);
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  폐기
                 </span>
               </label>
             </div>

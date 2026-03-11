@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAccessToken, getTenantId } from "../../../lib/api";
+import { position } from "html2canvas/dist/types/css/property-descriptors/position";
 
 const positionOptions = [
   "직함 선택",
@@ -644,10 +645,6 @@ export default function ProductDetailPage() {
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
                 <div className="grid grid-cols-2 gap-4">
                   <ReadOnlyField
-                    label="제품 재고 수량"
-                    value={`${(product.currentStock || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
-                  />
-                  <ReadOnlyField
                     label="최소 제품 재고"
                     value={`${(product.minStock || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
                   />
@@ -685,7 +682,7 @@ export default function ProductDetailPage() {
                         : "—"
                     }
                   />
-                  <ReadOnlyField
+                  {/* <ReadOnlyField
                     label="판매가"
                     value={
                       product.salePrice !== null &&
@@ -699,7 +696,7 @@ export default function ProductDetailPage() {
                           }`
                         : "—"
                     }
-                  />
+                  /> */}
                 </div>
               </div>
 
@@ -1343,7 +1340,7 @@ function ProductEditForm({
 }: ProductEditFormProps) {
   const unitOptions = [
     "cc",
-    "mL",
+    "ml",
     "unit",
     "mg",
     "vial",
@@ -1368,6 +1365,7 @@ function ProductEditForm({
     useState("");
   const [supplierSearchManagerName, setSupplierSearchManagerName] =
     useState("");
+  const [supplierSearchPosition, setSupplierSearchPosition] = useState("");
   const [supplierSearchPhoneNumber, setSupplierSearchPhoneNumber] =
     useState("");
   const [supplierSearchResults, setSupplierSearchResults] = useState<any[]>([]);
@@ -1382,6 +1380,7 @@ function ProductEditForm({
   // New supplier form state
   const [newSupplierForm, setNewSupplierForm] = useState({
     companyName: "",
+    position: "",
     companyAddress: "",
     businessNumber: "",
     companyPhone: "",
@@ -1466,12 +1465,12 @@ function ProductEditForm({
     status: product.status || "활성",
     unit: product.unit || "",
     // Separate unit fields for synchronization
-    currentStockUnit: product.unit || unitOptions[0] || "cc / mL",
-    minStockUnit: product.unit || unitOptions[0] || "cc / mL",
-    purchasePriceUnit: product.unit || unitOptions[0] || "cc / mL",
-    capacityUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
-    usageCapacityUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
-    salePriceUnit: product.capacityUnit || unitOptions[0] || "cc / mL",
+    currentStockUnit: product.unit || unitOptions[0] || "cc",
+    minStockUnit: product.unit || unitOptions[0] || "cc",
+    purchasePriceUnit: product.unit || unitOptions[0] || "cc",
+    capacityUnit: product.capacityUnit || unitOptions[0] || "cc",
+    usageCapacityUnit: product.capacityUnit || unitOptions[0] || "cc",
+    salePriceUnit: product.capacityUnit || unitOptions[0] || "cc",
     purchasePrice: product.purchasePrice?.toString() || "",
     salePrice: product.salePrice?.toString() || "",
     currentStock: product.inboundQty?.toString() || "",
@@ -2441,40 +2440,13 @@ function ProductEditForm({
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2 mb-1">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 일부 사용
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.enableUsageCapacity}
-                  onChange={(e) =>
-                    handleInputChange("enableUsageCapacity", e.target.checked)
-                  }
-                  className="
-        h-5 w-5 shrink-0 rounded
-        appearance-none bg-white
-        border border-white-300
-        checked:bg-white-500 checked:border-white-500
-        focus:outline-none focus:ring-2 focus:ring-white-500
-        dark:bg-white
-        relative
-        after:content-['']
-        after:absolute after:left-1/2 after:top-1/2
-        after:h-2.5 after:w-1.5
-        after:-translate-x-1/2 after:-translate-y-1/2
-        after:rotate-45
-        after:border-r-2 after:border-b-2
-        after:border-black
-        after:opacity-0
-        checked:after:opacity-100
-      "
-                />
-
-                <span className="text-xs text-slate-600 dark:text-slate-400">
-                  사용 단위 활성화
-                </span>
+              <label className="text-xs text-slate-500 dark:text-slate-400">
+                (제품을 일부만 사용하는 경우, '일부 사용'을 체크하고 사용량을
+                선택해주세요.)
               </label>
             </div>
             <div className="flex gap-2">
@@ -2570,7 +2542,7 @@ function ProductEditForm({
               </div>
             </div>
           </div>
-          <div className="flex flex-col gap-2">
+          {/* <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               판매가
             </label>
@@ -2585,40 +2557,8 @@ function ProductEditForm({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
-                {/* <div className="relative w-28">
-                  <select
-                    value={formData.salePriceUnit}
-                    onChange={() => {}} // Read-only, synced automatically
-                    disabled
-                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-100 px-3 pr-8 text-sm text-slate-500 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
-                    title={
-                      formData.enableUsageCapacity
-                        ? `사용 단위: ${formData.usageCapacityUnit || "—"}`
-                        : `제품 용량: ${formData.capacityUnit || "—"}`
-                    }
-                  >
-                    <option value={formData.salePriceUnit}>
-                      {formData.salePriceUnit || "단위 선택"}
-                    </option>
-                  </select>
-                  <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                    <svg
-                      className="h-4 w-4 text-slate-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </div>
-                </div> */}
               </div>
-              {/* Unit Display Card */}
+
               {(formData.enableUsageCapacity && formData.usageCapacity) ||
               formData.capacityPerProduct ? (
                 <div className="mt-0 flex-shrink-0">
@@ -2642,14 +2582,7 @@ function ProductEditForm({
                 </div>
               ) : null}
             </div>
-            {/* {formData.salePriceUnit && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {formData.enableUsageCapacity
-                  ? `사용 단위와 동기화됨 (${formData.usageCapacityUnit})`
-                  : `제품 용량과 동기화됨 (${formData.capacityUnit})`}
-              </p>
-            )} */}
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -2926,6 +2859,7 @@ function ProductEditForm({
                   // Clear form and certificate data
                   setNewSupplierForm({
                     companyName: "",
+                    position: "",
                     companyAddress: "",
                     businessNumber: "",
                     companyPhone: "",
@@ -2953,15 +2887,33 @@ function ProductEditForm({
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     담당자 이름*
                   </label>
-                  <input
-                    type="text"
-                    value={supplierSearchManagerName}
-                    onChange={(e) =>
-                      setSupplierSearchManagerName(e.target.value)
-                    }
-                    placeholder="성함"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                  />
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={supplierSearchManagerName}
+                      onChange={(e) =>
+                        setSupplierSearchManagerName(e.target.value)
+                      }
+                      placeholder="성함"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                    />
+                    <select
+                      value={supplierSearchPosition}
+                      onChange={(e) =>
+                        setSupplierSearchPosition(e.target.value)
+                      }
+                      className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    >
+                      {positionOptions.map((option) => (
+                        <option
+                          key={option}
+                          value={option === "직함 선택" ? "" : option}
+                        >
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -3182,7 +3134,7 @@ function ProductEditForm({
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    회사 주소 *
+                    회사 주소
                   </label>
                   <input
                     type="text"
@@ -3216,7 +3168,7 @@ function ProductEditForm({
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                    회사 전화번호 *
+                    회사 전화번호
                   </label>
                   <input
                     type="tel"
@@ -3297,6 +3249,7 @@ function ProductEditForm({
                   setNewSupplierForm({
                     companyName: "",
                     companyAddress: "",
+                    position: "",
                     businessNumber: "",
                     companyPhone: "",
                     companyEmail: "",
