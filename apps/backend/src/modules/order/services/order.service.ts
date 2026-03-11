@@ -36,7 +36,7 @@ export class OrderService {
   ) {
     this.productsForOrderCache = new CacheManager({
       maxSize: 100,
-    ttl: 0, // 30 seconds
+      ttl: 0, // 30 seconds
       cleanupInterval: 60000,
       name: "OrderService:Products",
     });
@@ -78,7 +78,7 @@ export class OrderService {
     }
     // Barcha product'larni olish
     const products = await (this.prisma.product.findMany as any)({
-            where: {
+      where: {
         tenant_id: tenantId,
       },
       include: {
@@ -89,6 +89,7 @@ export class OrderService {
               select: {
                 id: true,
                 company_name: true,
+                position: true,
                 name: true,
                 phone_number: true,
                 business_number: true,
@@ -129,7 +130,7 @@ export class OrderService {
         supplierId: supplierId, // ClinicSupplierManager ID
         supplierName: supplierName,
         managerName: managerName,
-        managerPosition: null, // Position is not in ClinicSupplierManager
+        managerPosition: supplierManager?.position ?? null, // Position is not in ClinicSupplierManager
         unitPrice,
         currentStock: product.current_stock ?? 0,
         minStock: product.min_stock ?? 0,
@@ -695,14 +696,14 @@ export class OrderService {
       }));
     } else if (sessionId) {
       // Draft'dan olish (eski logic)
-    const draft = await this.orderRepository.findDraftBySession(
-      sessionId,
-      tenantId
-    );
+      const draft = await this.orderRepository.findDraftBySession(
+        sessionId,
+        tenantId
+      );
 
-    if (!draft) {
-      throw new NotFoundException("Draft not found");
-    }
+      if (!draft) {
+        throw new NotFoundException("Draft not found");
+      }
 
       items = Array.isArray(draft.items) ? draft.items : [];
     } else {
@@ -820,58 +821,62 @@ export class OrderService {
       let order: any;
       try {
         order = await this.prisma.$transaction(async (tx: any) => {
-        const order = await (tx as any).order.create({
-          data: {
-            tenant_id: tenantId,
-            order_no: orderNo,
+          const order = await (tx as any).order.create({
+            data: {
+              tenant_id: tenantId,
+              order_no: orderNo,
               status: initialStatus, // ✅ Dynamic status
-            supplier_id: supplierId !== "unknown" ? supplierId : null,
-            total_amount: group.totalAmount,
-            expected_delivery_date: dto.expectedDeliveryDate
-              ? new Date(dto.expectedDeliveryDate)
-              : null,
+              supplier_id: supplierId !== "unknown" ? supplierId : null,
+              total_amount: group.totalAmount,
+              expected_delivery_date: dto.expectedDeliveryDate
+                ? new Date(dto.expectedDeliveryDate)
+                : null,
               confirmed_at: isManualSupplier ? new Date() : null, // ✅ Auto-confirm timestamp
-            created_by: createdBy ?? null,
-            memo: supplierMemo,
+              created_by: createdBy ?? null,
+              memo: supplierMemo,
               clinic_manager_name: dto.clinicManagerName || null,
-          },
-        });
+            },
+          });
 
-        // Order items yaratish
-        await Promise.all(
-          group.items.map((item: any) =>
-            (tx as any).orderItem.create({
-              data: {
-                tenant_id: tenantId,
-                order_id: order.id,
-                product_id: item.productId,
-                batch_id: item.batchId ?? null,
-                  ordered_quantity: item.quantity,      // ✅ Clinic order qilgan (o'zgarmas)
+          // Order items yaratish
+          await Promise.all(
+            group.items.map((item: any) =>
+              (tx as any).orderItem.create({
+                data: {
+                  tenant_id: tenantId,
+                  order_id: order.id,
+                  product_id: item.productId,
+                  batch_id: item.batchId ?? null,
+                  ordered_quantity: item.quantity, // ✅ Clinic order qilgan (o'zgarmas)
                   confirmed_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier auto-confirm, platform supplier null
-                  inbound_quantity: null,               // ✅ Hali inbound qilinmagan
+                  inbound_quantity: null, // ✅ Hali inbound qilinmagan
                   pending_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier: confirmed = pending, Platform: null until confirmed
-                unit_price: item.unitPrice,
-                total_price: item.totalPrice,
-                memo: item.memo ?? null,
-              },
-            })
-          )
-        );
+                  unit_price: item.unitPrice,
+                  total_price: item.totalPrice,
+                  memo: item.memo ?? null,
+                },
+              })
+            )
+          );
 
-        return order;
-      });
+          return order;
+        });
       } catch (transactionError: any) {
         // ✅ Telegram notification for transaction rollback
         if (
           process.env.NODE_ENV === "production" &&
           process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
         ) {
-          await this.telegramService.sendSystemAlert(
-            "Transaction Rollback",
-            `Order creation transaction failed: ${transactionError?.message || "Unknown error"}\nOrder No: ${orderNo}\nTenant: ${tenantId}\nTotal Amount: ${group.totalAmount.toLocaleString()}원`
-          ).catch((err) => {
-            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
-          });
+          await this.telegramService
+            .sendSystemAlert(
+              "Transaction Rollback",
+              `Order creation transaction failed: ${transactionError?.message || "Unknown error"}\nOrder No: ${orderNo}\nTenant: ${tenantId}\nTotal Amount: ${group.totalAmount.toLocaleString()}원`
+            )
+            .catch((err) => {
+              this.logger.error(
+                `Failed to send Telegram alert: ${err.message}`
+              );
+            });
         }
         throw transactionError; // Re-throw to let caller handle
       }
@@ -907,13 +912,13 @@ export class OrderService {
     try {
       await this.prisma.executeWithRetry(async () => {
         const draft = await (this.prisma as any).orderDraft.findUnique({
-        where: {
-          tenant_id_session_id: {
-            tenant_id: tenantId,
-            session_id: sessionId,
+          where: {
+            tenant_id_session_id: {
+              tenant_id: tenantId,
+              session_id: sessionId,
+            },
           },
-        },
-      });
+        });
 
         if (draft) {
           await (this.prisma as any).orderDraft.delete({
@@ -949,10 +954,10 @@ export class OrderService {
     const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
     const day = String(date.getDate()).padStart(2, "0"); // DD
     const dateStr = `${year}${month}${day}`; // YYMMDD
-    
+
     // Random 6 digits
     const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     return `${dateStr}${randomDigits}`;
   }
 
@@ -1272,7 +1277,7 @@ export class OrderService {
       if (supplierId && suppliersMap.has(supplierId)) {
         const supplier = suppliersMap.get(supplierId);
         supplierName = supplier.company_name || supplierName;
-        
+
         supplierDetails = {
           id: supplier.id,
           companyName: supplier.company_name || "",
@@ -1308,7 +1313,7 @@ export class OrderService {
           supplierDetails.position = manager.position || null;
         } else if (clinicSupplierManager) {
           managerName = clinicSupplierManager.name || "";
-            supplierDetails.managerName = managerName;
+          supplierDetails.managerName = managerName;
           supplierDetails.managerPhone =
             clinicSupplierManager.phone_number || null;
           supplierDetails.managerEmail =
@@ -1322,18 +1327,18 @@ export class OrderService {
         if (clinicSupplierManager) {
           const fallbackSupplierId =
             clinicSupplierManager.linkedManager?.supplier?.id;
-            
-            // Try to find supplier by the fallback ID
-            if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
-              const supplier = suppliersMap.get(fallbackSupplierId);
-              supplierName = supplier.company_name || supplierName;
-              supplierDetails = {
-                id: supplier.id,
-                companyName: supplier.company_name || "",
-                companyAddress: supplier.company_address || null,
-                companyPhone: supplier.company_phone || null,
-                companyEmail: supplier.company_email || null,
-                businessNumber: supplier.business_number || "",
+
+          // Try to find supplier by the fallback ID
+          if (fallbackSupplierId && suppliersMap.has(fallbackSupplierId)) {
+            const supplier = suppliersMap.get(fallbackSupplierId);
+            supplierName = supplier.company_name || supplierName;
+            supplierDetails = {
+              id: supplier.id,
+              companyName: supplier.company_name || "",
+              companyAddress: supplier.company_address || null,
+              companyPhone: supplier.company_phone || null,
+              companyEmail: supplier.company_email || null,
+              businessNumber: supplier.business_number || "",
               isPlatformSupplier: isPlatformSupplier, // ✅ Use pre-calculated value
             };
 
@@ -1355,14 +1360,14 @@ export class OrderService {
 
             // Variant 3: Use contact info from ClinicSupplierManager
             if (manager) {
-                managerName = manager.name || "";
-                supplierDetails.managerName = manager.name || "";
-                supplierDetails.managerPhone = manager.phone_number || null;
-                supplierDetails.managerEmail = manager.email1 || null;
-                supplierDetails.position = manager.position || null;
-              } else {
+              managerName = manager.name || "";
+              supplierDetails.managerName = manager.name || "";
+              supplierDetails.managerPhone = manager.phone_number || null;
+              supplierDetails.managerEmail = manager.email1 || null;
+              supplierDetails.position = manager.position || null;
+            } else {
               managerName = clinicSupplierManager.name || "";
-                supplierDetails.managerName = managerName;
+              supplierDetails.managerName = managerName;
               supplierDetails.managerPhone =
                 clinicSupplierManager.phone_number || null;
               supplierDetails.managerEmail =
@@ -1370,20 +1375,20 @@ export class OrderService {
                 clinicSupplierManager.email2 ||
                 null;
               supplierDetails.position = clinicSupplierManager.position || null;
-              }
-            } else {
+            }
+          } else {
             // Last resort: use clinicSupplierManager data
             // This could be platform supplier without Supplier entry, OR manual supplier
             supplierName = clinicSupplierManager.company_name || supplierName;
             managerName = clinicSupplierManager.name || "";
 
             // Create supplierDetails from clinicSupplierManager with all available fields
-              supplierDetails = {
-                companyName: supplierName,
+            supplierDetails = {
+              companyName: supplierName,
               companyAddress: clinicSupplierManager.company_address || null,
               companyPhone: clinicSupplierManager.company_phone || null,
               companyEmail: clinicSupplierManager.company_email || null,
-                managerName: managerName,
+              managerName: managerName,
               managerPhone: clinicSupplierManager.phone_number || null,
               managerEmail:
                 clinicSupplierManager.email1 ||
@@ -1404,10 +1409,11 @@ export class OrderService {
         brand: item.product?.brand || "",
         batchId: item.batch_id,
         batchNo: item.batch?.batch_no || null,
-        orderedQuantity: item.ordered_quantity,      // ✅ Clinic order qilgan (o'zgarmas)
+        orderedQuantity: item.ordered_quantity, // ✅ Clinic order qilgan (o'zgarmas)
         confirmedQuantity: item.confirmed_quantity ?? 0, // ✅ Supplier tasdiqlagan (null bo'lsa 0)
-        inboundQuantity: item.inbound_quantity,      // ✅ Clinic inbound qilgan
-        pendingQuantity: (item.confirmed_quantity ?? 0) - (item.inbound_quantity || 0), // ✅ Qolgan
+        inboundQuantity: item.inbound_quantity, // ✅ Clinic inbound qilgan
+        pendingQuantity:
+          (item.confirmed_quantity ?? 0) - (item.inbound_quantity || 0), // ✅ Qolgan
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
         memo: item.memo || null,
@@ -1415,7 +1421,8 @@ export class OrderService {
 
       // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
       const totalAmount = formattedItems.reduce(
-        (sum: number, item: any) => sum + (item.orderedQuantity || 0) * (item.unitPrice || 0),
+        (sum: number, item: any) =>
+          sum + (item.orderedQuantity || 0) * (item.unitPrice || 0),
         0
       );
 
@@ -1816,7 +1823,7 @@ export class OrderService {
 
     for (const item of items) {
       const supplierId = item.supplierId || "unknown";
-      
+
       // Item ID mapping
       const itemId = item.id;
       itemIdMap[itemId] = {
@@ -1827,8 +1834,8 @@ export class OrderService {
       };
 
       // Highlight flag (yangi qo'shilgan yoki highlightItemIds'da bo'lsa)
-      const isHighlighted = 
-        item.isNewlyAdded || 
+      const isHighlighted =
+        item.isNewlyAdded ||
         (highlightItemIds && highlightItemIds.includes(itemId));
 
       if (!supplierGroups[supplierId]) {
@@ -1855,8 +1862,8 @@ export class OrderService {
       sessionId: draft.session_id,
       items: items.map((item: any) => ({
         ...item,
-        isHighlighted: 
-          item.isNewlyAdded || 
+        isHighlighted:
+          item.isNewlyAdded ||
           (highlightItemIds && highlightItemIds.includes(item.id)),
       })),
       totalAmount: totalAmount,
@@ -2685,12 +2692,16 @@ export class OrderService {
           process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true" &&
           order.total_amount > 1000000
         ) {
-          await this.telegramService.sendSystemAlert(
-            "High-Value Order Email Failed",
-            `Order ${order.order_no} (${order.total_amount.toLocaleString()}원) email notification failed: ${emailError?.message || "Unknown error"}`
-          ).catch((err) => {
-            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
-          });
+          await this.telegramService
+            .sendSystemAlert(
+              "High-Value Order Email Failed",
+              `Order ${order.order_no} (${order.total_amount.toLocaleString()}원) email notification failed: ${emailError?.message || "Unknown error"}`
+            )
+            .catch((err) => {
+              this.logger.error(
+                `Failed to send Telegram alert: ${err.message}`
+              );
+            });
         }
       }
     } catch (error: any) {
@@ -2704,9 +2715,9 @@ export class OrderService {
         process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
       ) {
         await this.telegramService.sendErrorAlert(error, {
-          url:`/orders/${order.id}`,
+          url: `/orders/${order.id}`,
           method: "POST",
-          tenantId: tenantId
+          tenantId: tenantId,
         });
       }
       // Don't throw - order already created in clinic DB, supplier notification is optional
@@ -2782,30 +2793,34 @@ export class OrderService {
       });
 
       // ✅ YANGI: Update OrderItem'lar quantity va price'ni adjustments dan yangilash
-      if (status === "supplier_confirmed" && adjustments && adjustments.length > 0) {
+      if (
+        status === "supplier_confirmed" &&
+        adjustments &&
+        adjustments.length > 0
+      ) {
         this.logger.log(
           `📦 Processing ${adjustments.length} adjustments for order ${orderNo}`
         );
-        
+
         // ✅ Debug: updatedItems va order.items ni ko'rsatish
         if (updatedItems && updatedItems.length > 0) {
           this.logger.debug(
-            `   UpdatedItems from supplier: ${updatedItems.map((item: any) => `itemId=${item.itemId}, productName=${item.productName}, brand=${item.brand}, unitPrice=${item.unitPrice}`).join('; ')}`
+            `   UpdatedItems from supplier: ${updatedItems.map((item: any) => `itemId=${item.itemId}, productName=${item.productName}, brand=${item.brand}, unitPrice=${item.unitPrice}`).join("; ")}`
           );
         }
         this.logger.debug(
-          `   OrderItems in clinic: ${order.items.map((item: any) => `id=${item.id}, productName=${item.product?.name}, brand=${item.product?.brand}, unitPrice=${item.unit_price}`).join('; ')}`
+          `   OrderItems in clinic: ${order.items.map((item: any) => `id=${item.id}, productName=${item.product?.name}, brand=${item.product?.brand}, unitPrice=${item.unit_price}`).join("; ")}`
         );
-        
+
         for (const adjustment of adjustments) {
           this.logger.debug(
             `   Adjustment: itemId=${adjustment.itemId}, productId=${adjustment.productId}, actualQuantity=${adjustment.actualQuantity}, actualPrice=${adjustment.actualPrice}`
           );
-          
+
           // ✅ Muammo: adjustment.itemId supplier side'dagi SupplierOrderItem.id bo'lishi mumkin
           // ✅ Yechim: updatedItems dan foydalanish - supplier side'dagi item'ni topish, keyin uning ma'lumotlari orqali clinic side'dagi OrderItem ni topish
           let orderItem = null;
-          
+
           // ✅ 1. Avval itemId orqali topish (agar clinic side'dagi OrderItem.id bo'lsa)
           orderItem = order.items.find(
             (item: any) => item.id === adjustment.itemId
@@ -2816,7 +2831,7 @@ export class OrderService {
             const supplierItem = updatedItems.find(
               (item: any) => item.itemId === adjustment.itemId
             );
-            
+
             if (supplierItem) {
               // ✅ Supplier side'dagi item ma'lumotlari orqali clinic side'dagi OrderItem ni topish
               // productName, brand, quantity (original), unitPrice orqali match qilish
@@ -2828,7 +2843,7 @@ export class OrderService {
                   item.unit_price === supplierItem.unitPrice
                 );
               });
-              
+
               if (!orderItem) {
                 // ✅ Agar hali ham topilmasa, faqat productName va unitPrice orqali
                 orderItem = order.items.find((item: any) => {
@@ -2852,9 +2867,14 @@ export class OrderService {
           if (orderItem) {
             // ✅ unit_price = clinic order narxi (o'zgarmas). confirmed_unit_price = supplier tasdiqlagan narx.
             const oldConfirmedQuantity = orderItem.confirmed_quantity;
-            const oldConfirmedPrice = orderItem.confirmed_unit_price ?? orderItem.unit_price;
-            const newConfirmedQuantity = adjustment.actualQuantity ?? orderItem.confirmed_quantity;
-            const newConfirmedUnitPrice = adjustment.actualPrice ?? orderItem.confirmed_unit_price ?? orderItem.unit_price;
+            const oldConfirmedPrice =
+              orderItem.confirmed_unit_price ?? orderItem.unit_price;
+            const newConfirmedQuantity =
+              adjustment.actualQuantity ?? orderItem.confirmed_quantity;
+            const newConfirmedUnitPrice =
+              adjustment.actualPrice ??
+              orderItem.confirmed_unit_price ??
+              orderItem.unit_price;
             const newTotalPrice = newConfirmedQuantity * newConfirmedUnitPrice;
 
             await (this.prisma as any).orderItem.update({
@@ -2895,7 +2915,7 @@ export class OrderService {
               `⚠️ Could not find OrderItem with itemId=${adjustment.itemId} or productId=${adjustment.productId}`
             );
             this.logger.warn(
-              `   Available OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}`).join(', ')}`
+              `   Available OrderItems: ${order.items.map((item: any) => `id=${item.id}, productId=${item.product_id}`).join(", ")}`
             );
           }
         }
@@ -3257,7 +3277,7 @@ export class OrderService {
     // Cache disabled for real-time order updates (입고 대기 must show latest data)
     // Previous issue: Stale cache returned old data even with TTL=0
     // BYPASS CACHE LOGIC to ensure real-time accuracy
-    
+
     // Commented out cache check:
     // const cached = this.getCachedPendingInbound(tenantId);
     // if (cached) {
@@ -3272,17 +3292,19 @@ export class OrderService {
         where: {
           tenant_id: tenantId,
           status: {
-            in: ["pending", "supplier_confirmed", "pending_inbound", "rejected"], // ✅ Added pending_inbound
+            in: [
+              "pending",
+              "supplier_confirmed",
+              "pending_inbound",
+              "rejected",
+            ], // ✅ Added pending_inbound
           },
         },
         include: {
           items: {
             where: {
               // ✅ FIXED: Show items with pending_quantity > 0 OR null (for old orders)
-              OR: [
-                { pending_quantity: { gt: 0 } },
-                { pending_quantity: null },
-              ],
+              OR: [{ pending_quantity: { gt: 0 } }, { pending_quantity: null }],
             },
             include: {
               product: {
@@ -3374,7 +3396,9 @@ export class OrderService {
 
     // ✅ NO MORE RUNTIME FILTERING! Database already filtered by pending_quantity > 0
     // Filter out orders with no pending items (already done by Prisma)
-    const filteredOrders = orders.filter((order: any) => order.items.length > 0);
+    const filteredOrders = orders.filter(
+      (order: any) => order.items.length > 0
+    );
 
     this.logger.log(
       `📊 [getPendingInboundOrders] Found ${filteredOrders.length} orders with pending items (database filtered)`
@@ -3463,12 +3487,17 @@ export class OrderService {
           productName: item.product?.name || "제품",
           brand: item.product?.brand || "",
           unit: item.product?.unit || "EA",
-          orderedQuantity: item.ordered_quantity,                              // ✅ Original order quantity (o'zgarmas)
-          confirmedQuantity: adjustment?.actualQuantity || item.confirmed_quantity || item.ordered_quantity, // ✅ Supplier confirmed (fallback)
-          inboundQuantity: item.inbound_quantity || 0,                         // ✅ Already inbound
-          pendingQuantity: (item.confirmed_quantity || item.ordered_quantity) - (item.inbound_quantity || 0), // ✅ Remaining (20ta)
-          orderedPrice: item.unit_price,                                       // Original (clinic order) price
-          confirmedPrice: item.confirmed_unit_price ?? item.unit_price,        // Supplier confirmed (stored)
+          orderedQuantity: item.ordered_quantity, // ✅ Original order quantity (o'zgarmas)
+          confirmedQuantity:
+            adjustment?.actualQuantity ||
+            item.confirmed_quantity ||
+            item.ordered_quantity, // ✅ Supplier confirmed (fallback)
+          inboundQuantity: item.inbound_quantity || 0, // ✅ Already inbound
+          pendingQuantity:
+            (item.confirmed_quantity || item.ordered_quantity) -
+            (item.inbound_quantity || 0), // ✅ Remaining (20ta)
+          orderedPrice: item.unit_price, // Original (clinic order) price
+          confirmedPrice: item.confirmed_unit_price ?? item.unit_price, // Supplier confirmed (stored)
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
           // Product-level expiry defaults
@@ -3866,7 +3895,7 @@ export class OrderService {
             itemId: item.id,
             productId: item.product_id, // ✅ Product ID for matching in supplier side
             inboundQuantity: item.confirmed_quantity, // ✅ To'liq inbound (supplier confirmed quantity)
-            originalQuantity: item.ordered_quantity,  // ✅ Dastlabki order quantity
+            originalQuantity: item.ordered_quantity, // ✅ Dastlabki order quantity
           }));
 
           // ✅ Update inbound_quantity for all items (to'liq inbound)
@@ -3919,7 +3948,12 @@ export class OrderService {
     orderNo: string,
     supplierTenantId: string,
     clinicTenantId: string,
-    inboundItems?: Array<{ itemId: string; productId: string; inboundQuantity: number; originalQuantity: number }>
+    inboundItems?: Array<{
+      itemId: string;
+      productId: string;
+      inboundQuantity: number;
+      originalQuantity: number;
+    }>
   ) {
     try {
       const supplierApiUrl =
@@ -3935,8 +3969,8 @@ export class OrderService {
 
       // ✅ Muammo: Partial inbound qilganda order -P (pending) yoki -C (completed) suffix bilan bo'linadi
       // ✅ Yechim: Original order number'ni topish - suffix'ni olib tashlash
-      const originalOrderNo = orderNo.replace(/-[PC]$/, ''); // ✅ -P yoki -C ni olib tashlash
-      
+      const originalOrderNo = orderNo.replace(/-[PC]$/, ""); // ✅ -P yoki -C ni olib tashlash
+
       if (originalOrderNo !== orderNo) {
         this.logger.log(
           `📦 Split order detected: ${orderNo} → ${originalOrderNo} (removed suffix)`
@@ -3966,18 +4000,22 @@ export class OrderService {
         this.logger.error(
           `Failed to notify supplier-backend of completion: ${response.status} ${errorText}`
         );
-        
+
         // ✅ Telegram notification for supplier-backend communication failures
         if (
           process.env.NODE_ENV === "production" &&
           process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
         ) {
-          await this.telegramService.sendSystemAlert(
-            "Supplier Notification Failed",
-            `Order ${orderNo} completion notification failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`
-          ).catch((err) => {
-            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
-          });
+          await this.telegramService
+            .sendSystemAlert(
+              "Supplier Notification Failed",
+              `Order ${orderNo} completion notification failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`
+            )
+            .catch((err) => {
+              this.logger.error(
+                `Failed to send Telegram alert: ${err.message}`
+              );
+            });
         }
       }
     } catch (error: any) {
@@ -3985,20 +4023,22 @@ export class OrderService {
         `Error notifying supplier-backend of completion: ${error.message}`,
         error.stack
       );
-      
+
       // ✅ Telegram notification for supplier-backend communication failures
       if (
         process.env.NODE_ENV === "production" &&
         process.env.ENABLE_TELEGRAM_NOTIFICATIONS === "true"
       ) {
-        await this.telegramService.sendSystemAlert(
-          "Supplier Notification Failed",
-          `Order ${orderNo} completion notification failed: ${error.message}`
-        ).catch((err) => {
-          this.logger.error(`Failed to send Telegram alert: ${err.message}`);
-        });
+        await this.telegramService
+          .sendSystemAlert(
+            "Supplier Notification Failed",
+            `Order ${orderNo} completion notification failed: ${error.message}`
+          )
+          .catch((err) => {
+            this.logger.error(`Failed to send Telegram alert: ${err.message}`);
+          });
       }
-      
+
       // Don't throw - order is already completed in clinic DB
     }
   }
@@ -4260,7 +4300,7 @@ export class OrderService {
         const inboundedItemsMap = new Map<string, number>(
           dto.inboundedItems.map((item: any) => [
             item.itemId,
-            typeof item.inboundQty === 'number' ? item.inboundQty : 0,
+            typeof item.inboundQty === "number" ? item.inboundQty : 0,
           ])
         );
 
@@ -4275,11 +4315,17 @@ export class OrderService {
         // ✅ Update each item's inbound_quantity
         for (const item of originalOrder.items) {
           const inboundQty = inboundedItemsMap.get(item.id);
-          
-          if (inboundQty !== undefined && inboundQty !== null && typeof inboundQty === 'number' && inboundQty > 0) {
+
+          if (
+            inboundQty !== undefined &&
+            inboundQty !== null &&
+            typeof inboundQty === "number" &&
+            inboundQty > 0
+          ) {
             const currentInboundQty = item.inbound_quantity || 0;
             const totalInboundQty = currentInboundQty + inboundQty;
-            const confirmedQty = item.confirmed_quantity || item.ordered_quantity;
+            const confirmedQty =
+              item.confirmed_quantity || item.ordered_quantity;
 
             // ✅ SIMPLE UPDATE - no split, with pending_quantity!
             await tx.orderItem.update({
@@ -4314,8 +4360,10 @@ export class OrderService {
         }
 
         // ✅ Update order status based on inbound completion
-        const newStatus = allItemsFullyInbound ? "completed" : "pending_inbound";
-        
+        const newStatus = allItemsFullyInbound
+          ? "completed"
+          : "pending_inbound";
+
         await tx.order.update({
           where: { id: originalOrder.id },
           data: {
@@ -4337,7 +4385,9 @@ export class OrderService {
             // Get supplier's tenant_id
             const clinicSupplierManager = await this.prisma.executeWithRetry(
               async () => {
-                return await (this.prisma as any).clinicSupplierManager.findUnique({
+                return await (
+                  this.prisma as any
+                ).clinicSupplierManager.findUnique({
                   where: { id: originalOrder.supplier_id },
                   include: {
                     linkedManager: {

@@ -80,6 +80,7 @@ export default function InboundNewPage() {
   const [existingProductId, setExistingProductId] = useState<string | null>(
     null
   );
+  const [showBarcodeHelpModal, setShowBarcodeHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // Flag to bypass unsaved changes check when saving
   const [supplierManagers, setSupplierManagers] = useState<
     Array<{
@@ -1272,7 +1273,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <InfoIcon className="h-5 w-5 text-sky-500" />
-            제품 정보 *
+            제품 정보 <span className="text-red-500">*</span>
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none">
             <div className="p-6 sm:p-10">
@@ -1385,9 +1386,18 @@ export default function InboundNewPage() {
                         }
                       />
                       <div className="flex flex-col gap-2">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          바코드 번호 <span className="text-red-500">*</span>
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            바코드 번호
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowBarcodeHelpModal(true)}
+                            className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                          >
+                            스케너 없어요?
+                          </button>
+                        </div>
                         <div className="flex gap-2">
                           <input
                             type="text"
@@ -1486,7 +1496,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <InfoIcon className="h-5 w-5 text-sky-500" />
-            제품 수량 및 용량 설정 *
+            제품 수량 및 용량 설정 <span className="text-red-500">*</span>
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-4">
@@ -1659,7 +1669,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <DollarIcon className="h-5 w-5 text-emerald-500" />
-            가격 정보 *
+            가격 정보
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             <div className="grid gap-6 md:grid-cols-2">
@@ -1816,7 +1826,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <RefreshIcon className="h-5 w-5 text-amber-500" />
-            반납 관리 *
+            반납 관리
           </h2>
 
           <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-6 shadow-lg shadow-amber-200/40 dark:border-amber-500/40 dark:bg-amber-500/10">
@@ -1871,7 +1881,7 @@ export default function InboundNewPage() {
                 />
                 <InputField
                   label="반납품 보관 위치"
-                  placeholder="보관 위치 입력하거나 선택하세요"
+                  placeholder="보관 위치를 입력해 주세요.*미입력 시 제품 위치로 자동 기록됩니다"
                   value={formData.returnStorage}
                   onChange={(e) =>
                     handleInputChange("returnStorage", e.target.value)
@@ -1956,7 +1966,7 @@ export default function InboundNewPage() {
         <section className="space-y-6">
           <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
             <TruckIcon className="h-5 w-5 text-indigo-500" />
-            공급업체 정보 *
+            공급업체 정보 <span className="text-red-500">*</span>
           </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
             {selectedSupplierDetails ? (
@@ -3009,6 +3019,111 @@ export default function InboundNewPage() {
                 확인
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barcode manual entry help modal (스케너 없어요?) */}
+      {showBarcodeHelpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                바코드 번호 입력해주세요
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowBarcodeHelpModal(false)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                aria-label="닫기"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+              제품 박스 QR 코드 옆에 (01) 다음 숫자
+            </p>
+            <div className="mb-5 flex gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              {/* QR code image – o'zingiz qo'yishingiz mumkin, masalan: <img src="..." alt="QR" className="h-14 w-14 object-contain" /> */}
+              <img
+                src="/images/qr-code.png"
+                alt="QR"
+                className="h-24 w-24 mt-0.5 shrink-0 object-contain rounded-lg"
+              />
+
+              <div className="min-w-0 flex-1 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-red-600 dark:text-red-400">
+                    (01)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="font-medium text-red-600 dark:text-red-400 flex items-center justify-center gap-1">
+                    바코드 번호
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (10)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    Lot 번호
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (17)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    유효기간
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (11)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    제조날짜
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              혹시 스캐너 필요하시면{" "}
+              <Link
+                href="/settings/support"
+                className="font-medium text-sky-600 underline hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+              >
+                고객센터
+              </Link>
+              를 통해서 연락해주세요.
+            </p>
           </div>
         </div>
       )}

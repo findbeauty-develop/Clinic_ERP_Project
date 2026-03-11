@@ -2621,7 +2621,7 @@ function ProductEditForm({
               onChange={(e) =>
                 handleInputChange("returnStorage", e.target.value)
               }
-              placeholder="보관 위치 입력하거나 선택하세요"
+              placeholder="보관 위치를 입력해 주세요.*미입력 시 제품 위치로 자동 기록됩니다"
             />
           </div>
         )}

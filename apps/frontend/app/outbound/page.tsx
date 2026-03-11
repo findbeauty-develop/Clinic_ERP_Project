@@ -193,6 +193,10 @@ function OutboundPageContent() {
     null
   );
 
+  // ✅ 수동 출고 배치 확인 modal (출고 하기 bosilganda)
+  const [showOutboundConfirmModal, setShowOutboundConfirmModal] =
+    useState(false);
+
   // Product expand/collapse state
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     new Set()
@@ -1432,7 +1436,6 @@ function OutboundPageContent() {
       // Natijalarni ko'rsatish
       if (allSuccess) {
         if (managerName.trim()) addRecentOutboundManager(managerName.trim());
-        alert("출고가 완료되었습니다.");
         setFailedItems([]);
         setScheduledItems([]);
         setChartNumber("");
@@ -3118,7 +3121,7 @@ function OutboundPageContent() {
                 {/* Action Buttons - Fixed at bottom */}
                 <div className="flex gap-3 pt-4">
                   <button
-                    onClick={handleSubmit}
+                    onClick={() => setShowOutboundConfirmModal(true)}
                     disabled={
                       submitting ||
                       scheduledItems.length === 0 ||
@@ -3189,6 +3192,54 @@ function OutboundPageContent() {
           </div>
         </div>
       </div>
+
+      {/* ✅ 수동 출고 배치 확인 Modal (출고 하기 bosilganda) */}
+      {showOutboundConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <button
+              type="button"
+              onClick={() => setShowOutboundConfirmModal(false)}
+              className="absolute right-4 top-4 rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              aria-label="닫기"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h2 className="pr-8 text-lg font-bold text-slate-900 dark:text-white">
+              수동 출고 배치 확인
+            </h2>
+            <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+              실제로 사용한 배치와 선택한 배치가{" "}
+              <span className="font-semibold text-red-600 dark:text-red-400">일치하는지</span>
+              {" "}확인해주세요.
+            </p>
+            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+              배치가 다를 경우 재고 수량이 정확하지 않을 수 있습니다.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowOutboundConfirmModal(false)}
+                className="text-sm font-medium text-slate-600 underline hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                배치 다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOutboundConfirmModal(false);
+                  handleSubmit();
+                }}
+                className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+                출고 확정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✅ Navigation Warning Modal */}
       {showNavigationWarning && (

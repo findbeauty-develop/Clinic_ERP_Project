@@ -1513,6 +1513,7 @@ const ProductCard = memo(function ProductCard({
     useState(false);
   const [showBatchEditStaffSuggestions, setShowBatchEditStaffSuggestions] =
     useState(false);
+  const [showBarcodeHelpModal, setShowBarcodeHelpModal] = useState(false);
 
   // Batch form state
   const [batchForm, setBatchForm] = useState({
@@ -2048,516 +2049,501 @@ const ProductCard = memo(function ProductCard({
   };
 
   return (
-    <div
-      id={`product-card-${product.id}`}
-      className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition dark:border-slate-800 dark:bg-slate-900/70"
-    >
-      {/* Faqat shu qatorga bosilganda dropdown ochiladi/yopiladi; 기존 배치 목록 ichida bosish yopmaydi */}
+    <>
       <div
-        onClick={handleCardClick}
-        className="flex cursor-pointer flex-col gap-4 sm:flex-row sm:items-center hover:border-sky-200"
+        id={`product-card-${product.id}`}
+        className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition dark:border-slate-800 dark:bg-slate-900/70"
       >
-        <div className="flex items-start gap-4">
-          <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50">
-            {product.productImage ? (
-              <img
-                src={
-                  product.productImage +
-                  (product.productImage.includes("?") ? "&" : "?") +
-                  "v=" +
-                  (product.updated_at || Date.now())
-                }
-                alt={product.productName}
-                className="h-full w-full rounded-xl object-cover"
-                onError={(e) => {
-                  // Fallback if image fails to load
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                No Image
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {product.category}
-              </span>
+        {/* Faqat shu qatorga bosilganda dropdown ochiladi/yopiladi; 기존 배치 목록 ichida bosish yopmaydi */}
+        <div
+          onClick={handleCardClick}
+          className="flex cursor-pointer flex-col gap-4 sm:flex-row sm:items-center hover:border-sky-200"
+        >
+          <div className="flex items-start gap-4">
+            <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50">
+              {product.productImage ? (
+                <img
+                  src={
+                    product.productImage +
+                    (product.productImage.includes("?") ? "&" : "?") +
+                    "v=" +
+                    (product.updated_at || Date.now())
+                  }
+                  alt={product.productName}
+                  className="h-full w-full rounded-xl object-cover"
+                  onError={(e) => {
+                    // Fallback if image fails to load
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                  No Image
+                </div>
+              )}
             </div>
-            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
-              {product.productName}
-            </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {product.brand}
-            </p>
-
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-              <span className="inline-flex items-center gap-1">
-                <BoxIcon className="h-4 w-4" />
-                {calculatedCurrentStock.toLocaleString()} /{" "}
-                {product.minStock.toLocaleString()} {product.unit ?? "EA"}
-              </span>
-
-              {product.supplierName && (
-                <span className="inline-flex items-center gap-1">
-                  <TruckIcon className="h-4 w-4 text-indigo-500" />
-                  {product.supplierName}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {product.category}
                 </span>
-              )}
-              {product.managerName && (
+              </div>
+              <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
+                {product.productName}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {product.brand}
+              </p>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                 <span className="inline-flex items-center gap-1">
-                  {product.managerName} {product.managerPosition}
+                  <BoxIcon className="h-4 w-4" />
+                  {calculatedCurrentStock.toLocaleString()} /{" "}
+                  {product.minStock.toLocaleString()} {product.unit ?? "EA"}
                 </span>
-              )}
-              {/* {product.managerPosition && (
+
+                {product.supplierName && (
+                  <span className="inline-flex items-center gap-1">
+                    <TruckIcon className="h-4 w-4 text-indigo-500" />
+                    {product.supplierName}
+                  </span>
+                )}
+                {product.managerName && (
+                  <span className="inline-flex items-center gap-1">
+                    {product.managerName} {product.managerPosition}
+                  </span>
+                )}
+                {/* {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
                   
                 </span>
               )} */}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          {isLowStock && (
-            <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600 dark:bg-rose-500/10 dark:text-rose-300">
-              재고부족
-            </span>
-          )}
-          <Link
-            href={`/products/${product.id}`}
-            onClick={handleButtonClick}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-          >
-            <PencilIcon className="h-3.5 w-3.5" />
-            상세 보기
-          </Link>
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {isLowStock && (
+              <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600 dark:bg-rose-500/10 dark:text-rose-300">
+                재고부족
+              </span>
+            )}
+            <Link
+              href={`/products/${product.id}`}
+              onClick={handleButtonClick}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <PencilIcon className="h-3.5 w-3.5" />
+              상세 보기
+            </Link>
 
-          <button
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            aria-expanded={isExpanded}
-          >
-            {isExpanded ? "" : ""}
-            <ChevronIcon
-              className={`h-3 w-3 transition ${isExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
+            <button
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? "" : ""}
+              <ChevronIcon
+                className={`h-3 w-3 transition ${isExpanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {isExpanded && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
-              <BoxIcon className="h-4 w-4" />
-              기존 배치 목록
-            </div>
-            {loadingBatches ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                불러오는 중...
-              </p>
-            ) : batches.length > 0 ? (
-              batches.map((batch, index) => (
-                <div
-                  key={batch.id ?? `${batch.batch_no}-${index}`}
-                  className="mb-3 flex flex-col gap-2 rounded-xl bg-white px-4 py-3 text-sm text-slate-600 last:mb-0 dark:bg-slate-900/70 dark:text-slate-300"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800 dark:text-white">
-                        Batch:
-                      </span>
-                      <span className="font-semibold text-slate-800 dark:text-white">
-                        {batch.batch_no}
-                      </span>
-                      {batch.is_separate_purchase && (
-                        <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                          별도 구매
+        {isExpanded && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
+                <BoxIcon className="h-4 w-4" />
+                기존 배치 목록
+              </div>
+              {loadingBatches ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  불러오는 중...
+                </p>
+              ) : batches.length > 0 ? (
+                batches.map((batch, index) => (
+                  <div
+                    key={batch.id ?? `${batch.batch_no}-${index}`}
+                    className="mb-3 flex flex-col gap-2 rounded-xl bg-white px-4 py-3 text-sm text-slate-600 last:mb-0 dark:bg-slate-900/70 dark:text-slate-300"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-800 dark:text-white">
+                          Batch:
                         </span>
-                      )}
-                      {batch.is_separate_purchase &&
-                        batch.reason_for_modification && (
-                          <span
-                            className="inline-flex max-w-[200px] truncate rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                            title={batch.reason_for_modification}
-                          >
-                            수정 사유: {batch.reason_for_modification}
+                        <span className="font-semibold text-slate-800 dark:text-white">
+                          {batch.batch_no}
+                        </span>
+                        {batch.is_separate_purchase && (
+                          <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                            별도 구매
                           </span>
                         )}
+                        {batch.is_separate_purchase &&
+                          batch.reason_for_modification && (
+                            <span
+                              className="inline-flex max-w-[200px] truncate rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                              title={batch.reason_for_modification}
+                            >
+                              수정 사유: {batch.reason_for_modification}
+                            </span>
+                          )}
+                      </div>
+                      {batch.is_separate_purchase && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBatch({ batch, product });
+                            setBatchEditForm({
+                              qty: batch.qty ?? batch["입고 수량"] ?? 0,
+                              expiryDate:
+                                batch.expiry_date ?? batch.유효기간 ?? "",
+                              manufactureDate: batch.manufacture_date ?? "",
+                              purchasePrice: batch.purchase_price ?? 0,
+                              storage: batch.보관위치 ?? batch.storage ?? "",
+                              reasonForModification:
+                                batch.reason_for_modification ?? "",
+                              inboundManager: batch.inbound_manager ?? "",
+                            });
+                          }}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          수정하기
+                        </button>
+                      )}
                     </div>
-                    {batch.is_separate_purchase && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingBatch({ batch, product });
-                          setBatchEditForm({
-                            qty: batch.qty ?? batch["입고 수량"] ?? 0,
-                            expiryDate:
-                              batch.expiry_date ?? batch.유효기간 ?? "",
-                            manufactureDate: batch.manufacture_date ?? "",
-                            purchasePrice: batch.purchase_price ?? 0,
-                            storage: batch.보관위치 ?? batch.storage ?? "",
-                            reasonForModification:
-                              batch.reason_for_modification ?? "",
-                            inboundManager: batch.inbound_manager ?? "",
-                          });
-                        }}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                      >
-                        수정하기
-                      </button>
-                    )}
+
+                    {/* Barcha ma'lumotlar bitta row'da */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      {batch.보관위치 && (
+                        <span className="inline-flex items-center gap-1">
+                          <WarehouseIcon className="h-3.5 w-3.5" />
+                          보관위치: {batch.보관위치}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        입고 날짜:{" "}
+                        {new Date(batch.created_at).toISOString().split("T")[0]}
+                      </span>
+                      {batch.유효기간 && (
+                        <span className="inline-flex items-center gap-1">
+                          유효기간: {batch.유효기간}
+                        </span>
+                      )}
+                      {batch.purchase_price && (
+                        <span className="inline-flex items-center gap-1">
+                          구매가: {batch.purchase_price.toLocaleString()}원
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 ml-auto">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          현재수량:
+                        </span>
+                        <span className="text-base font-bold text-slate-900 dark:text-white">
+                          {batch.qty?.toLocaleString() ?? 0}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {product.unit ?? "EA"}
+                        </span>
+                      </span>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  등록된 배치가 없습니다.
+                </p>
+              )}
+            </div>
 
-                  {/* Barcha ma'lumotlar bitta row'da */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    {batch.보관위치 && (
-                      <span className="inline-flex items-center gap-1">
-                        <WarehouseIcon className="h-3.5 w-3.5" />
-                        보관위치: {batch.보관위치}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarIcon className="h-3.5 w-3.5" />
-                      입고 날짜:{" "}
-                      {new Date(batch.created_at).toISOString().split("T")[0]}
-                    </span>
-                    {batch.유효기간 && (
-                      <span className="inline-flex items-center gap-1">
-                        유효기간: {batch.유효기간}
-                      </span>
-                    )}
-                    {batch.purchase_price && (
-                      <span className="inline-flex items-center gap-1">
-                        구매가: {batch.purchase_price.toLocaleString()}원
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1 ml-auto">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        현재수량:
-                      </span>
-                      <span className="text-base font-bold text-slate-900 dark:text-white">
-                        {batch.qty?.toLocaleString() ?? 0}
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {product.unit ?? "EA"}
-                      </span>
-                    </span>
+            <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-6 dark:border-sky-500/30 dark:bg-sky-500/5">
+              <h3 className="border-b border-sky-200 pb-3 text-base font-bold text-slate-800 dark:border-sky-500/30 dark:text-slate-100">
+                별도 구매 입고
+              </h3>
+
+              <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                <p>
+                  별도 구매 입고는 Jaclit을 통한 주문이 아닌 제품의 입고를
+                  의미합니다.
+                </p>
+                <p className="mt-1">
+                  <span className="font-semibold">
+                    Jaclit을 통해 주문한 제품은
+                  </span>{" "}
+                  : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
+                </p>
+              </div>
+
+              {/* Row 1: 배치번호 + 입고 수량 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* 배치번호 (필수) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      Lot 배치번호 <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowBarcodeHelpModal(true);
+                      }}
+                      className="text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                    >
+                      스케너 없어요?
+                    </button>
                   </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                등록된 배치가 없습니다.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-6 dark:border-sky-500/30 dark:bg-sky-500/5">
-            <h3 className="border-b border-sky-200 pb-3 text-base font-bold text-slate-800 dark:border-sky-500/30 dark:text-slate-100">
-              별도 구매 입고
-            </h3>
-
-            <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-              <p>
-                별도 구매 입고는 Jaclit을 통한 주문이 아닌 제품의 입고를
-                의미합니다.
-              </p>
-              <p className="mt-1">
-                <span className="font-semibold">
-                  Jaclit을 통해 주문한 제품은
-                </span>{" "}
-                : 「입고」 → 「입고 대기」 에서 입고 처리를 진행합니다.
-              </p>
-            </div>
-
-            {/* Row 1: 배치번호 + 입고 수량 */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* 배치번호 (필수) */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Lot 배치번호 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="제품의 LOT 배치번호 [QR 코드 옆에 (10) 다음 숫자]를 입력해주세요"
-                  required
-                  value={batchForm.batchNumber}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setBatchForm({ ...batchForm, batchNumber: e.target.value });
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
-
-              {/* 입고 수량 */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  입고 수량 *
-                </label>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBatchQuantity(Math.max(0, batchQuantity - 1));
-                    }}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                  >
-                    -
-                  </button>
-                  <input
-                    type="number"
-                    min="0"
-                    value={batchQuantity}
-                    onChange={(e) =>
-                      setBatchQuantity(Number(e.target.value) || 0)
-                    }
-                    onWheel={(e) => e.currentTarget.blur()}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBatchQuantity(batchQuantity + 1);
-                    }}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                  >
-                    +
-                  </button>
-                  <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {product.unit || "box"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 2: 제조일 + 유효 기간 */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* 제조일 */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  제조일 *
-                </label>
-                <input
-                  type="date"
-                  value={batchForm.manufactureDate}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setBatchForm({
-                      ...batchForm,
-                      manufactureDate: e.target.value,
-                    });
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
-
-              {/* 유효 기간 */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  유효 기간 *
-                </label>
-                <input
-                  type="date"
-                  value={batchForm.expiryDate}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setBatchForm({ ...batchForm, expiryDate: e.target.value });
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-              </div>
-            </div>
-
-            {/* Row 3: 구매가 + 보관 위치 */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* 구매가 */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  구매가 *
-                </label>
-                <div className="space-y-1">
                   <input
                     type="text"
-                    placeholder="0"
-                    value={
-                      batchForm.purchasePrice
-                        ? Number(batchForm.purchasePrice).toLocaleString()
-                        : ""
-                    }
+                    placeholder="제품의 LOT 배치번호 [QR 코드 옆에 (10) 다음 숫자]를 입력해주세요"
+                    required
+                    value={batchForm.batchNumber}
                     onChange={(e) => {
                       e.stopPropagation();
-                      const numericValue = e.target.value.replace(/,/g, "");
                       setBatchForm({
                         ...batchForm,
-                        purchasePrice: numericValue,
+                        batchNumber: e.target.value,
+                      });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                </div>
+
+                {/* 입고 수량 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    입고 수량 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBatchQuantity(Math.max(0, batchQuantity - 1));
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      value={batchQuantity}
+                      onChange={(e) =>
+                        setBatchQuantity(Number(e.target.value) || 0)
+                      }
+                      onWheel={(e) => e.currentTarget.blur()}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBatchQuantity(batchQuantity + 1);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    >
+                      +
+                    </button>
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {product.unit || "box"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: 제조일 + 유효 기간 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* 제조일 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    제조일
+                  </label>
+                  <input
+                    type="date"
+                    value={batchForm.manufactureDate}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setBatchForm({
+                        ...batchForm,
+                        manufactureDate: e.target.value,
                       });
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   />
-                  {product.purchasePrice && (
-                    <div className="text-xs text-slate-500">
-                      전구매가 {Number(product.purchasePrice).toLocaleString()}{" "}
-                      / {product.unit || "box"}
-                    </div>
-                  )}
+                </div>
+
+                {/* 유효 기간 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    유효 기간 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={batchForm.expiryDate}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setBatchForm({
+                        ...batchForm,
+                        expiryDate: e.target.value,
+                      });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
                 </div>
               </div>
 
-              {/* 보관 위치 (focus 시 이전 입력값 드롭다운) */}
-              <div className="space-y-2 relative">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  보관 위치
-                </label>
-                <input
-                  type="text"
-                  placeholder="보관 위치를 입력"
-                  value={batchForm.storageLocation}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setBatchForm({
-                      ...batchForm,
-                      storageLocation: e.target.value,
-                    });
-                  }}
-                  onFocus={() => setShowStorageSuggestions(true)}
-                  onBlur={() => {
-                    setTimeout(() => setShowStorageSuggestions(false), 200);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-                {showStorageSuggestions &&
-                  recentStorageLocations.length > 0 && (
+              {/* Row 3: 구매가 + 보관 위치 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* 구매가 */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    구매가 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={
+                        batchForm.purchasePrice
+                          ? Number(batchForm.purchasePrice).toLocaleString()
+                          : ""
+                      }
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        const numericValue = e.target.value.replace(/,/g, "");
+                        setBatchForm({
+                          ...batchForm,
+                          purchasePrice: numericValue,
+                        });
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    {product.purchasePrice && (
+                      <div className="text-xs text-slate-500">
+                        전구매가{" "}
+                        {Number(product.purchasePrice).toLocaleString()} /{" "}
+                        {product.unit || "box"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 보관 위치 (focus 시 이전 입력값 드롭다운) */}
+                <div className="space-y-2 relative">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    보관 위치 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="보관 위치를 입력"
+                    value={batchForm.storageLocation}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setBatchForm({
+                        ...batchForm,
+                        storageLocation: e.target.value,
+                      });
+                    }}
+                    onFocus={() => setShowStorageSuggestions(true)}
+                    onBlur={() => {
+                      setTimeout(() => setShowStorageSuggestions(false), 200);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  {showStorageSuggestions &&
+                    recentStorageLocations.length > 0 && (
+                      <ul
+                        className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {recentStorageLocations.map((loc) => (
+                          <li
+                            key={loc}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setBatchForm((prev) => ({
+                                ...prev,
+                                storageLocation: loc,
+                              }));
+                              setShowStorageSuggestions(false);
+                            }}
+                            className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            {loc}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                </div>
+              </div>
+
+              {/* Row 4: 입고 직원 (focus 시 이전 입력값 드롭다운) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2 relative">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    입고 직원 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="이름 입력"
+                    value={batchForm.inboundManager}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setBatchForm({
+                        ...batchForm,
+                        inboundManager: e.target.value,
+                      });
+                    }}
+                    onFocus={() => setShowStaffSuggestions(true)}
+                    onBlur={() => {
+                      setTimeout(() => setShowStaffSuggestions(false), 200);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  {showStaffSuggestions && recentInboundStaff.length > 0 && (
                     <ul
                       className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
                       onMouseDown={(e) => e.preventDefault()}
                     >
-                      {recentStorageLocations.map((loc) => (
+                      {recentInboundStaff.map((name) => (
                         <li
-                          key={loc}
+                          key={name}
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setBatchForm((prev) => ({
                               ...prev,
-                              storageLocation: loc,
+                              inboundManager: name,
                             }));
-                            setShowStorageSuggestions(false);
+                            setShowStaffSuggestions(false);
                           }}
                           className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
-                          {loc}
+                          {name}
                         </li>
                       ))}
                     </ul>
                   )}
-              </div>
-            </div>
-
-            {/* Row 4: 입고 직원 (focus 시 이전 입력값 드롭다운) */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2 relative">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  입고 직원 *
-                </label>
-                <input
-                  type="text"
-                  placeholder="이름 입력"
-                  value={batchForm.inboundManager}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setBatchForm({
-                      ...batchForm,
-                      inboundManager: e.target.value,
-                    });
-                  }}
-                  onFocus={() => setShowStaffSuggestions(true)}
-                  onBlur={() => {
-                    setTimeout(() => setShowStaffSuggestions(false), 200);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                />
-                {showStaffSuggestions && recentInboundStaff.length > 0 && (
-                  <ul
-                    className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    {recentInboundStaff.map((name) => (
-                      <li
-                        key={name}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setBatchForm((prev) => ({
-                            ...prev,
-                            inboundManager: name,
-                          }));
-                          setShowStaffSuggestions(false);
-                        }}
-                        className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
-                      >
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="space-y-2 ml-auto mt-8">
-                <button
-                  onClick={handleCreateBatch}
-                  disabled={submittingBatch}
-                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                  {submittingBatch ? "처리 중..." : "입고 하기"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Batch edit modal (배치번호 수정) */}
-          {editingBatch && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="w-full max-w-2xl ml-[320px] rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                    배치번호 {editingBatch.batch.batch_no}
-                  </h3>
+                </div>
+                <div className="space-y-2 ml-auto mt-8">
                   <button
-                    type="button"
-                    onClick={() => {
-                      setEditingBatch(null);
-                    }}
-                    className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-400"
-                    aria-label="닫기"
+                    onClick={handleCreateBatch}
+                    disabled={submittingBatch}
+                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <svg
-                      className="h-5 w-5"
+                      className="h-4 w-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -2566,339 +2552,488 @@ const ProductCard = memo(function ProductCard({
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
+                        d="M12 4v16m8-8H4"
                       />
                     </svg>
+                    {submittingBatch ? "처리 중..." : "입고 하기"}
                   </button>
                 </div>
-                <form
-                  className="space-y-4 p-6"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!editingBatch || submittingBatchEdit) return;
-                    if (!batchEditForm.reasonForModification?.trim()) {
-                      alert("수정 이유를 입력해 주세요.");
-                      return;
-                    }
-                    if (!batchEditForm.inboundManager?.trim()) {
-                      alert("입고 직원을 입력해 주세요.");
-                      return;
-                    }
-                    const token = await getAccessToken();
-                    if (!token) return;
-                    setSubmittingBatchEdit(true);
-                    try {
-                      const tenantId = getTenantId();
-                      const res = await fetch(
-                        `${apiUrl}/products/${editingBatch.product.id}/batches/${editingBatch.batch.id}`,
-                        {
-                          method: "PATCH",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                            "X-Tenant-Id": tenantId || "",
-                          },
-                          body: JSON.stringify({
-                            qty: batchEditForm.qty,
-                            inbound_qty: batchEditForm.qty,
-                            expiry_date: batchEditForm.expiryDate || undefined,
-                            manufacture_date:
-                              batchEditForm.manufactureDate || undefined,
-                            purchase_price: batchEditForm.purchasePrice
-                              ? Number(batchEditForm.purchasePrice)
-                              : undefined,
-                            storage: batchEditForm.storage || undefined,
-                            inbound_manager:
-                              batchEditForm.inboundManager || undefined,
-                            reason_for_modification:
-                              batchEditForm.reasonForModification || undefined,
-                          }),
-                        }
-                      );
-                      if (!res.ok) throw new Error(await res.text());
-                      const { clearCache, apiGet } =
-                        await import("../../lib/api");
-                      clearCache(
-                        `/products/${editingBatch.product.id}/batches`
-                      );
-                      clearCache(`products/${editingBatch.product.id}/batches`);
-                      const cacheKey = editingBatch.product.id;
-                      globalBatchesCache.delete(cacheKey);
-                      saveCacheToStorage();
-                      const timestamp = Date.now();
-                      const random = Math.random().toString(36).substring(7);
-                      const updatedBatches = await apiGet<ProductBatch[]>(
-                        `${apiUrl}/products/${editingBatch.product.id}/batches?_t=${timestamp}&_r=${random}`,
-                        {
-                          headers: {
-                            "Cache-Control": "no-cache",
-                            Pragma: "no-cache",
-                          },
-                        }
-                      );
-                      setBatches(updatedBatches);
-                      globalBatchesCache.set(cacheKey, {
-                        data: updatedBatches,
-                        timestamp: Date.now(),
-                      });
-                      saveCacheToStorage();
-                      if (onBatchCreated) {
-                        onBatchCreated({
-                          storageLocation: batchEditForm.storage?.trim(),
-                          inboundManager: batchEditForm.inboundManager?.trim(),
-                        });
-                      }
-                      window.dispatchEvent(
-                        new CustomEvent("batchCreated", {
-                          detail: { productId: editingBatch.product.id },
-                        })
-                      );
-                      setEditingBatch(null);
-                      alert("배치가 성공적으로 수정되었습니다.");
-                    } catch (err: any) {
-                      console.error(err);
-                      alert(err?.message || "배치 수정에 실패했습니다.");
-                    } finally {
-                      setSubmittingBatchEdit(false);
-                    }
-                  }}
-                >
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      입고 수량 *
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBatchEditForm((f) => ({
-                            ...f,
-                            qty: Math.max(0, f.qty - 1),
-                          }))
-                        }
-                        className="h-10 w-10 rounded-lg border border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-white dark:text-slate-800"
+              </div>
+            </div>
+
+            {/* Batch edit modal (배치번호 수정) */}
+            {editingBatch && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-2xl ml-[320px] rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                      배치번호 {editingBatch.batch.batch_no}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBatch(null);
+                      }}
+                      className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-400"
+                      aria-label="닫기"
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
                       >
-                        -
-                      </button>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <form
+                    className="space-y-4 p-6"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!editingBatch || submittingBatchEdit) return;
+                      if (!batchEditForm.reasonForModification?.trim()) {
+                        alert("수정 이유를 입력해 주세요.");
+                        return;
+                      }
+                      if (!batchEditForm.inboundManager?.trim()) {
+                        alert("입고 직원을 입력해 주세요.");
+                        return;
+                      }
+                      const token = await getAccessToken();
+                      if (!token) return;
+                      setSubmittingBatchEdit(true);
+                      try {
+                        const tenantId = getTenantId();
+                        const res = await fetch(
+                          `${apiUrl}/products/${editingBatch.product.id}/batches/${editingBatch.batch.id}`,
+                          {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                              "X-Tenant-Id": tenantId || "",
+                            },
+                            body: JSON.stringify({
+                              qty: batchEditForm.qty,
+                              inbound_qty: batchEditForm.qty,
+                              expiry_date:
+                                batchEditForm.expiryDate || undefined,
+                              manufacture_date:
+                                batchEditForm.manufactureDate || undefined,
+                              purchase_price: batchEditForm.purchasePrice
+                                ? Number(batchEditForm.purchasePrice)
+                                : undefined,
+                              storage: batchEditForm.storage || undefined,
+                              inbound_manager:
+                                batchEditForm.inboundManager || undefined,
+                              reason_for_modification:
+                                batchEditForm.reasonForModification ||
+                                undefined,
+                            }),
+                          }
+                        );
+                        if (!res.ok) throw new Error(await res.text());
+                        const { clearCache, apiGet } =
+                          await import("../../lib/api");
+                        clearCache(
+                          `/products/${editingBatch.product.id}/batches`
+                        );
+                        clearCache(
+                          `products/${editingBatch.product.id}/batches`
+                        );
+                        const cacheKey = editingBatch.product.id;
+                        globalBatchesCache.delete(cacheKey);
+                        saveCacheToStorage();
+                        const timestamp = Date.now();
+                        const random = Math.random().toString(36).substring(7);
+                        const updatedBatches = await apiGet<ProductBatch[]>(
+                          `${apiUrl}/products/${editingBatch.product.id}/batches?_t=${timestamp}&_r=${random}`,
+                          {
+                            headers: {
+                              "Cache-Control": "no-cache",
+                              Pragma: "no-cache",
+                            },
+                          }
+                        );
+                        setBatches(updatedBatches);
+                        globalBatchesCache.set(cacheKey, {
+                          data: updatedBatches,
+                          timestamp: Date.now(),
+                        });
+                        saveCacheToStorage();
+                        if (onBatchCreated) {
+                          onBatchCreated({
+                            storageLocation: batchEditForm.storage?.trim(),
+                            inboundManager:
+                              batchEditForm.inboundManager?.trim(),
+                          });
+                        }
+                        window.dispatchEvent(
+                          new CustomEvent("batchCreated", {
+                            detail: { productId: editingBatch.product.id },
+                          })
+                        );
+                        setEditingBatch(null);
+                        alert("배치가 성공적으로 수정되었습니다.");
+                      } catch (err: any) {
+                        console.error(err);
+                        alert(err?.message || "배치 수정에 실패했습니다.");
+                      } finally {
+                        setSubmittingBatchEdit(false);
+                      }
+                    }}
+                  >
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        입고 수량 *
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBatchEditForm((f) => ({
+                              ...f,
+                              qty: Math.max(0, f.qty - 1),
+                            }))
+                          }
+                          className="h-10 w-10 rounded-lg border border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-white dark:text-slate-800"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={0}
+                          value={batchEditForm.qty}
+                          onChange={(e) =>
+                            setBatchEditForm((f) => ({
+                              ...f,
+                              qty: Number(e.target.value) || 0,
+                            }))
+                          }
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBatchEditForm((f) => ({ ...f, qty: f.qty + 1 }))
+                          }
+                          className="h-10 w-10 rounded-lg border border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-white dark:text-slate-800"
+                        >
+                          +
+                        </button>
+                        <span className="text-sm text-slate-500">
+                          {editingBatch.product.unit ?? "EA"}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        유효 기간 <span className="text-red-500">*</span>
+                      </label>
                       <input
-                        type="number"
-                        min={0}
-                        value={batchEditForm.qty}
+                        type="date"
+                        value={batchEditForm.expiryDate}
                         onChange={(e) =>
                           setBatchEditForm((f) => ({
                             ...f,
-                            qty: Number(e.target.value) || 0,
+                            expiryDate: e.target.value,
                           }))
                         }
-                        onWheel={(e) => e.currentTarget.blur()}
-                        className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
                       />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBatchEditForm((f) => ({ ...f, qty: f.qty + 1 }))
-                        }
-                        className="h-10 w-10 rounded-lg border border-slate-300 bg-white text-slate-800 dark:border-slate-600 dark:bg-white dark:text-slate-800"
-                      >
-                        +
-                      </button>
-                      <span className="text-sm text-slate-500">
-                        {editingBatch.product.unit ?? "EA"}
-                      </span>
                     </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      유효 기간 *
-                    </label>
-                    <input
-                      type="date"
-                      value={batchEditForm.expiryDate}
-                      onChange={(e) =>
-                        setBatchEditForm((f) => ({
-                          ...f,
-                          expiryDate: e.target.value,
-                        }))
-                      }
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      제조일 *
-                    </label>
-                    <input
-                      type="date"
-                      value={batchEditForm.manufactureDate}
-                      onChange={(e) =>
-                        setBatchEditForm((f) => ({
-                          ...f,
-                          manufactureDate: e.target.value,
-                        }))
-                      }
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      구매가 *
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={
-                        batchEditForm.purchasePrice === 0
-                          ? ""
-                          : batchEditForm.purchasePrice.toLocaleString()
-                      }
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/,/g, "");
-                        const num =
-                          raw === "" ? 0 : Math.max(0, parseInt(raw, 10) || 0);
-                        setBatchEditForm((f) => ({ ...f, purchasePrice: num }));
-                      }}
-                      placeholder="0"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">
-                      전구매가{" "}
-                      {editingBatch.batch.purchase_price?.toLocaleString() ??
-                        "0"}{" "}
-                      / {editingBatch.product.unit ?? "EA"}
-                    </p>
-                  </div>
-                  <div className="relative">
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      보관 위치 *
-                    </label>
-                    <input
-                      type="text"
-                      value={batchEditForm.storage}
-                      onChange={(e) =>
-                        setBatchEditForm((f) => ({
-                          ...f,
-                          storage: e.target.value,
-                        }))
-                      }
-                      onFocus={() => setShowBatchEditStorageSuggestions(true)}
-                      onBlur={() => {
-                        setTimeout(
-                          () => setShowBatchEditStorageSuggestions(false),
-                          200
-                        );
-                      }}
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
-                    />
-                    {showBatchEditStorageSuggestions &&
-                      recentStorageLocations.length > 0 && (
-                        <ul
-                          className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          {recentStorageLocations.map((loc) => (
-                            <li
-                              key={loc}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setBatchEditForm((f) => ({
-                                  ...f,
-                                  storage: loc,
-                                }));
-                                setShowBatchEditStorageSuggestions(false);
-                              }}
-                              className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
-                            >
-                              {loc}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      수정 이유 *
-                    </label>
-                    <input
-                      type="text"
-                      value={batchEditForm.reasonForModification}
-                      onChange={(e) =>
-                        setBatchEditForm((f) => ({
-                          ...f,
-                          reasonForModification: e.target.value,
-                        }))
-                      }
-                      placeholder="수정 이유를 입력하세요"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
-                    />
-                  </div>
-                  <div className="relative">
-                    <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      입고 직원 *
-                    </label>
-                    <input
-                      type="text"
-                      value={batchEditForm.inboundManager}
-                      onChange={(e) =>
-                        setBatchEditForm((f) => ({
-                          ...f,
-                          inboundManager: e.target.value,
-                        }))
-                      }
-                      onFocus={() => setShowBatchEditStaffSuggestions(true)}
-                      onBlur={() => {
-                        setTimeout(
-                          () => setShowBatchEditStaffSuggestions(false),
-                          200
-                        );
-                      }}
-                      placeholder="이름 입력"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
-                    />
-                    {showBatchEditStaffSuggestions &&
-                      recentInboundStaff.length > 0 && (
-                        <ul
-                          className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          {recentInboundStaff.map((name) => (
-                            <li
-                              key={name}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setBatchEditForm((f) => ({
-                                  ...f,
-                                  inboundManager: name,
-                                }));
-                                setShowBatchEditStaffSuggestions(false);
-                              }}
-                              className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
-                            >
-                              {name}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                  </div>
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="submit"
-                      disabled={
-                        submittingBatchEdit ||
-                        !batchEditForm.reasonForModification?.trim() ||
-                        !batchEditForm.inboundManager?.trim()
-                      }
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {submittingBatchEdit ? "저장 중..." : "저장하기"}
-                    </button>
-                  </div>
-                </form>
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        제조일 *
+                      </label>
+                      <input
+                        type="date"
+                        value={batchEditForm.manufactureDate}
+                        onChange={(e) =>
+                          setBatchEditForm((f) => ({
+                            ...f,
+                            manufactureDate: e.target.value,
+                          }))
+                        }
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        구매가 *
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={
+                          batchEditForm.purchasePrice === 0
+                            ? ""
+                            : batchEditForm.purchasePrice.toLocaleString()
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/,/g, "");
+                          const num =
+                            raw === ""
+                              ? 0
+                              : Math.max(0, parseInt(raw, 10) || 0);
+                          setBatchEditForm((f) => ({
+                            ...f,
+                            purchasePrice: num,
+                          }));
+                        }}
+                        placeholder="0"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        전구매가{" "}
+                        {editingBatch.batch.purchase_price?.toLocaleString() ??
+                          "0"}{" "}
+                        / {editingBatch.product.unit ?? "EA"}
+                      </p>
+                    </div>
+                    <div className="relative">
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        보관 위치
+                      </label>
+                      <input
+                        type="text"
+                        value={batchEditForm.storage}
+                        onChange={(e) =>
+                          setBatchEditForm((f) => ({
+                            ...f,
+                            storage: e.target.value,
+                          }))
+                        }
+                        onFocus={() => setShowBatchEditStorageSuggestions(true)}
+                        onBlur={() => {
+                          setTimeout(
+                            () => setShowBatchEditStorageSuggestions(false),
+                            200
+                          );
+                        }}
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                      />
+                      {showBatchEditStorageSuggestions &&
+                        recentStorageLocations.length > 0 && (
+                          <ul
+                            className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            {recentStorageLocations.map((loc) => (
+                              <li
+                                key={loc}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setBatchEditForm((f) => ({
+                                    ...f,
+                                    storage: loc,
+                                  }));
+                                  setShowBatchEditStorageSuggestions(false);
+                                }}
+                                className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                              >
+                                {loc}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        수정 이유 *
+                      </label>
+                      <input
+                        type="text"
+                        value={batchEditForm.reasonForModification}
+                        onChange={(e) =>
+                          setBatchEditForm((f) => ({
+                            ...f,
+                            reasonForModification: e.target.value,
+                          }))
+                        }
+                        placeholder="수정 이유를 입력하세요"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                      />
+                    </div>
+                    <div className="relative">
+                      <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        입고 직원 *
+                      </label>
+                      <input
+                        type="text"
+                        value={batchEditForm.inboundManager}
+                        onChange={(e) =>
+                          setBatchEditForm((f) => ({
+                            ...f,
+                            inboundManager: e.target.value,
+                          }))
+                        }
+                        onFocus={() => setShowBatchEditStaffSuggestions(true)}
+                        onBlur={() => {
+                          setTimeout(
+                            () => setShowBatchEditStaffSuggestions(false),
+                            200
+                          );
+                        }}
+                        placeholder="이름 입력"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-800 dark:border-slate-500 dark:bg-white dark:text-slate-800"
+                      />
+                      {showBatchEditStaffSuggestions &&
+                        recentInboundStaff.length > 0 && (
+                          <ul
+                            className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            {recentInboundStaff.map((name) => (
+                              <li
+                                key={name}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setBatchEditForm((f) => ({
+                                    ...f,
+                                    inboundManager: name,
+                                  }));
+                                  setShowBatchEditStaffSuggestions(false);
+                                }}
+                                className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                              >
+                                {name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={
+                          submittingBatchEdit ||
+                          !batchEditForm.reasonForModification?.trim() ||
+                          !batchEditForm.inboundManager?.trim()
+                        }
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {submittingBatchEdit ? "저장 중..." : "저장하기"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Barcode manual entry help modal (스케너 없어요?) */}
+      {showBarcodeHelpModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                바코드 번호 입력해주세요
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowBarcodeHelpModal(false)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                aria-label="닫기"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+              제품 박스 QR 코드 옆에 (01) 다음 숫자
+            </p>
+            <div className="mb-5 flex gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              <img
+                src="/images/qr-code.png"
+                alt="QR"
+                className="h-24 w-24 mt-0.5 shrink-0 object-contain rounded-lg"
+              />
+              <div className="min-w-0 flex-1 space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-red-600 dark:text-red-400">
+                    (01)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="font-medium text-red-600 dark:text-red-400 flex items-center justify-center gap-1">
+                    바코드 번호
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (10)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    Lot 번호
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (17)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    유효기간
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    (11)
+                  </span>
+                  <span className="text-slate-400 flex items-center justify-center gap-1">
+                    <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
+                    ←
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">
+                    제조날짜
+                  </span>
+                </div>
               </div>
             </div>
-          )}
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              혹시 스캐너 필요하시면{" "}
+              <Link
+                href="/settings/support"
+                className="font-medium text-sky-600 underline hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+              >
+                고객센터
+              </Link>
+              를 통해서 연락해주세요.
+            </p>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 });
 
@@ -7797,7 +7932,7 @@ const OrderCard = memo(function OrderCard({
                 disabled={processing === order.orderId}
                 className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {processing === order.orderId ? "처리 중..." : "✓ 입고 처리"}
+                {processing === order.orderId ? "처리 중..." : "입고하기"}
               </button>
             </>
           )}

@@ -318,9 +318,11 @@ export default function OrderPage() {
       // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      
+
       // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
-      const data = await apiGet<any[]>(`${apiUrl}/order/products?_t=${timestamp}&_r=${random}`);
+      const data = await apiGet<any[]>(
+        `${apiUrl}/order/products?_t=${timestamp}&_r=${random}`
+      );
 
       setProducts(data);
       // Update cache
@@ -343,7 +345,7 @@ export default function OrderPage() {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         // Page loaded from bfcache (Safari back button)
-        console.log('[Order] Loaded from bfcache - forcing refresh');
+        console.log("[Order] Loaded from bfcache - forcing refresh");
         invalidateCache("products");
         invalidateCache("orders");
         invalidateCache("draft");
@@ -354,27 +356,27 @@ export default function OrderPage() {
 
     const handlePageHide = () => {
       // Mark page as potentially cached
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('order_was_cached', 'true');
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("order_was_cached", "true");
       }
     };
 
-    window.addEventListener('pageshow', handlePageShow as EventListener);
-    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
 
     // Check if returning from cache
-    if (typeof window !== 'undefined') {
-      const wasCached = sessionStorage.getItem('order_was_cached');
-      if (wasCached === 'true') {
-        sessionStorage.removeItem('order_was_cached');
+    if (typeof window !== "undefined") {
+      const wasCached = sessionStorage.getItem("order_was_cached");
+      if (wasCached === "true") {
+        sessionStorage.removeItem("order_was_cached");
         invalidateCache("products");
         fetchProducts();
       }
     }
 
     return () => {
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
-      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, [fetchProducts, invalidateCache]);
 
@@ -437,13 +439,16 @@ export default function OrderPage() {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
 
-      const response = await fetch(`${apiUrl}/order/draft?_t=${timestamp}&_r=${random}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-session-id": sessionId,
-        },
-        credentials: "include", // ✅ Cookie'ni yuborish
-      });
+      const response = await fetch(
+        `${apiUrl}/order/draft?_t=${timestamp}&_r=${random}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-session-id": sessionId,
+          },
+          credentials: "include", // ✅ Cookie'ni yuborish
+        }
+      );
 
       if (!response.ok) throw new Error("Failed to fetch draft");
 
@@ -583,7 +588,7 @@ export default function OrderPage() {
       // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      
+
       const rejectedData = await apiGet<any[]>(
         `${apiUrl}/order/rejected-orders?_t=${timestamp}&_r=${random}`
       );
@@ -1367,7 +1372,10 @@ export default function OrderPage() {
                       onChange={(e) => setOrderManagerName(e.target.value)}
                       onFocus={() => setShowOrderManagerSuggestions(true)}
                       onBlur={() =>
-                        setTimeout(() => setShowOrderManagerSuggestions(false), 200)
+                        setTimeout(
+                          () => setShowOrderManagerSuggestions(false),
+                          200
+                        )
                       }
                       placeholder="주문 담당자 이름을 입력하세요"
                       className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
@@ -1420,7 +1428,9 @@ export default function OrderPage() {
                         group.supplierId ||
                         "공급업체 없음";
                       // Manager name hozircha yo'q, lekin kelajakda qo'shilishi mumkin
-                      const managerName = ""; // TODO: Backend'dan manager name kelganda qo'shish
+                      const managerName = firstProduct?.managerName ?? "";
+                      const managerPosition =
+                        firstProduct?.managerPosition ?? "";
 
                       return (
                         <div
@@ -1432,6 +1442,7 @@ export default function OrderPage() {
                             <div className="text-sm font-semibold text-slate-900 dark:text-white">
                               {supplierName}
                               {managerName && ` ${managerName}`}
+                              {managerPosition && ` ${managerPosition}`}
                             </div>
                             <div className="text-sm font-semibold text-slate-900 dark:text-white">
                               총 {group.totalAmount.toLocaleString()}원
@@ -1990,15 +2001,22 @@ export default function OrderPage() {
                                   {!isRejected && (
                                     <>
                                       <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                        <span>주문수량: {item.orderedQuantity}개</span>
+                                        <span>
+                                          주문수량: {item.orderedQuantity}개
+                                        </span>
                                         <span className="text-slate-400">
                                           |
                                         </span>
-                                        <span>확정수량: {item.confirmedQuantity}개</span>
+                                        <span>
+                                          확정수량: {item.confirmedQuantity}개
+                                        </span>
                                         <span className="text-slate-400">
                                           |
                                         </span>
-                                        <span>입고수량: {item.inboundQuantity || 0}개</span>
+                                        <span>
+                                          입고수량: {item.inboundQuantity || 0}
+                                          개
+                                        </span>
                                       </div>
                                       <div className="text-sm text-slate-600 dark:text-slate-400">
                                         단가 {item.unitPrice.toLocaleString()}
@@ -2716,7 +2734,7 @@ export default function OrderPage() {
                       onClick={async () => {
                         // ✅ Duplicate order oldini olish
                         if (isCreatingOrder) return;
-                        
+
                         setIsCreatingOrder(true);
                         try {
                           // ✅ getAccessToken() ishlatish (localStorage emas)
