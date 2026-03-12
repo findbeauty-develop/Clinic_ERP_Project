@@ -38,7 +38,17 @@ type ProfileData = {
   supplier: Supplier;
 };
 
-const POSITIONS = ["사원", "주임", "대리", "과장", "차장", "부장"];
+const POSITIONS = [
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장",
+  "대표",
+  "이사",
+  "담당자",
+];
 
 const PRODUCT_CATEGORIES = [
   "코스메슈티컬",
@@ -67,19 +77,21 @@ export default function SettingsPage() {
   const [showAffiliationModal, setShowAffiliationModal] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [showCustomerCenterModal, setShowCustomerCenterModal] = useState(false);
-  
+
   // Withdrawal states
   const [withdrawalStep, setWithdrawalStep] = useState(1); // 1: warnings, 2: password
   const [withdrawalAgreement, setWithdrawalAgreement] = useState(false);
   const [withdrawalReasons, setWithdrawalReasons] = useState<string[]>([]);
   const [withdrawalOtherReason, setWithdrawalOtherReason] = useState("");
   const [withdrawalPassword, setWithdrawalPassword] = useState("");
-  
+
   // Affiliation change states
   const [affiliationStep, setAffiliationStep] = useState(1); // 1: warnings, 2: certificate, 3: form
   const [agreementChecked, setAgreementChecked] = useState(false);
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
-  const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string | null>(
+    null,
+  );
   const [certificateUrl, setCertificateUrl] = useState<string | null>(null);
   const [affiliationForm, setAffiliationForm] = useState({
     company_name: "",
@@ -165,16 +177,22 @@ export default function SettingsPage() {
     }
 
     // Check if it's the same as current phone
-    if (profile?.manager.phone_number && cleanPhone === profile.manager.phone_number.replace(/[^0-9]/g, "")) {
+    if (
+      profile?.manager.phone_number &&
+      cleanPhone === profile.manager.phone_number.replace(/[^0-9]/g, "")
+    ) {
       alert("현재 사용 중인 전화번호와 동일합니다.");
       return;
     }
 
     setIsSendingCode(true);
     try {
-      const response = await apiPost<{ message?: string }>(`/supplier/manager/send-phone-verification`, {
-        phone_number: cleanPhone,
-      });
+      const response = await apiPost<{ message?: string }>(
+        `/supplier/manager/send-phone-verification`,
+        {
+          phone_number: cleanPhone,
+        },
+      );
       alert(response.message || "인증번호가 전송되었습니다.");
     } catch (err: any) {
       console.error("Failed to send verification code", err);
@@ -193,10 +211,13 @@ export default function SettingsPage() {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
     setIsVerifyingCode(true);
     try {
-      const response = await apiPost<{ verified: boolean; success: boolean }>(`/supplier/manager/verify-phone-code`, {
-        phone_number: cleanPhone,
-        code: verificationCode,
-      });
+      const response = await apiPost<{ verified: boolean; success: boolean }>(
+        `/supplier/manager/verify-phone-code`,
+        {
+          phone_number: cleanPhone,
+          code: verificationCode,
+        },
+      );
       if (response.verified) {
         setIsPhoneVerified(true);
         alert("인증이 완료되었습니다.");
@@ -307,7 +328,7 @@ export default function SettingsPage() {
       setWithdrawalReasons((prev) =>
         prev.includes(reason)
           ? prev.filter((r) => r !== reason)
-          : [...prev, reason]
+          : [...prev, reason],
       );
     }
   };
@@ -363,7 +384,7 @@ export default function SettingsPage() {
         `/supplier/manager/contact-support`,
         {
           memo: customerInquiryMemo.trim(),
-        }
+        },
       );
       alert(response.message || "문의가 성공적으로 전송되었습니다.");
       setShowCustomerCenterModal(false);
@@ -419,7 +440,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleCertificateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCertificateUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -449,13 +472,16 @@ export default function SettingsPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com"}/supplier/manager/upload-certificate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("supplier_access_token")}`,
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com"}/supplier/manager/upload-certificate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("supplier_access_token")}`,
+          },
+          body: formData,
         },
-        body: formData,
-      });
+      );
 
       if (!response.ok) {
         throw new Error("파일 업로드에 실패했습니다.");
@@ -471,8 +497,12 @@ export default function SettingsPage() {
 
   const handleAffiliationSave = async () => {
     // Validate required fields
-    if (!affiliationForm.company_name || !affiliationForm.business_number || 
-        !affiliationForm.company_phone || !affiliationForm.company_email) {
+    if (
+      !affiliationForm.company_name ||
+      !affiliationForm.business_number ||
+      !affiliationForm.company_phone ||
+      !affiliationForm.company_email
+    ) {
       alert("필수 항목을 모두 입력해주세요.");
       return;
     }
@@ -533,7 +563,9 @@ export default function SettingsPage() {
   if (error || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-red-600">{error || "프로필을 불러올 수 없습니다."}</div>
+        <div className="text-red-600">
+          {error || "프로필을 불러올 수 없습니다."}
+        </div>
       </div>
     );
   }
@@ -551,11 +583,15 @@ export default function SettingsPage() {
       <div className="space-y-4 p-4">
         {/* 계정 관리 (Account Management) */}
         <div className="rounded-lg bg-white p-4 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">계정 관리</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            계정 관리
+          </h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">이름</span>
-              <span className="font-medium text-slate-900">{profile.manager.name}</span>
+              <span className="font-medium text-slate-900">
+                {profile.manager.name}
+              </span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">담당자 ID</span>
@@ -625,7 +661,9 @@ export default function SettingsPage() {
 
         {/* 소속 관리 (Affiliation Management) */}
         <div className="rounded-lg bg-white p-4 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">소속 관리</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            소속 관리
+          </h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <span className="text-slate-600">회사명</span>
@@ -744,13 +782,18 @@ export default function SettingsPage() {
                             [settingKey]: newValue,
                           });
                         } catch (err: any) {
-                          console.error("Failed to update notification setting", err);
+                          console.error(
+                            "Failed to update notification setting",
+                            err,
+                          );
                           // Revert on error
                           setNotificationSettings((prev) => ({
                             ...prev,
                             [settingKey]: previousValue,
                           }));
-                          alert(`설정 저장에 실패했습니다: ${err?.message || "Unknown error"}`);
+                          alert(
+                            `설정 저장에 실패했습니다: ${err?.message || "Unknown error"}`,
+                          );
                         }
                       }}
                       className="peer sr-only"
@@ -792,7 +835,9 @@ export default function SettingsPage() {
 
         {/* 고객센터 (Customer Center) */}
         <div className="rounded-lg bg-white p-4 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">고객센터</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            고객센터
+          </h2>
           <button
             onClick={() => {
               setCustomerInquiryMemo("");
@@ -879,7 +924,9 @@ export default function SettingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-2xl font-bold text-slate-900">핸드폰 번호 수정</h3>
+              <h3 className="text-2xl font-bold text-slate-900">
+                핸드폰 번호 수정
+              </h3>
               <button
                 onClick={() => {
                   setShowPhoneModal(false);
@@ -903,7 +950,7 @@ export default function SettingsPage() {
                   {profile?.manager.phone_number
                     ? formatPhoneNumber(profile.manager.phone_number).replace(
                         /(\d{3}-\d)\d{2}(\d{2}-\d)\d{2}/,
-                        "$1***-$2***"
+                        "$1***-$2***",
                       )
                     : "—"}
                 </span>
@@ -945,7 +992,9 @@ export default function SettingsPage() {
                     type="text"
                     value={verificationCode}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9]/g, "").slice(0, 6);
+                      const value = e.target.value
+                        .replace(/[^0-9]/g, "")
+                        .slice(0, 6);
                       setVerificationCode(value);
                     }}
                     placeholder="인증번호"
@@ -954,14 +1003,21 @@ export default function SettingsPage() {
                   />
                   <button
                     onClick={handleVerifyCode}
-                    disabled={isVerifyingCode || isPhoneVerified || !verificationCode || verificationCode.length !== 6}
+                    disabled={
+                      isVerifyingCode ||
+                      isPhoneVerified ||
+                      !verificationCode ||
+                      verificationCode.length !== 6
+                    }
                     className="rounded-lg bg-indigo-500 px-4 py-3 text-sm font-medium text-white shadow-sm transition-all hover:bg-indigo-600 disabled:bg-slate-300 disabled:cursor-not-allowed"
                   >
                     {isVerifyingCode ? "확인 중..." : "확인"}
                   </button>
                 </div>
                 {isPhoneVerified && (
-                  <p className="mt-2 text-sm text-green-600">✓ 인증이 완료되었습니다.</p>
+                  <p className="mt-2 text-sm text-green-600">
+                    ✓ 인증이 완료되었습니다.
+                  </p>
                 )}
               </div>
             </div>
@@ -981,7 +1037,9 @@ export default function SettingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-white to-slate-50 p-6 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-2xl font-bold text-slate-900">비밀번호 재설정</h3>
+              <h3 className="text-2xl font-bold text-slate-900">
+                비밀번호 재설정
+              </h3>
               <button
                 onClick={() => {
                   setShowPasswordModal(false);
@@ -1064,16 +1122,16 @@ export default function SettingsPage() {
                   <div className="flex gap-3">
                     <span className="font-semibold text-indigo-600">1.</span>
                     <p>
-                      소속 변경 후 담당자의 이름, 직함, 연락처 등 계정 정보는 새 회사
-                      기준으로 업데이트됩니다.
+                      소속 변경 후 담당자의 이름, 직함, 연락처 등 계정 정보는 새
+                      회사 기준으로 업데이트됩니다.
                     </p>
                   </div>
                   <div className="flex gap-3">
                     <span className="font-semibold text-indigo-600">2.</span>
                     <p>
-                      이전 회사에서 담당자가 처리한 주문·출고·반품·정산·거래처 이력은
-                      해당 회사의 업무 기록으로 분류되며, 관련 법령에 따라 보관되며
-                      수정되거나 삭제되지 않습니다.
+                      이전 회사에서 담당자가 처리한 주문·출고·반품·정산·거래처
+                      이력은 해당 회사의 업무 기록으로 분류되며, 관련 법령에
+                      따라 보관되며 수정되거나 삭제되지 않습니다.
                     </p>
                   </div>
                   <div className="flex gap-3">
@@ -1088,16 +1146,17 @@ export default function SettingsPage() {
                     <p>
                       새 회사 소속으로 활동하기 위해서는{" "}
                       <span className="font-semibold underline">
-                        관리자 승인이 필요할 수 있으며, 승인 완료 전까지 일부 기능
-                        이용이 제한될 수 있습니다.
+                        관리자 승인이 필요할 수 있으며, 승인 완료 전까지 일부
+                        기능 이용이 제한될 수 있습니다.
                       </span>
                     </p>
                   </div>
                   <div className="flex gap-3">
                     <span className="font-semibold text-indigo-600">5.</span>
                     <p>
-                      동일 이메일은 여러 회사 소속 계정에서 동시에 사용할 수 없으며,
-                      계속 사용하려면 이전 회사에서의 권한 해제가 필요합니다.
+                      동일 이메일은 여러 회사 소속 계정에서 동시에 사용할 수
+                      없으며, 계속 사용하려면 이전 회사에서의 권한 해제가
+                      필요합니다.
                     </p>
                   </div>
                 </div>
@@ -1109,10 +1168,7 @@ export default function SettingsPage() {
                     onChange={(e) => setAgreementChecked(e.target.checked)}
                     className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
                   />
-                  <label
-                    htmlFor="agreement"
-                    className="text-sm text-slate-700"
-                  >
+                  <label htmlFor="agreement" className="text-sm text-slate-700">
                     위 내용을 모두 확인하였으며, 이에 동의합니다.
                   </label>
                 </div>
@@ -1158,7 +1214,9 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+                        const fileInput = document.querySelector(
+                          'input[type="file"]',
+                        ) as HTMLInputElement;
                         fileInput?.click();
                       }}
                       className="rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 px-6 py-3 font-medium text-white shadow-md transition-all hover:from-blue-600 hover:to-cyan-700 hover:shadow-lg"
@@ -1216,7 +1274,10 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         setAffiliationForm((prev) => ({
                           ...prev,
-                          business_number: e.target.value.replace(/[^0-9]/g, ""),
+                          business_number: e.target.value.replace(
+                            /[^0-9]/g,
+                            "",
+                          ),
                         }))
                       }
                       placeholder="1234567890"
@@ -1278,8 +1339,8 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-medium text-slate-700">
-                      취급 제품 카테고리{" "}
-                      <span className="text-red-500">*</span> (중복 선택 가능)
+                      취급 제품 카테고리 <span className="text-red-500">*</span>{" "}
+                      (중복 선택 가능)
                     </label>
                     <div className="grid grid-cols-2 gap-3 rounded-lg border-2 border-slate-300 bg-white p-4">
                       {PRODUCT_CATEGORIES.map((category) => (
@@ -1290,12 +1351,14 @@ export default function SettingsPage() {
                           <input
                             type="checkbox"
                             checked={affiliationForm.product_categories.includes(
-                              category
+                              category,
                             )}
                             onChange={() => handleCategoryToggle(category)}
                             className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
                           />
-                          <span className="text-sm text-slate-700">{category}</span>
+                          <span className="text-sm text-slate-700">
+                            {category}
+                          </span>
                         </label>
                       ))}
                     </div>
@@ -1361,8 +1424,8 @@ export default function SettingsPage() {
                     2. 법적 보관이 필요한 정보
                   </h4>
                   <p className="mb-3 text-sm text-slate-700">
-                    다음 정보는 관련 법령(전자상거래법, 세무법 등)에 따라 최대 5년간
-                    보관되며, 법적 목적 외에는 사용되지 않습니다.
+                    다음 정보는 관련 법령(전자상거래법, 세무법 등)에 따라 최대
+                    5년간 보관되며, 법적 목적 외에는 사용되지 않습니다.
                   </p>
                   <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
                     <li>병·의원 ↔ 기업 간의 주문/출고/반품/정산 이력</li>
@@ -1383,9 +1446,7 @@ export default function SettingsPage() {
                     <li>
                       동일 전화번호/이메일로 즉시 재가입이 제한될 수 있습니다.
                     </li>
-                    <li>
-                      저장된 모든 설정 값은 초기화되며 복원되지 않습니다.
-                    </li>
+                    <li>저장된 모든 설정 값은 초기화되며 복원되지 않습니다.</li>
                   </ul>
                 </div>
 
@@ -1396,12 +1457,13 @@ export default function SettingsPage() {
                   </h4>
                   <ul className="ml-6 list-disc space-y-2 text-sm text-slate-700">
                     <li>
-                      탈퇴 완료 후에는 개인 정보를 근거로 한 본인 확인이 불가능하여
+                      탈퇴 완료 후에는 개인 정보를 근거로 한 본인 확인이
+                      불가능하여
                     </li>
                     <li>추가적인 삭제 요청을 처리할 수 없습니다.</li>
                     <li>
-                      병원/기업과의 거래가 진행 중일 경우, 담당자 변경 후 탈퇴하는 것을
-                      권장합니다.
+                      병원/기업과의 거래가 진행 중일 경우, 담당자 변경 후
+                      탈퇴하는 것을 권장합니다.
                     </li>
                   </ul>
                 </div>
@@ -1430,15 +1492,18 @@ export default function SettingsPage() {
                           className="h-5 w-5 rounded border-2 border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500"
                         />
                         <span className="text-sm text-slate-700">{reason}</span>
-                        {reason === "기타" && withdrawalReasons.includes("기타") && (
-                          <input
-                            type="text"
-                            value={withdrawalOtherReason}
-                            onChange={(e) => setWithdrawalOtherReason(e.target.value)}
-                            placeholder="직접 입력"
-                            className="ml-2 flex-1 rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                          />
-                        )}
+                        {reason === "기타" &&
+                          withdrawalReasons.includes("기타") && (
+                            <input
+                              type="text"
+                              value={withdrawalOtherReason}
+                              onChange={(e) =>
+                                setWithdrawalOtherReason(e.target.value)
+                              }
+                              placeholder="직접 입력"
+                              className="ml-2 flex-1 rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            />
+                          )}
                       </label>
                     ))}
                   </div>
@@ -1486,7 +1551,11 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="text"
-                    value={profile?.manager.phone_number ? formatPhoneNumber(profile.manager.phone_number) : ""}
+                    value={
+                      profile?.manager.phone_number
+                        ? formatPhoneNumber(profile.manager.phone_number)
+                        : ""
+                    }
                     disabled
                     className="w-full rounded-lg border-2 border-slate-300 bg-slate-100 px-4 py-3 text-slate-600 shadow-sm"
                   />
@@ -1607,4 +1676,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

@@ -24,7 +24,8 @@ export default function RegisterPage() {
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
 
   // Phone number validation
   const validatePhoneNumber = (phone: string): boolean => {
@@ -122,7 +123,7 @@ export default function RegisterPage() {
         {
           method: "POST",
           body: formData,
-        }
+        },
       );
 
       if (!response.ok) {
@@ -248,7 +249,7 @@ export default function RegisterPage() {
       if (ocrResult) {
         localStorage.setItem(
           "supplier_registration_ocr",
-          JSON.stringify(ocrResult)
+          JSON.stringify(ocrResult),
         );
       }
       localStorage.setItem(
@@ -258,7 +259,7 @@ export default function RegisterPage() {
           phoneNumber: formData.phoneNumber,
           position: formData.position || undefined,
           certificateUrl: certificateUrl,
-        })
+        }),
       );
 
       // S 0-3 company info page'ga o'tish
@@ -364,7 +365,6 @@ export default function RegisterPage() {
           {/* Registration Card */}
           <div className="rounded-2xl bg-white p-6 shadow-xl sm:p-8">
             {/* Header */}
-            
 
             {/* Error Message */}
             {errors.submit && (
@@ -450,7 +450,7 @@ export default function RegisterPage() {
                             // Silently handle any errors
                             console.error(
                               "Error scrolling for dropdown:",
-                              error
+                              error,
                             );
                           }
                         }, 100);
@@ -477,6 +477,9 @@ export default function RegisterPage() {
                       <option value="과장">과장</option>
                       <option value="차장">차장</option>
                       <option value="부장">부장</option>
+                      <option value="대표">대표</option>
+                      <option value="이사">이사</option>
+                      <option value="담당자">담당자</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                       <svg

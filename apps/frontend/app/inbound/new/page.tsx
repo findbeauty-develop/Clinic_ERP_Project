@@ -1624,8 +1624,8 @@ export default function InboundNewPage() {
                     일부 사용
                   </label>
                   <label className="text-xs text-slate-500 dark:text-slate-400">
-                    (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고
-                    사용량을 선택해주세요.)
+                    (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을
+                    체크하고 사용량을 선택해주세요.)
                   </label>
                 </div>
                 <div className="flex gap-2">
@@ -3053,7 +3053,15 @@ export default function InboundNewPage() {
               </button>
             </div>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-              제품 박스 QR 코드 옆에 (01) 다음 숫자
+              제품 박스{" "}
+              <span className="font-medium text-blue-600 dark:text-blue-400">
+                QR 코드
+              </span>{" "}
+              옆에{" "}
+              <span className="font-medium text-red-600 dark:text-red-400">
+                {" "}
+                (01) 다음 숫자
+              </span>
             </p>
             <div className="mb-5 flex gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
               {/* QR code image – o'zingiz qo'yishingiz mumkin, masalan: <img src="..." alt="QR" className="h-14 w-14 object-contain" /> */}

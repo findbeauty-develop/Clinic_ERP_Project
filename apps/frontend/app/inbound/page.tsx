@@ -2961,7 +2961,15 @@ const ProductCard = memo(function ProductCard({
               </button>
             </div>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-              제품 박스 QR 코드 옆에 (01) 다음 숫자
+              제품 박스{" "}
+              <span className="font-medium text-blue-600 dark:text-blue-400">
+                QR 코드
+              </span>{" "}
+              옆에{" "}
+              <span className="font-medium text-red-600 dark:text-red-400">
+                {" "}
+                (10) 다음 숫자
+              </span>
             </p>
             <div className="mb-5 flex gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
               <img
@@ -2971,26 +2979,26 @@ const ProductCard = memo(function ProductCard({
               />
               <div className="min-w-0 flex-1 space-y-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-red-600 dark:text-red-400">
+                  <span className="font-medium  text-slate-700 dark:text-slate-300">
                     (01)
                   </span>
                   <span className="text-slate-400 flex items-center justify-center gap-1">
                     <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
                     ←
                   </span>
-                  <span className="font-medium text-red-600 dark:text-red-400 flex items-center justify-center gap-1">
+                  <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1">
                     바코드 번호
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                  <span className="font-medium text-red-600 dark:text-red-400">
                     (10)
                   </span>
                   <span className="text-slate-400 flex items-center justify-center gap-1">
                     <span className="inline-block h-3.5 w-24 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700" />{" "}
                     ←
                   </span>
-                  <span className="text-slate-700 dark:text-slate-300">
+                  <span className=" text-red-600 dark:text-red-400">
                     Lot 번호
                   </span>
                 </div>
