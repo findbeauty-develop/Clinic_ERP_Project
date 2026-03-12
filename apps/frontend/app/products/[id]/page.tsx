@@ -2441,12 +2441,43 @@ function ProductEditForm({
           </div>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 mb-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.enableUsageCapacity}
+                  onChange={(e) =>
+                    handleInputChange("enableUsageCapacity", e.target.checked)
+                  }
+                  className="
+        h-5 w-5 shrink-0 rounded
+        appearance-none bg-white
+        border border-white-300
+        checked:bg-white-500 checked:border-white-500
+        focus:outline-none focus:ring-2 focus:ring-white-500
+        dark:bg-white
+        relative
+        after:content-['']
+        after:absolute after:left-1/2 after:top-1/2
+        after:h-2.5 after:w-1.5
+        after:-translate-x-1/2 after:-translate-y-1/2
+        after:rotate-45
+        after:border-r-2 after:border-b-2
+        after:border-black
+        after:opacity-0
+        checked:after:opacity-100
+      "
+                />
+
+                {/* <span className="text-xs text-slate-600 dark:text-slate-400">
+                  사용 단위 활성화
+                </span> */}
+              </label>
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 일부 사용
               </label>
               <label className="text-xs text-slate-500 dark:text-slate-400">
-                (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고 사용량을
-                선택해주세요.)
+                (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고
+                사용량을 선택해주세요.)
               </label>
             </div>
             <div className="flex gap-2">
