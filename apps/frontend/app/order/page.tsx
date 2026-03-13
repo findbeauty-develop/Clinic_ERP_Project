@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useDebounce } from "../../hooks/useDebounce";
 import {
   apiGet,
@@ -101,6 +102,7 @@ type DraftResponse = {
 type FilterTab = "low" | "expiring" | "all";
 
 export default function OrderPage() {
+  const router = useRouter();
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
@@ -182,6 +184,11 @@ export default function OrderPage() {
 
   // Client-side mount state (hydration error'dan qochish uchun)
   const [isMounted, setIsMounted] = useState(false);
+
+  // No-supplier modal state
+  const [showNoSupplierModal, setShowNoSupplierModal] = useState(false);
+  const [noSupplierProduct, setNoSupplierProduct] =
+    useState<ProductWithRisk | null>(null);
 
   // Price modal state (for products without prices)
   const [showPriceModal, setShowPriceModal] = useState(false);
@@ -702,6 +709,13 @@ export default function OrderPage() {
       const product = products.find((p) => p.id === productId);
       if (!product) return;
 
+      // ✅ CHECK: If quantity > 0 and supplier is missing, show no-supplier modal
+      if (sanitizedQuantity > 0 && !product.supplierId) {
+        setNoSupplierProduct(product);
+        setShowNoSupplierModal(true);
+        return;
+      }
+
       // ✅ CHECK: If quantity > 0 and prices are missing, show modal
       if (sanitizedQuantity > 0) {
         // Get batch if exists
@@ -1185,8 +1199,18 @@ export default function OrderPage() {
                       onClick={() => setProductSearchQuery("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                     >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   )}
@@ -1198,24 +1222,24 @@ export default function OrderPage() {
                 <div className="flex flex-1 flex-col overflow-hidden border-b border-slate-200 dark:border-slate-800">
                   <div className="border-b border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-800 dark:bg-slate-800/50">
                     <div className="flex items-center justify-center">
-                      <div className="inline-flex w-full rounded-lg border border-slate-200 dark:border-slate-700">
+                      <div className="inline-flex w-full rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                         <button
                           onClick={() => setProductFilter("low-stock")}
-                          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                          className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
                             productFilter === "low-stock"
-                              ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
-                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                          } border-r border-slate-200 dark:border-slate-700 rounded-l-lg`}
+                              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white"
+                              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                          }`}
                         >
                           재고 부족 제품
                         </button>
                         <button
                           onClick={() => setProductFilter("all")}
-                          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                          className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
                             productFilter === "all"
-                              ? "bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white"
-                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                          } rounded-r-lg`}
+                              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white"
+                              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                          }`}
                         >
                           전체 제품
                         </button>
@@ -3222,6 +3246,94 @@ export default function OrderPage() {
       </div>
 
       {/* Price Entry Modal */}
+      {showNoSupplierModal && noSupplierProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-slate-800">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                  <svg
+                    className="h-5 w-5 text-red-600 dark:text-red-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  주문 불가 제품 주문을 진행할 수 없습니다!
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowNoSupplierModal(false);
+                  setNoSupplierProduct(null);
+                }}
+                className="text-xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5">
+              <p className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                제품: {noSupplierProduct.productName}
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-400"></p>
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-700/40 dark:bg-amber-900/20">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  공급업체 정보가 등록되지 않았습니다. 공급업체 정보를 추가한 후
+                  주문을 진행해 주세요.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
+              <button
+                onClick={() => {
+                  setShowNoSupplierModal(false);
+                  setNoSupplierProduct(null);
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/50"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  setShowNoSupplierModal(false);
+                  router.push(`/products/${noSupplierProduct.id}`);
+                }}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                공급업체 추가
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPriceModal && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-2xl shadow-xl">
