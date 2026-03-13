@@ -23,8 +23,6 @@ export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   private readonly DRAFT_EXPIRY_HOURS = 24; // Draft expiration time
 
-  // ✅ Replaced Maps with CacheManagers
-  private productsForOrderCache: CacheManager<any>;
   private pendingInboundCache: CacheManager<any>;
 
   constructor(
@@ -34,29 +32,12 @@ export class OrderService {
     private readonly emailService: EmailService,
     private readonly telegramService: TelegramNotificationService
   ) {
-    this.productsForOrderCache = new CacheManager({
-      maxSize: 100,
-      ttl: 0, // 30 seconds
-      cleanupInterval: 60000,
-      name: "OrderService:Products",
-    });
-
     this.pendingInboundCache = new CacheManager({
       maxSize: 100,
-      ttl: 0, // ✅ DISABLED: No cache for real-time updates
+      ttl: 0,
       cleanupInterval: 60000,
       name: "OrderService:PendingInbound",
     });
-  }
-
-  private async refreshProductsForOrderCacheInBackground(
-    tenantId: string
-  ): Promise<void> {
-    try {
-      // ... (getProductsForOrder ichidagi barcha logic'ni copy qiling)
-    } catch (error) {
-      // Error handling
-    }
   }
   /**
    * Mahsulotlar ro'yxatini olish (barcha productlar)
@@ -66,16 +47,6 @@ export class OrderService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const cacheKey = `products-for-order:${tenantId}`;
-    const result = this.productsForOrderCache.getWithStaleCheck(cacheKey);
-
-    if (result) {
-      if (result.isStale) {
-        // Stale cache - background'da yangilash
-        this.refreshProductsForOrderCacheInBackground(tenantId).catch(() => {});
-      }
-      return result.data; // Return cached data (fresh or stale)
-    }
     // Barcha product'larni olish
     const products = await (this.prisma.product.findMany as any)({
       where: {
@@ -148,9 +119,6 @@ export class OrderService {
         })),
       };
     });
-
-    // Cache'ga saqlash
-    this.productsForOrderCache.set(cacheKey, formattedProducts);
 
     return formattedProducts;
   }
@@ -937,8 +905,6 @@ export class OrderService {
       this.logger.warn(`Failed to delete draft: ${error.message}`);
     }
 
-    // Cache'ni invalidate qilish
-    this.clearProductsForOrderCache(tenantId);
     this.clearPendingInboundCache(tenantId);
 
     // Agar bitta order bo'lsa, uni qaytarish, aks holda array qaytarish
@@ -3264,10 +3230,6 @@ export class OrderService {
     this.pendingInboundCache.delete(key);
   }
 
-  private clearProductsForOrderCache(tenantId: string): void {
-    const key = `products-for-order:${tenantId}`;
-    this.productsForOrderCache.delete(key);
-  }
 
   async getPendingInboundOrders(tenantId: string) {
     if (!tenantId) {
@@ -3860,9 +3822,7 @@ export class OrderService {
       });
     });
 
-    // Invalidate caches
     this.clearPendingInboundCache(tenantId);
-    this.clearProductsForOrderCache(tenantId);
 
     // Notify supplier-backend that order is completed
     if (order.supplier_id) {

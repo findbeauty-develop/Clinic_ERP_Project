@@ -203,56 +203,6 @@ export default function OrderPage() {
     salePrice: "",
   });
 
-  // Cache invalidation helper
-  const invalidateCache = useCallback(
-    (
-      cacheType?: "products" | "orders" | "rejectedOrders" | "draft" | "all"
-    ) => {
-      if (!cacheType || cacheType === "all") {
-        productsCacheRef.current = null;
-        ordersCacheRef.current = null;
-        rejectedOrdersCacheRef.current = null;
-        draftCacheRef.current = null;
-      } else {
-        switch (cacheType) {
-          case "products":
-            productsCacheRef.current = null;
-            break;
-          case "orders":
-            ordersCacheRef.current = null;
-            break;
-          case "rejectedOrders":
-            rejectedOrdersCacheRef.current = null;
-            break;
-          case "draft":
-            draftCacheRef.current = null;
-            break;
-        }
-      }
-    },
-    []
-  );
-
-  // Cache for products, orders, rejected orders, and draft to prevent duplicate requests
-  const productsCacheRef = useRef<{
-    data: ProductWithRisk[];
-    timestamp: number;
-  } | null>(null);
-  const ordersCacheRef = useRef<{
-    data: any[];
-    timestamp: number;
-    searchQuery: string;
-  } | null>(null);
-  const rejectedOrdersCacheRef = useRef<{
-    data: any[];
-    timestamp: number;
-  } | null>(null);
-  const draftCacheRef = useRef<{
-    data: DraftResponse | null;
-    timestamp: number;
-    sessionId: string;
-  } | null>(null);
-  const CACHE_TTL = 0; // 단가 = supplier tasdiqlagan narx, yangilanganda tez ko'rinsin (cache o'chiq)
 
   // Client-side mount initialization (hydration error'dan qochish uchun)
   useEffect(() => {
@@ -307,32 +257,17 @@ export default function OrderPage() {
 
   // Products olish - Backend에서 모든 제품 가져오기
   const fetchProducts = useCallback(async () => {
-    // Check cache first
-    if (
-      productsCacheRef.current &&
-      Date.now() - productsCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setProducts(productsCacheRef.current.data);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
 
-      // Backend에서 모든 제품 가져오기 (filtering은 frontend에서)
       const data = await apiGet<any[]>(
         `${apiUrl}/order/products?_t=${timestamp}&_r=${random}`
       );
 
       setProducts(data);
-      // Update cache
-      productsCacheRef.current = { data, timestamp: Date.now() };
     } catch (err) {
       console.error("Failed to load products", err);
       setError("제품 목록을 불러오지 못했습니다.");
@@ -350,12 +285,7 @@ export default function OrderPage() {
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
-        // Page loaded from bfcache (Safari back button)
         console.log("[Order] Loaded from bfcache - forcing refresh");
-        invalidateCache("products");
-        invalidateCache("orders");
-        invalidateCache("draft");
-        invalidateCache("rejectedOrders");
         fetchProducts();
       }
     };
@@ -375,7 +305,6 @@ export default function OrderPage() {
       const wasCached = sessionStorage.getItem("order_was_cached");
       if (wasCached === "true") {
         sessionStorage.removeItem("order_was_cached");
-        invalidateCache("products");
         fetchProducts();
       }
     }
@@ -384,7 +313,7 @@ export default function OrderPage() {
       window.removeEventListener("pageshow", handlePageShow as EventListener);
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [fetchProducts, invalidateCache]);
+  }, [fetchProducts]);
 
   // Refresh products when page becomes visible (after inbound processing)
   useEffect(() => {
@@ -413,29 +342,6 @@ export default function OrderPage() {
   const fetchDraft = useCallback(async () => {
     if (!sessionId) return; // SessionId tayyor bo'lmaguncha kutish
 
-    // Check cache first
-    if (
-      draftCacheRef.current &&
-      draftCacheRef.current.sessionId === sessionId &&
-      Date.now() - draftCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      const cachedData = draftCacheRef.current.data;
-      if (cachedData) {
-        setDraft(cachedData);
-        // Quantities'ni yangilash (itemId va productId ikkalasini ham)
-        const newQuantities: Record<string, number> = {};
-        cachedData.items?.forEach((item: DraftItem) => {
-          const itemId = item.batchId
-            ? `${item.productId}-${item.batchId}`
-            : item.productId;
-          newQuantities[itemId] = item.quantity; // itemId bo'yicha
-          newQuantities[item.productId] = item.quantity; // productId bo'yicha (backward compatibility)
-        });
-        setQuantities(newQuantities);
-      }
-      return;
-    }
-
     setDraftLoading(true);
     try {
       // ✅ getAccessToken() ishlatish (localStorage emas)
@@ -460,13 +366,6 @@ export default function OrderPage() {
 
       const data = await response.json();
       setDraft(data);
-
-      // Update cache
-      draftCacheRef.current = {
-        data,
-        timestamp: Date.now(),
-        sessionId,
-      };
 
       // Quantities'ni yangilash (itemId va productId ikkalasini ham)
       const newQuantities: Record<string, number> = {};
@@ -522,21 +421,8 @@ export default function OrderPage() {
 
   // Orders olish (History uchun)
   const fetchOrders = useCallback(async () => {
-    const cacheKey = debouncedOrderSearchQuery.trim() || "";
-    // Check cache first
-    if (
-      ordersCacheRef.current &&
-      ordersCacheRef.current.searchQuery === cacheKey &&
-      Date.now() - ordersCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setOrders(ordersCacheRef.current.data);
-      setOrdersLoading(false);
-      return;
-    }
-
     setOrdersLoading(true);
     try {
-      // ✅ getAccessToken() ishlatish (localStorage emas)
       const token = await getAccessToken();
 
       const queryParams = new URLSearchParams();
@@ -544,7 +430,6 @@ export default function OrderPage() {
         queryParams.append("search", debouncedOrderSearchQuery.trim());
       }
 
-      // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
       queryParams.append("_t", timestamp.toString());
@@ -562,15 +447,7 @@ export default function OrderPage() {
       if (!response.ok) throw new Error("Failed to fetch orders");
 
       const data = await response.json();
-
-      const ordersData = data || [];
-      setOrders(ordersData);
-      // Update cache
-      ordersCacheRef.current = {
-        data: ordersData,
-        timestamp: Date.now(),
-        searchQuery: cacheKey,
-      };
+      setOrders(data || []);
     } catch (err) {
       console.error("Failed to load orders", err);
       setOrders([]);
@@ -581,17 +458,7 @@ export default function OrderPage() {
 
   // Fetch rejected orders
   const fetchRejectedOrders = useCallback(async () => {
-    // Check cache first
-    if (
-      rejectedOrdersCacheRef.current &&
-      Date.now() - rejectedOrdersCacheRef.current.timestamp < CACHE_TTL
-    ) {
-      setRejectedOrders(rejectedOrdersCacheRef.current.data);
-      return;
-    }
-
     try {
-      // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
 
@@ -599,13 +466,7 @@ export default function OrderPage() {
         `${apiUrl}/order/rejected-orders?_t=${timestamp}&_r=${random}`
       );
 
-      const rejectedOrdersData = rejectedData || [];
-      setRejectedOrders(rejectedOrdersData);
-      // Update cache
-      rejectedOrdersCacheRef.current = {
-        data: rejectedOrdersData,
-        timestamp: Date.now(),
-      };
+      setRejectedOrders(rejectedData || []);
     } catch (err) {
       console.error("Failed to load rejected orders", err);
       setRejectedOrders([]);
@@ -644,8 +505,6 @@ export default function OrderPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && activeTab === "history") {
-        invalidateCache("orders");
-        invalidateCache("rejectedOrders");
         fetchOrders();
         fetchRejectedOrders();
       }
@@ -653,8 +512,6 @@ export default function OrderPage() {
 
     const handleFocus = () => {
       if (activeTab === "history") {
-        invalidateCache("orders");
-        invalidateCache("rejectedOrders");
         fetchOrders();
         fetchRejectedOrders();
       }
@@ -667,7 +524,7 @@ export default function OrderPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [activeTab, fetchOrders, fetchRejectedOrders, invalidateCache]);
+  }, [activeTab, fetchOrders, fetchRejectedOrders]);
 
   // Search products
   // useEffect(() => {
@@ -886,9 +743,6 @@ export default function OrderPage() {
       await apiPut(`${apiUrl}/products/${selectedProduct.id}`, {
         purchasePrice,
       });
-
-      // ✅ Cache'ni invalidate qilish - yangi price darhol ko'rinsin
-      invalidateCache("products");
 
       // Update local products state with new price
       setProducts((prevProducts) =>
@@ -1113,7 +967,6 @@ export default function OrderPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
-                  invalidateCache("products");
                   fetchProducts();
                 }}
                 disabled={loading}
@@ -1851,8 +1704,6 @@ export default function OrderPage() {
 
                                     alert("주문이 취소되었습니다.");
 
-                                    // Refresh orders
-                                    invalidateCache("orders");
                                     await fetchOrders();
                                   } catch (err: any) {
                                     console.error(
@@ -2837,8 +2688,6 @@ export default function OrderPage() {
                             // Local draft'ni tozalash
                             setDraft(null);
                             setQuantities({});
-                            // Invalidate caches
-                            invalidateCache("all");
                             // Order history'ni yangilash va tab'ga o'tish
                             setActiveTab("history");
                             await fetchOrders();
