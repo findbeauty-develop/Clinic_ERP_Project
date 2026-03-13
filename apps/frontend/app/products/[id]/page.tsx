@@ -643,26 +643,28 @@ export default function ProductDetailPage() {
                 수량 및 용량
               </h2>
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+                {(product.capacityPerProduct || product.usageCapacity) && (
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    {product.capacityPerProduct && (
+                      <ReadOnlyField
+                        label="제품 용량"
+                        value={`${product.capacityPerProduct} ${product.capacityUnit || "EA"}`}
+                      />
+                    )}
+                    {product.usageCapacity && (
+                      <ReadOnlyField
+                        label="일부 사용"
+                        value={`${Number(product.usageCapacity).toFixed(2)} ${product.capacityUnit || "EA"}`}
+                      />
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <ReadOnlyField
                     label="최소 제품 재고"
                     value={`${(product.minStock || 0).toLocaleString()} ${product?.unit ?? "EA"}`}
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-6">
-                  {product.capacityPerProduct && (
-                    <ReadOnlyField
-                      label="제품 용량"
-                      value={`${product.capacityPerProduct} ${product.capacityUnit || "EA"}`}
-                    />
-                  )}
-                  {product.usageCapacity && (
-                    <ReadOnlyField
-                      label="일부 사용"
-                      value={`${Number(product.usageCapacity).toFixed(2)} ${product.capacityUnit || "EA"}`}
-                    />
-                  )}
                 </div>
               </div>
 
@@ -1483,7 +1485,10 @@ function ProductEditForm({
       const n = Number(v);
       return opts.includes(n) ? String(n) : "1";
     })(),
-    enableUsageCapacity: !!product.usageCapacity,
+    enableUsageCapacity: !(
+      Number(product.capacityPerProduct) === 1 &&
+      Number(product.usageCapacity) === 1
+    ),
     image: product.productImage || "",
     imageFile: null as File | null,
     expiryDate: product.expiryDate
@@ -1543,8 +1548,12 @@ function ProductEditForm({
           // Checkbox yoqilganda, 판매가 unit 사용 단위 unit'iga o'zgaradi
           newData.salePriceUnit = prev.usageCapacityUnit;
         } else {
-          // Checkbox o'chirilganda, 판매가 unit 제품 용량 unit'iga qaytadi
-          newData.salePriceUnit = prev.capacityUnit;
+          // Checkbox o'chirilganda: 제품 용량 = 1 box, 일부 사용 = 1 box (auto)
+          newData.capacityPerProduct = "1";
+          newData.capacityUnit = "box";
+          newData.usageCapacity = "1";
+          newData.usageCapacityUnit = "box";
+          newData.salePriceUnit = "box";
         }
       }
 
@@ -2340,6 +2349,120 @@ function ProductEditForm({
         수량 및 용량
       </h2>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+        {/* 제품 나누어 사용 checkbox */}
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="enableCapacityInputEdit"
+            checked={formData.enableUsageCapacity}
+            onChange={(e) =>
+              handleInputChange("enableUsageCapacity", e.target.checked)
+            }
+            className="h-5 w-5 shrink-0 rounded appearance-none bg-white border border-slate-300 checked:bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 dark:bg-slate-900 dark:border-slate-600 relative after:content-[''] after:absolute after:left-1/2 after:top-1/2 after:h-2.5 after:w-1.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rotate-45 after:border-r-2 after:border-b-2 after:border-black after:opacity-0 checked:after:opacity-100"
+          />
+          <label
+            htmlFor="enableCapacityInputEdit"
+            className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+          >
+            제품을 나누어 사용하시나요?
+          </label>
+          <span className="text-xs font-medium text-sky-500">
+            * 제품을 나누어 사용하는 경우 체크해주세요.
+          </span>
+        </div>
+
+        {formData.enableUsageCapacity && (
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            {/* 제품 용량 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                제품 용량
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={formData.capacityPerProduct || ""}
+                  onChange={(e) =>
+                    handleInputChange("capacityPerProduct", e.target.value)
+                  }
+                  placeholder="0"
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <div className="relative w-28">
+                  <select
+                    value={formData.capacityUnit}
+                    onChange={(e) =>
+                      handleInputChange("capacityUnit", e.target.value)
+                    }
+                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="">단위 선택</option>
+                    {unitOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                    <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 일부 사용 */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 mb-1">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  일부 사용
+                </label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고
+                  사용량을 선택해주세요.)
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={
+                    formData.usageCapacity !== undefined &&
+                    formData.usageCapacity !== null &&
+                    formData.usageCapacity !== ""
+                      ? String(formData.usageCapacity)
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    handleInputChange("usageCapacity", v ? v : "");
+                  }}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="">사용량 선택</option>
+                  {USAGE_CAPACITY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {Number(opt).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+                <div className="relative w-28 flex items-center">
+                  <input
+                    type="text"
+                    readOnly
+                    value={formData.capacityUnit || ""}
+                    className="h-11 w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    tabIndex={-1}
+                    aria-label="사용 단위 (제품 용량과 동일)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -2370,149 +2493,10 @@ function ProductEditForm({
                   ))}
                 </select>
                 <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                  <svg
-                    className="h-4 w-4 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
+                  <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mt-6">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              제품 용량
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={formData.capacityPerProduct || ""}
-                onChange={(e) =>
-                  handleInputChange("capacityPerProduct", e.target.value)
-                }
-                placeholder="0"
-                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <div className="relative w-28">
-                <select
-                  value={formData.capacityUnit}
-                  onChange={(e) =>
-                    handleInputChange("capacityUnit", e.target.value)
-                  }
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <option value="">단위 선택</option>
-                  {unitOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                  <svg
-                    className="h-4 w-4 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 mb-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.enableUsageCapacity}
-                  onChange={(e) =>
-                    handleInputChange("enableUsageCapacity", e.target.checked)
-                  }
-                  className="
-        h-5 w-5 shrink-0 rounded
-        appearance-none bg-white
-        border border-white-300
-        checked:bg-white-500 checked:border-white-500
-        focus:outline-none focus:ring-2 focus:ring-white-500
-        dark:bg-white
-        relative
-        after:content-['']
-        after:absolute after:left-1/2 after:top-1/2
-        after:h-2.5 after:w-1.5
-        after:-translate-x-1/2 after:-translate-y-1/2
-        after:rotate-45
-        after:border-r-2 after:border-b-2
-        after:border-black
-        after:opacity-0
-        checked:after:opacity-100
-      "
-                />
-
-                {/* <span className="text-xs text-slate-600 dark:text-slate-400">
-                  사용 단위 활성화
-                </span> */}
-              </label>
-              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                일부 사용
-              </label>
-              <label className="text-xs text-slate-500 dark:text-slate-400">
-                (제품을 일부만 사용하는 경우, &apos;일부 사용&apos;을 체크하고
-                사용량을 선택해주세요.)
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={
-                  formData.usageCapacity !== undefined &&
-                  formData.usageCapacity !== null &&
-                  formData.usageCapacity !== ""
-                    ? String(formData.usageCapacity)
-                    : ""
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  handleInputChange("usageCapacity", v ? v : "");
-                }}
-                onWheel={(e) => e.currentTarget.blur()}
-                disabled={!formData.enableUsageCapacity}
-                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
-              >
-                <option value="">사용량 선택</option>
-                {USAGE_CAPACITY_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {Number(opt).toFixed(2)}
-                  </option>
-                ))}
-              </select>
-              <div className="relative w-28 flex items-center">
-                <input
-                  type="text"
-                  readOnly
-                  value={formData.capacityUnit || ""}
-                  className="h-11 w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                  tabIndex={-1}
-                  aria-label="사용 단위 (제품 용량과 동일)"
-                />
               </div>
             </div>
           </div>

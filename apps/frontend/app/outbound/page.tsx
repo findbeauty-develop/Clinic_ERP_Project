@@ -3397,7 +3397,15 @@ const ProductCard = memo(function ProductCard({
 }) {
   // Helper function to calculate available quantity for a batch
   const calculateAvailableQuantity = (batch: Batch): number => {
-    // Fallback: Calculate if available_quantity not in database
+    // Batch table'dagi available_quantity ni birinchi o'rinda ishlatish
+    if (
+      batch.available_quantity !== null &&
+      batch.available_quantity !== undefined
+    ) {
+      return Number(batch.available_quantity);
+    }
+
+    // Fallback: DB'da available_quantity yo'q bo'lsa hisoblash
     if (
       batch.inbound_qty !== null &&
       batch.inbound_qty !== undefined &&
@@ -3406,7 +3414,6 @@ const ProductCard = memo(function ProductCard({
       product.capacityPerProduct > 0
     ) {
       const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
-      // ✅ 사용 단위(usage_capacity) bo'lsa: used_count = foydalanishlar soni. Hajm = used_count * usage_capacity → qolgan = total - hajm
       if (
         product.usageCapacity != null &&
         product.usageCapacity !== undefined &&
@@ -3416,36 +3423,10 @@ const ProductCard = memo(function ProductCard({
         const volumeUsed = usedCount * product.usageCapacity;
         return Math.max(0, totalQuantity - volumeUsed);
       }
-      // ✅ available_quantity from DB (when no usage_capacity) yoki outbound_count dan hisoblash
-      if (
-        batch.available_quantity !== null &&
-        batch.available_quantity !== undefined
-      ) {
-        return batch.available_quantity;
-      }
       const outboundCount = batch.outbound_count ?? 0;
       return Math.max(0, totalQuantity - outboundCount);
     }
 
-    // ✅ Use available_quantity from database if no capacity logic
-    if (
-      batch.available_quantity !== null &&
-      batch.available_quantity !== undefined
-    ) {
-      return batch.available_quantity;
-    }
-
-    // Fallback: agar capacity_per_product yo'q bo'lsa, oddiy batch.qty
-    if (
-      batch.inbound_qty !== null &&
-      batch.inbound_qty !== undefined &&
-      product.capacityPerProduct !== null &&
-      product.capacityPerProduct !== undefined &&
-      product.capacityPerProduct > 0
-    ) {
-      // usage_capacity yo'q bo'lsa ham, capacity_per_product bor bo'lsa
-      return batch.inbound_qty * product.capacityPerProduct;
-    }
     return batch.qty;
   };
 

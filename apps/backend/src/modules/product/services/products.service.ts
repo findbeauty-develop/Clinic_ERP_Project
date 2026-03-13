@@ -92,8 +92,8 @@ export class ProductsService {
                   batch_no: true,
                   qty: true,
                   inbound_qty: true,
-                  used_count: true, // ✅ Add for availableQuantity calculation
-                  // available_quantity: true, // ✅ Will be available after migration
+                  used_count: true,
+                  available_quantity: true,
                   unit: true,
                   min_stock: true,
                   expiry_date: true,
@@ -776,15 +776,16 @@ export class ProductsService {
                 batch_no: true,
                 qty: true,
                 inbound_qty: true,
-                used_count: true, // ✅ Ishlatilgan miqdor (empty box uchun)
-                outbound_count: true, // ✅ Ombordan chiqgan jami miqdor
+                used_count: true,
+                outbound_count: true,
+                available_quantity: true,
                 unit: true,
                 min_stock: true,
                 expiry_date: true,
                 storage: true,
                 alert_days: true,
                 created_at: true,
-                is_separate_purchase: true, // ✅ Added
+                is_separate_purchase: true,
               },
               orderBy: { created_at: "desc" },
               // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
@@ -1308,6 +1309,27 @@ export class ProductsService {
             await tx.batch.update({
               where: { id: firstBatch.id },
               data: batchUpdateData,
+            });
+          }
+        }
+
+        // ✅ capacity_per_product o'zgarganda barcha batch'larning available_quantity ni qayta hisoblash
+        const existingCap = Number((existing as any).capacity_per_product ?? 0);
+        const newCapacity = dto.capacityPerProduct;
+        const capacityChanged =
+          newCapacity !== undefined && Number(newCapacity) !== existingCap;
+
+        if (capacityChanged) {
+          const allBatches = await tx.batch.findMany({
+            where: { product_id: id },
+            select: { id: true, qty: true },
+          });
+          const cap = Number(newCapacity);
+          for (const batch of allBatches) {
+            const av = cap > 0 ? cap * batch.qty : batch.qty;
+            await tx.batch.update({
+              where: { id: batch.id },
+              data: { available_quantity: av, updated_at: new Date() },
             });
           }
         }
