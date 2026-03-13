@@ -127,6 +127,7 @@ export class OrderService {
         id: product.id,
         productName: product.name,
         brand: product.brand,
+        category: product.category ?? null,
         supplierId: supplierId, // ClinicSupplierManager ID
         supplierName: supplierName,
         managerName: managerName,
