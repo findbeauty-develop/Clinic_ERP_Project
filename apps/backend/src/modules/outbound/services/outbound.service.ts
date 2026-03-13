@@ -673,6 +673,10 @@ export class OutboundService {
       managerName?: string;
       outboundType?: string;
       search?: string;
+      filterNormal?: boolean;
+      filterDamaged?: boolean;
+      filterDefective?: boolean;
+      filterWaste?: boolean;
     },
     isPackageOutbound: boolean = false // ✅ PackageOutbound uchun patient_name ni exclude qilish
   ): any {
@@ -791,6 +795,36 @@ export class OutboundService {
       ];
     }
 
+    // Type filters (isDamaged, isDefective, wasteProduct)
+    const { filterNormal, filterDamaged, filterDefective, filterWaste } =
+      filters || {};
+    const allSelected =
+      filterNormal !== false &&
+      filterDamaged !== false &&
+      filterDefective !== false &&
+      filterWaste !== false;
+
+    if (!allSelected) {
+      const typeConditions: any[] = [];
+      if (filterNormal)
+        typeConditions.push({
+          is_damaged: false,
+          is_defective: false,
+          ...(isPackageOutbound ? {} : { waste_product: false }),
+        });
+      if (filterDamaged) typeConditions.push({ is_damaged: true });
+      if (filterDefective) typeConditions.push({ is_defective: true });
+      if (filterWaste && !isPackageOutbound)
+        typeConditions.push({ waste_product: true });
+
+      if (typeConditions.length > 0) {
+        where.AND = [{ OR: typeConditions }];
+      } else {
+        // Hech qanday filter tanlanmagan — natija bo'sh
+        where.id = "__no_results__";
+      }
+    }
+
     return where;
   }
 
@@ -802,11 +836,15 @@ export class OutboundService {
       productId?: string;
       packageId?: string;
       managerName?: string;
-      outboundType?: string; // 제품, 패키지, 바코드
-      search?: string; // 검색어 (제품명, 출고자 등)
+      outboundType?: string;
+      search?: string;
       page?: number;
       limit?: number;
       capacity_unit?: string;
+      filterNormal?: boolean;
+      filterDamaged?: boolean;
+      filterDefective?: boolean;
+      filterWaste?: boolean;
     }
   ) {
     if (!tenantId) {

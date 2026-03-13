@@ -61,7 +61,7 @@ export default function OutboundHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const itemsPerPage = 10;
+  const itemsPerPage = 5;
 
   // ✅ Filter states
   const [filterNormal, setFilterNormal] = useState(true); // 정상 (Normal)
@@ -77,17 +77,26 @@ export default function OutboundHistoryPage() {
   } | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
+  // Filter/search o'zgarganda page 1 ga qaytarish
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterNormal, filterDamaged, filterDefective, filterWaste]);
+
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const queryParams = new URLSearchParams();
-      // Remove outboundType filter to get all outbounds (both package and regular)
       if (searchQuery) {
         queryParams.append("search", searchQuery);
       }
       queryParams.append("page", currentPage.toString());
       queryParams.append("limit", itemsPerPage.toString());
+      // Filter params backend'ga yuborish
+      queryParams.append("filterNormal", filterNormal.toString());
+      queryParams.append("filterDamaged", filterDamaged.toString());
+      queryParams.append("filterDefective", filterDefective.toString());
+      queryParams.append("filterWaste", filterWaste.toString());
 
       // ✅ Universal cache busting (all browsers)
       const timestamp = Date.now();
@@ -110,49 +119,9 @@ export default function OutboundHistoryPage() {
         },
       });
 
-      // ✅ Filter items based on filter states
-      let filteredItems = data.items || [];
-
-      // Agar barcha filter'lar false bo'lsa, hech narsa ko'rsatilmaydi
-      if (!filterNormal && !filterDamaged && !filterDefective && !filterWaste) {
-        filteredItems = [];
-      } else {
-        // Filter items based on isDamaged, isDefective, wasteProduct
-        filteredItems = filteredItems.filter((item) => {
-          const isDamaged = item.isDamaged || false;
-          const isDefective = item.isDefective || false;
-          const isWaste = item.wasteProduct || false;
-
-          // 정상 (Normal) - isDamaged, isDefective, wasteProduct hammasi false
-          if (filterNormal && !isDamaged && !isDefective && !isWaste) {
-            return true;
-          }
-
-          // 파손 (Damaged) - isDamaged true
-          if (filterDamaged && isDamaged) {
-            return true;
-          }
-
-          // 불량 (Defective) - isDefective true
-          if (filterDefective && isDefective) {
-            return true;
-          }
-
-          // 폐기 (Waste) - wasteProduct true
-          if (filterWaste && isWaste) {
-            return true;
-          }
-
-          return false;
-        });
-      }
-
-      setHistoryData(filteredItems);
-      // ✅ Total pages va total items - filtered items bo'yicha hisoblash
-      const filteredTotal = filteredItems.length;
-      const filteredTotalPages = Math.ceil(filteredTotal / itemsPerPage);
-      setTotalPages(filteredTotalPages || 1);
-      setTotalItems(filteredTotal);
+      setHistoryData(data.items || []);
+      setTotalPages(data.totalPages || 1);
+      setTotalItems(data.total || 0);
     } catch (err) {
       console.error("Failed to load history", err);
       setError("출고 내역을 불러오지 못했습니다.");

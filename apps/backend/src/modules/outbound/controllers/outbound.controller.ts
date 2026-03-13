@@ -141,7 +141,11 @@ export class OutboundController {
     @Query("outboundType") outboundType?: string,
     @Query("search") search?: string,
     @Query("page") page?: string,
-    @Query("limit") limit?: string
+    @Query("limit") limit?: string,
+    @Query("filterNormal") filterNormal?: string,
+    @Query("filterDamaged") filterDamaged?: string,
+    @Query("filterDefective") filterDefective?: string,
+    @Query("filterWaste") filterWaste?: string
   ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -157,6 +161,10 @@ export class OutboundController {
     if (search) filters.search = search;
     if (page) filters.page = parseInt(page, 10);
     if (limit) filters.limit = parseInt(limit, 10);
+    filters.filterNormal = filterNormal !== "false";
+    filters.filterDamaged = filterDamaged !== "false";
+    filters.filterDefective = filterDefective !== "false";
+    filters.filterWaste = filterWaste !== "false";
 
     return this.outboundService.getOutboundHistory(tenantId, filters);
   }
