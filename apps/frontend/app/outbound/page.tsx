@@ -567,8 +567,23 @@ function OutboundPageContent() {
 
         const gtin = parsed.gtin || scannedBarcode;
 
-        // Find product by GTIN
-        const matchedProduct = products.find((p) => p.barcode === gtin);
+        // Resolve barcode via API (checks ProductGTIN table for all barcode types)
+        let matchedProduct: (typeof products)[number] | null = null;
+
+        try {
+          const found = await apiGet<any>(
+            `${apiUrl}/products/barcode/${encodeURIComponent(gtin)}`
+          );
+          if (found?.id) {
+            matchedProduct =
+              products.find((p) => p.id === found.id) ??
+              products.find((p) => p.barcode === gtin) ??
+              null;
+          }
+        } catch (_) {
+          matchedProduct =
+            products.find((p) => p.barcode === gtin) ?? null;
+        }
 
         if (!matchedProduct) {
           alert(`⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${gtin}`);

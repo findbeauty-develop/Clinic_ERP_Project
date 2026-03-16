@@ -353,7 +353,7 @@ export default function ProductDetailPage() {
 
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
@@ -514,30 +514,25 @@ export default function ProductDetailPage() {
                           label="카테고리"
                           value={product.category || "—"}
                         />
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <div className="flex flex-col gap-2">
+                          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                             바코드 번호
-                          </p>
+                          </span>
                           {product.barcodes && product.barcodes.length > 0 ? (
-                            <div className="flex flex-col gap-1">
-                              {product.barcodes.map((b, idx) => (
-                                <div
-                                  key={b.id ?? idx}
-                                  className="flex items-center gap-2"
-                                >
-                                  <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-900/30 dark:text-sky-300">
-                                    {b.barcode_package_type}
-                                  </span>
-                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                                    {b.gtin}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+                            product.barcodes.map((b, idx) => (
+                              <div key={b.id ?? idx} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                                <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-900/30 dark:text-sky-300">
+                                  {b.barcode_package_type}
+                                </span>
+                                <span className="text-sm text-slate-700 dark:text-slate-200">
+                                  {b.gtin}
+                                </span>
+                              </div>
+                            ))
                           ) : (
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                              {product.barcode || "-"}
-                            </p>
+                            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                              {product.barcode || "—"}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -2242,7 +2237,19 @@ function ProductEditForm({
   const statusOptions = ["활성", "재고 부족", "만료", "단종"];
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-6"
+      onKeyDown={(e) => {
+        if (
+          e.key === "Enter" &&
+          (e.target as HTMLElement).tagName === "INPUT" &&
+          (e.target as HTMLInputElement).type === "text"
+        ) {
+          e.preventDefault();
+        }
+      }}
+    >
       {/* 제품 정보 Section */}
       <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
         <InfoIcon className="h-5 w-5 text-sky-500" />
@@ -2370,6 +2377,7 @@ function ProductEditForm({
                       onKeyDown={async (e) => {
                         if (e.key !== "Enter") return;
                         e.preventDefault();
+                        e.stopPropagation();
                         const raw = (formData.barcode || "").replace(
                           /[^\x20-\x7E]/g,
                           ""
@@ -2475,6 +2483,7 @@ function ProductEditForm({
                         onKeyDown={async (e) => {
                           if (e.key !== "Enter") return;
                           e.preventDefault();
+                          e.stopPropagation();
                           await parseGtinInputEdit(item.gtin, (val) => {
                             const updated = [...additionalBarcodesEdit];
                             updated[idx] = { ...updated[idx], gtin: val };

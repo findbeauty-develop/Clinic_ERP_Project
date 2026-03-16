@@ -281,9 +281,8 @@ export default function InboundNewPage() {
     }
     if (cleaned.startsWith("01") && cleaned.length >= 16) {
       try {
-        const { parseGS1Barcode } = await import(
-          "../../../utils/barcodeParser"
-        );
+        const { parseGS1Barcode } =
+          await import("../../../utils/barcodeParser");
         const parsed = parseGS1Barcode(cleaned);
         if (parsed.gtin) onResult(parsed.gtin);
       } catch (_) {}
@@ -292,13 +291,13 @@ export default function InboundNewPage() {
 
   // Multi-barcode state
   const BARCODE_PACKAGE_TYPES = [
-    { value: "BOX", label: "BOX (박스)" },
-    { value: "AMPULE", label: "AMPULE (앰플)" },
-    { value: "VIAL", label: "VIAL (바이알)" },
-    { value: "UNIT", label: "UNIT (낱개)" },
-    { value: "SYRINGE", label: "SYRINGE (주사기)" },
-    { value: "BOTTLE", label: "BOTTLE (병)" },
-    { value: "OTHER", label: "OTHER (기타)" },
+    { value: "BOX", label: "BOX" },
+    { value: "AMPULE", label: "AMPULE" },
+    { value: "VIAL", label: "VIAL" },
+    { value: "UNIT", label: "UNIT" },
+    { value: "SYRINGE", label: "SYRINGE" },
+    { value: "BOTTLE", label: "BOTTLE" },
+    { value: "OTHER", label: "OTHER" },
   ] as const;
   const [additionalBarcodes, setAdditionalBarcodes] = useState<
     Array<{ gtin: string; barcode_package_type: string }>
@@ -1278,7 +1277,7 @@ export default function InboundNewPage() {
 
   return (
     <main className="flex-1 bg-slate-50 dark:bg-slate-900/60">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
@@ -1334,12 +1333,12 @@ export default function InboundNewPage() {
             <InfoIcon className="h-5 w-5 text-sky-500" />
             제품 정보 <span className="text-red-500">*</span>
           </h2>
-          <div className="rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none">
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-none overflow-hidden">
             <div className="p-6 sm:p-10">
               {/* New Layout: Left side - Image Upload, Right side - Form Fields */}
-              <div className="grid gap-6 lg:grid-cols-[250px_1fr]">
+              <div className="grid gap-6 lg:grid-cols-[250px_1fr] min-w-0">
                 {/* Left Side - Image Upload */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 min-w-0">
                   {/* Large Image Upload */}
                   <div className="relative flex w-full min-h-[24rem] max-h-[32rem] flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 overflow-hidden transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60">
                     {formData.image ? (
@@ -1411,11 +1410,11 @@ export default function InboundNewPage() {
                 </div>
 
                 {/* Right Side - Form Fields + Small Image Placeholder */}
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-6 min-w-0">
                   {/* Form Fields in 2 Columns */}
-                  <div className="grid gap-6 md:grid-cols-2">
+                  <div className="grid gap-6 md:grid-cols-2 min-w-0">
                     {/* Left Column */}
-                    <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-6 min-w-0">
                       <InputField
                         label="제품명"
                         placeholder="이름"
@@ -1435,7 +1434,7 @@ export default function InboundNewPage() {
                     </div>
 
                     {/* Right Column */}
-                    <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-6 min-w-0">
                       <InputField
                         label="제조사"
                         placeholder="브랜드"
@@ -1457,8 +1456,8 @@ export default function InboundNewPage() {
                             스케너 없어요?
                           </button>
                         </div>
-                        {/* Primary barcode row */}
-                        <div className="flex gap-2">
+                        {/* Primary barcode row: [type select] [input] [+ add button] */}
+                        <div className="flex gap-2 min-w-0">
                           <select
                             value={formData.barcodePackageType}
                             onChange={(e: any) =>
@@ -1467,7 +1466,7 @@ export default function InboundNewPage() {
                                 e.target.value
                               )
                             }
-                            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            className="h-11 w-28 shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           >
                             {BARCODE_PACKAGE_TYPES.map((pt) => (
                               <option key={pt.value} value={pt.value}>
@@ -1487,10 +1486,35 @@ export default function InboundNewPage() {
                             }}
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
+                          <button
+                            type="button"
+                            title="바코드 추가"
+                            onClick={() =>
+                              setAdditionalBarcodes([
+                                ...additionalBarcodes,
+                                { gtin: "", barcode_package_type: "BOX" },
+                              ])
+                            }
+                            className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100 transition dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-400"
+                          >
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 4v16m8-8H4"
+                              />
+                            </svg>
+                          </button>
                         </div>
-                        {/* Additional barcode rows */}
+                        {/* Additional barcode rows: [type select] [input] [× delete] */}
                         {additionalBarcodes.map((item, idx) => (
-                          <div key={idx} className="flex gap-2">
+                          <div key={idx} className="flex gap-2 min-w-0">
                             <select
                               value={item.barcode_package_type}
                               onChange={(e: any) => {
@@ -1501,7 +1525,7 @@ export default function InboundNewPage() {
                                 };
                                 setAdditionalBarcodes(updated);
                               }}
-                              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                              className="h-11 w-28 shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                             >
                               {BARCODE_PACKAGE_TYPES.map((pt) => (
                                 <option key={pt.value} value={pt.value}>
@@ -1563,9 +1587,8 @@ export default function InboundNewPage() {
                                   pasted.length >= 16
                                 ) {
                                   try {
-                                    const { parseGS1Barcode } = await import(
-                                      "../../../utils/barcodeParser"
-                                    );
+                                    const { parseGS1Barcode } =
+                                      await import("../../../utils/barcodeParser");
                                     const parsed = parseGS1Barcode(pasted);
                                     if (parsed.gtin) {
                                       e.preventDefault();
@@ -1606,38 +1629,12 @@ export default function InboundNewPage() {
                             </button>
                           </div>
                         ))}
-                        {/* Add barcode button */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setAdditionalBarcodes([
-                              ...additionalBarcodes,
-                              { gtin: "", barcode_package_type: "BOX" },
-                            ])
-                          }
-                          className="flex items-center gap-2 self-start rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-600 hover:bg-sky-100 transition dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-400 dark:hover:bg-sky-900/30"
-                        >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 4v16m8-8H4"
-                            />
-                          </svg>
-                          바코드 추가
-                        </button>
                       </div>
                     </div>
                   </div>
 
                   {/* Small Additional Image Placeholder */}
-                  <div className="relative flex h-48 w-[200px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 cursor-pointer transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800">
+                  {/* <div className="relative flex h-48 w-[200px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 cursor-pointer transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800">
                     {formData.additionalImage ? (
                       <>
                         <img
@@ -1700,7 +1697,7 @@ export default function InboundNewPage() {
                         />
                       </label>
                     )}
-                  </div>
+                  </div> */}
                 </div>
               </div>
             </div>
@@ -1776,8 +1773,18 @@ export default function InboundNewPage() {
                         ))}
                       </select>
                       <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <svg
+                          className="h-4 w-4 text-slate-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
                         </svg>
                       </div>
                     </div>
@@ -1805,7 +1812,10 @@ export default function InboundNewPage() {
                       }
                       onChange={(e) => {
                         const v = e.target.value;
-                        handleInputChange("usageCapacity", v ? parseFloat(v) : 0);
+                        handleInputChange(
+                          "usageCapacity",
+                          v ? parseFloat(v) : 0
+                        );
                       }}
                       className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
@@ -2973,7 +2983,7 @@ export default function InboundNewPage() {
         {/* REMOVED: 입고 담당자 section - moved to /inbound page */}
 
         <footer className="">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-end gap-6">
+          <div className="mx-auto flex w-full max-w-[1400px] items-center justify-end gap-6">
             {/* REMOVED: 보관 위치 and 담당자 - moved to /inbound page */}
 
             {/* RIGHT: 버튼 */}
