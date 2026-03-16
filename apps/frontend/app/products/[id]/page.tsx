@@ -2524,9 +2524,10 @@ function ProductEditForm({
                               const parsed = parseGS1Barcode(pasted);
                               if (parsed.gtin) {
                                 e.preventDefault();
+                                const parsedGtin = parsed.gtin;
                                 setAdditionalBarcodesEdit((prev) => {
                                   const updated = [...prev];
-                                  updated[idx] = { ...updated[idx], gtin: parsed.gtin };
+                                  updated[idx] = { ...updated[idx], gtin: parsedGtin };
                                   return updated;
                                 });
                               }
