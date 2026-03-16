@@ -8,8 +8,30 @@ import {
   MinLength,
   ValidateNested,
   IsArray,
+  IsIn,
 } from "class-validator";
 import { Type } from "class-transformer";
+
+export const BARCODE_PACKAGE_TYPES = [
+  "BOX",
+  "AMPULE",
+  "VIAL",
+  "UNIT",
+  "SYRINGE",
+  "BOTTLE",
+  "OTHER",
+] as const;
+export type BarcodePackageType = (typeof BARCODE_PACKAGE_TYPES)[number];
+
+export class AdditionalBarcodeDto {
+  @IsString()
+  @MinLength(1)
+  gtin!: string;
+
+  @IsOptional()
+  @IsIn(BARCODE_PACKAGE_TYPES)
+  barcode_package_type?: BarcodePackageType;
+}
 
 export class ReturnPolicyDto {
   @IsBoolean()
@@ -314,4 +336,14 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => LinkSupplierDto)
   suppliers?: LinkSupplierDto[];
+
+  @IsOptional()
+  @IsIn(BARCODE_PACKAGE_TYPES)
+  barcodePackageType?: BarcodePackageType;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AdditionalBarcodeDto)
+  additionalBarcodes?: AdditionalBarcodeDto[];
 }

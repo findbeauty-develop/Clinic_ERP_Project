@@ -138,6 +138,17 @@ export default function InboundPage() {
     gtin: "",
   });
 
+  // ✅ State for wrong barcode type modal (non-BOX scanned)
+  const [wrongBarcodeTypeModal, setWrongBarcodeTypeModal] = useState<{
+    show: boolean;
+    productName: string;
+    scannedType: string;
+  }>({
+    show: false,
+    productName: "",
+    scannedType: "",
+  });
+
   // ✅ Use ref to track activeTab in event listener (avoid closure issues)
   const activeTabRef = useRef(activeTab);
   useEffect(() => {
@@ -371,13 +382,46 @@ export default function InboundPage() {
           return;
         }
 
-        // Find product by GTIN in the current product list
-        const matchedProduct = products.find((p) => p.barcode === parsed.gtin);
+        // Resolve barcode via API to get product + barcode_package_type
+        let matchedProduct: (typeof products)[number] | null = null;
+        let scannedBarcodeType: string | null = null;
+
+        try {
+          const { apiGet } = await import("../../lib/api");
+          const found = await apiGet<any>(
+            `${apiUrl}/products/barcode/${encodeURIComponent(parsed.gtin)}`
+          );
+          if (found?.id) {
+            matchedProduct =
+              products.find((p) => p.id === found.id) ??
+              products.find((p) => p.barcode === parsed.gtin) ??
+              null;
+            const barcodeRecord = (found.barcodes ?? []).find(
+              (b: any) => b.gtin === parsed.gtin
+            );
+            if (barcodeRecord) {
+              scannedBarcodeType = barcodeRecord.barcode_package_type;
+            }
+          }
+        } catch (_) {
+          matchedProduct =
+            products.find((p) => p.barcode === parsed.gtin) ?? null;
+        }
 
         if (!matchedProduct) {
           alert(
             `⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${parsed.gtin}\n\n제품을 먼저 등록하세요.`
           );
+          return;
+        }
+
+        // Block non-BOX barcodes for inbound
+        if (scannedBarcodeType && scannedBarcodeType !== "BOX") {
+          setWrongBarcodeTypeModal({
+            show: true,
+            productName: matchedProduct.productName,
+            scannedType: scannedBarcodeType,
+          });
           return;
         }
 
@@ -1286,6 +1330,73 @@ export default function InboundPage() {
               className="mt-6 w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700"
             >
               OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Wrong Barcode Type Modal - non-BOX barcode scanned */}
+      {wrongBarcodeTypeModal.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-amber-200 bg-white p-8 shadow-2xl dark:border-amber-500/30 dark:bg-slate-900">
+            {/* Warning Icon */}
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-500/20">
+              <svg
+                className="h-10 w-10 text-amber-600 dark:text-amber-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="mb-3 text-center text-xl font-bold text-slate-900 dark:text-white">
+              입고 불가 바코드
+            </h3>
+
+            {/* Product Name */}
+            <p className="mb-5 text-center text-sm font-medium text-slate-600 dark:text-slate-400">
+              {wrongBarcodeTypeModal.productName}
+            </p>
+
+            {/* Message Box */}
+            <div className="mb-6 rounded-2xl bg-amber-50 p-5 dark:bg-amber-900/20">
+              <p className="text-center text-sm leading-relaxed text-amber-800 dark:text-amber-300">
+                <span className="block font-semibold text-base mb-1">
+                  스캔한 바코드:{" "}
+                  <span className="text-amber-600 dark:text-amber-400">
+                    {wrongBarcodeTypeModal.scannedType}
+                  </span>
+                </span>
+                이 바코드는 입고에 사용할 수 없습니다.
+                <br />
+                입고는 <strong>BOX 바코드</strong>로만 진행할 수 있습니다.
+                <br />
+                <span className="mt-2 block font-medium">
+                  BOX 바코드를 스캔하여 입고를 진행해주세요.
+                </span>
+              </p>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() =>
+                setWrongBarcodeTypeModal({
+                  show: false,
+                  productName: "",
+                  scannedType: "",
+                })
+              }
+              className="w-full rounded-xl bg-amber-500 py-3 text-base font-semibold text-white transition hover:bg-amber-600"
+            >
+              확인
             </button>
           </div>
         </div>

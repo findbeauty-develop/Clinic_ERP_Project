@@ -48,11 +48,22 @@ model Product {
   @@index([tenant_id, barcode])
 }
 
+enum BarcodePackageType {
+  BOX
+  AMPULE
+  VIAL
+  UNIT
+  SYRINGE
+  BOTTLE
+  OTHER
+}
+
 model ProductGTIN {
-  id         String   @id @default(uuid())
-  tenant_id  String
-  product_id String
-  gtin       String
+  id                   String             @id @default(uuid())
+  tenant_id            String
+  product_id           String
+  gtin                 String
+  barcode_package_type BarcodePackageType @default(BOX)
 
   product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
 

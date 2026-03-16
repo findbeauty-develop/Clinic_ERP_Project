@@ -44,6 +44,16 @@ export default function CSVImportModal({
   const [importErrorMsg, setImportErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const BARCODE_PACKAGE_TYPE_VALUES = [
+    "BOX",
+    "AMPULE",
+    "VIAL",
+    "UNIT",
+    "SYRINGE",
+    "BOTTLE",
+    "OTHER",
+  ];
+
   /** Required fields and Korean labels for error modal */
   const REQUIRED_FIELDS: { label: string; check: (d: any) => boolean }[] = [
     { label: "제품명", check: (d) => !String(d?.name ?? "").trim() },
@@ -58,6 +68,13 @@ export default function CSVImportModal({
     { label: "유효기간 있음", check: (d) => d?.has_expiry_period === undefined || d?.has_expiry_period === null },
     { label: "담당자 핸드폰번호", check: (d) => !String(d?.contact_phone ?? "").trim() },
     { label: "바코드", check: (d) => !String(d?.barcode ?? "").trim() },
+    {
+      label: "바코드 타입 (barcode_package_type)",
+      check: (d) => {
+        const v = String(d?.barcode_package_type ?? "").trim().toUpperCase();
+        return !v || !BARCODE_PACKAGE_TYPE_VALUES.includes(v);
+      },
+    },
   ];
 
   const getRequiredFieldErrors = (): { row: number; missingFields: string[] }[] => {
@@ -112,6 +129,11 @@ export default function CSVImportModal({
       has_expiry_period: parseHasExpiryPeriod(hasExpiryRaw),
       contact_phone: String(get("contact_phone", "담당자 핸드폰번호*")).trim(),
       barcode: String(get("barcode", "바코드")).trim(),
+      barcode_package_type: String(
+        get("barcode_package_type", "바코드 타입*")
+      )
+        .trim()
+        .toUpperCase(),
       refund_amount: num("refund_amount", "반납가"),
       purchase_price: num("purchase_price", "구매가"),
       sale_price: num("sale_price", "판매가"),
@@ -315,9 +337,9 @@ export default function CSVImportModal({
 
   const handleDownloadTemplate = () => {
     const csvContent = [
-      "name,brand,category,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,alert_days,유효기간 있음*,contact_phone,barcode,purchase_price,sale_price,refund_amount",
-      "시럽A,브랜드A,의약품,EA,10,50,ml,5,30,예,010-1234-5678,1234567890,5000,8000,",
-      "주사기B,브랜드B,의료기기,BOX,20,100,개,10,60,아니오,010-8765-4321,0987654321,7000,12000,0",
+      "name,brand,category,unit,min_stock,capacity_per_product,capacity_unit,usage_capacity,alert_days,유효기간 있음*,contact_phone,barcode,barcode_package_type,purchase_price,sale_price,refund_amount",
+      "시럽A,브랜드A,의약품,EA,10,50,ml,5,30,예,010-1234-5678,1234567890,BOX,5000,8000,",
+      "주사기B,브랜드B,의료기기,BOX,20,100,개,10,60,아니오,010-8765-4321,0987654321,AMPULE,7000,12000,0",
     ].join("\n");
 
     const blob = new Blob(["\ufeff" + csvContent], {

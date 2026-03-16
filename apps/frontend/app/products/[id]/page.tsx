@@ -31,11 +31,18 @@ const formatDateToYYYYMMDD = (
   return new Date(date).toISOString().split("T")[0];
 };
 
+type BarcodeItem = {
+  id?: string;
+  gtin: string;
+  barcode_package_type: string;
+};
+
 type ProductDetail = {
   id: string;
   productName: string;
   brand: string;
   barcode?: string | null;
+  barcodes?: BarcodeItem[];
   productImage?: string | null;
   category: string;
   status: string;
@@ -220,6 +227,7 @@ export default function ProductDetailPage() {
           productName: data.productName || data.name,
           brand: data.brand,
           barcode: data.barcode || null,
+          barcodes: data.barcodes || [],
           productImage: formattedImageUrl,
 
           category: data.category,
@@ -506,10 +514,32 @@ export default function ProductDetailPage() {
                           label="카테고리"
                           value={product.category || "—"}
                         />
-                        <ReadOnlyField
-                          label="바코드 번호"
-                          value={product.barcode || "-"}
-                        />
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            바코드 번호
+                          </p>
+                          {product.barcodes && product.barcodes.length > 0 ? (
+                            <div className="flex flex-col gap-1">
+                              {product.barcodes.map((b, idx) => (
+                                <div
+                                  key={b.id ?? idx}
+                                  className="flex items-center gap-2"
+                                >
+                                  <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-900/30 dark:text-sky-300">
+                                    {b.barcode_package_type}
+                                  </span>
+                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    {b.gtin}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                              {product.barcode || "-"}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1502,7 +1532,54 @@ function ProductEditForm({
     returnStorage: product.returnStorage || "",
     alertDays: product.alertDays?.toString() || "",
     hasExpiryPeriod: product.hasExpiryPeriod ?? false,
+    barcodePackageType:
+      (product.barcodes && product.barcodes.length > 0
+        ? product.barcodes[0].barcode_package_type
+        : null) ?? "BOX",
   });
+
+  // GTIN parse helper for additional barcode inputs
+  const parseGtinInputEdit = async (
+    raw: string,
+    onResult: (value: string) => void
+  ) => {
+    const cleaned = raw.replace(/[^\x20-\x7E]/g, "");
+    if (!cleaned.trim()) return;
+    if (/^\d{12,14}$/.test(cleaned)) {
+      onResult(cleaned.padStart(14, "0"));
+      return;
+    }
+    if (cleaned.startsWith("01") && cleaned.length >= 16) {
+      try {
+        const { parseGS1Barcode } = await import(
+          "../../../utils/barcodeParser"
+        );
+        const parsed = parseGS1Barcode(cleaned);
+        if (parsed.gtin) onResult(parsed.gtin);
+      } catch (_) {}
+    }
+  };
+
+  const BARCODE_PACKAGE_TYPES_EDIT = [
+    { value: "BOX", label: "BOX (박스)" },
+    { value: "AMPULE", label: "AMPULE (앰플)" },
+    { value: "VIAL", label: "VIAL (바이알)" },
+    { value: "UNIT", label: "UNIT (낱개)" },
+    { value: "SYRINGE", label: "SYRINGE (주사기)" },
+    { value: "BOTTLE", label: "BOTTLE (병)" },
+    { value: "OTHER", label: "OTHER (기타)" },
+  ] as const;
+
+  const [additionalBarcodesEdit, setAdditionalBarcodesEdit] = useState<
+    Array<{ gtin: string; barcode_package_type: string }>
+  >(
+    product.barcodes && product.barcodes.length > 1
+      ? product.barcodes.slice(1).map((b) => ({
+          gtin: b.gtin,
+          barcode_package_type: b.barcode_package_type,
+        }))
+      : []
+  );
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => {
@@ -1853,6 +1930,13 @@ function ProductEditForm({
         name: formData.name,
         brand: formData.brand,
         barcode: formData.barcode || undefined,
+        barcodePackageType: formData.barcodePackageType || "BOX",
+        additionalBarcodes: additionalBarcodesEdit
+          .filter((b) => b.gtin.trim())
+          .map((b) => ({
+            gtin: b.gtin.trim(),
+            barcode_package_type: b.barcode_package_type,
+          })),
         category: formData.category,
         status: formData.status,
         unit: formData.unit || undefined,
@@ -2261,81 +2345,235 @@ function ProductEditForm({
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     바코드 번호
                   </label>
-                  <input
-                    type="text"
-                    placeholder="바코드 번호 (스캔 후 포커스 아웃 시 GTIN 자동 추출)"
-                    value={formData.barcode}
-                    onChange={(e) =>
-                      handleInputChange("barcode", e.target.value)
-                    }
-                    onKeyDown={async (e) => {
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      const raw = (formData.barcode || "").replace(
-                        /[^\x20-\x7E]/g,
-                        ""
-                      );
-                      if (!raw.trim()) return;
-                      if (/^\d{12,14}$/.test(raw)) {
-                        handleInputChange("barcode", raw.padStart(14, "0"));
-                        return;
+                  {/* Primary barcode row */}
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.barcodePackageType}
+                      onChange={(e) =>
+                        handleInputChange("barcodePackageType", e.target.value)
                       }
-                      if (raw.startsWith("01") && raw.length >= 16) {
-                        try {
-                          const { parseGS1Barcode } =
-                            await import("../../../utils/barcodeParser");
-                          const parsed = parseGS1Barcode(raw);
-                          if (parsed.gtin) {
-                            handleInputChange("barcode", parsed.gtin);
-                          }
-                        } catch (_) {}
+                      className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      {BARCODE_PACKAGE_TYPES_EDIT.map((pt) => (
+                        <option key={pt.value} value={pt.value}>
+                          {pt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="바코드 번호 (스캔 후 포커스 아웃 시 GTIN 자동 추출)"
+                      value={formData.barcode}
+                      onChange={(e) =>
+                        handleInputChange("barcode", e.target.value)
                       }
-                    }}
-                    onBlur={async () => {
-                      const raw = (formData.barcode || "").replace(
-                        /[^\x20-\x7E]/g,
-                        ""
-                      );
-                      if (!raw.trim()) return;
-                      if (/^\d{12,14}$/.test(raw)) {
-                        handleInputChange("barcode", raw.padStart(14, "0"));
-                        return;
-                      }
-                      if (raw.startsWith("01") && raw.length >= 16) {
-                        try {
-                          const { parseGS1Barcode } =
-                            await import("../../../utils/barcodeParser");
-                          const parsed = parseGS1Barcode(raw);
-                          if (parsed.gtin) {
-                            handleInputChange("barcode", parsed.gtin);
-                          }
-                        } catch (_) {}
-                      }
-                    }}
-                    onPaste={async (e) => {
-                      const pasted = (
-                        e.clipboardData?.getData("text") || ""
-                      ).replace(/[^\x20-\x7E]/g, "");
-                      if (!pasted.trim()) return;
-                      if (/^\d{12,14}$/.test(pasted)) {
+                      onKeyDown={async (e) => {
+                        if (e.key !== "Enter") return;
                         e.preventDefault();
-                        handleInputChange("barcode", pasted.padStart(14, "0"));
-                        return;
-                      }
-                      if (pasted.startsWith("01") && pasted.length >= 16) {
-                        try {
-                          const { parseGS1Barcode } =
-                            await import("../../../utils/barcodeParser");
-                          const parsed = parseGS1Barcode(pasted);
-                          if (parsed.gtin) {
+                        const raw = (formData.barcode || "").replace(
+                          /[^\x20-\x7E]/g,
+                          ""
+                        );
+                        if (!raw.trim()) return;
+                        if (/^\d{12,14}$/.test(raw)) {
+                          handleInputChange("barcode", raw.padStart(14, "0"));
+                          return;
+                        }
+                        if (raw.startsWith("01") && raw.length >= 16) {
+                          try {
+                            const { parseGS1Barcode } =
+                              await import("../../../utils/barcodeParser");
+                            const parsed = parseGS1Barcode(raw);
+                            if (parsed.gtin) {
+                              handleInputChange("barcode", parsed.gtin);
+                            }
+                          } catch (_) {}
+                        }
+                      }}
+                      onBlur={async () => {
+                        const raw = (formData.barcode || "").replace(
+                          /[^\x20-\x7E]/g,
+                          ""
+                        );
+                        if (!raw.trim()) return;
+                        if (/^\d{12,14}$/.test(raw)) {
+                          handleInputChange("barcode", raw.padStart(14, "0"));
+                          return;
+                        }
+                        if (raw.startsWith("01") && raw.length >= 16) {
+                          try {
+                            const { parseGS1Barcode } =
+                              await import("../../../utils/barcodeParser");
+                            const parsed = parseGS1Barcode(raw);
+                            if (parsed.gtin) {
+                              handleInputChange("barcode", parsed.gtin);
+                            }
+                          } catch (_) {}
+                        }
+                      }}
+                      onPaste={async (e) => {
+                        const pasted = (
+                          e.clipboardData?.getData("text") || ""
+                        ).replace(/[^\x20-\x7E]/g, "");
+                        if (!pasted.trim()) return;
+                        if (/^\d{12,14}$/.test(pasted)) {
+                          e.preventDefault();
+                          handleInputChange(
+                            "barcode",
+                            pasted.padStart(14, "0")
+                          );
+                          return;
+                        }
+                        if (pasted.startsWith("01") && pasted.length >= 16) {
+                          try {
+                            const { parseGS1Barcode } =
+                              await import("../../../utils/barcodeParser");
+                            const parsed = parseGS1Barcode(pasted);
+                            if (parsed.gtin) {
+                              e.preventDefault();
+                              handleInputChange("barcode", parsed.gtin);
+                            }
+                          } catch (_) {}
+                        }
+                      }}
+                      className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                  </div>
+                  {/* Additional barcode rows */}
+                  {additionalBarcodesEdit.map((item, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <select
+                        value={item.barcode_package_type}
+                        onChange={(e) => {
+                          const updated = [...additionalBarcodesEdit];
+                          updated[idx] = {
+                            ...updated[idx],
+                            barcode_package_type: e.target.value,
+                          };
+                          setAdditionalBarcodesEdit(updated);
+                        }}
+                        className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      >
+                        {BARCODE_PACKAGE_TYPES_EDIT.map((pt) => (
+                          <option key={pt.value} value={pt.value}>
+                            {pt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="바코드 숫자 (스캔 또는 입력)"
+                        value={item.gtin}
+                        onChange={(e) => {
+                          const updated = [...additionalBarcodesEdit];
+                          updated[idx] = {
+                            ...updated[idx],
+                            gtin: e.target.value,
+                          };
+                          setAdditionalBarcodesEdit(updated);
+                        }}
+                        onKeyDown={async (e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          await parseGtinInputEdit(item.gtin, (val) => {
+                            const updated = [...additionalBarcodesEdit];
+                            updated[idx] = { ...updated[idx], gtin: val };
+                            setAdditionalBarcodesEdit(updated);
+                          });
+                        }}
+                        onBlur={async () => {
+                          await parseGtinInputEdit(item.gtin, (val) => {
+                            const updated = [...additionalBarcodesEdit];
+                            updated[idx] = { ...updated[idx], gtin: val };
+                            setAdditionalBarcodesEdit(updated);
+                          });
+                        }}
+                        onPaste={async (e) => {
+                          const pasted = (
+                            e.clipboardData?.getData("text") || ""
+                          ).replace(/[^\x20-\x7E]/g, "");
+                          if (!pasted.trim()) return;
+                          if (/^\d{12,14}$/.test(pasted)) {
                             e.preventDefault();
-                            handleInputChange("barcode", parsed.gtin);
+                            const updated = [...additionalBarcodesEdit];
+                            updated[idx] = {
+                              ...updated[idx],
+                              gtin: pasted.padStart(14, "0"),
+                            };
+                            setAdditionalBarcodesEdit(updated);
+                            return;
                           }
-                        } catch (_) {}
-                      }
-                    }}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                  />
+                          if (pasted.startsWith("01") && pasted.length >= 16) {
+                            try {
+                              const { parseGS1Barcode } = await import(
+                                "../../../utils/barcodeParser"
+                              );
+                              const parsed = parseGS1Barcode(pasted);
+                              if (parsed.gtin) {
+                                e.preventDefault();
+                                const updated = [...additionalBarcodesEdit];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  gtin: parsed.gtin,
+                                };
+                                setAdditionalBarcodesEdit(updated);
+                              }
+                            } catch (_) {}
+                          }
+                        }}
+                        className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAdditionalBarcodesEdit(
+                            additionalBarcodesEdit.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  {/* Add barcode button */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAdditionalBarcodesEdit([
+                        ...additionalBarcodesEdit,
+                        { gtin: "", barcode_package_type: "BOX" },
+                      ])
+                    }
+                    className="flex items-center gap-2 self-start rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-600 hover:bg-sky-100 transition dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-400 dark:hover:bg-sky-900/30"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    바코드 추가
+                  </button>
                 </div>
               </div>
             </div>

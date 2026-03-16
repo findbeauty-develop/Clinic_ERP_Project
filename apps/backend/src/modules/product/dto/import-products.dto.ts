@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsInt,
   IsBoolean,
+  IsIn,
   Min,
   MaxLength,
 } from "class-validator";
@@ -69,6 +70,11 @@ export class ImportProductRowDto {
   @IsString()
   @MaxLength(100)
   barcode!: string;
+
+  @IsIn(["BOX", "AMPULE", "VIAL", "UNIT", "SYRINGE", "BOTTLE", "OTHER"], {
+    message: "barcode_package_type은 BOX, AMPULE, VIAL, UNIT, SYRINGE, BOTTLE, OTHER 중 하나여야 합니다.",
+  })
+  barcode_package_type!: string;
 
   // Optional
   @IsOptional()

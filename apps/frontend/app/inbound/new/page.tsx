@@ -268,12 +268,49 @@ export default function InboundNewPage() {
     responsibleProducts: string[];
   } | null>(null);
 
+  // GTIN parse helper for additional barcode inputs
+  const parseGtinInput = async (
+    raw: string,
+    onResult: (value: string) => void
+  ) => {
+    const cleaned = raw.replace(/[^\x20-\x7E]/g, "");
+    if (!cleaned.trim()) return;
+    if (/^\d{12,14}$/.test(cleaned)) {
+      onResult(cleaned.padStart(14, "0"));
+      return;
+    }
+    if (cleaned.startsWith("01") && cleaned.length >= 16) {
+      try {
+        const { parseGS1Barcode } = await import(
+          "../../../utils/barcodeParser"
+        );
+        const parsed = parseGS1Barcode(cleaned);
+        if (parsed.gtin) onResult(parsed.gtin);
+      } catch (_) {}
+    }
+  };
+
+  // Multi-barcode state
+  const BARCODE_PACKAGE_TYPES = [
+    { value: "BOX", label: "BOX (박스)" },
+    { value: "AMPULE", label: "AMPULE (앰플)" },
+    { value: "VIAL", label: "VIAL (바이알)" },
+    { value: "UNIT", label: "UNIT (낱개)" },
+    { value: "SYRINGE", label: "SYRINGE (주사기)" },
+    { value: "BOTTLE", label: "BOTTLE (병)" },
+    { value: "OTHER", label: "OTHER (기타)" },
+  ] as const;
+  const [additionalBarcodes, setAdditionalBarcodes] = useState<
+    Array<{ gtin: string; barcode_package_type: string }>
+  >([]);
+
   // Form state
   const [formData, setFormData] = useState({
     // Product info
     name: "",
     brand: "",
     barcode: "",
+    barcodePackageType: "BOX",
     image: "",
     imageUrl: "",
     additionalImage: "", // Qo'shimcha image uchun
@@ -1082,6 +1119,13 @@ export default function InboundNewPage() {
         status: resolvedStatus,
         isActive: resolvedIsActive,
         barcode: formData.barcode || undefined,
+        barcodePackageType: formData.barcodePackageType || "BOX",
+        additionalBarcodes: additionalBarcodes
+          .filter((b) => b.gtin.trim())
+          .map((b) => ({
+            gtin: b.gtin.trim(),
+            barcode_package_type: b.barcode_package_type,
+          })),
         minStock: Number(formData.minStock) || 0,
         // ✅ Always use "box" as the unit (minStockUnit and purchasePriceUnit are both fixed to "box")
         unit: "box",
@@ -1413,7 +1457,24 @@ export default function InboundNewPage() {
                             스케너 없어요?
                           </button>
                         </div>
+                        {/* Primary barcode row */}
                         <div className="flex gap-2">
+                          <select
+                            value={formData.barcodePackageType}
+                            onChange={(e: any) =>
+                              handleInputChange(
+                                "barcodePackageType",
+                                e.target.value
+                              )
+                            }
+                            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          >
+                            {BARCODE_PACKAGE_TYPES.map((pt) => (
+                              <option key={pt.value} value={pt.value}>
+                                {pt.label}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             type="text"
                             inputMode="numeric"
@@ -1427,12 +1488,150 @@ export default function InboundNewPage() {
                             className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           />
                         </div>
-                        {/* {!formData.barcode?.trim() && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">
-                            바코드는 필수 입력 항목입니다. 제품 중복 등록 방지를
-                            위해 입력해 주세요.
-                          </p>
-                        )} */}
+                        {/* Additional barcode rows */}
+                        {additionalBarcodes.map((item, idx) => (
+                          <div key={idx} className="flex gap-2">
+                            <select
+                              value={item.barcode_package_type}
+                              onChange={(e: any) => {
+                                const updated = [...additionalBarcodes];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  barcode_package_type: e.target.value,
+                                };
+                                setAdditionalBarcodes(updated);
+                              }}
+                              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            >
+                              {BARCODE_PACKAGE_TYPES.map((pt) => (
+                                <option key={pt.value} value={pt.value}>
+                                  {pt.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              placeholder="바코드 숫자 (스캔 또는 입력)"
+                              value={item.gtin}
+                              onChange={(e: any) => {
+                                const updated = [...additionalBarcodes];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  gtin: e.target.value,
+                                };
+                                setAdditionalBarcodes(updated);
+                              }}
+                              onKeyDown={async (e: any) => {
+                                if (e.key !== "Enter") return;
+                                e.preventDefault();
+                                await parseGtinInput(item.gtin, (val) => {
+                                  const updated = [...additionalBarcodes];
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    gtin: val,
+                                  };
+                                  setAdditionalBarcodes(updated);
+                                });
+                              }}
+                              onBlur={async () => {
+                                await parseGtinInput(item.gtin, (val) => {
+                                  const updated = [...additionalBarcodes];
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    gtin: val,
+                                  };
+                                  setAdditionalBarcodes(updated);
+                                });
+                              }}
+                              onPaste={async (e: any) => {
+                                const pasted = (
+                                  e.clipboardData?.getData("text") || ""
+                                ).replace(/[^\x20-\x7E]/g, "");
+                                if (!pasted.trim()) return;
+                                if (/^\d{12,14}$/.test(pasted)) {
+                                  e.preventDefault();
+                                  const updated = [...additionalBarcodes];
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    gtin: pasted.padStart(14, "0"),
+                                  };
+                                  setAdditionalBarcodes(updated);
+                                  return;
+                                }
+                                if (
+                                  pasted.startsWith("01") &&
+                                  pasted.length >= 16
+                                ) {
+                                  try {
+                                    const { parseGS1Barcode } = await import(
+                                      "../../../utils/barcodeParser"
+                                    );
+                                    const parsed = parseGS1Barcode(pasted);
+                                    if (parsed.gtin) {
+                                      e.preventDefault();
+                                      const updated = [...additionalBarcodes];
+                                      updated[idx] = {
+                                        ...updated[idx],
+                                        gtin: parsed.gtin,
+                                      };
+                                      setAdditionalBarcodes(updated);
+                                    }
+                                  } catch (_) {}
+                                }
+                              }}
+                              className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdditionalBarcodes(
+                                  additionalBarcodes.filter((_, i) => i !== idx)
+                                )
+                              }
+                              className="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                            >
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                        {/* Add barcode button */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAdditionalBarcodes([
+                              ...additionalBarcodes,
+                              { gtin: "", barcode_package_type: "BOX" },
+                            ])
+                          }
+                          className="flex items-center gap-2 self-start rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-600 hover:bg-sky-100 transition dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-400 dark:hover:bg-sky-900/30"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 4v16m8-8H4"
+                            />
+                          </svg>
+                          바코드 추가
+                        </button>
                       </div>
                     </div>
                   </div>

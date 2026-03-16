@@ -462,8 +462,25 @@ export class ProductsService {
                 tenant_id: tenantId,
                 product_id: product.id,
                 gtin,
+                barcode_package_type: (dto as any).barcodePackageType ?? "BOX",
               },
             });
+          }
+
+          // Additional barcodes
+          if ((dto as any).additionalBarcodes?.length) {
+            for (const ab of (dto as any).additionalBarcodes) {
+              if (ab.gtin?.trim()) {
+                await (tx as any).productGTIN.create({
+                  data: {
+                    tenant_id: tenantId,
+                    product_id: product.id,
+                    gtin: ab.gtin.trim(),
+                    barcode_package_type: ab.barcode_package_type ?? "BOX",
+                  },
+                });
+              }
+            }
           }
 
           // ✅ NEW: Create ProductSupplier mapping (using transaction client)
@@ -656,6 +673,9 @@ export class ProductsService {
       where: { id: productId, tenant_id: tenantId },
       include: {
         returnPolicy: true,
+        productGtins: {
+          orderBy: { id: "asc" as const },
+        },
         batches: {
           orderBy: { created_at: "desc" },
         },
@@ -697,7 +717,12 @@ export class ProductsService {
       id: product.id,
       productName: product.name,
       brand: product.brand,
-      barcode: product.barcode ?? null, // ✅ Qo'shildi
+      barcode: product.barcode ?? null,
+      barcodes: (product.productGtins ?? []).map((g: any) => ({
+        id: g.id,
+        gtin: g.gtin,
+        barcode_package_type: g.barcode_package_type ?? "BOX",
+      })),
       productImage: product.image_url,
       category: product.category,
       status: null, // status field removed from Product table
@@ -1050,12 +1075,32 @@ export class ProductsService {
           } as any,
         });
 
-        // ✅ GTIN sync: one ProductGTIN per product; update or clear when barcode changes
+        // ✅ GTIN sync: recreate all ProductGTIN records on update
         await (tx as any).productGTIN.deleteMany({ where: { product_id: id } });
         if (newBarcode) {
           await (tx as any).productGTIN.create({
-            data: { tenant_id: tenantId, product_id: id, gtin: newBarcode },
+            data: {
+              tenant_id: tenantId,
+              product_id: id,
+              gtin: newBarcode,
+              barcode_package_type: (dto as any).barcodePackageType ?? "BOX",
+            },
           });
+        }
+        // Additional barcodes
+        if ((dto as any).additionalBarcodes?.length) {
+          for (const ab of (dto as any).additionalBarcodes) {
+            if (ab.gtin?.trim() && ab.gtin.trim() !== newBarcode) {
+              await (tx as any).productGTIN.create({
+                data: {
+                  tenant_id: tenantId,
+                  product_id: id,
+                  gtin: ab.gtin.trim(),
+                  barcode_package_type: ab.barcode_package_type ?? "BOX",
+                },
+              });
+            }
+          }
         }
 
         if (dto.returnPolicy) {
@@ -2302,6 +2347,10 @@ export class ProductsService {
         errors.push("Alert days is required");
       if (row.has_expiry_period === undefined || row.has_expiry_period === null)
         errors.push("유효기간 있음 (has_expiry_period) is required");
+      if (!row.barcode_package_type?.trim())
+        errors.push("barcode_package_type은 필수 입력입니다 (BOX, AMPULE, VIAL, UNIT, SYRINGE, BOTTLE, OTHER 중 하나)");
+      else if (!["BOX", "AMPULE", "VIAL", "UNIT", "SYRINGE", "BOTTLE", "OTHER"].includes(row.barcode_package_type.trim().toUpperCase()))
+        errors.push(`barcode_package_type "${row.barcode_package_type}" 값이 올바르지 않습니다`);
       if (!row.contact_phone?.trim()) errors.push("Contact phone is required");
       if (!row.barcode?.trim()) errors.push("Barcode is required");
 
@@ -2507,6 +2556,7 @@ export class ProductsService {
                           tenant_id: tenantId,
                           product_id: productId,
                           gtin,
+                          barcode_package_type: (row as any).barcode_package_type?.trim().toUpperCase() ?? "BOX",
                         },
                       });
                     } catch (gtinErr: any) {
