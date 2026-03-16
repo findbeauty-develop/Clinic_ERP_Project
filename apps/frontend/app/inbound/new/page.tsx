@@ -1548,23 +1548,31 @@ export default function InboundNewPage() {
                               onKeyDown={async (e: any) => {
                                 if (e.key !== "Enter") return;
                                 e.preventDefault();
-                                await parseGtinInput(item.gtin, (val) => {
-                                  const updated = [...additionalBarcodes];
-                                  updated[idx] = {
-                                    ...updated[idx],
-                                    gtin: val,
-                                  };
-                                  setAdditionalBarcodes(updated);
+                                e.stopPropagation();
+                                const rawValue = (e.target as HTMLInputElement)
+                                  .value;
+                                await parseGtinInput(rawValue, (val) => {
+                                  setAdditionalBarcodes((prev) => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      gtin: val,
+                                    };
+                                    return updated;
+                                  });
                                 });
                               }}
-                              onBlur={async () => {
-                                await parseGtinInput(item.gtin, (val) => {
-                                  const updated = [...additionalBarcodes];
-                                  updated[idx] = {
-                                    ...updated[idx],
-                                    gtin: val,
-                                  };
-                                  setAdditionalBarcodes(updated);
+                              onBlur={async (e: any) => {
+                                const rawValue = e.target.value;
+                                await parseGtinInput(rawValue, (val) => {
+                                  setAdditionalBarcodes((prev) => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      gtin: val,
+                                    };
+                                    return updated;
+                                  });
                                 });
                               }}
                               onPaste={async (e: any) => {
@@ -1574,12 +1582,14 @@ export default function InboundNewPage() {
                                 if (!pasted.trim()) return;
                                 if (/^\d{12,14}$/.test(pasted)) {
                                   e.preventDefault();
-                                  const updated = [...additionalBarcodes];
-                                  updated[idx] = {
-                                    ...updated[idx],
-                                    gtin: pasted.padStart(14, "0"),
-                                  };
-                                  setAdditionalBarcodes(updated);
+                                  setAdditionalBarcodes((prev) => {
+                                    const updated = [...prev];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      gtin: pasted.padStart(14, "0"),
+                                    };
+                                    return updated;
+                                  });
                                   return;
                                 }
                                 if (
@@ -1592,12 +1602,15 @@ export default function InboundNewPage() {
                                     const parsed = parseGS1Barcode(pasted);
                                     if (parsed.gtin) {
                                       e.preventDefault();
-                                      const updated = [...additionalBarcodes];
-                                      updated[idx] = {
-                                        ...updated[idx],
-                                        gtin: parsed.gtin,
-                                      };
-                                      setAdditionalBarcodes(updated);
+                                      const parsedGtin = parsed.gtin;
+                                      setAdditionalBarcodes((prev) => {
+                                        const updated = [...prev];
+                                        updated[idx] = {
+                                          ...updated[idx],
+                                          gtin: parsedGtin,
+                                        };
+                                        return updated;
+                                      });
                                     }
                                   } catch (_) {}
                                 }

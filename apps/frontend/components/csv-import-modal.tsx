@@ -129,11 +129,16 @@ export default function CSVImportModal({
       has_expiry_period: parseHasExpiryPeriod(hasExpiryRaw),
       contact_phone: String(get("contact_phone", "담당자 핸드폰번호*")).trim(),
       barcode: String(get("barcode", "바코드")).trim(),
-      barcode_package_type: String(
-        get("barcode_package_type", "바코드 타입*")
-      )
-        .trim()
-        .toUpperCase(),
+      barcode_package_type: (() => {
+        const v = String(
+          get("barcode_package_type", "바코드 타입*") ||
+          get("barcode_package_type", "바코드타입*") ||
+          get("barcode_package_type", "바코드 타입") ||
+          get("barcode_package_type", "barcode_type") ||
+          ""
+        ).trim().toUpperCase();
+        return v && ["BOX","AMPULE","VIAL","UNIT","SYRINGE","BOTTLE","OTHER"].includes(v) ? v : "BOX";
+      })(),
       refund_amount: num("refund_amount", "반납가"),
       purchase_price: num("purchase_price", "구매가"),
       sale_price: num("sale_price", "판매가"),

@@ -2222,12 +2222,11 @@ function ProductEditForm({
     } catch (err: any) {
       console.error("Failed to update product", err);
       const errorMessage =
-        err?.message || err?.toString() || "제품 업데이트에 실패했습니다.";
-      console.error("Error details:", {
-        message: errorMessage,
-        error: err,
-        stack: err?.stack,
-      });
+        err?.response?.message ||
+        err?.response?.error ||
+        err?.message ||
+        err?.toString() ||
+        "제품 업데이트에 실패했습니다.";
       alert(errorMessage);
     } finally {
       setLoading(false);
@@ -2484,17 +2483,23 @@ function ProductEditForm({
                           if (e.key !== "Enter") return;
                           e.preventDefault();
                           e.stopPropagation();
-                          await parseGtinInputEdit(item.gtin, (val) => {
-                            const updated = [...additionalBarcodesEdit];
-                            updated[idx] = { ...updated[idx], gtin: val };
-                            setAdditionalBarcodesEdit(updated);
+                          const rawValue = (e.target as HTMLInputElement).value;
+                          await parseGtinInputEdit(rawValue, (val) => {
+                            setAdditionalBarcodesEdit((prev) => {
+                              const updated = [...prev];
+                              updated[idx] = { ...updated[idx], gtin: val };
+                              return updated;
+                            });
                           });
                         }}
-                        onBlur={async () => {
-                          await parseGtinInputEdit(item.gtin, (val) => {
-                            const updated = [...additionalBarcodesEdit];
-                            updated[idx] = { ...updated[idx], gtin: val };
-                            setAdditionalBarcodesEdit(updated);
+                        onBlur={async (e) => {
+                          const rawValue = e.target.value;
+                          await parseGtinInputEdit(rawValue, (val) => {
+                            setAdditionalBarcodesEdit((prev) => {
+                              const updated = [...prev];
+                              updated[idx] = { ...updated[idx], gtin: val };
+                              return updated;
+                            });
                           });
                         }}
                         onPaste={async (e) => {
@@ -2504,12 +2509,11 @@ function ProductEditForm({
                           if (!pasted.trim()) return;
                           if (/^\d{12,14}$/.test(pasted)) {
                             e.preventDefault();
-                            const updated = [...additionalBarcodesEdit];
-                            updated[idx] = {
-                              ...updated[idx],
-                              gtin: pasted.padStart(14, "0"),
-                            };
-                            setAdditionalBarcodesEdit(updated);
+                            setAdditionalBarcodesEdit((prev) => {
+                              const updated = [...prev];
+                              updated[idx] = { ...updated[idx], gtin: pasted.padStart(14, "0") };
+                              return updated;
+                            });
                             return;
                           }
                           if (pasted.startsWith("01") && pasted.length >= 16) {
@@ -2520,12 +2524,11 @@ function ProductEditForm({
                               const parsed = parseGS1Barcode(pasted);
                               if (parsed.gtin) {
                                 e.preventDefault();
-                                const updated = [...additionalBarcodesEdit];
-                                updated[idx] = {
-                                  ...updated[idx],
-                                  gtin: parsed.gtin,
-                                };
-                                setAdditionalBarcodesEdit(updated);
+                                setAdditionalBarcodesEdit((prev) => {
+                                  const updated = [...prev];
+                                  updated[idx] = { ...updated[idx], gtin: parsed.gtin };
+                                  return updated;
+                                });
                               }
                             } catch (_) {}
                           }

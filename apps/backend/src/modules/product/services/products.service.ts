@@ -1043,6 +1043,22 @@ export class ProductsService {
       }
     }
 
+    // ✅ Additional barcodes duplicate check
+    const additionalBarcodesPayload = (dto as any).additionalBarcodes ?? [];
+    for (const ab of additionalBarcodesPayload) {
+      const abGtin = ab.gtin?.trim();
+      if (!abGtin || abGtin === newBarcode) continue;
+      const existing_ab = await (this.prisma as any).productGTIN.findUnique({
+        where: { tenant_id_gtin: { tenant_id: tenantId, gtin: abGtin } },
+        select: { product_id: true },
+      });
+      if (existing_ab && existing_ab.product_id !== id) {
+        throw new BadRequestException(
+          `추가 바코드 ${abGtin}는 이미 다른 제품에 등록되어 있습니다.`
+        );
+      }
+    }
+
     await this.prisma.$transaction(
       async (tx: any) => {
         await tx.product.update({
@@ -2347,10 +2363,17 @@ export class ProductsService {
         errors.push("Alert days is required");
       if (row.has_expiry_period === undefined || row.has_expiry_period === null)
         errors.push("유효기간 있음 (has_expiry_period) is required");
-      if (!row.barcode_package_type?.trim())
-        errors.push("barcode_package_type은 필수 입력입니다 (BOX, AMPULE, VIAL, UNIT, SYRINGE, BOTTLE, OTHER 중 하나)");
-      else if (!["BOX", "AMPULE", "VIAL", "UNIT", "SYRINGE", "BOTTLE", "OTHER"].includes(row.barcode_package_type.trim().toUpperCase()))
-        errors.push(`barcode_package_type "${row.barcode_package_type}" 값이 올바르지 않습니다`);
+      // barcode_package_type: default to "BOX" if missing/empty
+      if (!(row as any).barcode_package_type?.trim()) {
+        (row as any).barcode_package_type = "BOX";
+      } else {
+        const bpt = (row as any).barcode_package_type.trim().toUpperCase();
+        if (!["BOX", "AMPULE", "VIAL", "UNIT", "SYRINGE", "BOTTLE", "OTHER"].includes(bpt)) {
+          (row as any).barcode_package_type = "BOX";
+        } else {
+          (row as any).barcode_package_type = bpt;
+        }
+      }
       if (!row.contact_phone?.trim()) errors.push("Contact phone is required");
       if (!row.barcode?.trim()) errors.push("Barcode is required");
 
