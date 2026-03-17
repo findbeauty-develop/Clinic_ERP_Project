@@ -57,9 +57,9 @@ export default function OrderReturnsPage() {
 
   const formatReturnType = (returnType: string) => {
     if (returnType.includes("불량") && returnType.includes("교환"))
-      return "불량 | 교환";
+      return "반품 | 교환";
     if (returnType.includes("불량") && returnType.includes("반품"))
-      return "불량 | 반품";
+      return "반품 | 불량";
     if (returnType.includes("주문") && returnType.includes("교환"))
       return "주문 | 교환";
     if (returnType.includes("주문") && returnType.includes("반품"))
@@ -197,7 +197,7 @@ const ReturnCard = memo(function ReturnCard({
   const isOrderReturn = returnItem.return_type?.includes("주문");
   const isDefectiveReturn = returnItem.return_type?.includes("불량");
   const showReturnTypeDropdown = isOrderReturn || isDefectiveReturn;
-  
+
   // Check selected values from state
   const isExchange = returnType?.includes("교환");
   const isReturn = returnType?.includes("반품");
@@ -445,8 +445,8 @@ const ReturnCard = memo(function ReturnCard({
                     </>
                   ) : (
                     <>
-                      <option value="불량|교환">불량 | 교환</option>
-                      <option value="불량|반품">불량 | 반품</option>
+                      <option value="불량|교환">반품 | 교환</option>
+                      <option value="불량|반품">반품 | 불량</option>
                     </>
                   )}
                 </select>

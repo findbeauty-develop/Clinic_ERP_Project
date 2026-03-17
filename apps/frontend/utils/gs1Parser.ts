@@ -170,8 +170,8 @@ function validateAISegment(
       return { valid: false, error: "Expected numeric characters only" };
     }
   } else {
-    // Alphanumeric
-    if (!/^[A-Za-z0-9]+$/.test(payload)) {
+    // Alphanumeric — GS1 spec allows hyphens, dots, slashes in batch numbers
+    if (!/^[A-Za-z0-9\-./+%*]+$/.test(payload)) {
       return { valid: false, error: "Expected alphanumeric characters only" };
     }
   }
@@ -342,21 +342,40 @@ export function parseGS1Barcode(
         let bestNextAI: { ai: string; position: number } | null = null;
         let bestPayload: string | null = null;
 
-        // 1) Prefer explicit AI 17 (유효기간) after batch — often 12+ chars, so search range must be >10
+        // 1) For batch (AI 10): search for AI 11 (prod date) and AI 17 (expiry), pick earliest valid one
         if (ai === "10") {
           const from = payloadStart + 3;
-          let idx = cleanedBarcode.indexOf("17", from);
-          while (idx !== -1 && idx < maxEnd) {
-            if (idx + 2 + 6 <= cleanedBarcode.length) {
-              const datePayload = cleanedBarcode.substring(idx + 2, idx + 8);
+
+          // Search for AI 11 (production date)
+          let idx11 = cleanedBarcode.indexOf("11", from);
+          while (idx11 !== -1 && idx11 < maxEnd) {
+            if (idx11 + 2 + 6 <= cleanedBarcode.length) {
+              const datePayload = cleanedBarcode.substring(idx11 + 2, idx11 + 8);
               const conv = convertYYMMDDtoISO(datePayload);
               if (conv.valid) {
-                bestNextAI = { ai: "17", position: idx };
-                bestPayload = cleanedBarcode.substring(payloadStart, idx);
+                bestNextAI = { ai: "11", position: idx11 };
+                bestPayload = cleanedBarcode.substring(payloadStart, idx11);
                 break;
               }
             }
-            idx = cleanedBarcode.indexOf("17", idx + 1);
+            idx11 = cleanedBarcode.indexOf("11", idx11 + 1);
+          }
+
+          // Search for AI 17 (expiry date) — use if earlier than AI 11 or AI 11 not found
+          let idx17 = cleanedBarcode.indexOf("17", from);
+          while (idx17 !== -1 && idx17 < maxEnd) {
+            if (idx17 + 2 + 6 <= cleanedBarcode.length) {
+              const datePayload = cleanedBarcode.substring(idx17 + 2, idx17 + 8);
+              const conv = convertYYMMDDtoISO(datePayload);
+              if (conv.valid) {
+                if (!bestNextAI || idx17 < bestNextAI.position) {
+                  bestNextAI = { ai: "17", position: idx17 };
+                  bestPayload = cleanedBarcode.substring(payloadStart, idx17);
+                }
+                break;
+              }
+            }
+            idx17 = cleanedBarcode.indexOf("17", idx17 + 1);
           }
         }
 

@@ -1543,7 +1543,7 @@ function ProductEditForm({
   ) => {
     const cleaned = raw.replace(/[^\x20-\x7E]/g, "");
     if (!cleaned.trim()) return;
-    if (/^\d{12,14}$/.test(cleaned)) {
+    if (/^\d{12,15}$/.test(cleaned)) {
       onResult(cleaned.padStart(14, "0"));
       return;
     }
@@ -2405,7 +2405,7 @@ function ProductEditForm({
                           ""
                         );
                         if (!raw.trim()) return;
-                        if (/^\d{12,14}$/.test(raw)) {
+                        if (/^\d{12,15}$/.test(raw)) {
                           handleInputChange("barcode", raw.padStart(14, "0"));
                           return;
                         }
@@ -2425,7 +2425,7 @@ function ProductEditForm({
                           e.clipboardData?.getData("text") || ""
                         ).replace(/[^\x20-\x7E]/g, "");
                         if (!pasted.trim()) return;
-                        if (/^\d{12,14}$/.test(pasted)) {
+                        if (/^\d{12,15}$/.test(pasted)) {
                           e.preventDefault();
                           handleInputChange(
                             "barcode",

@@ -43,7 +43,7 @@ const unitOptions = [
 const normalizeBarcode = (raw: string) =>
   String(raw || "")
     .replace(/\D/g, "")
-    .slice(0, 14);
+    .slice(0, 15);
 
 const positionOptions = [
   "직함 선택",

@@ -368,19 +368,17 @@ export default function InboundPage() {
   const handleGlobalBarcodeScanned = useCallback(
     async (scannedBarcode: string) => {
       try {
-        // ✅ Korean (Hangul) → English, keyin faqat 0-9 A-Z, uppercase
-        const normalized = fixBarcodeKoreanToEng(scannedBarcode || "")
-          .replace(/[^0-9A-Za-z]/g, "")
-          .toUpperCase();
+        // GS1 parse uchun: hyphen/dot saqlanadi (batch raqami to'g'ri chiqishi uchun)
+        const forGS1 = (scannedBarcode || "").replace(/[^\x20-\x7E]/g, "").toUpperCase();
+        // GTIN qidirish uchun: faqat alphanumeric
+        const normalized = forGS1.replace(/[^0-9A-Za-z]/g, "");
         if (normalized.length < 8) return;
 
         const { parseGS1Barcode } = await import("../../utils/barcodeParser");
-        const parsed = parseGS1Barcode(normalized);
+        const parsed = parseGS1Barcode(forGS1);
 
-        if (!parsed.gtin) {
-          alert("잘못된 바코드 형식입니다.");
-          return;
-        }
+        // GS1 GTIN topilmasa raw barcode ni ishlatamiz (masalan 10... bilan boshlangan barcodelar)
+        const resolvedGtin = parsed.gtin || normalized;
 
         // Resolve barcode via API to get product + barcode_package_type
         let matchedProduct: (typeof products)[number] | null = null;
@@ -389,15 +387,15 @@ export default function InboundPage() {
         try {
           const { apiGet } = await import("../../lib/api");
           const found = await apiGet<any>(
-            `${apiUrl}/products/barcode/${encodeURIComponent(parsed.gtin)}`
+            `${apiUrl}/products/barcode/${encodeURIComponent(resolvedGtin)}`
           );
           if (found?.id) {
             matchedProduct =
               products.find((p) => p.id === found.id) ??
-              products.find((p) => p.barcode === parsed.gtin) ??
+              products.find((p) => p.barcode === resolvedGtin) ??
               null;
             const barcodeRecord = (found.barcodes ?? []).find(
-              (b: any) => b.gtin === parsed.gtin
+              (b: any) => b.gtin === resolvedGtin
             );
             if (barcodeRecord) {
               scannedBarcodeType = barcodeRecord.barcode_package_type;
@@ -405,12 +403,12 @@ export default function InboundPage() {
           }
         } catch (_) {
           matchedProduct =
-            products.find((p) => p.barcode === parsed.gtin) ?? null;
+            products.find((p) => p.barcode === resolvedGtin) ?? null;
         }
 
         if (!matchedProduct) {
           alert(
-            `⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${parsed.gtin}\n\n제품을 먼저 등록하세요.`
+            `⚠️ 제품을 찾을 수 없습니다.\nGTIN: ${resolvedGtin}\n\n제품을 먼저 등록하세요.`
           );
           return;
         }
@@ -524,6 +522,17 @@ export default function InboundPage() {
         // Auto expand the matched product
         setExpandedCardId(matchedProduct.id);
 
+        // LOT raqami: haqiqiy GS1-128 barcodedan batch olish, aks holda B+sana auto-generate
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
+        const autoLot = `B${yyyy}${mm}${dd}`;
+        // parsed.gtin bo'sh bo'lsa bu GS1-128 emas (plain barcode yoki 10-prefix barcode)
+        // bunday holda parser ajratgan "batchNumber" aslida barcode fragmenti, auto-LOT ishlatamiz
+        const isRealGs1 = !!parsed.gtin;
+        const finalBatchNumber = isRealGs1 ? (parsed.batchNumber || autoLot) : autoLot;
+
         // Wait for card to expand, then dispatch fill event
         setTimeout(
           () => {
@@ -532,7 +541,7 @@ export default function InboundPage() {
               new CustomEvent("fillBatchForm", {
                 detail: {
                   productId: matchedProduct.id,
-                  batchNumber: parsed.batchNumber,
+                  batchNumber: finalBatchNumber,
                   expiryDate: parsed.expiryDate,
                 },
               })
@@ -547,7 +556,7 @@ export default function InboundPage() {
         setScanSuccessModal({
           show: true,
           productName: matchedProduct.productName,
-          batchNumber: parsed.batchNumber || "(없음)",
+          batchNumber: finalBatchNumber,
           expiryDate: parsed.expiryDate || "(없음)",
         });
       } catch (error) {
@@ -725,10 +734,10 @@ export default function InboundPage() {
       if (now - lastTime > 100) buffer = "";
 
       if (e.key === "Enter" && buffer.length >= 8) {
-        // ✅ Korean (Hangul) → English, keyin faqat raqam/harf, uppercase (GS1)
+        // Korean → English, non-printable chars olib tashlanadi, hyphen/dot saqlanadi (batch uchun)
         const cleanedBarcode = fixBarcodeKoreanToEng(buffer)
-          .replace(/[^0-9A-Za-z]/g, "")
-          .toUpperCase();
+          .replace(/[^\x20-\x7E]/g, "")
+          .trim();
 
         handleGlobalBarcodeScanned(cleanedBarcode);
         buffer = "";
@@ -743,8 +752,18 @@ export default function InboundPage() {
           timeout = setTimeout(() => {
             buffer = "";
           }, 500);
+        } else if (/[-./]/.test(e.key)) {
+          // Barcode ichidagi maxsus belgilar (-, ., /) — buferni reset qilmasdan skip qilamiz
+          // Enter da .replace(/[^0-9A-Za-z]/g, "") tozalaydi
+          buffer += e.key;
+          lastTime = now;
+
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            buffer = "";
+          }, 500);
         } else {
-          // ✅ Map qilingandan keyin ham alphanumeric emas — ogohlantirish
+          // ✅ Map qilingandan keyin ham alphanumeric emas — ogohlantirish (Korean input)
           if (!globalKoreanCharDetected) {
             setShowKeyboardWarning(true);
             globalKoreanCharDetected = true;
@@ -4993,11 +5012,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Enter = scan complete
       if (e.key === "Enter" && buffer.length > 0) {
         e.preventDefault();
-        // ✅ Korean → English, keyin faqat alphanumeric (GS1)
-        const cleanedBarcode = fixBarcodeKoreanToEng(buffer.trim()).replace(
-          /[^0-9A-Za-z]/g,
-          ""
-        );
+        // Korean → English, non-printable chars olib tashlanadi, hyphen/dot saqlanadi (batch uchun)
+        const cleanedBarcode = fixBarcodeKoreanToEng(buffer.trim())
+          .replace(/[^\x20-\x7E]/g, "")
+          .trim();
 
         handleBarcodeScan(cleanedBarcode);
         buffer = "";
@@ -5006,6 +5024,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
         const mappedKey = fixBarcodeKoreanToEng(e.key);
         if (/[0-9A-Za-z]/.test(mappedKey)) {
           buffer += mappedKey;
+          lastTime = now;
+
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            buffer = "";
+          }, 500);
+        } else if (/[-./]/.test(e.key)) {
+          // Barcode ichidagi maxsus belgilar (-, ., /) — buferni reset qilmasdan skip qilamiz
+          buffer += e.key;
           lastTime = now;
 
           clearTimeout(timeout);
@@ -5041,7 +5068,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ NEW: Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
-    const parsed = await parseGS1Barcode(barcode);
+    const parsedRaw = await parseGS1Barcode(barcode);
+
+    // LOT raqami: haqiqiy GS1-128 barcodedan batch olish, aks holda B+sana auto-generate
+    const _today = new Date();
+    const _autoLot = `B${_today.getFullYear()}${String(_today.getMonth() + 1).padStart(2, "0")}${String(_today.getDate()).padStart(2, "0")}`;
+    // parsedRaw.gtin bo'sh bo'lsa bu GS1-128 emas (plain EAN-13 yoki 10-prefix barcode)
+    const _isRealGs1 = !!parsedRaw.gtin;
+    const parsed = {
+      ...parsedRaw,
+      batchNumber: _isRealGs1 ? (parsedRaw.batchNumber || _autoLot) : _autoLot,
+    };
 
     const searchVariants = [
       barcode,
