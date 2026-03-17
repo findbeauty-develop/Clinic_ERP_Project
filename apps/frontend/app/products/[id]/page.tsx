@@ -520,7 +520,10 @@ export default function ProductDetailPage() {
                           </span>
                           {product.barcodes && product.barcodes.length > 0 ? (
                             product.barcodes.map((b, idx) => (
-                              <div key={b.id ?? idx} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                              <div
+                                key={b.id ?? idx}
+                                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900"
+                              >
                                 <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-900/30 dark:text-sky-300">
                                   {b.barcode_package_type}
                                 </span>
@@ -785,7 +788,7 @@ export default function ProductDetailPage() {
                       label="유효기간 있음"
                       value={product.hasExpiryPeriod ? "예" : "아니오"}
                     />
-                    <ReadOnlyField
+                    {/* <ReadOnlyField
                       label="유효기간"
                       value={
                         product.expiryDate
@@ -794,7 +797,7 @@ export default function ProductDetailPage() {
                               .split("T")[0]
                           : "—"
                       }
-                    />
+                    /> */}
                     <ReadOnlyField
                       label="유효기간 임박 알림 기준"
                       value={
@@ -1493,8 +1496,8 @@ function ProductEditForm({
     unit: product.unit || "",
     // Separate unit fields for synchronization
     currentStockUnit: product.unit || unitOptions[0] || "cc",
-    minStockUnit: product.unit || unitOptions[0] || "cc",
-    purchasePriceUnit: product.unit || unitOptions[0] || "cc",
+    minStockUnit: "box",
+    purchasePriceUnit: "box",
     capacityUnit: product.capacityUnit || unitOptions[0] || "cc",
     usageCapacityUnit: product.capacityUnit || unitOptions[0] || "cc",
     salePriceUnit: product.capacityUnit || unitOptions[0] || "cc",
@@ -1546,9 +1549,8 @@ function ProductEditForm({
     }
     if (cleaned.startsWith("01") && cleaned.length >= 16) {
       try {
-        const { parseGS1Barcode } = await import(
-          "../../../utils/barcodeParser"
-        );
+        const { parseGS1Barcode } =
+          await import("../../../utils/barcodeParser");
         const parsed = parseGS1Barcode(cleaned);
         if (parsed.gtin) onResult(parsed.gtin);
       } catch (_) {}
@@ -2511,23 +2513,28 @@ function ProductEditForm({
                             e.preventDefault();
                             setAdditionalBarcodesEdit((prev) => {
                               const updated = [...prev];
-                              updated[idx] = { ...updated[idx], gtin: pasted.padStart(14, "0") };
+                              updated[idx] = {
+                                ...updated[idx],
+                                gtin: pasted.padStart(14, "0"),
+                              };
                               return updated;
                             });
                             return;
                           }
                           if (pasted.startsWith("01") && pasted.length >= 16) {
                             try {
-                              const { parseGS1Barcode } = await import(
-                                "../../../utils/barcodeParser"
-                              );
+                              const { parseGS1Barcode } =
+                                await import("../../../utils/barcodeParser");
                               const parsed = parseGS1Barcode(pasted);
                               if (parsed.gtin) {
                                 e.preventDefault();
                                 const parsedGtin = parsed.gtin;
                                 setAdditionalBarcodesEdit((prev) => {
                                   const updated = [...prev];
-                                  updated[idx] = { ...updated[idx], gtin: parsedGtin };
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    gtin: parsedGtin,
+                                  };
                                   return updated;
                                 });
                               }
@@ -2657,8 +2664,18 @@ function ProductEditForm({
                     ))}
                   </select>
                   <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                    <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <svg
+                      className="h-4 w-4 text-slate-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
                     </svg>
                   </div>
                 </div>
@@ -2729,7 +2746,7 @@ function ProductEditForm({
                 className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <div className="relative w-28">
-                <select
+                {/* <select
                   value={formData.minStockUnit}
                   onChange={(e) =>
                     handleInputChange("minStockUnit", e.target.value)
@@ -2742,11 +2759,9 @@ function ProductEditForm({
                       {option}
                     </option>
                   ))}
-                </select>
-                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                  <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                </select> */}
+                <div className="h-11 w-28 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                  box
                 </div>
               </div>
             </div>
@@ -2775,35 +2790,9 @@ function ProductEditForm({
                 onWheel={(e) => e.currentTarget.blur()}
                 className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <div className="relative w-28">
-                <select
-                  value={formData.purchasePriceUnit}
-                  onChange={(e) =>
-                    handleInputChange("purchasePriceUnit", e.target.value)
-                  }
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-8 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <option value="">단위 선택</option>
-                  {unitOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                  <svg
-                    className="h-4 w-4 text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
+              <div className="w-28">
+                <div className="h-11 w-28 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                  box
                 </div>
               </div>
             </div>
