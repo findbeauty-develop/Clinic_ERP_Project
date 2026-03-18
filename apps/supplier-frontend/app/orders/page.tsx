@@ -347,7 +347,6 @@ export default function OrdersPage() {
             const rejectionReason = isRejected
               ? extractRejectionReason(item.memo)
               : null;
-            const itemStatus = item.itemStatus ?? "pending";
 
             return (
               <div
@@ -368,23 +367,6 @@ export default function OrdersPage() {
                   <span className="truncate font-medium">
                     {item.productName}
                   </span>
-                  {activeTab === "all" && (
-                    <span
-                      className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
-                        itemStatus === "rejected"
-                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                          : itemStatus === "confirmed"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                            : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
-                      }`}
-                    >
-                      {itemStatus === "rejected"
-                        ? "거절"
-                        : itemStatus === "confirmed"
-                          ? "접수"
-                          : "대기"}
-                    </span>
-                  )}
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">

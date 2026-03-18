@@ -6464,29 +6464,71 @@ const PendingOrdersList = memo(function PendingOrdersList({
       </div>
 
       <div className="space-y-4">
-        {currentOrders.map((order) => {
-          const orderId = order.id || order.orderId;
-          return (
-            <OrderCard
-              key={orderId || `order-${order.orderNo || Math.random()}`}
-              order={order}
-              editedItems={editedItems}
-              updateItemField={updateItemField}
-              handleProcessOrder={handleProcessOrder}
-              processing={processing}
-              inboundManagerName={inboundManagers[orderId] ?? ""}
-              onInboundManagerChange={(value: string) => {
-                if (orderId) {
-                  setInboundManagers((prev) => ({ ...prev, [orderId]: value }));
-                }
-              }}
-              recentInboundStaff={recentInboundStaff}
-              onRefresh={onRefresh}
-              apiUrl={apiUrl}
-              onOpenBarcodeScan={openBarcodeScanForOrder}
-            />
-          );
-        })}
+        {(() => {
+          type CardItem = { order: any; sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절" };
+          const cards: CardItem[] = [];
+          currentOrders.forEach((order) => {
+            const isRejected = order.status === "rejected";
+            const pendingItems = (order.items || []).filter(
+              (item: any) => (item.itemStatus ?? item.item_status ?? "pending") === "pending"
+            );
+            const confirmedItems = (order.items || []).filter(
+              (item: any) => (item.itemStatus ?? item.item_status ?? "pending") === "confirmed"
+            );
+            const rejectedItems = (order.items || []).filter(
+              (item: any) => (item.itemStatus ?? item.item_status ?? "pending") === "rejected"
+            );
+            if (isRejected) {
+              cards.push({ order });
+            } else {
+              if (pendingItems.length > 0) {
+                cards.push({
+                  order: { ...order, items: pendingItems },
+                  sectionLabel: "주문 요청",
+                });
+              }
+              if (confirmedItems.length > 0) {
+                cards.push({
+                  order: { ...order, items: confirmedItems },
+                  sectionLabel: "주문 진행",
+                });
+              }
+              if (rejectedItems.length > 0) {
+                cards.push({
+                  order: { ...order, items: rejectedItems },
+                  sectionLabel: "주문 거절",
+                });
+              }
+            }
+          });
+          return cards.map(({ order, sectionLabel }, idx) => {
+            const orderId = order.id || order.orderId;
+            const key = sectionLabel
+              ? `${orderId}-${sectionLabel}-${idx}`
+              : orderId || `order-${order.orderNo}-${idx}`;
+            return (
+              <OrderCard
+                key={key}
+                order={order}
+                sectionLabel={sectionLabel}
+                editedItems={editedItems}
+                updateItemField={updateItemField}
+                handleProcessOrder={handleProcessOrder}
+                processing={processing}
+                inboundManagerName={inboundManagers[orderId] ?? ""}
+                onInboundManagerChange={(value: string) => {
+                  if (orderId) {
+                    setInboundManagers((prev) => ({ ...prev, [orderId]: value }));
+                  }
+                }}
+                recentInboundStaff={recentInboundStaff}
+                onRefresh={onRefresh}
+                apiUrl={apiUrl}
+                onOpenBarcodeScan={openBarcodeScanForOrder}
+              />
+            );
+          });
+        })()}
       </div>
 
       {totalPages > 1 && (
@@ -7481,6 +7523,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 // Order Card Component - Memoized
 const OrderCard = memo(function OrderCard({
   order,
+  sectionLabel,
   editedItems,
   updateItemField,
   handleProcessOrder,
@@ -7493,6 +7536,7 @@ const OrderCard = memo(function OrderCard({
   onOpenBarcodeScan,
 }: {
   order: any;
+  sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절";
   editedItems: Record<string, any>;
   updateItemField: (itemId: string, field: string, value: any) => void;
   handleProcessOrder: (order: any) => void;
@@ -7506,13 +7550,11 @@ const OrderCard = memo(function OrderCard({
 }) {
   const [showStaffSuggestions, setShowStaffSuggestions] = useState(false);
 
-  // Determine order status
   const isPending = order.status === "pending";
   const isSupplierConfirmed = order.status === "supplier_confirmed";
   const isRejected = order.status === "rejected";
-  const isPendingInbound = order.status === "pending_inbound"; // 재입고 대기
+  const isPendingInbound = order.status === "pending_inbound";
 
-  // Extract rejection reasons from order items
   const rejectionReasons =
     order.items
       ?.map((item: any) => {
@@ -7526,141 +7568,37 @@ const OrderCard = memo(function OrderCard({
 
   return (
     <div className="space-y-2">
-      {/* Badge - Above Card */}
+      {/* Badge: rejected yoki sectionLabel (주문 요청 / 주문 진행) */}
       <div className="flex items-start">
-        {isPending ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            주문 요청
-            {order.isPlatformSupplier && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                />
-              </svg>
-            )}
-          </span>
-        ) : isRejected ? (
+        {isRejected ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
             주문 거절
-            {order.isPlatformSupplier && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                />
-              </svg>
-            )}
           </span>
-        ) : isPendingInbound ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-400 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 dark:bg-orange-500/10 dark:text-orange-400">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
+        ) : sectionLabel === "주문 요청" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 dark:bg-green-500/10 dark:text-green-400">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            재입고 대기
-            {order.isPlatformSupplier && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                />
-              </svg>
-            )}
+            주문 요청
           </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
+        ) : sectionLabel === "주문 진행" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             주문 진행
-            {order.isPlatformSupplier && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-3.5 h-3.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                />
-              </svg>
-            )}
           </span>
-        )}
+        ) : sectionLabel === "주문 거절" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            주문 거절
+          </span>
+        ) : null}
       </div>
 
       {/* Card */}
@@ -7731,49 +7669,48 @@ const OrderCard = memo(function OrderCard({
           </div>
         </div>
 
-        {/* Order Items - Editable Form */}
-        <div className="space-y-4">
-          {order.items?.map((item: any, index: number) => {
-            const edited = editedItems[item.id] || {};
-            const hasQtyChange =
-              item.confirmedQuantity !== item.orderedQuantity;
-            const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
+        {/* Order Items - 주문 요청 / 주문 진행 bo‘yicha */}
+        <div className="space-y-6">
+          {(() => {
+            const renderItem = (item: any, index: number, showRejectedLayout: boolean) => {
+              const edited = editedItems[item.id] || {};
+              const hasQtyChange =
+                item.confirmedQuantity !== item.orderedQuantity;
+              const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
 
-            return (
-              <div
-                key={index}
-                className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
-              >
-                {/* Product Name + Reasons */}
-                <div className="mb-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-base font-semibold text-slate-900 dark:text-white">
-                      {item.productName || "알 수 없음"}
-                    </h4>
-                    {item.brand && (
-                      <span className="text-sm text-slate-500 dark:text-slate-400">
-                        {item.brand}
-                      </span>
-                    )}
-                    {isPendingInbound && (
-                      <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                        재입고 대기
-                      </span>
-                    )}
-                  </div>
-                  {isSupplierConfirmed && (
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {item.priceReason && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400">
-                          💰 가격 변경: {item.priceReason}
+              return (
+                <div
+                  key={index}
+                  className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
+                >
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                        {item.productName || "알 수 없음"}
+                      </h4>
+                      {item.brand && (
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          {item.brand}
+                        </span>
+                      )}
+                      {isPendingInbound && (
+                        <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                          재입고 대기
                         </span>
                       )}
                     </div>
-                  )}
-                </div>
+                    {isSupplierConfirmed && (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {item.priceReason && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">
+                            💰 가격 변경: {item.priceReason}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                {/* 주문 거절 card: 별도 레이아웃 */}
-                {isRejected ? (
+                  {showRejectedLayout ? (
                   <div className="grid gap-3 sm:grid-cols-3">
                     {/* 주문 수량 */}
                     <div>
@@ -8021,12 +7958,20 @@ const OrderCard = memo(function OrderCard({
                 )}
               </div>
             );
-          })}
+            };
+            return (
+              <div className="space-y-4">
+                {order.items?.map((item: any, i: number) =>
+                  renderItem(item, i, isRejected || sectionLabel === "주문 거절")
+                )}
+              </div>
+            );
+          })()}
         </div>
 
-        {/* Footer - 입고 담당자 (focus 시 이전 입력값 드롭다운) + Button */}
+        {/* Footer - 주문 요청 kartada: 입고 담당자/바코드/입고하기 yo‘q, faqat 요청중 */}
         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-          {(isSupplierConfirmed || isRejected || isPendingInbound) && (
+          {(isSupplierConfirmed || isRejected || isPendingInbound) && sectionLabel !== "주문 요청" && (
             <div className="flex items-center gap-2 flex-1 mr-4 relative">
               <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                 입고 담당자:
@@ -8068,14 +8013,14 @@ const OrderCard = memo(function OrderCard({
               )}
             </div>
           )}
-          {isPending ? (
+          {isPending || sectionLabel === "주문 요청" ? (
             <button
               disabled
               className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-600 shadow-sm cursor-not-allowed dark:bg-slate-600 dark:text-slate-300"
             >
               요청중
             </button>
-          ) : isRejected ? (
+          ) : isRejected || sectionLabel === "주문 거절" ? (
             <button
               onClick={async () => {
                 if (
@@ -8165,12 +8110,12 @@ const OrderCard = memo(function OrderCard({
                 </button>
               )}
               <button
-                onClick={() => handleProcessOrder(order)}
-                disabled={processing === order.orderId}
-                className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {processing === order.orderId ? "처리 중..." : "입고하기"}
-              </button>
+                  onClick={() => handleProcessOrder(order)}
+                  disabled={processing === order.orderId}
+                  className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing === order.orderId ? "처리 중..." : "입고하기"}
+                </button>
             </>
           )}
         </div>

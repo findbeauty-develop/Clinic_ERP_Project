@@ -2895,21 +2895,50 @@ export class OrderService {
         }
       }
 
-      // If rejected, update item memos with rejection reasons
-      if (status === "rejected" && updatedItems) {
-        for (const updatedItem of updatedItems) {
-          // Find matching order item by productId, productName, quantity, and unitPrice
-          // This ensures we match the correct item even if productId is null
-          let orderItem = null;
+      // Rejected yoki supplier_confirmed: updatedItems da itemStatus bo‘lsa, har bir itemni shu bo‘yicha yangilash (qisman reject to‘g‘ri ishlashi uchun)
+      const hasItemStatusInPayload =
+        updatedItems?.length > 0 &&
+        updatedItems.some(
+          (u: any) =>
+            (u.itemStatus ?? u.item_status) === "rejected" ||
+            (u.itemStatus ?? u.item_status) === "confirmed"
+        );
 
+      if (hasItemStatusInPayload) {
+        for (const item of order.items) {
+          const payloadItem = updatedItems.find(
+            (u: any) =>
+              u.productId === item.product_id ||
+              (u.productName && item.product?.name === u.productName)
+          );
+          const newStatus =
+            payloadItem?.itemStatus ??
+            payloadItem?.item_status ??
+            (status === "rejected" ? "rejected" : "confirmed");
+          const memo =
+            status === "rejected" &&
+            newStatus === "rejected" &&
+            payloadItem?.memo
+              ? payloadItem.memo
+              : undefined;
+          await (this.prisma as any).orderItem.update({
+            where: { id: item.id },
+            data: {
+              ...(memo != null && { memo }),
+              item_status: newStatus,
+              updated_at: new Date(),
+            },
+          });
+        }
+      } else if (status === "rejected" && updatedItems) {
+        // Eski format: payload da itemStatus yo‘q – faqat to‘liq reject (barcha item rejected)
+        for (const updatedItem of updatedItems) {
+          let orderItem = null;
           if (updatedItem.productId) {
-            // First try to match by productId
             orderItem = order.items.find(
               (item: any) => item.product_id === updatedItem.productId
             );
           }
-
-          // If not found by productId, try matching by productName, quantity, and unitPrice
           if (!orderItem && updatedItem.productName) {
             orderItem = order.items.find((item: any) => {
               const product = item.product;
@@ -2920,7 +2949,6 @@ export class OrderService {
               );
             });
           }
-
           if (orderItem) {
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
@@ -2930,13 +2958,8 @@ export class OrderService {
                 updated_at: new Date(),
               },
             });
-          } else {
-            this.logger.warn(
-              `   ⚠️ Could not find matching order item for ${updatedItem.productName}`
-            );
           }
         }
-        // Set item_status = rejected for any items not in updatedItems
         for (const item of order.items) {
           const wasUpdated = updatedItems?.some(
             (u: any) =>
@@ -2952,8 +2975,12 @@ export class OrderService {
         }
       }
 
-      // When supplier_confirmed, set item_status per item from payload (item-level: only confirmed items from supplier, rest stay pending)
-      if (status === "supplier_confirmed" && updatedItems?.length > 0) {
+      // Payload da itemStatus bo‘lmaganda: supplier_confirmed bo‘lsa item_status ni updatedItems dan yoki confirmed qilish
+      if (
+        !hasItemStatusInPayload &&
+        status === "supplier_confirmed" &&
+        updatedItems?.length > 0
+      ) {
         for (const item of order.items) {
           const payloadItem = updatedItems.find(
             (u: any) =>
@@ -2967,7 +2994,7 @@ export class OrderService {
             data: { item_status: newStatus, updated_at: new Date() },
           });
         }
-      } else if (status === "supplier_confirmed") {
+      } else if (!hasItemStatusInPayload && status === "supplier_confirmed") {
         // No updatedItems: full confirm (all confirmed)
         for (const item of order.items) {
           await (this.prisma as any).orderItem.update({

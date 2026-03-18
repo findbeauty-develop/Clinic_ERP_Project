@@ -153,11 +153,15 @@ export class OrderService {
     let processedOrders = orders;
 
     if (status === "all") {
-      // 주문 내역: faqat inbound qilingan order'lar
+      // 주문 내역: faqat inbound yoki rejected (confirmed qo‘shilmasin)
       processedOrders = orders
         .map((order: any) => ({
           ...order,
-          items: order.items.filter((item: any) => (item.inbound_quantity || 0) > 0),
+          items: order.items.filter(
+            (item: any) =>
+              (item.inbound_quantity || 0) > 0 ||
+              (item.item_status || "pending") === "rejected"
+          ),
         }))
         .filter((order: any) => order.items.length > 0);
     } else if (status === "pending") {
@@ -523,20 +527,26 @@ export class OrderService {
         return;
       }
 
+      // Partial reject: har bir item uchun itemStatus (rejected/confirmed) yuboriladi
+      const rejectionReasonsMap = rejectionReasons || {};
+      const hasAnyConfirmed = order.items.some(
+        (i: any) => (i.item_status || "pending") === "confirmed"
+      );
       const payload = {
         orderNo: order.order_no,
         clinicTenantId: order.clinic_tenant_id,
-        status: "rejected",
-        rejectionReasons: rejectionReasons || {},
+        status: hasAnyConfirmed ? "supplier_confirmed" : "rejected",
+        rejectionReasons: rejectionReasonsMap,
         updatedItems: order.items.map((item: any) => ({
           itemId: item.id,
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
-          quantity: item.confirmed_quantity, // ✅ Supplier confirmed quantity
+          quantity: item.confirmed_quantity,
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
           memo: item.memo,
+          itemStatus: (item.item_status || "pending") === "rejected" ? "rejected" : "confirmed",
         })),
         totalAmount: order.total_amount,
       };
