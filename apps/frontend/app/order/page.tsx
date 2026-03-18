@@ -203,7 +203,6 @@ export default function OrderPage() {
     salePrice: "",
   });
 
-
   // Client-side mount initialization (hydration error'dan qochish uchun)
   useEffect(() => {
     if (typeof window !== "undefined") {

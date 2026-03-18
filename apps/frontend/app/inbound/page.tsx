@@ -369,7 +369,9 @@ export default function InboundPage() {
     async (scannedBarcode: string) => {
       try {
         // GS1 parse uchun: hyphen/dot saqlanadi (batch raqami to'g'ri chiqishi uchun)
-        const forGS1 = (scannedBarcode || "").replace(/[^\x20-\x7E]/g, "").toUpperCase();
+        const forGS1 = (scannedBarcode || "")
+          .replace(/[^\x20-\x7E]/g, "")
+          .toUpperCase();
         // GTIN qidirish uchun: faqat alphanumeric
         const normalized = forGS1.replace(/[^0-9A-Za-z]/g, "");
         if (normalized.length < 8) return;
@@ -531,7 +533,9 @@ export default function InboundPage() {
         // parsed.gtin bo'sh bo'lsa bu GS1-128 emas (plain barcode yoki 10-prefix barcode)
         // bunday holda parser ajratgan "batchNumber" aslida barcode fragmenti, auto-LOT ishlatamiz
         const isRealGs1 = !!parsed.gtin;
-        const finalBatchNumber = isRealGs1 ? (parsed.batchNumber || autoLot) : autoLot;
+        const finalBatchNumber = isRealGs1
+          ? parsed.batchNumber || autoLot
+          : autoLot;
 
         // Wait for card to expand, then dispatch fill event
         setTimeout(
@@ -5077,7 +5081,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const _isRealGs1 = !!parsedRaw.gtin;
     const parsed = {
       ...parsedRaw,
-      batchNumber: _isRealGs1 ? (parsedRaw.batchNumber || _autoLot) : _autoLot,
+      batchNumber: _isRealGs1 ? parsedRaw.batchNumber || _autoLot : _autoLot,
     };
 
     const searchVariants = [
@@ -7583,6 +7587,39 @@ const OrderCard = memo(function OrderCard({
               </svg>
             )}
           </span>
+        ) : isPendingInbound ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-400 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 dark:bg-orange-500/10 dark:text-orange-400">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            재입고 대기
+            {order.isPlatformSupplier && (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-3.5 h-3.5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                />
+              </svg>
+            )}
+          </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
             <svg
@@ -7717,186 +7754,224 @@ const OrderCard = memo(function OrderCard({
                       </span>
                     )}
                   </div>
-                  {(isSupplierConfirmed || isRejected) && (
+                  {isSupplierConfirmed && (
                     <div className="mt-1 flex flex-wrap gap-2">
                       {item.priceReason && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
                           💰 가격 변경: {item.priceReason}
                         </span>
                       )}
-                      {isRejected && item.memo && (
-                        <span className="text-xs text-red-600 dark:text-red-400">
-                          ❌ 거절 사유: {item.memo}
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
 
-                {/* 주문 진행: read-only (입고 담당자 + 이번 구매가 tashqari). 주문 요청/거절: inputlar ma'lumot bilan, disabled */}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {/* 입고수량 */}
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                      입고수량:
-                    </label>
-                    {isSupplierConfirmed || isPendingInbound ? (
-                      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-600 dark:bg-slate-900/50">
-                        <span className="text-sm text-slate-800 dark:text-slate-100">
-                          {edited.quantity !== "" &&
-                          edited.quantity !== undefined
-                            ? Number(edited.quantity)
-                            : "-"}
-                        </span>
-                        <span className="text-sm text-slate-400">|</span>
-                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                          {item.pendingQuantity ?? item.confirmedQuantity}개
-                        </span>
+                {/* 주문 거절 card: 별도 레이아웃 */}
+                {isRejected ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {/* 주문 수량 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        주문 수량
+                      </label>
+                      <div className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-red-900/40 dark:bg-red-900/10 dark:text-slate-300">
+                        {item.orderedQuantity ?? item.confirmedQuantity ?? "-"}개
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={edited.quantity || ""}
-                          onChange={(e) =>
-                            updateItemField(
-                              item.id,
-                              "quantity",
-                              parseInt(e.target.value) || 0
-                            )
+                    </div>
+
+                    {/* 주문한 가격 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        주문한 가격
+                      </label>
+                      <div className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-red-900/40 dark:bg-red-900/10 dark:text-slate-300">
+                        {item.orderedPrice != null
+                          ? `${Number(item.orderedPrice).toLocaleString()}원`
+                          : "-"}
+                      </div>
+                    </div>
+
+                    {/* 거절 사유 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-red-600 dark:text-red-400">
+                        거절 사유
+                      </label>
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/20 dark:text-red-300">
+                        {(() => {
+                          if (item.memo) {
+                            const match = item.memo.match(/\[거절 사유:\s*([^\]]+)\]/);
+                            if (match) return match[1].trim();
+                            return item.memo;
                           }
-                          disabled={isPending || isRejected}
-                          className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                        />
-                        <span className="text-sm text-slate-400">|</span>
-                        <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                          {item.pendingQuantity ?? item.confirmedQuantity}개
-                        </span>
+                          return <span className="text-slate-400 dark:text-slate-500">사유 없음</span>;
+                        })()}
                       </div>
-                    )}
-                    {(isSupplierConfirmed || isRejected) && hasQtyChange && (
-                      <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
-                        요청 수량: {item.orderedQuantity}개{" "}
-                        {item.quantityReason && (
-                          <span className="text-xs text-rose-600 dark:text-rose-400">
-                            (⚠ 수량 변경: {item.quantityReason})
+                    </div>
+                  </div>
+                ) : (
+                  /* 주문 진행 / 주문 요청 / 재입고 대기: 기존 레이아웃 */
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {/* 입고수량 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        입고수량:
+                      </label>
+                      {isSupplierConfirmed || isPendingInbound ? (
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-lg w-24 sm:w-40 border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                            {edited.quantity !== "" &&
+                            edited.quantity !== undefined
+                              ? Number(edited.quantity)
+                              : "0"}
+                          </div>
+                          <span className="text-sm text-slate-400">|</span>
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {item.pendingQuantity ?? item.confirmedQuantity}개
                           </span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 유통기간 */}
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                      유통기간:
-                    </label>
-                    {isSupplierConfirmed || isPendingInbound ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
-                        {edited.expiryDate || "-"}
-                      </div>
-                    ) : (
-                      <input
-                        type="date"
-                        value={edited.expiryDate || ""}
-                        onChange={(e) =>
-                          updateItemField(item.id, "expiryDate", e.target.value)
-                        }
-                        disabled={isPending || isRejected}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                      />
-                    )}
-                  </div>
-
-                  {/* 보관위치 */}
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                      보관위치
-                    </label>
-                    {isSupplierConfirmed || isPendingInbound ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
-                        {edited.storageLocation || "-"}
-                      </div>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder="창고 A-3, 냉장실 선반 1"
-                        value={edited.storageLocation || ""}
-                        onChange={(e) =>
-                          updateItemField(
-                            item.id,
-                            "storageLocation",
-                            e.target.value
-                          )
-                        }
-                        disabled={isPending || isRejected}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
-                      />
-                    )}
-                  </div>
-
-                  {/* 이번 구매가 */}
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                      이번 구매가
-                    </label>
-                    {order.isPlatformSupplier ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
-                        <div className="space-y-1">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                            {item.confirmedPrice.toLocaleString()}원
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            제품 등록가: {item.orderedPrice.toLocaleString()}원
-                          </div>
-                          {item.confirmedPrice !== item.orderedPrice && (
-                            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                              <svg
-                                className="h-3 w-3"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              공급업체 가격 조정
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={edited.quantity || ""}
+                            onChange={(e) =>
+                              updateItemField(
+                                item.id,
+                                "quantity",
+                                parseInt(e.target.value) || 0
+                              )
+                            }
+                            disabled={isPending}
+                            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                          />
+                          <span className="text-sm text-slate-400">|</span>
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {item.pendingQuantity ?? item.confirmedQuantity}개
+                          </span>
+                        </div>
+                      )}
+                      {isSupplierConfirmed && hasQtyChange && (
+                        <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">
+                          요청 수량: {item.orderedQuantity}개{" "}
+                          {item.quantityReason && (
+                            <span className="text-xs text-rose-600 dark:text-rose-400">
+                              (⚠ 수량 변경: {item.quantityReason})
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 유통기간 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        유통기간:
+                      </label>
+                      {isSupplierConfirmed || isPendingInbound ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                          {edited.expiryDate || "0000-00-00"}
+                        </div>
+                      ) : (
                         <input
-                          type="number"
-                          min="0"
-                          placeholder="구매가 입력"
-                          value={edited.purchasePrice || ""}
+                          type="date"
+                          value={edited.expiryDate || ""}
+                          onChange={(e) =>
+                            updateItemField(item.id, "expiryDate", e.target.value)
+                          }
+                          disabled={isPending}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                        />
+                      )}
+                    </div>
+
+                    {/* 보관위치 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        보관위치
+                      </label>
+                      {isSupplierConfirmed || isPendingInbound ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
+                          {edited.storageLocation || "보관위치"}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="창고 A-3, 냉장실 선반 1"
+                          value={edited.storageLocation || ""}
                           onChange={(e) =>
                             updateItemField(
                               item.id,
-                              "purchasePrice",
-                              parseInt(e.target.value) || ""
+                              "storageLocation",
+                              e.target.value
                             )
                           }
-                          disabled={isPending || isRejected}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                          disabled={isPending}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                         />
-                        {(isSupplierConfirmed || isRejected) &&
-                          hasPriceChange && (
+                      )}
+                    </div>
+
+                    {/* 이번 구매가 */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        이번 구매가
+                      </label>
+                      {order.isPlatformSupplier ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+                          <div className="space-y-1">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {item.confirmedPrice.toLocaleString()}원
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              제품 등록가: {item.orderedPrice.toLocaleString()}원
+                            </div>
+                            {item.confirmedPrice !== item.orderedPrice && (
+                              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                <svg
+                                  className="h-3 w-3"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                                공급업체 가격 조정
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="구매가 입력"
+                            value={edited.purchasePrice || ""}
+                            onChange={(e) =>
+                              updateItemField(
+                                item.id,
+                                "purchasePrice",
+                                parseInt(e.target.value) || ""
+                              )
+                            }
+                            disabled={isPending}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
+                          />
+                          {isSupplierConfirmed && hasPriceChange && (
                             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                               공급업체 조정:{" "}
                               {item.orderedPrice.toLocaleString()}원 →{" "}
                               {item.confirmedPrice.toLocaleString()}원
                             </p>
                           )}
-                      </>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Read-only Lot card — faqat 바코드 입고 modalida 입고 하기 bosilgandan keyin (inboundQuantity > 0) */}
                 {isSupplierConfirmed && (item.inboundQuantity ?? 0) > 0 && (
@@ -7944,7 +8019,7 @@ const OrderCard = memo(function OrderCard({
 
         {/* Footer - 입고 담당자 (focus 시 이전 입력값 드롭다운) + Button */}
         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-          {(isSupplierConfirmed || isRejected) && (
+          {(isSupplierConfirmed || isRejected || isPendingInbound) && (
             <div className="flex items-center gap-2 flex-1 mr-4 relative">
               <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                 입고 담당자:
@@ -8027,9 +8102,8 @@ const OrderCard = memo(function OrderCard({
                   const endpoint = `${apiUrl}/order/rejected-order/confirm`;
 
                   await apiPost(endpoint, {
-                    orderId: order.orderId,
+                    orderId: order.id || order.orderId,
                     orderNo: order.orderNo,
-                    // ✅ Removed: companyName and managerName - backend will fetch from database
                     memberName: memberName,
                     items: items,
                   });
@@ -8094,38 +8168,14 @@ const OrderCard = memo(function OrderCard({
           )}
         </div>
 
-        {/* Order Memo - Show ONLY for rejected orders with reasons OR if order has memo */}
-        {(isRejected && rejectionReasons.length > 0) || order.memo ? (
+        {/* Order Memo - Show ONLY for non-rejected orders with memo */}
+        {!isRejected && order.memo ? (
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
             <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
               메모
             </div>
             <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-              {isRejected && rejectionReasons.length > 0 ? (
-                <>
-                  <span className="font-semibold text-red-600 dark:text-red-400">
-                    [거절 사유]
-                  </span>
-                  <br />
-                  {rejectionReasons.map((reason: string, idx: number) => (
-                    <span key={idx}>
-                      • {reason}
-                      {idx < rejectionReasons.length - 1 && <br />}
-                    </span>
-                  ))}
-                  {order.memo && (
-                    <>
-                      <br />
-                      <br />
-                      <span className="font-semibold">[주문 메모]</span>
-                      <br />
-                      {order.memo}
-                    </>
-                  )}
-                </>
-              ) : (
-                order.memo
-              )}
+              {order.memo}
             </div>
           </div>
         ) : null}

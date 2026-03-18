@@ -844,7 +844,7 @@ export default function ProductDetailPage() {
               )}
 
               {/* 보관 정보 Section */}
-              {(product.storageLocation ||
+              {/* {(product.storageLocation ||
                 product.inboundManager ||
                 product.memo) && (
                 <>
@@ -879,7 +879,7 @@ export default function ProductDetailPage() {
                     </div>
                   </div>
                 </>
-              )}
+              )} */}
             </section>
           )
         ) : null}

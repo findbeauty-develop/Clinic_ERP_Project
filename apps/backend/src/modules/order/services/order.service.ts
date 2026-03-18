@@ -3463,6 +3463,7 @@ export class OrderService {
           confirmedPrice: item.confirmed_unit_price ?? item.unit_price, // Supplier confirmed (stored)
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
+          memo: item.memo || null, // ✅ Include item memo (거절 사유 포함)
           // Product-level expiry defaults
           expiryMonths: item.product?.expiry_months || null,
           expiryUnit: item.product?.expiry_unit || null,
