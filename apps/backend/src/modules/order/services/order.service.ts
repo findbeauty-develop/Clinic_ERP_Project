@@ -2915,16 +2915,15 @@ export class OrderService {
             payloadItem?.itemStatus ??
             payloadItem?.item_status ??
             (status === "rejected" ? "rejected" : "confirmed");
+          // Rejected item uchun memo saqlash (partial reject da ham status "supplier_confirmed" keladi)
           const memo =
-            status === "rejected" &&
-            newStatus === "rejected" &&
-            payloadItem?.memo
+            newStatus === "rejected" && payloadItem?.memo
               ? payloadItem.memo
               : undefined;
           await (this.prisma as any).orderItem.update({
             where: { id: item.id },
             data: {
-              ...(memo != null && { memo }),
+              ...(memo != null && memo !== "" && { memo }),
               item_status: newStatus,
               updated_at: new Date(),
             },
@@ -3673,16 +3672,31 @@ export class OrderService {
       }
     }
 
-    // ✅ Update order status and all items to rejection_acknowledged
+    // ✅ Only update items that are rejected → rejection_acknowledged (partial reject: confirmed items stay confirmed)
     await this.prisma.executeWithRetry(async () => {
-      await (this.prisma as any).order.update({
-        where: { id: orderId },
-        data: { status: "confirmed_rejected" },
-      });
       await (this.prisma as any).orderItem.updateMany({
-        where: { order_id: orderId },
+        where: {
+          order_id: orderId,
+          item_status: "rejected",
+        },
         data: { item_status: "rejection_acknowledged", updated_at: new Date() },
       });
+      // Set order status to confirmed_rejected only when ALL items are rejected/rejection_acknowledged (no confirmed/pending left)
+      const itemCounts = await (this.prisma as any).orderItem.groupBy({
+        by: ["item_status"],
+        where: { order_id: orderId },
+        _count: true,
+      });
+      const hasNonRejected = itemCounts.some(
+        (g: any) =>
+          g.item_status !== "rejected" && g.item_status !== "rejection_acknowledged"
+      );
+      if (!hasNonRejected) {
+        await (this.prisma as any).order.update({
+          where: { id: orderId },
+          data: { status: "confirmed_rejected" },
+        });
+      }
     });
 
     // Create RejectedOrder records for each item with CORRECT supplier info
@@ -3749,7 +3763,6 @@ export class OrderService {
           supplier_id: true,
           memo: true, // Include order memo
           items: {
-            // Include order items with memos
             select: {
               id: true,
               product_id: true,
@@ -3760,6 +3773,7 @@ export class OrderService {
               confirmed_unit_price: true,
               total_price: true,
               memo: true,
+              item_status: true, // Filter to rejected only in display
               product: {
                 select: {
                   name: true,
@@ -3840,6 +3854,12 @@ export class OrderService {
           memo: null,
         };
 
+        // Only include items that are rejected/rejection_acknowledged (partial reject: don't show confirmed items here)
+        const rejectedItemsOnly = (orderData.items || []).filter(
+          (item: any) =>
+            item.item_status === "rejected" ||
+            item.item_status === "rejection_acknowledged"
+        );
         grouped[orderNo] = {
           orderId: rejectedOrder.order_id,
           orderNo: rejectedOrder.order_no,
@@ -3854,7 +3874,7 @@ export class OrderService {
             clinicSupplier?.email1 || clinicSupplier?.email2 || null, // ✅ NEW
           memberName: rejectedOrder.member_name,
           confirmedAt: rejectedOrder.created_at,
-          items: orderData.items.map((item: any) => ({
+          items: rejectedItemsOnly.map((item: any) => ({
             id: item.id,
             productId: item.product_id,
             productName: item.product?.name || rejectedOrder.product_name,

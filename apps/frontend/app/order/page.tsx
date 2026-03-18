@@ -1566,10 +1566,58 @@ export default function OrderPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Regular orders - filter out rejected orders (they should only appear in rejectedOrders list after confirmation) */}
-                {orders
-                  .filter((order) => order.status !== "rejected" && order.status !== "confirmed_rejected")
-                  .map((order) => {
+                {/* Regular orders: split by item status (주문 요청 / 주문 진행). Rejected orders only appear below after confirmation in 입고 대기. */}
+                {(() => {
+                  type CardItem = {
+                    order: any;
+                    sectionLabel: "주문 요청" | "주문 진행";
+                  };
+                  const cards: CardItem[] = [];
+                  orders
+                    .filter(
+                      (order) =>
+                        order.status !== "rejected" &&
+                        order.status !== "confirmed_rejected"
+                    )
+                    .forEach((order) => {
+                      const pendingItems = (order.items || []).filter(
+                        (item: any) =>
+                          (item.itemStatus ?? item.item_status ?? "pending") ===
+                          "pending"
+                      );
+                      const confirmedItems = (order.items || []).filter(
+                        (item: any) =>
+                          (item.itemStatus ?? item.item_status ?? "pending") ===
+                          "confirmed"
+                      );
+                      if (pendingItems.length > 0) {
+                        const cardOrder = { ...order, items: pendingItems };
+                        cardOrder.totalAmount = pendingItems.reduce(
+                          (sum: number, item: any) =>
+                            sum +
+                            (item.orderedQuantity || 0) * (item.unitPrice || 0),
+                          0
+                        );
+                        cards.push({
+                          order: cardOrder,
+                          sectionLabel: "주문 요청",
+                        });
+                      }
+                      if (confirmedItems.length > 0) {
+                        const cardOrder = { ...order, items: confirmedItems };
+                        cardOrder.totalAmount = confirmedItems.reduce(
+                          (sum: number, item: any) =>
+                            sum +
+                            (item.orderedQuantity || 0) * (item.unitPrice || 0),
+                          0
+                        );
+                        cards.push({
+                          order: cardOrder,
+                          sectionLabel: "주문 진행",
+                        });
+                      }
+                    });
+                  return cards.map(({ order, sectionLabel }, cardIdx) => {
                     // Date format: YYYY-MM-DD HH:MM
                     const orderDate = new Date(order.createdAt);
                     const dateStr = orderDate.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -1585,37 +1633,22 @@ export default function OrderPage() {
                       order.managerName ||
                       "담당자";
 
-                    // Badge logic based on order status (priority: completed > cancelled > rejected > pending_inbound > supplier_confirmed > pending)
+                    // Badge/card logic: sectionLabel (주문 요청 / 주문 진행). Rejected only in Rejected Orders section below.
                     const isCompleted =
                       order.status === "completed" ||
                       order.status === "inbound_completed";
                     const isCancelled =
                       !isCompleted && order.status === "cancelled";
-                    const isRejected =
-                      !isCompleted &&
-                      !isCancelled &&
-                      order.status === "rejected";
+                    const isRejected = false;
                     const isPendingInbound =
                       !isCompleted &&
                       !isCancelled &&
                       !isRejected &&
                       order.status === "pending_inbound";
-                    const isSupplierConfirmed =
-                      !isCompleted &&
-                      !isCancelled &&
-                      !isRejected &&
-                      !isPendingInbound &&
-                      (order.status === "supplier_confirmed" ||
-                        order.status === "confirmed");
-                    const isPending =
-                      !isCompleted &&
-                      !isCancelled &&
-                      !isRejected &&
-                      !isPendingInbound &&
-                      !isSupplierConfirmed &&
-                      order.status === "pending";
+                    const isSupplierConfirmed = sectionLabel === "주문 진행";
+                    const isPending = sectionLabel === "주문 요청";
 
-                    // Extract rejection reasons from items
+                    // Extract rejection reasons from items (this card's items only)
                     const rejectionReasons =
                       order.items
                         ?.map((item: any) => {
@@ -1629,11 +1662,9 @@ export default function OrderPage() {
                         })
                         .filter((reason: any) => reason !== null) || [];
 
-                    // 🔍 DEBUG - Check isPlatformSupplier
-
                     return (
                       <div
-                        key={order.id}
+                        key={`${order.id}-${sectionLabel}-${cardIdx}`}
                         className="rounded-lg border-2 border-dashed border-purple-300 bg-slate-50 p-4 dark:border-purple-600 dark:bg-slate-800/50"
                       >
                         {/* Order Header */}
@@ -1719,8 +1750,8 @@ export default function OrderPage() {
                                 주문 취소
                               </button>
                             )}
-                            {/* Badge */}
-                            {isPending && (
+                            {/* Badge - split cards: one badge per sectionLabel (주문 요청 / 주문 진행 / 주문 거절) */}
+                            {sectionLabel === "주문 요청" && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
                                 주문 요청
                                 {order.supplierDetails?.isPlatformSupplier && (
@@ -1741,28 +1772,7 @@ export default function OrderPage() {
                                 )}
                               </span>
                             )}
-                            {isPendingInbound && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-orange-400 bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:border-orange-400 dark:text-orange-400">
-                                일부 입고
-                                {order.supplierDetails?.isPlatformSupplier && (
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={2}
-                                    stroke="currentColor"
-                                    className="w-3.5 h-3.5"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                                    />
-                                  </svg>
-                                )}
-                              </span>
-                            )}
-                            {isSupplierConfirmed && (
+                            {sectionLabel === "주문 진행" && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
                                 주문 진행
                                 {order.supplierDetails?.isPlatformSupplier && (
@@ -1781,6 +1791,21 @@ export default function OrderPage() {
                                     />
                                   </svg>
                                 )}
+                              </span>
+                            )}
+                            {!sectionLabel && isPending && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
+                                주문 요청
+                              </span>
+                            )}
+                            {!sectionLabel && isPendingInbound && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-orange-400 bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:border-orange-400 dark:text-orange-400">
+                                일부 입고
+                              </span>
+                            )}
+                            {!sectionLabel && isSupplierConfirmed && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
+                                주문 진행
                               </span>
                             )}
                             {isCancelled && (
@@ -1804,25 +1829,9 @@ export default function OrderPage() {
                                 )}
                               </span>
                             )}
-                            {isRejected && (
+                            {!sectionLabel && isRejected && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                                 주문 거절
-                                {order.supplierDetails?.isPlatformSupplier && (
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={2}
-                                    stroke="currentColor"
-                                    className="w-3.5 h-3.5"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                                    />
-                                  </svg>
-                                )}
                               </span>
                             )}
                             {isCompleted && (
@@ -1871,7 +1880,8 @@ export default function OrderPage() {
                         {/* Product List */}
                         <div className="mb-3 space-y-2">
                           {order.items.map((item: any) => {
-                            const itemStatus = item.itemStatus ?? item.item_status;
+                            const itemStatus =
+                              item.itemStatus ?? item.item_status;
                             const isItemRejected =
                               isRejected || itemStatus === "rejected";
 
@@ -1958,21 +1968,32 @@ export default function OrderPage() {
                                   )}
                                   {isItemRejected && (
                                     <>
-                                      <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                        <span>입고수량: {item.quantity}</span>
-                                        <span className="text-slate-400">
-                                          |
+                                      <div className="flex text-sm text-slate-600 dark:text-slate-400">
+                                        <span>
+                                          주문 수량:{" "}
+                                          {item.orderedQuantity ??
+                                            item.confirmedQuantity ??
+                                            0}
+                                          개
                                         </span>
-                                        <span>{item.quantity}개</span>
+                                        <span className="ml-80">
+                                          단가:{" "}
+                                          {item.unitPrice != null
+                                            ? `${Number(item.unitPrice).toLocaleString()}원`
+                                            : "-"}
+                                        </span>
                                       </div>
-                                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                                        <span className="text-slate-400">
-                                          단가:
-                                        </span>{" "}
-                                        {item.unitPrice.toLocaleString()}원
-                                      </span>
                                       <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                        총금액: 0
+                                        총금액:{" "}
+                                        {(
+                                          (item.orderedQuantity ??
+                                            item.confirmedQuantity ??
+                                            0) *
+                                          (item.unitPrice ??
+                                            item.orderedPrice ??
+                                            0)
+                                        ).toLocaleString()}
+                                        원
                                       </div>
                                     </>
                                   )}
@@ -2041,13 +2062,10 @@ export default function OrderPage() {
                           </div>
                         ) : null}
 
-                        {/* Total */}
+                        {/* Total - 주문 거절에서도 주문 수량×단가 합계(총금액) 표시 */}
                         <div className="mb-3 flex justify-end">
                           <div className="text-lg font-bold text-slate-900 dark:text-white">
-                            총{" "}
-                            {isRejected
-                              ? 0
-                              : order.totalAmount.toLocaleString()}
+                            총 {(order.totalAmount ?? 0).toLocaleString()}원
                           </div>
                         </div>
 
@@ -2145,7 +2163,8 @@ export default function OrderPage() {
                         </div>
                       </div>
                     );
-                  })}
+                  });
+                })()}
 
                 {/* Rejected Orders */}
                 {rejectedOrders &&
@@ -2211,39 +2230,56 @@ export default function OrderPage() {
                           rejectedOrder.items.length > 0 ? (
                             rejectedOrder.items.map(
                               (item: any, index: number) => {
-                                const itemStatus = item.itemStatus ?? item.item_status;
+                                const itemStatus =
+                                  item.itemStatus ?? item.item_status;
                                 return (
-                                <div
-                                  key={index}
-                                  className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
-                                >
-                                  <div className="flex items-center justify-between gap-4 px-4 py-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-sm font-medium text-slate-900 dark:text-white">
-                                        {item.productName || "알 수 없음"}
+                                  <div
+                                    key={index}
+                                    className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
+                                  >
+                                    <div className="flex items-center justify-between gap-4 px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                          {item.productName || "알 수 없음"}
+                                        </div>
+                                        {itemStatus === "rejected" && (
+                                          <span className="inline-flex rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+                                            거절
+                                          </span>
+                                        )}
                                       </div>
-                                      {itemStatus === "rejected" && (
-                                        <span className="inline-flex rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
-                                          거절
+                                      <div className="text-sm text-slate-600 dark:text-slate-400">
+                                        브랜드: {item.productBrand || ""}
+                                      </div>
+                                      <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
+                                        <span>
+                                          주문수량: {item.orderedQuantity ?? 0}
+                                          개
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="text-sm text-slate-600 dark:text-slate-400">
-                                      브랜드: {item.productBrand || ""}
-                                    </div>
-                                    <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                      <span>주문수량: {item.orderedQuantity ?? 0}개</span>
-                                    </div>
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">
-                                      <span className="text-slate-400">단가: </span>
-                                      {item.unitPrice != null ? Number(item.unitPrice).toLocaleString() : 0}원
-                                    </span>
-                                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                      총금액: {item.totalPrice != null ? Number(item.totalPrice).toLocaleString() : 0}원
+                                      </div>
+                                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                                        <span className="text-slate-400">
+                                          단가:{" "}
+                                        </span>
+                                        {item.unitPrice != null
+                                          ? Number(
+                                              item.unitPrice
+                                            ).toLocaleString()
+                                          : 0}
+                                        원
+                                      </span>
+                                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                        총금액:{" "}
+                                        {item.totalPrice != null
+                                          ? Number(
+                                              item.totalPrice
+                                            ).toLocaleString()
+                                          : 0}
+                                        원
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
+                                );
                               }
                             )
                           ) : (
@@ -2263,7 +2299,8 @@ export default function OrderPage() {
                                   sum + (item.totalPrice || 0),
                                 0
                               ) ?? 0
-                            ).toLocaleString()}원
+                            ).toLocaleString()}
+                            원
                           </div>
                         </div>
 
