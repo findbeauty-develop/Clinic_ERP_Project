@@ -144,9 +144,7 @@ model SupplierOrder {
   clinic_name         String? // Denormalized clinic name
   clinic_manager_name String? // Denormalized clinic manager name
   order_no            String    @unique
-  status              String    @default("pending") // pending, confirmed, rejected, shipped, completed
   total_amount        Int       @default(0)
-  memo                String?
   order_date          DateTime  @default(now())
   created_at          DateTime  @default(now())
   updated_at          DateTime?
@@ -156,7 +154,6 @@ model SupplierOrder {
   @@index([supplier_tenant_id])
   @@index([supplier_manager_id])
   @@index([clinic_tenant_id])
-  @@index([status])
   @@index([order_date])
 }
 

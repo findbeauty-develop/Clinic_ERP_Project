@@ -103,8 +103,15 @@ export default function OrdersPage() {
       const data = await apiGet<OrdersResponse>(
         `/supplier/orders?status=${statusParam}`
       );
-      setOrders(data.orders || []);
-      setSelectedItems(new Set());
+      const orderList = data.orders || [];
+      setOrders(orderList);
+      // 주문 목록 tabida: barcha itemlar default tanlangan
+      if (statusParam === "pending") {
+        const allItemIds = orderList.flatMap((o) => o.items.map((i) => i.id));
+        setSelectedItems(new Set(allItemIds));
+      } else {
+        setSelectedItems(new Set());
+      }
     } catch (err: any) {
       setError(err?.message || "주문을 불러오지 못했습니다.");
     } finally {
@@ -424,25 +431,18 @@ export default function OrdersPage() {
           {order.status === "pending" && activeTab === "pending" && (
             <div className="flex gap-2">
               <button
-                disabled={updating}
+                disabled={
+                  updating ||
+                  order.items.every((item) => !selectedItems.has(item.id))
+                }
                 onClick={() => {
-                  // Check feature flag
-                  const partialAcceptEnabled =
-                    process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE ===
-                    "true";
-
-                  // Check if any items are selected for this order
                   const selectedInOrder = order.items.filter((item) =>
                     selectedItems.has(item.id)
                   );
+                  if (selectedInOrder.length === 0) return;
 
-                  // If no items selected, select all items automatically
-                  const itemsToProcess =
-                    selectedInOrder.length > 0 ? selectedInOrder : order.items;
-
-                  // Initialize rejection reasons for selected items only
                   const initialReasons: Record<string, string> = {};
-                  itemsToProcess.forEach((item) => {
+                  selectedInOrder.forEach((item) => {
                     initialReasons[item.id] = "";
                   });
                   setRejectionReasons(initialReasons);
@@ -453,26 +453,18 @@ export default function OrdersPage() {
                 주문 거절
               </button>
               <button
-                disabled={updating}
-                onClick={async () => {
-                  // Check feature flag
-                  const partialAcceptEnabled =
-                    process.env.NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE ===
-                    "true";
-
-                  // Check if any items are selected for this order
+                disabled={
+                  updating ||
+                  order.items.every((item) => !selectedItems.has(item.id))
+                }
+                onClick={() => {
                   const selectedInOrder = order.items.filter((item) =>
                     selectedItems.has(item.id)
                   );
+                  if (selectedInOrder.length === 0) return;
 
-                  // If no items selected, select all items automatically
-                  const itemsToProcess =
-                    selectedInOrder.length > 0 ? selectedInOrder : order.items;
-
-                  // Full order acceptance flow (existing logic)
-                  // If partial selection, only show adjustment modal for selected items
                   const initialAdjustments: Record<string, ItemAdjustment> = {};
-                  itemsToProcess.forEach((item) => {
+                  selectedInOrder.forEach((item) => {
                     initialAdjustments[item.id] = {
                       itemId: item.id,
                       actualQuantity: item.quantity,

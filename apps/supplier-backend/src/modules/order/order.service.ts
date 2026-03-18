@@ -59,7 +59,6 @@ export class OrderService {
             clinic_tenant_id: clinicTenantId || null,
             clinic_name: clinicName || null,
             clinic_manager_name: clinicManagerName || null,
-            memo: memo || null,
             total_amount: totalAmount,
             items: {
               create: itemsData,
@@ -127,24 +126,17 @@ export class OrderService {
     const limit = query?.limit && query.limit > 0 ? query.limit : 20;
     const skip = (page - 1) * limit;
 
+    // ✅ Tab mantiqi SupplierOrderItem.item_status dan
     const where: any = {
       supplier_manager_id: supplierManagerId,
-      status: { not: "archived" }, // ✅ Always exclude archived orders
     };
 
-    if (status && status !== "all") {
-      where.status = status;
-    }
-
-    // ✅ Build include for items based on status
-    // For "confirmed" tab: only show pending items
-    // For "all" tab: show pending items for confirmed orders, all items for others
-    let itemsInclude: any = true;  // Default: show all items
-    
-    if (status === "confirmed") {
-      // ✅ "클리닉 확인중" tab: faqat pending item'lar
-      // ⏸️ TODO: After migration, use database filter: pending_quantity > 0
-      itemsInclude = true; // Temporarily fetch all, filter in memory
+    if (status === "pending") {
+      // 주문 목록: kamida bitta pending item bo'lgan orderlar
+      where.items = { some: { item_status: "pending" } };
+    } else if (status === "confirmed") {
+      // 클리닉 확인중: kamida bitta confirmed item bo'lgan orderlar
+      where.items = { some: { item_status: "confirmed" } };
     }
 
     const [total, orders] = await Promise.all([
@@ -154,36 +146,45 @@ export class OrderService {
         orderBy: { order_date: "desc" },
         skip,
         take: limit,
-        include: { 
-          items: itemsInclude,
-          // ✅ No clinic relation - clinic_name and clinic_manager_name are direct fields
-        },
+        include: { items: true },
       }),
     ]);
 
-    // ✅ For "all" tab: Only show orders with at least one inbounded item
-    // For "confirmed" tab: Show pending items only
     let processedOrders = orders;
-    
+
     if (status === "all") {
-      // ✅ "주문 내역": Faqat inbound qilingan order'lar
+      // 주문 내역: faqat inbound qilingan order'lar
       processedOrders = orders
         .map((order: any) => ({
           ...order,
-          items: order.items.filter((item: any) => {
-            const inboundQty = item.inbound_quantity || 0;
-            return inboundQty > 0; // ✅ Faqat inbound qilingan item'lar
-          }),
+          items: order.items.filter((item: any) => (item.inbound_quantity || 0) > 0),
         }))
-        .filter((order: any) => order.items.length > 0); // ✅ Hech qanday inbound bo'lmagan order'larni o'chirish
-        
+        .filter((order: any) => order.items.length > 0);
+    } else if (status === "pending") {
+      // 주문 목록: faqat pending itemlar (confirmed/rejected ko'rinmasin)
+      processedOrders = orders
+        .map((order: any) => ({
+          ...order,
+          items: order.items.filter(
+            (item: any) => (item.item_status || "pending") === "pending"
+          ),
+        }))
+        .filter((order: any) => order.items.length > 0);
     } else if (status === "confirmed") {
-      // ✅ "클리닉 확인중": Faqat order.status === "confirmed" (pending orderlar ko'rinmasin)
-      processedOrders = orders.filter((o: any) => o.status === "confirmed");
+      // 클리닉 확인중: faqat confirmed itemlar (pending ko'rinmasin)
+      processedOrders = orders
+        .map((order: any) => ({
+          ...order,
+          items: order.items.filter(
+            (item: any) => (item.item_status || "pending") === "confirmed"
+          ),
+        }))
+        .filter((order: any) => order.items.length > 0);
     }
-    
-    // ✅ Filter out orders with no items
-    const filteredOrders = processedOrders.filter((order: any) => order.items.length > 0);
+
+    const filteredOrders = processedOrders.filter(
+      (order: any) => order.items && order.items.length > 0
+    );
 
     this.logger.log(
       `📊 [listOrdersForManager] status=${status}, total_fetched=${orders.length}, after_filter=${filteredOrders.length}`
@@ -193,7 +194,7 @@ export class OrderService {
     if (status === "all" || status === "confirmed") {
       filteredOrders.forEach((order: any) => {
         this.logger.debug(
-          `   Order ${order.order_no}: status=${order.status}, items=${order.items.length}`
+          `   Order ${order.order_no}: items=${order.items.length}`
         );
         // ✅ DEBUG: Log first item's quantities
         if (order.items.length > 0) {
@@ -261,12 +262,9 @@ export class OrderService {
     // Update order and items in transaction
     const updated = await this.prisma.$transaction(async (tx: any) => {
       // Order status will be set at the end based on item-level status (pending until all items confirmed)
-      const updatedOrder = await tx.supplierOrder.update({
+      await tx.supplierOrder.update({
         where: { id },
-        data: {
-          memo: dto.memo ?? order.memo,
-          updated_at: new Date(),
-        },
+        data: { updated_at: new Date() },
       });
 
       // Update item adjustments if provided (for confirmed orders)
@@ -403,23 +401,9 @@ export class OrderService {
         });
       }
 
-      // Order-level status: "confirmed" only when all items confirmed; else "pending" (order stays on 주문 목록)
-      let orderStatus = dto.status;
-      if (dto.status === "rejected") {
-        orderStatus = "rejected";
-      } else if (dto.status === "confirmed") {
-        const itemsAfter = await tx.supplierOrderItem.findMany({
-          where: { order_id: id },
-          select: { item_status: true },
-        });
-        const allConfirmed =
-          itemsAfter.length > 0 &&
-          itemsAfter.every((i: any) => i.item_status === "confirmed");
-        orderStatus = allConfirmed ? "confirmed" : "pending";
-      }
       await tx.supplierOrder.update({
         where: { id },
-        data: { status: orderStatus, updated_at: new Date() },
+        data: { updated_at: new Date() },
       });
 
       return tx.supplierOrder.findUnique({
@@ -617,9 +601,7 @@ export class OrderService {
       throw new BadRequestException(`Order ${orderNo} not found`);
     }
 
-    this.logger.log(
-      `Found order ${orderNo} (id: ${order.id}), current status: ${order.status}`
-    );
+    this.logger.log(`Found order ${orderNo} (id: ${order.id})`);
 
     // ✅ REFACTORED: No split orders - update inbound_quantity directly
     let allItemsCompleted = true;
@@ -695,19 +677,13 @@ export class OrderService {
       this.logger.log(`✅ No inboundItems provided, assuming all items completed for order ${orderNo}`);
     }
 
-    // Update status
     const updated = await (this.prisma as any).supplierOrder.update({
       where: { id: order.id },
-      data: {
-        status: newStatus,
-        updated_at: new Date(),
-      },
-      include: {
-        items: true,
-      },
+      data: { updated_at: new Date() },
+      include: { items: true },
     });
 
-    this.logger.log(`Order ${orderNo} marked as ${newStatus} in supplier-backend`);
+    this.logger.log(`Order ${orderNo} inbound processed (allItemsCompleted: ${allItemsCompleted})`);
     return {
       success: true,
       message: `Order marked as ${newStatus}`,
@@ -982,12 +958,21 @@ export class OrderService {
       );
     }
 
+    const itemsList = order.items || [];
+    const derivedStatus =
+      itemsList.length === 0
+        ? "pending"
+        : itemsList.every((i: any) => (i.item_status || "pending") === "rejected")
+          ? "rejected"
+          : itemsList.every((i: any) => (i.item_status || "pending") === "confirmed")
+            ? "confirmed"
+            : "pending";
+
     return {
       id: order.id,
       orderNo: order.order_no,
-      status: order.status,
+      status: derivedStatus,
       totalAmount: order.total_amount,
-      memo: order.memo,
       orderDate: order.order_date,
       clinic: {
         tenantId: order.clinic_tenant_id,
