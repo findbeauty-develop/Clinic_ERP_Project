@@ -807,7 +807,8 @@ export class OrderService {
             },
           });
 
-          // Order items yaratish
+          // Order items yaratish (item_status: manual = confirmed, platform = pending)
+          const initialItemStatus = isManualSupplier ? "confirmed" : "pending";
           await Promise.all(
             group.items.map((item: any) =>
               (tx as any).orderItem.create({
@@ -816,13 +817,14 @@ export class OrderService {
                   order_id: order.id,
                   product_id: item.productId,
                   batch_id: item.batchId ?? null,
-                  ordered_quantity: item.quantity, // ✅ Clinic order qilgan (o'zgarmas)
-                  confirmed_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier auto-confirm, platform supplier null
-                  inbound_quantity: null, // ✅ Hali inbound qilinmagan
-                  pending_quantity: isManualSupplier ? item.quantity : null, // ✅ Manual supplier: confirmed = pending, Platform: null until confirmed
+                  ordered_quantity: item.quantity,
+                  confirmed_quantity: isManualSupplier ? item.quantity : null,
+                  inbound_quantity: null,
+                  pending_quantity: isManualSupplier ? item.quantity : null,
                   unit_price: item.unitPrice,
                   total_price: item.totalPrice,
                   memo: item.memo ?? null,
+                  item_status: initialItemStatus,
                 },
               })
             )
@@ -1368,7 +1370,7 @@ export class OrderService {
         }
       }
 
-      // Items'ni formatlash
+      // Items'ni formatlash (item_status for item-level status)
       const formattedItems = (order.items || []).map((item: any) => ({
         id: item.id,
         productId: item.product_id,
@@ -1376,14 +1378,15 @@ export class OrderService {
         brand: item.product?.brand || "",
         batchId: item.batch_id,
         batchNo: item.batch?.batch_no || null,
-        orderedQuantity: item.ordered_quantity, // ✅ Clinic order qilgan (o'zgarmas)
-        confirmedQuantity: item.confirmed_quantity ?? 0, // ✅ Supplier tasdiqlagan (null bo'lsa 0)
-        inboundQuantity: item.inbound_quantity, // ✅ Clinic inbound qilgan
+        orderedQuantity: item.ordered_quantity,
+        confirmedQuantity: item.confirmed_quantity ?? 0,
+        inboundQuantity: item.inbound_quantity,
         pendingQuantity:
-          (item.confirmed_quantity ?? 0) - (item.inbound_quantity || 0), // ✅ Qolgan
+          (item.confirmed_quantity ?? 0) - (item.inbound_quantity || 0),
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
         memo: item.memo || null,
+        itemStatus: item.item_status || null,
       }));
 
       // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
@@ -1491,7 +1494,7 @@ export class OrderService {
     const isPlatformSupplier =
       !!clinicSupplierManager?.linked_supplier_manager_id;
 
-    // Update order status to cancelled
+    // Update order status and all items to cancelled
     await this.prisma.executeWithRetry(async () => {
       await (this.prisma as any).order.update({
         where: { id: orderId },
@@ -1499,6 +1502,10 @@ export class OrderService {
           status: "cancelled",
           updated_at: new Date(),
         },
+      });
+      await (this.prisma as any).orderItem.updateMany({
+        where: { order_id: orderId },
+        data: { item_status: "cancelled", updated_at: new Date() },
       });
     });
 
@@ -2847,11 +2854,11 @@ export class OrderService {
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
-                // ordered_quantity, unit_price: UNCHANGED ✅ - Clinic order ma'lumotlari
                 confirmed_quantity: newConfirmedQuantity,
                 pending_quantity: newConfirmedQuantity,
-                confirmed_unit_price: newConfirmedUnitPrice, // ✅ Supplier tasdiqlagan narx (unit_price ustiga yozilmaydi)
+                confirmed_unit_price: newConfirmedUnitPrice,
                 total_price: newTotalPrice,
+                item_status: "confirmed",
                 updated_at: new Date(),
               },
             });
@@ -2908,17 +2915,18 @@ export class OrderService {
               const product = item.product;
               return (
                 product?.name === updatedItem.productName &&
-                item.quantity === updatedItem.quantity &&
+                item.ordered_quantity === updatedItem.quantity &&
                 item.unit_price === updatedItem.unitPrice
               );
             });
           }
 
-          if (orderItem && updatedItem.memo) {
+          if (orderItem) {
             await (this.prisma as any).orderItem.update({
               where: { id: orderItem.id },
               data: {
-                memo: updatedItem.memo,
+                memo: updatedItem?.memo ?? orderItem.memo,
+                item_status: "rejected",
                 updated_at: new Date(),
               },
             });
@@ -2927,6 +2935,45 @@ export class OrderService {
               `   ⚠️ Could not find matching order item for ${updatedItem.productName}`
             );
           }
+        }
+        // Set item_status = rejected for any items not in updatedItems
+        for (const item of order.items) {
+          const wasUpdated = updatedItems?.some(
+            (u: any) =>
+              u.productId === item.product_id ||
+              (u.productName && item.product?.name === u.productName)
+          );
+          if (!wasUpdated) {
+            await (this.prisma as any).orderItem.update({
+              where: { id: item.id },
+              data: { item_status: "rejected", updated_at: new Date() },
+            });
+          }
+        }
+      }
+
+      // When supplier_confirmed, set item_status per item from payload (item-level: only confirmed items from supplier, rest stay pending)
+      if (status === "supplier_confirmed" && updatedItems?.length > 0) {
+        for (const item of order.items) {
+          const payloadItem = updatedItems.find(
+            (u: any) =>
+              u.productId === item.product_id ||
+              (u.productName && item.product?.name === u.productName)
+          );
+          const newStatus =
+            payloadItem?.itemStatus ?? payloadItem?.item_status ?? "confirmed";
+          await (this.prisma as any).orderItem.update({
+            where: { id: item.id },
+            data: { item_status: newStatus, updated_at: new Date() },
+          });
+        }
+      } else if (status === "supplier_confirmed") {
+        // No updatedItems: full confirm (all confirmed)
+        for (const item of order.items) {
+          await (this.prisma as any).orderItem.update({
+            where: { id: item.id },
+            data: { item_status: "confirmed", updated_at: new Date() },
+          });
         }
       }
     });
@@ -3266,8 +3313,17 @@ export class OrderService {
         include: {
           items: {
             where: {
-              // ✅ FIXED: Show items with pending_quantity > 0 OR null (for old orders)
-              OR: [{ pending_quantity: { gt: 0 } }, { pending_quantity: null }],
+              // Include items that are pending inbound OR rejected (so both editable and rejected cards show)
+              OR: [
+                {
+                  item_status: { in: ["pending", "confirmed"] },
+                  OR: [
+                    { pending_quantity: { gt: 0 } },
+                    { pending_quantity: null },
+                  ],
+                },
+                { item_status: "rejected" },
+              ],
             },
             include: {
               product: {
@@ -3450,20 +3506,21 @@ export class OrderService {
           productName: item.product?.name || "제품",
           brand: item.product?.brand || "",
           unit: item.product?.unit || "EA",
-          orderedQuantity: item.ordered_quantity, // ✅ Original order quantity (o'zgarmas)
+          orderedQuantity: item.ordered_quantity,
           confirmedQuantity:
             adjustment?.actualQuantity ||
             item.confirmed_quantity ||
-            item.ordered_quantity, // ✅ Supplier confirmed (fallback)
-          inboundQuantity: item.inbound_quantity || 0, // ✅ Already inbound
+            item.ordered_quantity,
+          inboundQuantity: item.inbound_quantity || 0,
           pendingQuantity:
             (item.confirmed_quantity || item.ordered_quantity) -
-            (item.inbound_quantity || 0), // ✅ Remaining (20ta)
-          orderedPrice: item.unit_price, // Original (clinic order) price
-          confirmedPrice: item.confirmed_unit_price ?? item.unit_price, // Supplier confirmed (stored)
+            (item.inbound_quantity || 0),
+          orderedPrice: item.unit_price,
+          confirmedPrice: item.confirmed_unit_price ?? item.unit_price,
           quantityReason: adjustment?.quantityChangeReason || null,
           priceReason: adjustment?.priceChangeReason || null,
-          memo: item.memo || null, // ✅ Include item memo (거절 사유 포함)
+          memo: item.memo || null,
+          itemStatus: item.item_status || null,
           // Product-level expiry defaults
           expiryMonths: item.product?.expiry_months || null,
           expiryUnit: item.product?.expiry_unit || null,
@@ -3589,11 +3646,15 @@ export class OrderService {
       }
     }
 
-    // ✅ Update order status to 'confirmed_rejected' so it doesn't appear in pending inbound anymore
+    // ✅ Update order status and all items to rejection_acknowledged
     await this.prisma.executeWithRetry(async () => {
       await (this.prisma as any).order.update({
         where: { id: orderId },
         data: { status: "confirmed_rejected" },
+      });
+      await (this.prisma as any).orderItem.updateMany({
+        where: { order_id: orderId },
+        data: { item_status: "rejection_acknowledged", updated_at: new Date() },
       });
     });
 
@@ -3771,10 +3832,11 @@ export class OrderService {
             productId: item.product_id,
             productName: item.product?.name || rejectedOrder.product_name,
             productBrand: item.product?.brand || rejectedOrder.product_brand,
-            quantity: item.quantity,
+            orderedQuantity: item.ordered_quantity,
             unitPrice: item.unit_price,
-            totalPrice: item.total_price,
-            memo: item.memo || null, // ✅ Include item memo with rejection reason
+            totalPrice: item.unit_price * item.ordered_quantity,
+            memo: item.memo || null,
+            itemStatus: item.item_status || null,
           })),
           memo: orderData.memo, // ✅ Include order-level memo
         };
@@ -3812,14 +3874,18 @@ export class OrderService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
-    // Update status to completed
+    // Update order status and all items to inbounded
     await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).order.update({
+      await (this.prisma as any).order.update({
         where: { id: orderId },
         data: {
           status: "completed",
           updated_at: new Date(),
         },
+      });
+      await (this.prisma as any).orderItem.updateMany({
+        where: { order_id: orderId },
+        data: { item_status: "inbounded", updated_at: new Date() },
       });
     });
 
@@ -3860,15 +3926,16 @@ export class OrderService {
             originalQuantity: item.ordered_quantity, // ✅ Dastlabki order quantity
           }));
 
-          // ✅ Update inbound_quantity for all items (to'liq inbound)
+          // ✅ Update inbound_quantity and item_status for all items (to'liq inbound)
           await this.prisma.executeWithRetry(async () => {
             return await Promise.all(
               order.items.map((item: any) =>
                 (this.prisma as any).orderItem.update({
                   where: { id: item.id },
                   data: {
-                    inbound_quantity: item.confirmed_quantity, // ✅ To'liq inbound
-                    pending_quantity: 0, // ✅ No pending after full inbound
+                    inbound_quantity: item.confirmed_quantity,
+                    pending_quantity: 0,
+                    item_status: "inbounded",
                     updated_at: new Date(),
                   },
                 })
@@ -4038,205 +4105,18 @@ export class OrderService {
   }
 
   /**
-   * Handle order split notification from supplier-backend
+   * Handle order split notification from supplier-backend.
+   * @deprecated Use item-level status via updateOrderFromSupplier (per-item confirmed/rejected) instead.
    */
   async handleOrderSplit(dto: any) {
-    try {
-      const { type, original_order_no, clinic_tenant_id, orders } = dto;
-
-      if (type !== "order_split") {
-        throw new BadRequestException("Invalid webhook type");
-      }
-
-      if (
-        !original_order_no ||
-        !clinic_tenant_id ||
-        !orders ||
-        orders.length !== 2
-      ) {
-        throw new BadRequestException("Invalid split order data");
-      }
-
-      // Find original order
-      const originalOrder = await this.prisma.executeWithRetry(async () => {
-        return await (this.prisma as any).order.findFirst({
-          where: {
-            order_no: original_order_no,
-            tenant_id: clinic_tenant_id,
-          },
-          include: {
-            items: true,
-          },
-        });
-      });
-
-      if (!originalOrder) {
-        this.logger.warn(`Original order ${original_order_no} not found`);
-        return { success: false, message: "Original order not found" };
-      }
-
-      // Fetch supplier details if supplier_id exists
-      let supplierDetails = null;
-      if (originalOrder.supplier_id) {
-        supplierDetails = await this.prisma.executeWithRetry(async () => {
-          return await (this.prisma as any).clinicSupplierManager.findUnique({
-            where: { id: originalOrder.supplier_id },
-            include: {
-              linkedManager: {
-                include: {
-                  supplier: true,
-                },
-              },
-            },
-          });
-        });
-      }
-
-      // ✅ Determine correct company_name and manager_name (same logic as confirmRejectedOrder)
-      let companyName = "Unknown";
-      let managerName = "Unknown";
-
-      if (supplierDetails) {
-        // If linked to platform supplier, use platform data
-        if (supplierDetails.linkedManager?.supplier) {
-          companyName = supplierDetails.linkedManager.supplier.company_name;
-          managerName =
-            supplierDetails.linkedManager.name ||
-            supplierDetails.name ||
-            "Unknown";
-        } else {
-          // Manual supplier - use ClinicSupplierManager data
-          companyName = supplierDetails.company_name || "Unknown";
-          managerName = supplierDetails.name || "Unknown";
-        }
-      }
-
-      // Create two new orders in clinic database
-      await this.prisma.$transaction(async (tx: any) => {
-        // Helper function to find product_id from original order items
-        const findProductId = (productName: string): string => {
-          const originalItem = originalOrder.items.find(
-            (item: any) => item.product_name === productName
-          );
-          if (!originalItem) {
-            this.logger.warn(
-              `Product ${productName} not found in original order, using first item's product_id`
-            );
-            return originalOrder.items[0]?.product_id || null;
-          }
-          return originalItem.product_id;
-        };
-
-        // Order 1: Can be Accepted (supplier_confirmed) or Rejected
-        const firstOrderData = orders[0];
-        const isRejection = firstOrderData.status === "rejected";
-
-        const firstOrder = await tx.order.create({
-          data: {
-            tenant_id: clinic_tenant_id,
-            order_no: firstOrderData.order_no,
-            supplier_id: originalOrder.supplier_id,
-            order_date: originalOrder.order_date, // ✅ Copy from original order
-            status: isRejection ? "rejected" : "supplier_confirmed",
-            confirmed_at: isRejection ? null : new Date(),
-            total_amount: firstOrderData.total_amount,
-            // memo: `Split from ${original_order_no} - ${
-            //   isRejection ? "Rejected" : "Accepted"
-            // } items`,
-            member_id: originalOrder.member_id,
-            created_by: originalOrder.created_by, // ✅ Copy from original order
-            clinic_manager_name: originalOrder.clinic_manager_name, // ✅ Copy from original order
-            items: {
-              create: firstOrderData.items.map((item: any) => ({
-                tenant_id: clinic_tenant_id,
-                product_id: findProductId(item.product_name),
-                quantity: item.quantity,
-                unit_price: item.total_price / item.quantity,
-                total_price: item.total_price,
-              })),
-            },
-          },
-        });
-
-        // Order 2: Remaining items (pending status)
-        const remainingOrderData = orders[1];
-        await tx.order.create({
-          data: {
-            tenant_id: clinic_tenant_id,
-            order_no: remainingOrderData.order_no,
-            supplier_id: originalOrder.supplier_id,
-            order_date: originalOrder.order_date, // ✅ Copy from original order
-            status: "pending",
-            total_amount: remainingOrderData.total_amount,
-            // memo: `Split from ${original_order_no} - Remaining items`,
-            member_id: originalOrder.member_id,
-            created_by: originalOrder.created_by, // ✅ Copy from original order
-            clinic_manager_name: originalOrder.clinic_manager_name, // ✅ Copy from original order
-            items: {
-              create: remainingOrderData.items.map((item: any) => ({
-                tenant_id: clinic_tenant_id,
-                product_id: findProductId(item.product_name),
-                quantity: item.quantity,
-                unit_price: item.total_price / item.quantity,
-                total_price: item.total_price,
-              })),
-            },
-          },
-        });
-
-        // Update original order status to 'archived'
-        await tx.order.update({
-          where: { id: originalOrder.id },
-          data: {
-            status: "archived",
-            memo: `Split into ${firstOrderData.order_no} and ${remainingOrderData.order_no}`,
-            updated_at: new Date(),
-          },
-        });
-
-        // If first order is rejected, create RejectedOrder records for each item
-        if (isRejection) {
-          for (const item of firstOrderData.items) {
-            // Extract rejection reason from memo
-            const rejectionMemo = item.memo || "";
-            const reasonMatch = rejectionMemo.match(
-              /\[거절 사유:\s*([^\]]+)\]/
-            );
-            const rejectionReason = reasonMatch
-              ? reasonMatch[1]
-              : rejectionMemo;
-
-            await tx.rejectedOrder.create({
-              data: {
-                tenant_id: clinic_tenant_id,
-                order_id: firstOrder.id,
-                order_no: firstOrderData.order_no,
-                company_name: companyName, // ✅ From database with proper logic
-                manager_name: managerName, // ✅ From database with proper logic
-                product_name: item.product_name,
-                product_brand: null, // Not available in split data
-                qty: item.quantity,
-                member_name: "System", // Automated rejection via split
-              },
-            });
-          }
-        }
-      });
-
-      // Clear cache
-      await this.clearPendingInboundCache(clinic_tenant_id);
-
-      return {
-        success: true,
-        message: "Order split processed successfully",
-      };
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to process order split: ${error.message}`,
-        error.stack
-      );
-      throw error;
-    }
+    this.logger.warn(
+      "handleOrderSplit is deprecated. Use item-level status via supplier confirmation webhook (updateOrderFromSupplier) instead."
+    );
+    return {
+      success: true,
+      message:
+        "Deprecated: order split disabled; use item-level status in supplier confirmation.",
+    };
   }
 
   /**
@@ -4289,18 +4169,19 @@ export class OrderService {
             const confirmedQty =
               item.confirmed_quantity || item.ordered_quantity;
 
-            // ✅ SIMPLE UPDATE - no split, with pending_quantity!
+            // ✅ SIMPLE UPDATE - no split, with pending_quantity and item_status
+            const itemFullyInbound = totalInboundQty >= confirmedQty;
             await tx.orderItem.update({
               where: { id: item.id },
               data: {
                 inbound_quantity: totalInboundQty,
-                pending_quantity: confirmedQty - totalInboundQty, // ✅ Denormalized for performance
+                pending_quantity: confirmedQty - totalInboundQty,
+                item_status: itemFullyInbound ? "inbounded" : "confirmed",
                 updated_at: new Date(),
               },
             });
 
-            // Check if this item is fully inbound
-            if (totalInboundQty < confirmedQty) {
+            if (!itemFullyInbound) {
               allItemsFullyInbound = false;
             }
 

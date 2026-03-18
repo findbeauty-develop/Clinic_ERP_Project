@@ -4659,6 +4659,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
           order.status === "pending_inbound"
         ) {
           order.items?.forEach((item: any) => {
+            const itemStatus =
+              item.itemStatus ?? item.item_status ?? "pending";
+            if (
+              itemStatus !== "confirmed" &&
+              itemStatus !== "pending"
+            )
+              return;
             const confirmedQty =
               item.confirmedQuantity || item.orderedQuantity || 0;
             const alreadyInbound = item.inboundQuantity || 0;

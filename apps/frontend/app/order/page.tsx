@@ -1568,7 +1568,7 @@ export default function OrderPage() {
               <div className="space-y-4">
                 {/* Regular orders - filter out rejected orders (they should only appear in rejectedOrders list after confirmation) */}
                 {orders
-                  .filter((order) => order.status !== "rejected")
+                  .filter((order) => order.status !== "rejected" && order.status !== "confirmed_rejected")
                   .map((order) => {
                     // Date format: YYYY-MM-DD HH:MM
                     const orderDate = new Date(order.createdAt);
@@ -1871,6 +1871,10 @@ export default function OrderPage() {
                         {/* Product List */}
                         <div className="mb-3 space-y-2">
                           {order.items.map((item: any) => {
+                            const itemStatus = item.itemStatus ?? item.item_status;
+                            const isItemRejected =
+                              isRejected || itemStatus === "rejected";
+
                             // Extract rejection reason and memo for this item
                             let itemRejectionReason = null;
                             let itemRejectionMemo = null;
@@ -1920,7 +1924,7 @@ export default function OrderPage() {
                                   <div className="text-sm text-slate-600 dark:text-slate-400">
                                     브랜드: {item.brand}
                                   </div>
-                                  {!isRejected && (
+                                  {!isItemRejected && (
                                     <>
                                       <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
                                         <span>
@@ -1952,7 +1956,7 @@ export default function OrderPage() {
                                       </div>
                                     </>
                                   )}
-                                  {isRejected && (
+                                  {isItemRejected && (
                                     <>
                                       <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
                                         <span>입고수량: {item.quantity}</span>
@@ -1975,7 +1979,7 @@ export default function OrderPage() {
                                 </div>
 
                                 {/* ✅ Show rejection reason for each item if rejected */}
-                                {isRejected && itemRejectionReason && (
+                                {isItemRejected && itemRejectionReason && (
                                   <div className="px-4 pb-3">
                                     <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 dark:bg-red-900/20 dark:border-red-800">
                                       <div className="flex items-start gap-2">
@@ -2183,7 +2187,16 @@ export default function OrderPage() {
                               주문번호 {rejectedOrder.orderNo}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
+                            {/* 확인한 담당자 */}
+                            {rejectedOrder.memberName && (
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                확인한 담당자:{" "}
+                                <span className="font-medium text-slate-700 dark:text-slate-300">
+                                  {rejectedOrder.memberName}
+                                </span>
+                              </span>
+                            )}
                             {/* Badge */}
                             <span className="inline-flex items-center rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                               주문 거절
@@ -2197,35 +2210,41 @@ export default function OrderPage() {
                           Array.isArray(rejectedOrder.items) &&
                           rejectedOrder.items.length > 0 ? (
                             rejectedOrder.items.map(
-                              (item: any, index: number) => (
+                              (item: any, index: number) => {
+                                const itemStatus = item.itemStatus ?? item.item_status;
+                                return (
                                 <div
                                   key={index}
                                   className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
                                 >
                                   <div className="flex items-center justify-between gap-4 px-4 py-3">
-                                    <div className="text-sm font-medium text-slate-900 dark:text-white">
-                                      {item.productName || "알 수 없음"}
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                        {item.productName || "알 수 없음"}
+                                      </div>
+                                      {itemStatus === "rejected" && (
+                                        <span className="inline-flex rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+                                          거절
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="text-sm text-slate-600 dark:text-slate-400">
                                       브랜드: {item.productBrand || ""}
                                     </div>
                                     <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                      <span>입고수량: {item.qty || 0}</span>
-                                      <span className="text-slate-400">|</span>
-                                      <span>{item.qty || 0}개</span>
+                                      <span>주문수량: {item.orderedQuantity ?? 0}개</span>
                                     </div>
                                     <span className="text-sm text-slate-600 dark:text-slate-400">
-                                      <span className="text-slate-400">
-                                        단가:
-                                      </span>{" "}
-                                      0원
+                                      <span className="text-slate-400">단가: </span>
+                                      {item.unitPrice != null ? Number(item.unitPrice).toLocaleString() : 0}원
                                     </span>
                                     <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                      총금액: 0
+                                      총금액: {item.totalPrice != null ? Number(item.totalPrice).toLocaleString() : 0}원
                                     </div>
                                   </div>
                                 </div>
-                              )
+                              );
+                              }
                             )
                           ) : (
                             <div className="text-sm text-slate-500 dark:text-slate-400">
@@ -2237,7 +2256,14 @@ export default function OrderPage() {
                         {/* Total */}
                         <div className="mb-3 flex justify-end">
                           <div className="text-lg font-bold text-slate-900 dark:text-white">
-                            총 0
+                            총{" "}
+                            {(
+                              rejectedOrder.items?.reduce(
+                                (sum: number, item: any) =>
+                                  sum + (item.totalPrice || 0),
+                                0
+                              ) ?? 0
+                            ).toLocaleString()}원
                           </div>
                         </div>
 

@@ -178,6 +178,7 @@ model SupplierOrderItem {
   unit_price   Int
   total_price  Int
   memo         String?
+  item_status  String?  @default("pending") // pending, confirmed, rejected
 
   // Timestamps
   created_at DateTime  @default(now())
@@ -187,6 +188,7 @@ model SupplierOrderItem {
 
   @@index([order_id])
   @@index([product_id])
+  @@index([item_status])
 }
 
 // Clinic → Supplier return request

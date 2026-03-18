@@ -10,14 +10,15 @@ type SupplierOrderItem = {
   brand?: string | null;
   unit?: string | null;
   batchNo?: string | null;
-  receivedOrderQuantity?: number; // ✅ Clinic order qilgan miqdor (backend'dan keladi)
-  confirmedQuantity?: number;     // ✅ Supplier tasdiqlagan miqdor
-  inboundQuantity?: number;       // ✅ Clinic inbound qilgan miqdor
-  pendingQuantity?: number;       // ✅ Qolgan (confirmed - inbound) - denormalized
-  quantity: number;               // ✅ Display용 (receivedOrderQuantity yoki confirmedQuantity)
+  receivedOrderQuantity?: number;
+  confirmedQuantity?: number;
+  inboundQuantity?: number;
+  pendingQuantity?: number;
+  quantity: number;
   unitPrice: number;
   totalPrice: number;
   memo?: string | null;
+  itemStatus?: string | null; // pending | confirmed | rejected
 };
 
 type SupplierOrder = {
@@ -339,6 +340,7 @@ export default function OrdersPage() {
             const rejectionReason = isRejected
               ? extractRejectionReason(item.memo)
               : null;
+            const itemStatus = item.itemStatus ?? "pending";
 
             return (
               <div
@@ -359,6 +361,23 @@ export default function OrdersPage() {
                   <span className="truncate font-medium">
                     {item.productName}
                   </span>
+                  {activeTab === "all" && (
+                    <span
+                      className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                        itemStatus === "rejected"
+                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          : itemStatus === "confirmed"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                      }`}
+                    >
+                      {itemStatus === "rejected"
+                        ? "거절"
+                        : itemStatus === "confirmed"
+                          ? "접수"
+                          : "대기"}
+                    </span>
+                  )}
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">
@@ -633,21 +652,40 @@ export default function OrdersPage() {
               <div className="divide-y divide-slate-100">
                 {detailOrder.items.map((item) => {
                   const rejectionReason =
-                    detailOrder.status === "rejected"
+                    detailOrder.status === "rejected" ||
+                    (item as SupplierOrderItem).itemStatus === "rejected"
                       ? extractRejectionReason(item.memo)
                       : null;
+                  const itemStatus = (item as SupplierOrderItem).itemStatus ?? "pending";
 
                   return (
                     <div
                       key={item.id}
                       className={`grid py-2 text-sm text-slate-700 ${
-                        detailOrder.status === "rejected"
+                        detailOrder.status === "rejected" || itemStatus === "rejected"
                           ? "grid-cols-4"
                           : "grid-cols-6"
                       }`}
                     >
-                      <div className="col-span-2 truncate font-medium">
-                        {item.productName}
+                      <div className="col-span-2 flex items-center gap-2">
+                        <span className="truncate font-medium">
+                          {item.productName}
+                        </span>
+                        <span
+                          className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
+                            itemStatus === "rejected"
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              : itemStatus === "confirmed"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                          }`}
+                        >
+                          {itemStatus === "rejected"
+                            ? "거절"
+                            : itemStatus === "confirmed"
+                              ? "접수"
+                              : "대기"}
+                        </span>
                       </div>
                       <div className="truncate text-slate-500">
                         {item.brand || "-"}
@@ -659,7 +697,7 @@ export default function OrdersPage() {
                           ? `${item.inboundQuantity}개`  // ✅ 20개 (inbound)
                           : `${item.quantity}개`}        // ✅ 10개 (pending)
                       </div>
-                      {detailOrder.status === "rejected" ? (
+                      {itemStatus === "rejected" ? (
                         <div className="text-right text-slate-400 text-xs">
                           {rejectionReason || "거절 사유 없음"}
                         </div>
@@ -972,72 +1010,51 @@ export default function OrdersPage() {
                   onClick={async () => {
                     setUpdating(true);
                     try {
-                      const partialAcceptEnabled =
-                        process.env
-                          .NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE ===
-                        "true";
-
-                      // Check if this is a partial selection
-                      const adjustmentItemIds = Object.keys(itemAdjustments);
-                      const isPartialSelection =
-                        partialAcceptEnabled &&
-                        adjustmentItemIds.length > 0 &&
-                        adjustmentItemIds.length < confirmOrder.items.length;
-
-                      if (isPartialSelection) {
-                        // Partial acceptance - use partial-accept API
-                        await apiPut(
-                          `/supplier/orders/${confirmOrder.id}/partial-accept`,
-                          {
-                            selectedItemIds: adjustmentItemIds,
-                          }
-                        );
-
-                        alert(
-                          "✅ 일부 제품이 접수되었습니다!\n나머지 제품은 대기 상태로 유지됩니다."
-                        );
-                      } else {
-                        // Full order acceptance - use existing API
-                        // Prepare adjustments array
-                        // ✅ FIX: If itemAdjustments is empty, create default adjustments for all items (no changes = confirmed as ordered)
-                        let adjustments = Object.values(itemAdjustments).map(
-                          (adj) => ({
-                            itemId: adj.itemId,
-                            actualQuantity: adj.actualQuantity,
-                            actualPrice: adj.actualPrice,
-                            quantityChangeReason:
-                              adj.quantityChangeReason || null,
-                            quantityChangeNote: adj.quantityChangeNote || null,
-                            priceChangeReason: adj.priceChangeReason || null,
-                            priceChangeNote: adj.priceChangeNote || null,
-                          })
-                        );
-
-                        // If no adjustments were made, create default adjustments (all items confirmed as ordered)
-                        if (adjustments.length === 0 && confirmOrder?.items) {
-                          adjustments = confirmOrder.items.map((item: any) => ({
-                            itemId: item.id,
-                            actualQuantity: item.quantity,
-                            actualPrice: item.unitPrice,
-                            quantityChangeReason: null,
-                            quantityChangeNote: null,
-                            priceChangeReason: null,
-                            priceChangeNote: null,
-                          }));
-                        }
-
-                        // Call API to update status with adjustments
-                        await apiPut(
-                          `/supplier/orders/${confirmOrder.id}/status`,
-                          {
-                            status: "confirmed",
-                            adjustments,
-                          }
-                        );
-
-                        alert("주문이 접수되었습니다.");
+                      // Item-level confirm: send only items in the modal (selected items). Backend confirms only these; others stay pending.
+                      let adjustments = Object.values(itemAdjustments).map(
+                        (adj) => ({
+                          itemId: adj.itemId,
+                          actualQuantity: adj.actualQuantity,
+                          actualPrice: adj.actualPrice,
+                          quantityChangeReason:
+                            adj.quantityChangeReason || null,
+                          quantityChangeNote: adj.quantityChangeNote || null,
+                          priceChangeReason: adj.priceChangeReason || null,
+                          priceChangeNote: adj.priceChangeNote || null,
+                        })
+                      );
+                      // If modal has no adjustments (full-order flow), send all items with default quantity/price
+                      if (
+                        adjustments.length === 0 &&
+                        confirmOrder?.items?.length
+                      ) {
+                        adjustments = confirmOrder.items.map((item: any) => ({
+                          itemId: item.id,
+                          actualQuantity: item.quantity ?? 0,
+                          actualPrice: item.unitPrice ?? 0,
+                          quantityChangeReason: null,
+                          quantityChangeNote: null,
+                          priceChangeReason: null,
+                          priceChangeNote: null,
+                        }));
                       }
 
+                      await apiPut(
+                        `/supplier/orders/${confirmOrder.id}/status`,
+                        {
+                          status: "confirmed",
+                          adjustments,
+                        }
+                      );
+
+                      const isPartial =
+                        adjustments.length > 0 &&
+                        adjustments.length < (confirmOrder?.items?.length ?? 0);
+                      alert(
+                        isPartial
+                          ? "✅ 일부 제품이 접수되었습니다.\n나머지 제품은 대기 상태로 유지됩니다."
+                          : "주문이 접수되었습니다."
+                      );
                       setConfirmOrder(null);
                       setItemAdjustments({});
                       await fetchOrders();
@@ -1190,39 +1207,32 @@ export default function OrdersPage() {
 
                     setUpdating(true);
                     try {
-                      const partialAcceptEnabled =
-                        process.env
-                          .NEXT_PUBLIC_ENABLE_PARTIAL_ORDER_ACCEPTANCE ===
-                        "true";
+                      // Item-level reject: backend sets rejected items from rejectionReasons, rest to confirmed
+                      const rejectionItemIds = Object.keys(rejectionReasons).filter(
+                        (id) => (rejectionReasons[id] || "").trim() !== ""
+                      );
+                      const effectiveReasons: Record<string, string> = {};
+                      rejectionItemIds.forEach((id) => {
+                        if (rejectionReasons[id]?.trim())
+                          effectiveReasons[id] = rejectionReasons[id].trim();
+                      });
 
-                      // Check if this is a partial rejection
-                      const rejectionItemIds = Object.keys(rejectionReasons);
-                      const isPartialRejection =
-                        partialAcceptEnabled &&
-                        rejectionItemIds.length > 0 &&
-                        rejectionItemIds.length < rejectOrder.items.length;
-
-                      if (isPartialRejection) {
-                        // Partial rejection - use partial-reject API
-                        await apiPut(
-                          `/supplier/orders/${rejectOrder.id}/partial-reject`,
-                          {
-                            selectedItemIds: rejectionItemIds,
-                            rejectionReasons: rejectionReasons,
-                          }
-                        );
+                      await apiPut(
+                        `/supplier/orders/${rejectOrder.id}/status`,
+                        {
+                          status: "rejected",
+                          rejectionReasons: effectiveReasons,
+                        }
+                      );
+                      if (
+                        effectiveReasons &&
+                        Object.keys(effectiveReasons).length > 0 &&
+                        Object.keys(effectiveReasons).length < rejectOrder.items.length
+                      ) {
                         alert(
-                          "✅ 일부 제품이 거절되었습니다!\n나머지 제품은 대기 상태로 유지됩니다."
+                          "✅ 일부 제품이 거절되었습니다.\n나머지 제품은 접수 처리되었습니다."
                         );
                       } else {
-                        // Full order rejection
-                        await apiPut(
-                          `/supplier/orders/${rejectOrder.id}/status`,
-                          {
-                            status: "rejected",
-                            rejectionReasons: rejectionReasons,
-                          }
-                        );
                         alert("주문이 거절되었습니다.");
                       }
 

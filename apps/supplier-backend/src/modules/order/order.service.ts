@@ -38,12 +38,13 @@ export class OrderService {
       product_name: item.productName,
       brand: item.brand || null,
       batch_no: item.batchNo || null,
-      received_order_quantity: item.quantity, // ✅ Clinic order qilgan (o'zgarmas)
-      confirmed_quantity: null,               // ✅ NULL - supplier hali confirm qilmagan!
-      inbound_quantity: null,                 // ✅ Hali inbound qilinmagan
+      received_order_quantity: item.quantity,
+      confirmed_quantity: null,
+      inbound_quantity: null,
       unit_price: item.unitPrice,
       total_price: item.totalPrice,
       memo: item.memo || null,
+      item_status: "pending",
     }));
 
     
@@ -177,15 +178,8 @@ export class OrderService {
         .filter((order: any) => order.items.length > 0); // ✅ Hech qanday inbound bo'lmagan order'larni o'chirish
         
     } else if (status === "confirmed") {
-      // ✅ "클리닉 확인중": Faqat pending item'lar
-      processedOrders = orders.map((order: any) => ({
-        ...order,
-        items: order.items.filter((item: any) => {
-          const confirmedQty = item.confirmed_quantity || item.received_order_quantity;
-          const inboundQty = item.inbound_quantity || 0;
-          return inboundQty < confirmedQty; // ✅ Runtime pending check
-        }),
-      }));
+      // ✅ "클리닉 확인중": Faqat order.status === "confirmed" (pending orderlar ko'rinmasin)
+      processedOrders = orders.filter((o: any) => o.status === "confirmed");
     }
     
     // ✅ Filter out orders with no items
@@ -266,11 +260,10 @@ export class OrderService {
 
     // Update order and items in transaction
     const updated = await this.prisma.$transaction(async (tx: any) => {
-      // Update order status
+      // Order status will be set at the end based on item-level status (pending until all items confirmed)
       const updatedOrder = await tx.supplierOrder.update({
         where: { id },
         data: {
-          status: dto.status,
           memo: dto.memo ?? order.memo,
           updated_at: new Date(),
         },
@@ -301,11 +294,11 @@ export class OrderService {
             await tx.supplierOrderItem.update({
               where: { id: adjustment.itemId },
               data: {
-                // received_order_quantity: UNCHANGED - O'zgarmas!
-                confirmed_quantity: adjustment.actualQuantity, // ✅ Supplier adjustment
+                confirmed_quantity: adjustment.actualQuantity,
                 unit_price: adjustment.actualPrice,
                 total_price: adjustment.actualQuantity * adjustment.actualPrice,
                 memo: itemMemo.trim(),
+                item_status: "confirmed",
                 updated_at: new Date(),
               },
             });
@@ -328,6 +321,32 @@ export class OrderService {
           where: { id },
           data: { total_amount: newTotalAmount },
         });
+
+        // Item-level status: only adjusted items are confirmed; rest stay pending
+        const adjustedItemIds = dto.adjustments.map((a: any) => a.itemId);
+        if (adjustedItemIds.length < order.items.length) {
+          await tx.supplierOrderItem.updateMany({
+            where: {
+              order_id: id,
+              id: { notIn: adjustedItemIds },
+            },
+            data: { item_status: "pending", updated_at: new Date() },
+          });
+        }
+      }
+
+      // Set all items to item_status confirmed only when full confirm (no partial: no adjustments or adjustments cover all items)
+      if (dto.status === "confirmed") {
+        const hasPartialAdjustments =
+          dto.adjustments &&
+          dto.adjustments.length > 0 &&
+          dto.adjustments.length < order.items.length;
+        if (!hasPartialAdjustments) {
+          await tx.supplierOrderItem.updateMany({
+            where: { order_id: id },
+            data: { item_status: "confirmed", updated_at: new Date() },
+          });
+        }
       }
 
       // Update item rejection reasons if provided (for rejected orders)
@@ -338,20 +357,21 @@ export class OrderService {
           } items`
         );
 
+        const rejectedItemIds = new Set<string>();
         for (const [itemId, reason] of Object.entries(dto.rejectionReasons)) {
           if (reason && reason.trim() !== "") {
             const item = order.items.find((i: any) => i.id === itemId);
             if (item) {
+              rejectedItemIds.add(itemId);
               const itemMemo = item.memo
                 ? `${item.memo}\n[거절 사유: ${reason}]`
                 : `[거절 사유: ${reason}]`;
-
-             
 
               await tx.supplierOrderItem.update({
                 where: { id: itemId },
                 data: {
                   memo: itemMemo.trim(),
+                  item_status: "rejected",
                   updated_at: new Date(),
                 },
               });
@@ -360,7 +380,47 @@ export class OrderService {
             }
           }
         }
+        // Partial reject: items not in rejectionReasons -> confirmed. Full reject: all -> rejected.
+        if (rejectedItemIds.size === 0) {
+          await tx.supplierOrderItem.updateMany({
+            where: { order_id: id },
+            data: { item_status: "rejected", updated_at: new Date() },
+          });
+        } else if (rejectedItemIds.size < order.items.length) {
+          await tx.supplierOrderItem.updateMany({
+            where: {
+              order_id: id,
+              id: { notIn: Array.from(rejectedItemIds) },
+            },
+            data: { item_status: "confirmed", updated_at: new Date() },
+          });
+        }
+      } else if (dto.status === "rejected") {
+        // Full reject: no per-item reasons, set all items to rejected
+        await tx.supplierOrderItem.updateMany({
+          where: { order_id: id },
+          data: { item_status: "rejected", updated_at: new Date() },
+        });
       }
+
+      // Order-level status: "confirmed" only when all items confirmed; else "pending" (order stays on 주문 목록)
+      let orderStatus = dto.status;
+      if (dto.status === "rejected") {
+        orderStatus = "rejected";
+      } else if (dto.status === "confirmed") {
+        const itemsAfter = await tx.supplierOrderItem.findMany({
+          where: { order_id: id },
+          select: { item_status: true },
+        });
+        const allConfirmed =
+          itemsAfter.length > 0 &&
+          itemsAfter.every((i: any) => i.item_status === "confirmed");
+        orderStatus = allConfirmed ? "confirmed" : "pending";
+      }
+      await tx.supplierOrder.update({
+        where: { id },
+        data: { status: orderStatus, updated_at: new Date() },
+      });
 
       return tx.supplierOrder.findUnique({
         where: { id },
@@ -418,16 +478,17 @@ export class OrderService {
         clinicTenantId: order.clinic_tenant_id,
         status: "supplier_confirmed",
         confirmedAt: new Date().toISOString(),
-        adjustments: adjustmentsWithProductId, // Use adjusted array with productId
+        adjustments: adjustmentsWithProductId,
         updatedItems: order.items.map((item: any) => ({
           itemId: item.id,
           productId: item.product_id,
           productName: item.product_name,
           brand: item.brand,
-          quantity: item.confirmed_quantity, // ✅ Supplier confirmed quantity
+          quantity: item.confirmed_quantity,
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
           memo: item.memo,
+          itemStatus: item.item_status || "pending",
         })),
         totalAmount: order.total_amount,
       };
@@ -703,447 +764,37 @@ export class OrderService {
   }
 
   /**
-   * Partial Order Acceptance - Split order into accepted and remaining
+   * Partial Order Acceptance - Split order into accepted and remaining.
+   * @deprecated Use updateStatus with item-level adjustments (confirm/reject per item) instead.
    */
   async partialAcceptOrder(
     id: string,
     supplierManagerId: string,
     dto: { selectedItemIds: string[]; adjustments?: any[]; memo?: string }
   ) {
-    this.logger.log(
-      `🔀 [SPLIT ORDER START] Order: ${id}, Selected items: ${dto.selectedItemIds.length}`
+    this.logger.warn(
+      "partialAcceptOrder is deprecated. Use updateStatus(confirmed) with adjustments for item-level confirm."
     );
-
-    // Check feature flag
-    const featureEnabled =
-      process.env.ENABLE_PARTIAL_ORDER_ACCEPTANCE === "true";
-    if (!featureEnabled) {
-      throw new BadRequestException("Partial order acceptance is not enabled");
-    }
-
-    // Get original order with items
-    const order = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).supplierOrder.findUnique({
-        where: { id },
-        include: { items: true },
-      });
-    });
-
-    if (!order) {
-      throw new BadRequestException("Order not found");
-    }
-
-    if (order.status !== "pending") {
-      throw new BadRequestException(
-        "Only pending orders can be partially accepted"
-      );
-    }
-
-    // Validation: Selected items must belong to this order
-    const orderItemIds = order.items.map((i: any) => i.id);
-    const invalidItems = dto.selectedItemIds.filter(
-      (id) => !orderItemIds.includes(id)
+    throw new BadRequestException(
+      "Partial accept is deprecated. Use full confirm with quantity/price adjustments, or full reject."
     );
-    if (invalidItems.length > 0) {
-      throw new BadRequestException(
-        `Invalid item IDs: ${invalidItems.join(", ")}`
-      );
-    }
-
-    // Validation: Must have at least one item remaining
-    if (dto.selectedItemIds.length >= order.items.length) {
-      throw new BadRequestException(
-        "Cannot accept all items - use full accept instead"
-      );
-    }
-
-    if (dto.selectedItemIds.length === 0) {
-      throw new BadRequestException("Must select at least one item");
-    }
-
-    // Split items
-    const acceptedItems = order.items.filter((i: any) =>
-      dto.selectedItemIds.includes(i.id)
-    );
-    const remainingItems = order.items.filter(
-      (i: any) => !dto.selectedItemIds.includes(i.id)
-    );
-
-    // Calculate amounts
-    const acceptedTotal = acceptedItems.reduce(
-      (sum: number, i: any) => sum + i.total_price,
-      0
-    );
-    const remainingTotal = remainingItems.reduce(
-      (sum: number, i: any) => sum + i.total_price,
-      0
-    );
-
-    // Validation: Amounts must match
-    if (acceptedTotal + remainingTotal !== order.total_amount) {
-      throw new BadRequestException(
-        `Amount mismatch: ${acceptedTotal} + ${remainingTotal} !== ${order.total_amount}`
-      );
-    }
-
-    this.logger.log(
-      `   Accepted: ${acceptedItems.length} items (${acceptedTotal}원)`
-    );
-    this.logger.log(
-      `   Remaining: ${remainingItems.length} items (${remainingTotal}원)`
-    );
-
-    // Generate new order numbers
-    const baseOrderNo = order.order_no;
-    const acceptedOrderNo = `${baseOrderNo}-A`;
-    const remainingOrderNo = `${baseOrderNo}-B`;
-
-    // Transaction: Split order
-    const result = await this.prisma.$transaction(async (tx: any) => {
-      // Create Order 1: Accepted items (confirmed)
-      const acceptedOrder = await tx.supplierOrder.create({
-        data: {
-          order_no: acceptedOrderNo,
-          supplier_tenant_id: order.supplier_tenant_id,
-          supplier_manager_id: order.supplier_manager_id,
-          clinic_tenant_id: order.clinic_tenant_id,
-          clinic_name: order.clinic_name,
-          clinic_manager_name: order.clinic_manager_name,
-          status: "confirmed",
-          total_amount: acceptedTotal,
-          memo: dto.memo || order.memo,
-          order_date: order.order_date,
-          original_order_id: order.id,
-          is_split_order: true,
-          split_sequence: 1,
-          split_reason: "Partial acceptance - accepted items",
-        },
-      });
-
-      // Create Order 2: Remaining items (pending)
-      const remainingOrder = await tx.supplierOrder.create({
-        data: {
-          order_no: remainingOrderNo,
-          supplier_tenant_id: order.supplier_tenant_id,
-          supplier_manager_id: order.supplier_manager_id,
-          clinic_tenant_id: order.clinic_tenant_id,
-          clinic_name: order.clinic_name,
-          clinic_manager_name: order.clinic_manager_name,
-          status: "pending",
-          total_amount: remainingTotal,
-          memo: order.memo,
-          order_date: order.order_date,
-          original_order_id: order.id,
-          is_split_order: true,
-          split_sequence: 2,
-          split_reason: "Partial acceptance - remaining items",
-        },
-      });
-
-      // Move accepted items to Order 1
-      for (const item of acceptedItems) {
-        await tx.supplierOrderItem.create({
-          data: {
-            order_id: acceptedOrder.id,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            brand: item.brand,
-            batch_no: item.batch_no,
-            received_order_quantity: item.received_order_quantity, // ✅ Original
-            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
-            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
-            unit_price: item.unit_price,
-            total_price: item.total_price,
-            memo: item.memo,
-          },
-        });
-      }
-
-      // Move remaining items to Order 2
-      for (const item of remainingItems) {
-        await tx.supplierOrderItem.create({
-          data: {
-            order_id: remainingOrder.id,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            brand: item.brand,
-            batch_no: item.batch_no,
-            received_order_quantity: item.received_order_quantity, // ✅ Original
-            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
-            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
-            unit_price: item.unit_price,
-            total_price: item.total_price,
-            memo: item.memo,
-          },
-        });
-      }
-
-      // Delete original order items
-      await tx.supplierOrderItem.deleteMany({
-        where: { order_id: order.id },
-      });
-
-      // Archive original order
-      await tx.supplierOrder.update({
-        where: { id: order.id },
-        data: {
-          status: "archived",
-          memo: `Split into ${acceptedOrderNo} and ${remainingOrderNo}`,
-          updated_at: new Date(),
-        },
-      });
-
-      // Fetch complete orders with items
-      const acceptedOrderComplete = await tx.supplierOrder.findUnique({
-        where: { id: acceptedOrder.id },
-        include: { items: true },
-      });
-
-      const remainingOrderComplete = await tx.supplierOrder.findUnique({
-        where: { id: remainingOrder.id },
-        include: { items: true },
-      });
-
-      return {
-        acceptedOrder: acceptedOrderComplete,
-        remainingOrder: remainingOrderComplete,
-      };
-    });
-
-    this.logger.log(`✅ [SPLIT ORDER SUCCESS]`);
-    this.logger.log(`   Accepted Order: ${acceptedOrderNo} (confirmed)`);
-    this.logger.log(`   Remaining Order: ${remainingOrderNo} (pending)`);
-
-    // Notify clinic backend about split
-    await this.notifyClinicBackendSplit(
-      result.acceptedOrder,
-      result.remainingOrder,
-      order
-    );
-
-    return {
-      message: "Order split successfully",
-      acceptedOrder: this.formatOrder(result.acceptedOrder),
-      remainingOrder: this.formatOrder(result.remainingOrder),
-    };
   }
 
   /**
-   * Partial reject order - split order into rejected and remaining
+   * Partial reject order - split order into rejected and remaining.
+   * @deprecated Use updateStatus(rejected) with rejectionReasons (per-item) instead.
    */
   async partialRejectOrder(
     id: string,
     supplierManagerId: string,
     dto: { selectedItemIds: string[]; rejectionReasons: Record<string, string> }
   ) {
-    this.logger.log(
-      `🔀 [SPLIT REJECTION START] Order: ${id}, Selected items: ${dto.selectedItemIds.length}`
+    this.logger.warn(
+      "partialRejectOrder is deprecated. Use updateStatus(rejected) with rejectionReasons for item-level reject."
     );
-
-    // Check feature flag
-    const featureEnabled =
-      process.env.ENABLE_PARTIAL_ORDER_ACCEPTANCE === "true";
-    if (!featureEnabled) {
-      throw new BadRequestException("Partial order rejection is not enabled");
-    }
-
-    // Get original order with items
-    const order = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).supplierOrder.findUnique({
-        where: { id },
-        include: { items: true },
-      });
-    });
-
-    if (!order) {
-      throw new BadRequestException("Order not found");
-    }
-
-    if (order.status !== "pending") {
-      throw new BadRequestException(
-        "Only pending orders can be partially rejected"
-      );
-    }
-
-    // Validation: Selected items must belong to this order
-    const orderItemIds = order.items.map((i: any) => i.id);
-    const invalidItems = dto.selectedItemIds.filter(
-      (id) => !orderItemIds.includes(id)
+    throw new BadRequestException(
+      "Partial reject is deprecated. Use full reject with rejection reasons per item."
     );
-    if (invalidItems.length > 0) {
-      throw new BadRequestException(
-        `Invalid item IDs: ${invalidItems.join(", ")}`
-      );
-    }
-
-    // Validation: Must have at least one item remaining
-    if (dto.selectedItemIds.length >= order.items.length) {
-      throw new BadRequestException(
-        "Cannot reject all items - use full reject instead"
-      );
-    }
-
-    if (dto.selectedItemIds.length === 0) {
-      throw new BadRequestException("Must select at least one item");
-    }
-
-    // Split items
-    const rejectedItems = order.items.filter((i: any) =>
-      dto.selectedItemIds.includes(i.id)
-    );
-    const remainingItems = order.items.filter(
-      (i: any) => !dto.selectedItemIds.includes(i.id)
-    );
-
-    // Calculate amounts
-    const rejectedTotal = rejectedItems.reduce(
-      (sum: number, i: any) => sum + i.total_price,
-      0
-    );
-    const remainingTotal = remainingItems.reduce(
-      (sum: number, i: any) => sum + i.total_price,
-      0
-    );
-
-    this.logger.log(
-      `   Rejected: ${rejectedItems.length} items (${rejectedTotal}원)`
-    );
-    this.logger.log(
-      `   Remaining: ${remainingItems.length} items (${remainingTotal}원)`
-    );
-
-    // Generate new order numbers
-    const baseOrderNo = order.order_no;
-    const rejectedOrderNo = `${baseOrderNo}-R`;
-    const remainingOrderNo = `${baseOrderNo}-B`;
-
-    // Transaction: Split order
-    const result = await this.prisma.$transaction(async (tx: any) => {
-      // Create Order 1: Rejected items (rejected)
-      const rejectedOrder = await tx.supplierOrder.create({
-        data: {
-          order_no: rejectedOrderNo,
-          supplier_tenant_id: order.supplier_tenant_id,
-          supplier_manager_id: order.supplier_manager_id,
-          clinic_tenant_id: order.clinic_tenant_id,
-          clinic_name: order.clinic_name,
-          clinic_manager_name: order.clinic_manager_name,
-          status: "rejected",
-          total_amount: rejectedTotal,
-          memo: order.memo,
-          order_date: order.order_date,
-          original_order_id: order.id,
-          is_split_order: true,
-          split_sequence: 1,
-          split_reason: "Partial rejection - rejected items",
-        },
-      });
-
-      // Create Order 2: Remaining items (pending)
-      const remainingOrder = await tx.supplierOrder.create({
-        data: {
-          order_no: remainingOrderNo,
-          supplier_tenant_id: order.supplier_tenant_id,
-          supplier_manager_id: order.supplier_manager_id,
-          clinic_tenant_id: order.clinic_tenant_id,
-          clinic_name: order.clinic_name,
-          clinic_manager_name: order.clinic_manager_name,
-          status: "pending",
-          total_amount: remainingTotal,
-          memo: order.memo,
-          order_date: order.order_date,
-          original_order_id: order.id,
-          is_split_order: true,
-          split_sequence: 2,
-          split_reason: "Partial rejection - remaining items",
-        },
-      });
-
-      // Move rejected items to Order 1 with rejection reasons
-      for (const item of rejectedItems) {
-        const reason = dto.rejectionReasons[item.id] || "No reason provided";
-        await tx.supplierOrderItem.create({
-          data: {
-            order_id: rejectedOrder.id,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            brand: item.brand,
-            batch_no: item.batch_no,
-            received_order_quantity: item.received_order_quantity, // ✅ Original
-            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
-            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
-            unit_price: item.unit_price,
-            total_price: item.total_price,
-            memo: `[거절 사유: ${reason}]`,
-          },
-        });
-      }
-
-      // Move remaining items to Order 2
-      for (const item of remainingItems) {
-        await tx.supplierOrderItem.create({
-          data: {
-            order_id: remainingOrder.id,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            brand: item.brand,
-            batch_no: item.batch_no,
-            received_order_quantity: item.received_order_quantity, // ✅ Original
-            confirmed_quantity: item.confirmed_quantity,           // ✅ Confirmed
-            inbound_quantity: item.inbound_quantity,               // ✅ Inbound
-            unit_price: item.unit_price,
-            total_price: item.total_price,
-            memo: item.memo,
-          },
-        });
-      }
-
-      // Delete original order items
-      await tx.supplierOrderItem.deleteMany({
-        where: { order_id: order.id },
-      });
-
-      // Archive original order
-      await tx.supplierOrder.update({
-        where: { id: order.id },
-        data: {
-          status: "archived",
-          memo: `Split into ${rejectedOrderNo} and ${remainingOrderNo}`,
-          updated_at: new Date(),
-        },
-      });
-
-      // Fetch complete orders with items
-      const rejectedOrderComplete = await tx.supplierOrder.findUnique({
-        where: { id: rejectedOrder.id },
-        include: { items: true },
-      });
-
-      const remainingOrderComplete = await tx.supplierOrder.findUnique({
-        where: { id: remainingOrder.id },
-        include: { items: true },
-      });
-
-      return {
-        rejectedOrder: rejectedOrderComplete,
-        remainingOrder: remainingOrderComplete,
-      };
-    });
-
-    this.logger.log(`✅ [SPLIT REJECTION SUCCESS]`);
-
-    // Notify clinic backend about the split
-    await this.notifyClinicBackendReject(
-      result.rejectedOrder,
-      result.remainingOrder,
-      order
-    );
-
-    return {
-      success: true,
-      rejectedOrder: result.rejectedOrder,
-      remainingOrder: result.remainingOrder,
-    };
   }
 
   /**
@@ -1312,14 +963,15 @@ export class OrderService {
         productName: item.product_name,
         brand: item.brand,
         batchNo: item.batch_no,
-        receivedOrderQuantity: item.received_order_quantity,  // ✅ Clinic order qilgan (o'zgarmas)
-        confirmedQuantity: confirmedQty,                      // ✅ Supplier tasdiqlagan
-        inboundQuantity: inboundQty,                          // ✅ Clinic inbound qilgan
-        pendingQuantity: pendingQty,                          // ✅ Qolgan (runtime calculated)
-        quantity: pendingQty,                                 // ✅ Display용 - pending quantity
+        receivedOrderQuantity: item.received_order_quantity,
+        confirmedQuantity: confirmedQty,
+        inboundQuantity: inboundQty,
+        pendingQuantity: pendingQty,
+        quantity: pendingQty,
         unitPrice: item.unit_price,
         totalPrice: item.total_price,
         memo: item.memo,
+        itemStatus: item.item_status || "pending",
       };
     });
 
