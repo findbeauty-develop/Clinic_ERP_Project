@@ -9,6 +9,7 @@ import {
   useRef,
   memo,
 } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import Papa from "papaparse";
 import { getAccessToken, getTenantId } from "../../lib/api";
@@ -4611,7 +4612,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [scannedItems, setScannedItems] = useState<any[]>([]);
   const [showProductConfirm, setShowProductConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<any>(null);
-  const [activeItemId, setActiveItemId] = useState<number | null>(null); // Track active product by itemId
+  const [activeItemId, setActiveItemId] = useState<number | string | null>(null); // Track active product by itemId
   const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
   // Manual lot panel (스캐너 없이): which product's form is open
   const [expandedManualLotItemId, setExpandedManualLotItemId] = useState<
@@ -4633,6 +4634,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const scannedItemsRef = useRef<any[]>([]);
   const scanModalOpenRef = useRef(false);
   const scanModalOrderIdRef = useRef<string | null>(null);
+  // Lot accumulator — addManualLotToScannedItem har chaqiruvda yozadi, completeProductById o'qiydi (prev/ref dan yo'qolsa ham)
+  const productLotsAccumulatorRef = useRef<Map<string, Record<string, number>>>(new Map());
+  const manualLotFormRef = useRef(manualLotForm);
+  const expandedManualLotItemIdRef = useRef(expandedManualLotItemId);
+  manualLotFormRef.current = manualLotForm;
+  expandedManualLotItemIdRef.current = expandedManualLotItemId;
   useEffect(() => {
     scannedItemsRef.current = scannedItems;
   }, [scannedItems]);
@@ -4645,10 +4652,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
   useEffect(() => {
     if (!scanModalOpen || scannedItems.length === 0) return;
     const summary = scannedItems.map((p) => ({
+      itemId: p.itemId,
       name: p.productName,
       quantity: p.quantity,
+      lotQuantities: p.lotQuantities,
       status: p.status,
     }));
+    console.log("[입고-DEBUG] scannedItems changed", {
+      count: scannedItems.length,
+      items: summary,
+      ref_count: scannedItemsRef.current.length,
+      accumulator_keys: Array.from(productLotsAccumulatorRef.current.keys()),
+    });
   }, [scannedItems, scanModalOpen]);
 
   // ✅ Order bo‘yicha skan modal uchun mahsulotlar ro‘yxatini qaytaradi (sync, ref/state dan oldin to‘ldirish uchun)
@@ -4716,9 +4731,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const loadPendingProducts = useCallback(
     (orderId?: string) => {
       if (!orderId) return;
+      console.log("[입고-DEBUG] loadPendingProducts", { orderId, clearingAccumulator: true });
+      productLotsAccumulatorRef.current.clear();
       const allProducts = getPendingProductsForOrder(orderId);
       setScannedItems(allProducts);
       scannedItemsRef.current = allProducts;
+      setActiveItemId(null);
+      setExpandedManualLotItemId(null);
     },
     [getPendingProductsForOrder]
   );
@@ -4756,25 +4775,41 @@ const PendingOrdersList = memo(function PendingOrdersList({
         );
         setScanModalOrderId(orderId);
         setScanModalOpen(true);
+        // Reset expanded state — Lot 배치번호 추가 boshida ko'rinmasin
+        setActiveItemId(null);
+        setExpandedManualLotItemId(null);
+        setScannedItems((prev) =>
+          prev.map((p) => ({ ...p, status: "pending" as const }))
+        );
         return;
       }
+      productLotsAccumulatorRef.current.clear();
       const products = getPendingProductsForOrder(orderId);
-
-      setScannedItems(products);
-      scannedItemsRef.current = products;
+      // Barcha mahsulotlar pending — Lot 배치번호 추가 faqat product ustiga bosilganda chiqadi
+      const normalized = products.map((p) => ({ ...p, status: "pending" as const }));
+      console.log("[입고-DEBUG] openBarcodeScanForOrder NEW order", { orderId, productCount: normalized.length });
+      productLotsAccumulatorRef.current.clear();
+      setScannedItems(normalized);
+      scannedItemsRef.current = normalized;
       setScanModalOrderId(orderId);
       setScanModalOpen(true);
+      // Modal ochilganda hech qanday product expanded bo'lmasin — Lot 배치번호 추가 faqat product ustiga bosilganda chiqadi
+      setActiveItemId(null);
+      setExpandedManualLotItemId(null);
     },
     [getPendingProductsForOrder]
   );
 
   // ✅ Close modal and reset state
   const closeScanModal = () => {
+    console.log("[입고-DEBUG] closeScanModal - clearing accumulator");
+    productLotsAccumulatorRef.current.clear();
     console.trace("[ScanModal] closeScanModal call stack");
     setScanModalOpen(false);
     setScanModalOrderId(null);
     setScannedItems([]);
     scannedItemsRef.current = [];
+    productLotsAccumulatorRef.current.clear();
     setActiveItemId(null);
     setScanModalInboundStaff("");
     setExpandedManualLotItemId(null);
@@ -5115,6 +5150,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     if (existingItem) {
       setActiveItemId(existingItem.itemId);
+      const lotKey = (parsed.batchNumber || "").trim() || "__default";
       setScannedItems((prev) => {
         if (prev.length === 0) return prev; // loadPendingProducts hali commit bo‘lmagan bo‘lishi mumkin
         const next = prev.map((p) => {
@@ -5122,7 +5158,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
             if (p.status === "active") return { ...p, status: "pending" };
             return p;
           }
-          const lotKey = (parsed.batchNumber || "").trim() || "__default";
           const prevLots = p.lotQuantities || {};
           const lotQuantities = {
             ...prevLots,
@@ -5171,6 +5206,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
         });
         scannedItemsRef.current = next;
         const updatedItem = next.find((x) => x.itemId === existingItem.itemId);
+        console.log("[입고-DEBUG] handleBarcodeScan UPDATE existingItem", {
+          itemId: existingItem.itemId,
+          productName: existingItem.productName,
+          lotQuantities: updatedItem?.lotQuantities,
+          quantity: updatedItem?.quantity,
+          lotKey: (parsed.batchNumber || "").trim() || "__default",
+        });
 
         return next;
       });
@@ -5324,20 +5366,37 @@ const PendingOrdersList = memo(function PendingOrdersList({
   };
 
   // ✅ NEW: Update scanned product data by itemId (quantity capped to order capacity)
+  // Ref dan base — Lot ma'lumotlari yo'qolmasin (storageLocation va boshqa field update)
   const updateScannedProduct = (itemId: number, updates: Partial<any>) => {
-    setScannedItems((prev) =>
-      prev.map((item) => {
-        if (item.itemId !== itemId) return item;
+    const touchesLot =
+      updates.lotQuantities !== undefined || updates.lotDetails !== undefined;
+    console.log("[입고-DEBUG] updateScannedProduct CALLED", {
+      itemId,
+      updateKeys: Object.keys(updates),
+      touchesLot,
+      lotQuantities: updates.lotQuantities,
+      quantity: updates.quantity,
+    });
+    setScannedItems((prev) => {
+      // Har doim prev — ref eski bo'lib, boshqa lotlarni yo'qotmasin
+      const base = prev;
+      const next = base.map((item) => {
+        if (String(item?.itemId) !== String(itemId)) return item;
         const capacity = item.fromCatalog
           ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
           : (item.remainingQty ?? item.item?.confirmedQuantity ?? 0);
         let applied = { ...updates };
+        // Lot ma'lumotlarini hech qachon ortiqcha overwrite qilma
+        if (!(updates.lotQuantities !== undefined)) delete applied.lotQuantities;
+        if (!(updates.lotDetails !== undefined)) delete applied.lotDetails;
         if (typeof applied.quantity === "number" && capacity > 0) {
           applied.quantity = Math.min(Math.max(0, applied.quantity), capacity);
         }
         return { ...item, ...applied };
-      })
-    );
+      });
+      scannedItemsRef.current = next;
+      return next;
+    });
   };
 
   // ✅ Update one lot's quantity for a scanned product; recalc total quantity (capped to order capacity)
@@ -5346,9 +5405,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
     lotKey: string,
     qty: number
   ) => {
-    setScannedItems((prev) =>
-      prev.map((item) => {
-        if (item.itemId !== itemId) return item;
+    console.log("[입고-DEBUG] updateScannedProductLotQty", { itemId, lotKey, qty });
+    setScannedItems((prev) => {
+      const base = prev;
+      const next = base.map((item) => {
+        if (String(item?.itemId) !== String(itemId)) return item;
         const capacity = item.fromCatalog
           ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
           : (item.remainingQty ?? item.item?.confirmedQuantity ?? 0);
@@ -5368,8 +5429,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
           0
         );
         return { ...item, lotQuantities, quantity };
-      })
-    );
+      });
+      scannedItemsRef.current = next;
+      return next;
+    });
   };
 
   // ✅ Update one lot's dates (제조일, 유효기간)
@@ -5378,23 +5441,33 @@ const PendingOrdersList = memo(function PendingOrdersList({
     lotKey: string,
     details: { manufactureDate?: string; expiryDate?: string }
   ) => {
-    setScannedItems((prev) =>
-      prev.map((item) => {
-        if (item.itemId !== itemId) return item;
+    console.log("[입고-DEBUG] updateScannedProductLotDetails", {
+      itemId,
+      lotKey,
+      details,
+    });
+    setScannedItems((prev) => {
+      const base = prev;
+      const next = base.map((item) => {
+        if (String(item?.itemId) !== String(itemId)) return item;
         const lotDetails = {
           ...(item.lotDetails || {}),
           [lotKey]: { ...(item.lotDetails?.[lotKey] || {}), ...details },
         };
         return { ...item, lotDetails };
-      })
-    );
+      });
+      scannedItemsRef.current = next;
+      return next;
+    });
   };
 
   // ✅ Remove one lot from a product (X button on sub-card); recalc quantity
   const removeScannedProductLot = (itemId: number, lotKey: string) => {
-    setScannedItems((prev) =>
-      prev.map((item) => {
-        if (item.itemId !== itemId) return item;
+    console.log("[입고-DEBUG] removeScannedProductLot", { itemId, lotKey });
+    setScannedItems((prev) => {
+      const base = prev;
+      const next = base.map((item) => {
+        if (String(item?.itemId) !== String(itemId)) return item;
         const lotQuantities = { ...(item.lotQuantities || {}) };
         delete lotQuantities[lotKey];
         const lotDetails = { ...(item.lotDetails || {}) };
@@ -5404,13 +5477,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
           0
         );
         return { ...item, lotQuantities, lotDetails, quantity };
-      })
-    );
+      });
+      scannedItemsRef.current = next;
+      return next;
+    });
   };
 
   // ✅ Manual lot 추가 (모달 내 스캐너 없이 수동 입력) — same logic as barcode scan
   const addManualLotToScannedItem = (
-    itemId: number,
+    itemId: number | string,
     data: {
       lotNumber: string;
       productionDate: string;
@@ -5421,9 +5496,27 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const qty = Math.max(0, data.quantity || 0);
     if (qty <= 0) return;
     const trimmedLot = (data.lotNumber || "").trim();
-    setScannedItems((prev) =>
-      prev.map((item) => {
-        if (item.itemId !== itemId) return item;
+    const refTarget = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
+    const accBefore = productLotsAccumulatorRef.current.get(String(itemId)) || {};
+    console.log("[입고-DEBUG] addManualLotToScannedItem START", {
+      itemId,
+      lotNumber: trimmedLot,
+      qty,
+      ref_lotQuantities: refTarget?.lotQuantities,
+      ref_quantity: refTarget?.quantity,
+      accumulator_before: { ...accBefore },
+    });
+    setScannedItems((prev) => {
+      // Har doim prev — ref eski bo'lib boshqa lotlarni yo'qotmasin
+      const base = prev;
+      const prevTarget = base.find((p) => String(p?.itemId) === String(itemId));
+      console.log("[입고-DEBUG] addManualLotToScannedItem prev state", {
+        itemId,
+        prev_lotQuantities: prevTarget?.lotQuantities,
+        prev_quantity: prevTarget?.quantity,
+      });
+      const next = base.map((item) => {
+        if (String(item?.itemId) !== String(itemId)) return item;
         const prevLots = item.lotQuantities || {};
         const hasExistingLots =
           Object.keys(prevLots).length > 0 &&
@@ -5489,8 +5582,30 @@ const PendingOrdersList = memo(function PendingOrdersList({
           lotNumber: data.lotNumber || item.lotNumber,
           status: "active" as const,
         };
-      })
-    );
+      });
+      scannedItemsRef.current = next;
+      const targetItem = next.find((i) => String(i?.itemId) === String(itemId));
+      // Lot accumulator — completeProductById prev/ref dan yo'qolsa ham shu yerdan oladi
+      if (targetItem?.lotQuantities) {
+        const acc = productLotsAccumulatorRef.current;
+        const existing = acc.get(String(itemId)) || {};
+        const newLots = targetItem.lotQuantities;
+        const merged: Record<string, number> = {};
+        for (const k of new Set([...Object.keys(existing), ...Object.keys(newLots)])) {
+          merged[k] = Math.max(existing[k] ?? 0, newLots[k] ?? 0);
+        }
+        acc.set(String(itemId), merged);
+      }
+      const accAfter = productLotsAccumulatorRef.current.get(String(itemId)) || {};
+      console.log("[입고-DEBUG] addManualLotToScannedItem DONE", {
+        itemId,
+        lotQuantities: targetItem?.lotQuantities,
+        quantity: targetItem?.quantity,
+        accumulator_after: { ...accAfter },
+        ref_now: scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId))?.lotQuantities,
+      });
+      return next;
+    });
     setActiveItemId(itemId);
   };
 
@@ -5507,6 +5622,200 @@ const PendingOrdersList = memo(function PendingOrdersList({
     setActiveItemId(null);
   };
 
+  // ✅ Shu productni completed qilish — card yopiladi, border green (입고 button)
+  // Ochiq formadagi Lot (qo'shilmagan) bo'lsa — avval qo'shamiz, keyin complete
+  const completeProductById = useCallback(
+    (itemId: number | string) => {
+      // 🔍 Log: bosish paytidagi holat (flushSync dan OLDIN)
+      const refAtClick = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
+      const accAtClick = productLotsAccumulatorRef.current.get(String(itemId)) || {};
+      console.log("[입고-DEBUG] completeProductById CLICK (before flushSync)", {
+        itemId,
+        ref_lotQuantities: refAtClick?.lotQuantities,
+        ref_quantity: refAtClick?.quantity,
+        accumulator: { ...accAtClick },
+      });
+      // Barcha pending state yangilanishlarini commit qilish — prev eng yangi bo'lsin
+      flushSync(() => {});
+      // Reflardan o‘qish — closure/re-render ta’sirisiz; formani darhol tozalash
+      const capturedForm = { ...manualLotFormRef.current };
+      const capturedExpanded = expandedManualLotItemIdRef.current;
+      setManualLotForm({
+        lotNumber: "",
+        productionDate: "",
+        expiryDate: "",
+        quantity: 0,
+      });
+      setExpandedManualLotItemId(null);
+
+      // Barcha pending state commit qilinsin — prev eng yangi bo'ladi (UI 5/5 lekin prev 3 bo'layotgan muammo)
+      flushSync(() => {});
+
+      setScannedItems((prev) => {
+        // Har doim prev va ref ni birlashtirish — hech qanday lot yo'qolmasin
+        const targetInPrev = prev.find((p) => String(p?.itemId) === String(itemId));
+        const targetInRef = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
+        const prevLots = targetInPrev?.lotQuantities || {};
+        const refLots = targetInRef?.lotQuantities || {};
+        const accLots = productLotsAccumulatorRef.current.get(String(itemId)) || {};
+        const mergedLots: Record<string, number> = {};
+        for (const k of new Set([...Object.keys(prevLots), ...Object.keys(refLots), ...Object.keys(accLots)])) {
+          mergedLots[k] = Math.max(prevLots[k] ?? 0, refLots[k] ?? 0, accLots[k] ?? 0);
+        }
+        const mergedQty = (Object.values(mergedLots) as number[]).reduce((a, b) => a + b, 0);
+        const prevQty = (Object.values(prevLots) as number[]).reduce((a, b) => a + b, 0);
+        const refQty = (Object.values(refLots) as number[]).reduce((a, b) => a + b, 0);
+        const accQty = (Object.values(accLots) as number[]).reduce((a, b) => a + b, 0);
+        // Har doim merge — prev yoki ref da bo'lgan barcha lotlarni saqlaymiz
+        const shouldUseMerged = mergedQty > prevQty || mergedQty > refQty;
+        const baseSource = shouldUseMerged ? "merged" : refQty > prevQty && scannedItemsRef.current.length > 0 ? "ref" : "prev";
+        console.log("[입고-DEBUG] completeProductById MERGE", {
+          itemId,
+          prevLots: { ...prevLots },
+          refLots: { ...refLots },
+          accLots: { ...accLots },
+          mergedLots: { ...mergedLots },
+          prevQty,
+          refQty,
+          accQty,
+          mergedQty,
+          shouldUseMerged,
+          baseSource,
+          hasPendingManual: capturedExpanded !== null && String(capturedExpanded) === String(itemId) && Number(capturedForm.quantity) > 0,
+          capturedForm_qty: capturedForm.quantity,
+        });
+        const base = shouldUseMerged
+          ? prev.map((p) => {
+              if (String(p?.itemId) !== String(itemId)) return p;
+              const prevDetails = p.lotDetails || {};
+              const refDetails = targetInRef?.lotDetails || {};
+              const mergedDetails: Record<string, any> = {};
+              for (const k of Object.keys(mergedLots)) {
+                mergedDetails[k] = refDetails[k] || prevDetails[k] || {};
+              }
+              return { ...p, lotQuantities: mergedLots, lotDetails: mergedDetails, quantity: mergedQty };
+            })
+          : refQty > prevQty && scannedItemsRef.current.length > 0 ? scannedItemsRef.current : prev;
+        const targetBefore = base.find((p) => String(p?.itemId) === String(itemId));
+        const hasPendingManual =
+          capturedExpanded !== null &&
+          String(capturedExpanded) === String(itemId) &&
+          Number(capturedForm.quantity) > 0;
+        console.log("[입고-DEBUG] completeProductById BASE", {
+          itemId,
+          baseSource,
+          targetBefore_lotQuantities: targetBefore?.lotQuantities,
+          targetBefore_quantity: targetBefore?.quantity,
+          hasPendingManual,
+        });
+        let working = base;
+        if (hasPendingManual) {
+          const qty = Math.max(0, Number(capturedForm.quantity) || 0);
+          const trimmedLot = (capturedForm.lotNumber || "").trim();
+          // Stable key: Strict Mode ikkinchi chaqiruvda bir xil lot key — idempotent
+          const lotKey = trimmedLot ? trimmedLot : `__pending_${itemId}`;
+          working = base.map((item: any) => {
+            if (String(item?.itemId) !== String(itemId)) return item;
+            let prevLots = item.lotQuantities || {};
+            // Single quantity form (updateScannedProduct quantity) faqat quantity ni yangilaydi, lotQuantities ni emas.
+            // Agar quantity > 0 lekin lotQuantities bo'sh bo'lsa — uni __default sifatida saqlaymiz (2+3=5).
+            const hasExistingLots =
+              Object.keys(prevLots).length > 0 &&
+              (Object.values(prevLots) as number[]).some((n) => Number(n) > 0);
+            const existingQty = item.quantity ?? 0;
+            if (!hasExistingLots && existingQty > 0) {
+              prevLots = { __default: existingQty };
+            }
+            // Idempotent: Strict Mode ikkinchi chaqiruvda qayta qo'shilmasin
+            const lotQuantities = {
+              ...prevLots,
+              [lotKey]: Math.max(prevLots[lotKey] ?? 0, qty),
+            };
+            const newQty = (Object.values(lotQuantities) as number[]).reduce(
+              (a, b) => a + b,
+              0
+            );
+            const rawCapacity = item.fromCatalog
+              ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
+              : (item.remainingQty ?? item.item?.confirmedQuantity ?? 99999);
+            // Pending manual merge: capacity kam bo'lib qolmasin — formadagi lot hech qachon yo'qolmasin
+            const orderQty =
+              item.item?.confirmedQuantity ??
+              item.item?.orderedQuantity ??
+              item.confirmedQuantity ??
+              item.orderedQuantity ??
+              rawCapacity;
+            const capacity = Math.max(rawCapacity, Number(orderQty) || 99999, newQty);
+            let finalQty = newQty;
+            let finalLots = lotQuantities;
+            if (newQty > capacity) {
+              const diff = newQty - capacity;
+              const cur = lotQuantities[lotKey] ?? 0;
+              finalLots = {
+                ...lotQuantities,
+                [lotKey]: Math.max(0, cur - diff),
+              };
+              finalQty = (Object.values(finalLots) as number[]).reduce(
+                (a, b) => a + b,
+                0
+              );
+            }
+            const prevDetails = item.lotDetails || {};
+            const lotDetails = {
+              ...prevDetails,
+              [lotKey]: {
+                manufactureDate:
+                  capturedForm.productionDate ||
+                  prevDetails[lotKey]?.manufactureDate,
+                expiryDate:
+                  capturedForm.expiryDate || prevDetails[lotKey]?.expiryDate,
+              },
+            };
+            return {
+              ...item,
+              lotQuantities: finalLots,
+              lotDetails,
+              quantity: finalQty,
+              expiryDate: capturedForm.expiryDate || item.expiryDate,
+              productionDate:
+                capturedForm.productionDate || item.productionDate,
+            };
+          });
+          const afterPending = working.find((p) => String(p?.itemId) === String(itemId));
+          console.log("[입고-DEBUG] completeProductById after hasPendingManual merge", {
+            itemId,
+            working_lotQuantities: afterPending?.lotQuantities,
+            working_quantity: afterPending?.quantity,
+          });
+        }
+
+        const workingTarget = working.find((p) => String(p?.itemId) === String(itemId));
+        console.log("[입고-DEBUG] completeProductById before status=completed", {
+          itemId,
+          hasPendingManual,
+          working_lotQuantities: workingTarget?.lotQuantities,
+          working_quantity: workingTarget?.quantity,
+        });
+
+        const updated = working.map((p: any) =>
+          String(p?.itemId) === String(itemId)
+            ? { ...p, status: "completed" as const }
+            : p
+        );
+        const targetAfter = updated.find((p) => String(p?.itemId) === String(itemId));
+        console.log("[입고-DEBUG] completeProductById DONE", {
+          itemId,
+          finalLotQuantities: targetAfter?.lotQuantities,
+          finalQuantity: targetAfter?.quantity,
+        });
+        scannedItemsRef.current = updated;
+        return updated;
+      });
+      setActiveItemId(null);
+    },
+    [] // Reflardan o'qiymiz — dependency kerak emas
+  );
+
   // ✅ NEW: Remove scanned product by itemId
   const removeScannedProduct = (itemId: number) => {
     setScannedItems((prev) => prev.filter((item) => item.itemId !== itemId));
@@ -5521,6 +5830,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
       scannedItemsRef.current.length > 0
         ? scannedItemsRef.current
         : scannedItems;
+    const completedForSubmit = latestScanned.filter((p) => p.status === "completed");
+    console.log("[입고-DEBUG] submitAllScannedItems", {
+      total: latestScanned.length,
+      completedCount: completedForSubmit.length,
+      completedItems: completedForSubmit.map((p) => ({
+        itemId: p.itemId,
+        productName: p.productName,
+        lotQuantities: p.lotQuantities,
+        quantity: p.quantity,
+      })),
+    });
     if (latestScanned.length === 0) {
       alert("스캔된 제품이 없습니다.");
       return;
@@ -5645,6 +5965,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 0
               )
             : Number(item.quantity ?? 0) || 0;
+
+        console.log("[입고-DEBUG] submitAllScannedItems orderItem", {
+          itemId: item.itemId,
+          productName: item.productName,
+          status: item.status,
+          item_lotQuantities: item.lotQuantities,
+          item_quantity: item.quantity,
+          effectiveLotQuantities: { ...effectiveLotQuantities },
+          effectiveQuantity,
+          hasPendingManual,
+        });
 
         const itemId = String(item.itemId);
         const payload: Record<string, any> = {
@@ -6982,8 +7313,19 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             }`}
                             onClick={() => {
                               if (!isCompleted) {
-                                setScannedItems((prev) =>
-                                  prev.map((p) => ({
+                                setScannedItems((prev) => {
+                                  const target = prev.find((p) => String(p?.itemId) === String(item.itemId));
+                                  const refTarget = scannedItemsRef.current.find((p) => String(p?.itemId) === String(item.itemId));
+                                  const acc = productLotsAccumulatorRef.current.get(String(item.itemId)) || {};
+                                  console.log("[입고-DEBUG] card onClick (expand/switch)", {
+                                    clickedItemId: item.itemId,
+                                    prev_targetLotQuantities: target?.lotQuantities,
+                                    prev_targetQty: target?.quantity,
+                                    ref_lotQuantities: refTarget?.lotQuantities,
+                                    ref_quantity: refTarget?.quantity,
+                                    accumulator: { ...acc },
+                                  });
+                                  return prev.map((p) => ({
                                     ...p,
                                     status:
                                       p.itemId === item.itemId &&
@@ -6992,8 +7334,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                         : p.status === "active"
                                           ? "pending"
                                           : p.status,
-                                  }))
-                                );
+                                  }));
+                                });
                                 setActiveItemId(item.itemId);
                               }
                             }}
@@ -7350,8 +7692,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             </div>
                           )}
 
-                          {/* Lot 배치번호 추가 — har bir product ostida, skaner bilan bir xil */}
-                          {!isCompleted && (
+                          {/* Lot 배치번호 추가 + 입고 — faqat product ustiga bosilganda (expanded) chiqadi */}
+                          {isActive && !isCompleted && (
+                            <>
                             <div
                               className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
                               onClick={(e) => e.stopPropagation()}
@@ -7534,6 +7877,20 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 </div>
                               )}
                             </div>
+                            {/* 입고 — card yopiladi, border green */}
+                            <div
+                              className="border-t border-slate-200 dark:border-slate-700 p-4"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => completeProductById(item.itemId)}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                              >
+                                입고
+                              </button>
+                            </div>
+                          </>
                           )}
                         </div>
                       );
