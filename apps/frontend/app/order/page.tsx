@@ -1590,6 +1590,13 @@ export default function OrderPage() {
                           (item.itemStatus ?? item.item_status ?? "pending") ===
                           "confirmed"
                       );
+                      const isOrderCompleted =
+                        order.status === "completed" ||
+                        order.status === "inbound_completed";
+                      const inboundedItems = (order.items || []).filter(
+                        (item: any) =>
+                          (item.itemStatus ?? item.item_status) === "inbounded"
+                      );
                       if (pendingItems.length > 0) {
                         const cardOrder = { ...order, items: pendingItems };
                         cardOrder.totalAmount = pendingItems.reduce(
@@ -1609,6 +1616,26 @@ export default function OrderPage() {
                           (sum: number, item: any) =>
                             sum +
                             (item.orderedQuantity || 0) * (item.unitPrice || 0),
+                          0
+                        );
+                        cards.push({
+                          order: cardOrder,
+                          sectionLabel: "주문 진행",
+                        });
+                      }
+                      // Inbound tugagach barcha itemlar inbounded bo‘ladi — completed order uchun karta qo‘shamiz (주문 완료 badge ko‘rinadi)
+                      if (
+                        isOrderCompleted &&
+                        inboundedItems.length > 0 &&
+                        pendingItems.length === 0 &&
+                        confirmedItems.length === 0
+                      ) {
+                        const cardOrder = { ...order, items: inboundedItems };
+                        cardOrder.totalAmount = inboundedItems.reduce(
+                          (sum: number, item: any) =>
+                            sum +
+                            (item.orderedQuantity ?? item.confirmedQuantity ?? 0) *
+                              (item.unitPrice ?? item.orderedPrice ?? 0),
                           0
                         );
                         cards.push({
@@ -1750,10 +1777,10 @@ export default function OrderPage() {
                                 주문 취소
                               </button>
                             )}
-                            {/* Badge - split cards: one badge per sectionLabel (주문 요청 / 주문 진행 / 주문 거절) */}
-                            {sectionLabel === "주문 요청" && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
-                                주문 요청
+                            {/* Badge: order holati (status) bo‘yicha — 주문 완료 / 주문 취소 / 일부 입고 ustun, keyin 주문 요청 / 주문 진행 */}
+                            {isCompleted && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-slate-500 px-3 py-1 text-xs font-semibold text-white">
+                                주문 완료
                                 {order.supplierDetails?.isPlatformSupplier && (
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -1772,45 +1799,72 @@ export default function OrderPage() {
                                 )}
                               </span>
                             )}
-                            {sectionLabel === "주문 진행" && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
-                                주문 진행
-                                {order.supplierDetails?.isPlatformSupplier && (
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={2}
-                                    stroke="currentColor"
-                                    className="w-3.5 h-3.5"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                                    />
-                                  </svg>
-                                )}
-                              </span>
-                            )}
-                            {!sectionLabel && isPending && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
-                                주문 요청
-                              </span>
-                            )}
-                            {!sectionLabel && isPendingInbound && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-orange-400 bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:border-orange-400 dark:text-orange-400">
-                                일부 입고
-                              </span>
-                            )}
-                            {!sectionLabel && isSupplierConfirmed && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
-                                주문 진행
-                              </span>
-                            )}
-                            {isCancelled && (
+                            {!isCompleted && isCancelled && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-900/30 dark:border-slate-400 dark:text-gray-400">
                                 주문 취소
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                            )}
+                            {!isCompleted && !isCancelled && isPendingInbound && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-orange-400 bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:border-orange-400 dark:text-orange-400">
+                                일부 입고
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                            )}
+                            {!isCompleted && !isCancelled && !isPendingInbound && sectionLabel === "주문 요청" && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:border-slate-400 dark:text-emerald-400">
+                                주문 요청
+                                {order.supplierDetails?.isPlatformSupplier && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                    stroke="currentColor"
+                                    className="w-3.5 h-3.5"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                                    />
+                                  </svg>
+                                )}
+                              </span>
+                            )}
+                            {!isCompleted && !isCancelled && !isPendingInbound && sectionLabel === "주문 진행" && (
+                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:border-slate-400 dark:text-yellow-400">
+                                주문 진행
                                 {order.supplierDetails?.isPlatformSupplier && (
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -1832,27 +1886,6 @@ export default function OrderPage() {
                             {!sectionLabel && isRejected && (
                               <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:border-slate-400 dark:text-red-400">
                                 주문 거절
-                              </span>
-                            )}
-                            {isCompleted && (
-                              <span className="inline-flex items-center gap-1.5 rounded border border-slate-400 bg-slate-500 px-3 py-1 text-xs font-semibold text-white">
-                                주문 완료
-                                {order.supplierDetails?.isPlatformSupplier && (
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={2}
-                                    stroke="currentColor"
-                                    className="w-3.5 h-3.5"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                                    />
-                                  </svg>
-                                )}
                               </span>
                             )}
                           </div>

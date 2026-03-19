@@ -4802,9 +4802,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     return initialEdits;
   }, [orders]);
 
-  // Sync editedItems with initialEditedItems when orders change
+  // Sync editedItems with initialEditedItems when orders change (merge: saqlangan modal ma'lumotlari ustunlik qiladi)
   useEffect(() => {
-    setEditedItems(initialEditedItems);
+    setEditedItems((prev) => ({ ...initialEditedItems, ...prev }));
   }, [initialEditedItems]);
 
   // ✅ ADD: Initialize inboundManagers when orders change
@@ -5323,16 +5323,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
     });
   };
 
-  // ✅ NEW: Update scanned product data by itemId
+  // ✅ NEW: Update scanned product data by itemId (quantity capped to order capacity)
   const updateScannedProduct = (itemId: number, updates: Partial<any>) => {
     setScannedItems((prev) =>
-      prev.map((item) =>
-        item.itemId === itemId ? { ...item, ...updates } : item
-      )
+      prev.map((item) => {
+        if (item.itemId !== itemId) return item;
+        const capacity = item.fromCatalog
+          ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
+          : (item.remainingQty ?? item.item?.confirmedQuantity ?? 0);
+        let applied = { ...updates };
+        if (typeof applied.quantity === "number" && capacity > 0) {
+          applied.quantity = Math.min(Math.max(0, applied.quantity), capacity);
+        }
+        return { ...item, ...applied };
+      })
     );
   };
 
-  // ✅ Update one lot's quantity for a scanned product; recalc total quantity
+  // ✅ Update one lot's quantity for a scanned product; recalc total quantity (capped to order capacity)
   const updateScannedProductLotQty = (
     itemId: number,
     lotKey: string,
@@ -5341,9 +5349,19 @@ const PendingOrdersList = memo(function PendingOrdersList({
     setScannedItems((prev) =>
       prev.map((item) => {
         if (item.itemId !== itemId) return item;
+        const capacity = item.fromCatalog
+          ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
+          : (item.remainingQty ?? item.item?.confirmedQuantity ?? 0);
+        const otherSum = (
+          Object.entries(item.lotQuantities || {}) as [string, number][]
+        )
+          .filter(([k]) => k !== lotKey)
+          .reduce((a, [, v]) => a + Number(v), 0);
+        const maxThisLot = Math.max(0, capacity - otherSum);
+        const cappedQty = Math.min(Math.max(0, qty), maxThisLot);
         const lotQuantities = {
           ...(item.lotQuantities || {}),
-          [lotKey]: Math.max(0, qty),
+          [lotKey]: cappedQty,
         };
         const quantity = (Object.values(lotQuantities) as number[]).reduce(
           (a, b) => a + b,
@@ -5440,9 +5458,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
           (a, b) => a + b,
           0
         );
-        const remainingQty = item.remainingQty ?? 99999;
-        if (newQty > remainingQty) {
-          const diff = newQty - remainingQty;
+        const capacity = item.fromCatalog
+          ? (item.item?.quantity ?? item.item?.confirmedQuantity ?? 0)
+          : (item.remainingQty ?? item.item?.confirmedQuantity ?? 99999);
+        if (newQty > capacity) {
+          const diff = newQty - capacity;
           const cur = lotQuantities[lotKey] ?? 0;
           lotQuantities[lotKey] = Math.max(0, cur - diff);
           newQty = (Object.values(lotQuantities) as number[]).reduce(
@@ -5497,14 +5517,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ NEW: Submit all scanned items (batch inbound)
   const submitAllScannedItems = async () => {
-    if (scannedItems.length === 0) {
+    const latestScanned =
+      scannedItemsRef.current.length > 0
+        ? scannedItemsRef.current
+        : scannedItems;
+    if (latestScanned.length === 0) {
       alert("스캔된 제품이 없습니다.");
       return;
     }
     const inboundStaff = scanModalInboundStaff.trim();
     setInboundManagers((prev) => {
       const next = { ...prev };
-      scannedItems.forEach((it) => {
+      latestScanned.forEach((it) => {
         const oid = it.orderId;
         if (oid) next[oid] = inboundStaff;
       });
@@ -5512,8 +5536,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     });
 
     try {
-      const catalogItems = scannedItems.filter((it) => it.fromCatalog);
-      const orderItems = scannedItems.filter((it) => !it.fromCatalog);
+      const catalogItems = latestScanned.filter((it) => it.fromCatalog);
+      const orderItems = latestScanned.filter((it) => !it.fromCatalog);
 
       // Catalog mahsulotlar uchun to‘g‘ridan-to‘g‘ri batch yaratish (GTIN orqali qo‘shilgan)
       if (catalogItems.length > 0) {
@@ -5579,47 +5603,69 @@ const PendingOrdersList = memo(function PendingOrdersList({
         }
       }
 
-      // Order mahsulotlar: editedItems ga yozib, "입고 완료" ni bosishni aytamiz
-      const groupedByOrder = orderItems.reduce(
-        (acc, item) => {
-          const oid = item.orderId ?? "none";
-          if (!acc[oid]) {
-            acc[oid] = { order: item.order, items: [] };
-          }
-          acc[oid].items.push(item);
-          return acc;
-        },
-        {} as Record<string, any>
-      );
-
-      for (const [_orderId, data] of Object.entries(groupedByOrder)) {
-        if ((data as any).order == null) continue;
-        for (const item of (data as any).items) {
-          updateItemField(item.itemId, "quantity", item.quantity);
-          updateItemField(item.itemId, "expiryDate", item.expiryDate);
-          updateItemField(item.itemId, "storageLocation", item.storageLocation);
-          updateItemField(
-            item.itemId,
-            "purchasePrice",
-            item.item?.unit_price ?? ""
-          );
-          if (item.lotNumber?.trim()) {
-            updateItemField(item.itemId, "lotNumber", item.lotNumber);
-          }
-          if (
-            item.lotQuantities &&
-            Object.keys(item.lotQuantities).length > 0
-          ) {
-            updateItemField(item.itemId, "lotQuantities", item.lotQuantities);
-          }
-          if (
-            item.lotDetails &&
-            typeof item.lotDetails === "object" &&
-            Object.keys(item.lotDetails).length > 0
-          ) {
-            updateItemField(item.itemId, "lotDetails", item.lotDetails);
-          }
+      // Order mahsulotlar: faqat editedItems ga yozamiz; inbound order kartasidagi "입고하기" orqali qilinadi
+      // Barcha lotlarni yig'amiz: lotQuantities + single form (birinchisi) + ochiq "Lot 배치번호 추가" formasi
+      for (const item of orderItems) {
+        let effectiveLotQuantities: Record<string, number> = {
+          ...(item.lotQuantities || {}),
+        };
+        let effectiveLotDetails: Record<
+          string,
+          { manufactureDate?: string; expiryDate?: string }
+        > = { ...(item.lotDetails || {}) };
+        // Agar lotQuantities bo'sh lekin birinchi qator (single form) to'ldirilgan bo'lsa — uni __default sifatida qo'shamiz
+        const hasSingleFormQty =
+          Object.keys(effectiveLotQuantities).length === 0 &&
+          Number(item.quantity) > 0;
+        if (hasSingleFormQty) {
+          effectiveLotQuantities["__default"] = Number(item.quantity);
+          effectiveLotDetails["__default"] = {
+            manufactureDate: item.productionDate || undefined,
+            expiryDate: item.expiryDate || undefined,
+          };
         }
+        const hasPendingManual =
+          expandedManualLotItemId === item.itemId &&
+          Number(manualLotForm.quantity) > 0;
+        if (hasPendingManual) {
+          const manualKey =
+            (manualLotForm.lotNumber || "").trim() || `__manual_${Date.now()}`;
+          effectiveLotQuantities[manualKey] =
+            (effectiveLotQuantities[manualKey] || 0) +
+            Number(manualLotForm.quantity);
+          effectiveLotDetails[manualKey] = {
+            manufactureDate: manualLotForm.productionDate || undefined,
+            expiryDate: manualLotForm.expiryDate || undefined,
+          };
+        }
+        const effectiveQuantity =
+          Object.keys(effectiveLotQuantities).length > 0
+            ? (Object.values(effectiveLotQuantities) as number[]).reduce(
+                (a, b) => a + Number(b),
+                0
+              )
+            : Number(item.quantity ?? 0) || 0;
+
+        const itemId = String(item.itemId);
+        const payload: Record<string, any> = {
+          quantity: effectiveQuantity,
+          expiryDate: item.expiryDate,
+          storageLocation: item.storageLocation,
+          purchasePrice: item.item?.unit_price ?? "",
+          lotNumber: item.lotNumber?.trim() ? item.lotNumber : undefined,
+          lotQuantities:
+            Object.keys(effectiveLotQuantities).length > 0
+              ? effectiveLotQuantities
+              : undefined,
+          lotDetails:
+            Object.keys(effectiveLotDetails).length > 0
+              ? effectiveLotDetails
+              : undefined,
+        };
+        setEditedItems((prev) => ({
+          ...prev,
+          [itemId]: { ...prev[itemId], ...payload },
+        }));
       }
 
       const catalogDone =
@@ -5627,9 +5673,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
           ? `\n카탈로그 제품 ${catalogItems.length}건 입고 완료.`
           : "";
       alert(
-        `✅ ${scannedItems.length}개 제품 정보가 입력되었습니다!${catalogDone}\n\n` +
+        `✅ ${latestScanned.length}개 제품 정보가 입력되었습니다!${catalogDone}\n\n` +
           (orderItems.length > 0
-            ? `각 주문의 "입고 완료" 버튼을 눌러 입고를 완료하세요.`
+            ? `각 주문의 "입고하기" 버튼을 눌러 입고를 완료하세요.`
             : "")
       );
 
@@ -5758,7 +5804,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const processInboundOrder = async (
     order: any,
     itemsToProcess: any[],
-    isPartial: boolean = false
+    isPartial: boolean = false,
+    overrideEditedItems?: Record<string, any>,
+    overrideInboundManager?: string
   ) => {
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
@@ -5783,8 +5831,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // Process each item in the order
       const { apiPost, apiGet } = await import("../../lib/api");
 
-      // ✅ Use inboundManagers state (no auto-fill, user must enter manually)
-      const inboundManager = inboundManagers[orderIdToUse] || "";
+      // ✅ Use override when provided (e.g. from barcode modal so all lots are included)
+      const effectiveEditedItems = overrideEditedItems ?? editedItems;
+      const inboundManager =
+        overrideInboundManager ?? inboundManagers[orderIdToUse] ?? "";
 
       // Group items by productId
       const itemsByProduct = new Map<string, any[]>();
@@ -5799,7 +5849,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       for (const [productId, items] of itemsByProduct.entries()) {
         const firstItem = items[0];
-        const editedFirstItem = editedItems[firstItem.id];
+        const editedFirstItem = effectiveEditedItems[firstItem.id];
 
         // Inbound qty: from lotQuantities sum or from quantity
         const inboundQty = (() => {
@@ -5813,7 +5863,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
           }
           return items.reduce(
             (sum: number, item: any) =>
-              sum + (editedItems[item.id]?.quantity || 0),
+              sum + (effectiveEditedItems[item.id]?.quantity || 0),
             0
           );
         })();
@@ -5846,18 +5896,18 @@ const PendingOrdersList = memo(function PendingOrdersList({
               : 0;
 
         const lotQuantities = editedFirstItem?.lotQuantities;
-        const hasMultipleLots =
+        const hasAnyLots =
           lotQuantities &&
           typeof lotQuantities === "object" &&
-          Object.keys(lotQuantities).filter((k) => k !== "__default").length >
-            0;
+          Object.keys(lotQuantities).length > 0 &&
+          (Object.values(lotQuantities) as number[]).some((v) => Number(v) > 0);
 
         const createdBatchNos: string[] = [];
 
         const lotDetailsFirst = editedFirstItem?.lotDetails as
           | Record<string, { manufactureDate?: string; expiryDate?: string }>
           | undefined;
-        if (hasMultipleLots && lotQuantities) {
+        if (hasAnyLots && lotQuantities) {
           // Har bir lot uchun alohida batch — har biriga o‘zining expiry_date / manufacture_date (DB ga yoziladi)
           for (const [lotKey, qtyVal] of Object.entries(lotQuantities)) {
             const qtyNum = Number(qtyVal);
@@ -6532,7 +6582,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
                     }));
                   }
                 }}
-                rejectionConfirmManagerName={rejectionConfirmManagers[orderId] ?? ""}
+                rejectionConfirmManagerName={
+                  rejectionConfirmManagers[orderId] ?? ""
+                }
                 onRejectionConfirmManagerChange={(value: string) => {
                   if (orderId) {
                     setRejectionConfirmManagers((prev) => ({
@@ -6897,11 +6949,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
                         (Object.values(item.lotQuantities) as number[]).some(
                           (n) => Number(n) > 0
                         );
-                      const totalQty = hasLots
+                      const sumFromLots = hasLots
                         ? (
                             Object.values(item.lotQuantities) as number[]
                           ).reduce((a, b) => a + Number(b), 0)
                         : Number(item.quantity ?? 0) || 0;
+                      const pendingManualQty =
+                        expandedManualLotItemId === item.itemId
+                          ? Number(manualLotForm.quantity) || 0
+                          : 0;
+                      const totalQty = sumFromLots + pendingManualQty;
 
                       return (
                         <div
@@ -6977,11 +7034,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
                                   {item.productName}
                                 </span>
-                                {!item.fromCatalog && (
-                                  <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 shrink-0">
-                                    재입고 대기
-                                  </span>
-                                )}
                               </div>
                               <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                                 {item.brand ?? ""}
@@ -6989,9 +7041,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               {/* 총 입고수량 + 재입고 qolgan miqdor (mobile ham ko'rinsin) */}
                               <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
                                 <span className="sm:hidden">
-                                  {item.fromCatalog
-                                    ? `총 입고수량 ${totalQty} | ${capacity}개`
-                                    : `총 입고수량 ${totalQty} / ${capacity}개 (재입고)`}
+                                  {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity}개`}
                                 </span>
                                 {/* {item.lotQuantities &&
                                   Object.keys(item.lotQuantities).length >
@@ -7012,9 +7062,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             {/* Right: 구매가 (desktop) */}
                             <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
                               <span>
-                                {item.fromCatalog
-                                  ? `총 입고수량 ${totalQty} | ${capacity}개`
-                                  : `총 입고수량 ${totalQty} / ${capacity}개 (재입고)`}
+                                {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity}개`}
                               </span>
                               <span>
                                 구매가 {Number(purchasePrice).toLocaleString()}
@@ -7042,6 +7090,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
                           {/* Expanded: Lot ozgarganda — har bir lot uchun sub-card (2-rasma dizayni) */}
                           {isActive && !isCompleted && (
                             <div className="p-4 bg-white  dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                              {/* 보관위치 — always visible at top when card is expanded */}
+                              <div className="mb-3">
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                  보관위치
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.storageLocation || ""}
+                                  onChange={(e) =>
+                                    updateScannedProduct(item.itemId, {
+                                      storageLocation: e.target.value,
+                                    })
+                                  }
+                                  placeholder="예: 창고 A-3, 냉장고"
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                />
+                              </div>
                               {/* Lot sub-cards: when multiple lots, show one card per lot below main card */}
                               {item.lotQuantities &&
                               Object.entries(item.lotQuantities).filter(
@@ -7129,17 +7194,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                             <input
                                               type="number"
                                               min={0}
+                                              max={capacity}
                                               value={qty}
-                                              onChange={(e) =>
-                                                updateScannedProductLotQty(
-                                                  item.itemId,
-                                                  lotKey,
+                                              onChange={(e) => {
+                                                const v =
                                                   parseInt(
                                                     e.target.value,
                                                     10
-                                                  ) || 0
-                                                )
-                                              }
+                                                  ) || 0;
+                                                updateScannedProductLotQty(
+                                                  item.itemId,
+                                                  lotKey,
+                                                  Math.min(
+                                                    Math.max(0, v),
+                                                    capacity
+                                                  )
+                                                );
+                                              }}
                                               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm text-blue-600 dark:text-blue-400 border-b-2 border-blue-200 dark:border-blue-800"
                                             />
                                           </div>
@@ -7229,13 +7300,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                       <input
                                         type="number"
                                         min={0}
+                                        max={capacity}
                                         value={item.quantity}
-                                        onChange={(e) =>
+                                        onChange={(e) => {
+                                          const v = parseInt(
+                                            e.target.value,
+                                            10
+                                          );
+                                          const val = Number.isNaN(v)
+                                            ? 0
+                                            : Math.min(
+                                                Math.max(0, v),
+                                                capacity
+                                              );
                                           updateScannedProduct(item.itemId, {
-                                            quantity:
-                                              parseInt(e.target.value) || 0,
-                                          })
-                                        }
+                                            quantity: val,
+                                          });
+                                        }}
                                         className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
                                       />
                                       <button
@@ -7266,34 +7347,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                   </div>
                                 </div>
                               )}
-                              <div className="mt-3">
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                  보관위치
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.storageLocation || ""}
-                                  onChange={(e) =>
-                                    updateScannedProduct(item.itemId, {
-                                      storageLocation: e.target.value,
-                                    })
-                                  }
-                                  placeholder="예: 창고 A-3, 냉장고"
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={completeCurrentProduct}
-                                disabled={
-                                  !item.quantity ||
-                                  item.quantity <= 0 ||
-                                  !item.storageLocation
-                                }
-                                className="mt-4 w-full py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                              >
-                                입력 완료
-                              </button>
                             </div>
                           )}
 
@@ -7382,14 +7435,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                         <input
                                           type="number"
                                           min={0}
+                                          max={Math.max(
+                                            0,
+                                            capacity - (item.quantity ?? 0)
+                                          )}
                                           value={manualLotForm.quantity || ""}
-                                          onChange={(e) =>
+                                          onChange={(e) => {
+                                            const v =
+                                              parseInt(e.target.value, 10) || 0;
+                                            const maxNew = Math.max(
+                                              0,
+                                              capacity - (item.quantity ?? 0)
+                                            );
                                             setManualLotForm((f) => ({
                                               ...f,
-                                              quantity:
-                                                parseInt(e.target.value) || 0,
-                                            }))
-                                          }
+                                              quantity: Math.min(v, maxNew),
+                                            }));
+                                          }}
                                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                         />
                                         <button
@@ -7524,10 +7586,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
               <button
                 type="button"
                 onClick={submitAllScannedItems}
-                disabled={
-                  scannedItems.length === 0 ||
-                  scannedItems.some((i) => i.status !== "completed")
-                }
+                disabled={scannedItems.length === 0}
                 className="shrink-0 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
               >
                 입고 하기
@@ -7741,7 +7800,8 @@ const OrderCard = memo(function OrderCard({
               index: number,
               showRejectedLayout: boolean
             ) => {
-              const edited = editedItems[item.id] || {};
+              const edited =
+                editedItems[String(item.id)] ?? editedItems[item.id] ?? {};
               const hasQtyChange =
                 item.confirmedQuantity !== item.orderedQuantity;
               const hasPriceChange = item.confirmedPrice !== item.orderedPrice;
@@ -7751,32 +7811,40 @@ const OrderCard = memo(function OrderCard({
                   key={index}
                   className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
                 >
-                  {sectionLabel !== "주문 요청" && (
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-base font-semibold text-slate-900 dark:text-white">
-                          {item.productName || "알 수 없음"}
-                        </h4>
-                        {item.brand && (
-                          <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {item.brand}
-                          </span>
-                        )}
-                        {isPendingInbound && (
-                          <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                            재입고 대기
-                          </span>
-                        )}
-                      </div>
-                      {isSupplierConfirmed && (
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {item.priceReason && (
-                            <span className="text-xs text-amber-600 dark:text-amber-400">
-                              💰 가격 변경: {item.priceReason}
+                  {sectionLabel !== "주문 요청" &&
+                    sectionLabel !== "주문 진행" && (
+                      <div className="mb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                            {item.productName || "알 수 없음"}
+                          </h4>
+                          {item.brand && (
+                            <span className="text-sm text-slate-500 dark:text-slate-400">
+                              {item.brand}
+                            </span>
+                          )}
+                          {isPendingInbound && (
+                            <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                              재입고 대기
                             </span>
                           )}
                         </div>
-                      )}
+                        {isSupplierConfirmed && (
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {item.priceReason && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">
+                                💰 가격 변경: {item.priceReason}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  {sectionLabel === "주문 진행" && isPendingInbound && (
+                    <div className="mb-2">
+                      <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                        재입고 대기
+                      </span>
                     </div>
                   )}
 
@@ -7859,8 +7927,169 @@ const OrderCard = memo(function OrderCard({
                             : "-"}
                       </span>
                     </div>
+                  ) : sectionLabel === "주문 진행" &&
+                    (isSupplierConfirmed || isPendingInbound) ? (
+                    /* 주문 진행: read-only design — header (총 입고수량, 보관위치, 구매가) + Lot table */
+                    <>
+                      <div className="flex flex-nowrap items-center justify-between gap-4 border-b border-slate-200 pb-3 dark:border-slate-600 overflow-x-auto">
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-base font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                            {item.productName || "알 수 없음"}
+                          </span>
+                          {item.brand && (
+                            <span className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {item.brand}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center justify-end gap-2 text-sm">
+                          <span className="whitespace-nowrap text-slate-600 dark:text-slate-400">
+                            총 입고수량
+                          </span>
+                          <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
+                            {(() => {
+                              const lots = edited?.lotQuantities;
+                              const sum =
+                                lots &&
+                                typeof lots === "object" &&
+                                Object.keys(lots).length > 0
+                                  ? (Object.values(lots) as number[]).reduce(
+                                      (a, b) => a + Number(b),
+                                      0
+                                    )
+                                  : Number(edited?.quantity) || 0;
+                              return sum;
+                            })()}{" "}
+                            | {item.pendingQuantity ?? item.confirmedQuantity}개
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center justify-end gap-2 text-sm">
+                          <span className="whitespace-nowrap text-slate-600 dark:text-slate-400">
+                            보관위치
+                          </span>
+                          <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
+                            {edited?.storageLocation || "-"}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end">
+                          <span className="whitespace-nowrap text-lg font-semibold text-slate-900 dark:text-white">
+                            {(edited?.purchasePrice != null &&
+                            edited.purchasePrice !== ""
+                              ? Number(edited.purchasePrice)
+                              : (item.confirmedPrice ?? 0)
+                            ).toLocaleString()}
+                            원
+                          </span>
+                          {item.orderedPrice != null &&
+                            (edited?.purchasePrice != null
+                              ? Number(edited.purchasePrice)
+                              : item.confirmedPrice) !== item.orderedPrice && (
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                전번 구매가{" "}
+                                {Number(item.orderedPrice).toLocaleString()}원
+                              </span>
+                            )}
+                          {hasPriceChange && (
+                            <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                              * 환율 변화
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {hasQtyChange && (
+                        <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                          * 요청 수량 {item.orderedQuantity}개 → 최종{" "}
+                          {item.confirmedQuantity}개로 조정됨
+                        </p>
+                      )}
+                      {/* Lot table — faqat lotlar qo‘shilganda ko‘rsatiladi; 주문 진행 cardda by default yo‘q */}
+                      {(() => {
+                        const lots = edited?.lotQuantities;
+                        const hasLotsAdded = !!(
+                          lots &&
+                          typeof lots === "object" &&
+                          Object.keys(lots).length > 0
+                        );
+                        if (!hasLotsAdded) return null;
+                        const details = (edited?.lotDetails || {}) as Record<
+                          string,
+                          {
+                            manufactureDate?: string;
+                            expiryDate?: string;
+                          }
+                        >;
+                        const rows: {
+                          batchLabel: string;
+                          mfg: string;
+                          expiry: string;
+                          qty: number;
+                        }[] = [];
+                        Object.entries(lots!).forEach(([lotKey, qty]) => {
+                          const qtyNum = Number(qty);
+                          if (qtyNum <= 0) return;
+                          const batchLabel =
+                            lotKey === "__default"
+                              ? edited?.lotNumber || "-"
+                              : lotKey.startsWith("__manual_")
+                                ? "-"
+                                : lotKey;
+                          const d = details[lotKey] || {};
+                          rows.push({
+                            batchLabel,
+                            mfg: d.manufactureDate || ":",
+                            expiry: d.expiryDate || edited?.expiryDate || ":",
+                            qty: qtyNum,
+                          });
+                        });
+                        return (
+                          <div className="mt-3 overflow-x-auto text-sm">
+                            <div className="space-y-2">
+                              {rows.map((row, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-b border-dashed border-sky-200 py-2 dark:border-sky-800"
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="shrink-0 font-medium text-slate-600 dark:text-slate-400">
+                                      Lot 배치번호
+                                    </span>
+                                    <span className="min-w-0 truncate text-slate-700 dark:text-slate-300">
+                                      {row.batchLabel}
+                                    </span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="shrink-0 font-medium text-slate-600 dark:text-slate-400">
+                                      제조일
+                                    </span>
+                                    <span className="min-w-0 text-slate-600 dark:text-slate-400">
+                                      {row.mfg}
+                                    </span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="shrink-0 font-medium text-slate-600 dark:text-slate-400">
+                                      유효기간
+                                    </span>
+                                    <span className="min-w-0 text-slate-600 dark:text-slate-400">
+                                      {row.expiry}
+                                    </span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-2">
+                                    <span className="shrink-0 font-medium text-slate-600 dark:text-slate-400">
+                                      입고수량
+                                    </span>
+                                    <span className="min-w-0 font-medium text-slate-700 dark:text-slate-300">
+                                      {row.qty}
+                                    </span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : (
-                    /* 주문 진행 / 재입고 대기: 입고수량, 유통기간, 보관위치, 이번 구매가 */
+                    /* 주문 진행 (editable) / 재입고 대기: 입고수량, 유통기간, 보관위치, 이번 구매가 */
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       {/* 입고수량 */}
                       <div>
@@ -8030,45 +8259,47 @@ const OrderCard = memo(function OrderCard({
                     </div>
                   )}
 
-                  {/* Read-only Lot card — faqat 바코드 입고 modalida 입고 하기 bosilgandan keyin (inboundQuantity > 0) */}
-                  {isSupplierConfirmed && (item.inboundQuantity ?? 0) > 0 && (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Lot 번호
-                          </label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                            {item.lotNumber || item.batchNumber || "-"}
+                  {/* Read-only Lot card — boshqa sectionlarda (주문 진행 da yangi Lot jadvali bor) */}
+                  {isSupplierConfirmed &&
+                    sectionLabel !== "주문 진행" &&
+                    (item.inboundQuantity ?? 0) > 0 && (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                              Lot 번호
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                              {item.lotNumber || item.batchNumber || "-"}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                            제조일
-                          </label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                            {item.productionDate || "-"}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                              제조일
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                              {item.productionDate || "-"}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                            유효기간
-                          </label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                            {edited.expiryDate || item.expiryDate || "-"}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                              유효기간
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                              {edited.expiryDate || item.expiryDate || "-"}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                            입고수량
-                          </label>
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                            {item.inboundQuantity ?? "-"}
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                              입고수량
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                              {item.inboundQuantity ?? "-"}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               );
             };
@@ -8117,7 +8348,9 @@ const OrderCard = memo(function OrderCard({
               <input
                 type="text"
                 value={rejectionConfirmManagerName ?? ""}
-                onChange={(e) => onRejectionConfirmManagerChange?.(e.target.value)}
+                onChange={(e) =>
+                  onRejectionConfirmManagerChange?.(e.target.value)
+                }
                 placeholder="확인 담당자 이름을 입력하세요"
                 className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 
                          focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200
