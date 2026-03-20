@@ -996,24 +996,6 @@ export class OrderService {
       });
     });
 
-    // Filter out rejected orders that haven't been confirmed yet (don't have RejectedOrder records)
-    const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
-      async () => {
-        const confirmedRejected = await (
-          this.prisma as any
-        ).rejectedOrder.findMany({
-          where: {
-            tenant_id: tenantId,
-          },
-          select: {
-            order_id: true,
-          },
-          distinct: ["order_id"],
-        });
-        return new Set(confirmedRejected.map((ro: any) => ro.order_id));
-      }
-    );
-
     // ✅ Get list of original orders that have been split
     const splitOriginalOrderNos = new Set<string>();
     orders.forEach((order: any) => {
@@ -1032,12 +1014,13 @@ export class OrderService {
         return false;
       }
 
-      // If order is rejected but not confirmed, exclude it from order history
-      if (
-        order.status === "rejected" &&
-        !confirmedRejectedOrderIds.has(order.id)
-      ) {
-        return false;
+      // If order is rejected, only show it if at least one item has rejection_acknowledged
+      // (meaning a clinic member has clicked "상황 확인")
+      if (order.status === "rejected") {
+        const hasAcknowledged = (order.items || []).some(
+          (item: any) => item.item_status === "rejection_acknowledged"
+        );
+        if (!hasAcknowledged) return false;
       }
       return true;
     });
@@ -2754,14 +2737,22 @@ export class OrderService {
     };
 
     await this.prisma.executeWithRetry(async () => {
-      // Update order (total_amount = klinika buyurtma summasi, supplier narx o'zgartirsa ham o'zgarmaydi)
+      // If some items are already inbounded, keep pending_inbound status —
+      // don't downgrade an in-progress order to rejected/supplier_confirmed
+      const hasInboundedItems = order.items.some(
+        (item: any) => item.item_status === "inbounded"
+      );
+      const newOrderStatus =
+        hasInboundedItems && order.status === "pending_inbound"
+          ? "pending_inbound"
+          : status;
+
       await (this.prisma as any).order.update({
         where: { id: order.id },
         data: {
-          status: status,
+          status: newOrderStatus,
           supplier_adjustments: adjustmentsData,
           confirmed_at: confirmedAt ? new Date(confirmedAt) : new Date(),
-          // total_amount: o'zgartirilmaydi — klinika order paytidagi summa saqlanadi
           updated_at: new Date(),
         },
       });
@@ -2906,6 +2897,16 @@ export class OrderService {
 
       if (hasItemStatusInPayload) {
         for (const item of order.items) {
+          // Never override terminal statuses on the clinic side:
+          // - inbounded: item is already in the warehouse
+          // - rejection_acknowledged: clinic member has reviewed and acknowledged the rejection;
+          //   a re-notification from supplier must not roll it back to "rejected"
+          if (
+            item.item_status === "inbounded" ||
+            item.item_status === "rejection_acknowledged"
+          )
+            continue;
+
           const payloadItem = updatedItems.find(
             (u: any) =>
               u.productId === item.product_id ||
@@ -2915,6 +2916,11 @@ export class OrderService {
             payloadItem?.itemStatus ??
             payloadItem?.item_status ??
             (status === "rejected" ? "rejected" : "confirmed");
+
+          // If supplier says clinic_inbounded but clinic has it as inbounded — skip (handled above)
+          // If supplier says clinic_inbounded — treat as confirmed on clinic side (already processed)
+          if (newStatus === "clinic_inbounded") continue;
+
           // Rejected item uchun memo saqlash (partial reject da ham status "supplier_confirmed" keladi)
           const memo =
             newStatus === "rejected" && payloadItem?.memo
@@ -3093,30 +3099,14 @@ export class OrderService {
         });
       });
 
-      // Filter out rejected orders that have already been confirmed
-      const confirmedRejectedOrderIds = await this.prisma.executeWithRetry(
-        async () => {
-          const confirmedRejected = await (
-            this.prisma as any
-          ).rejectedOrder.findMany({
-            where: {
-              tenant_id: tenantId,
-            },
-            select: {
-              order_id: true,
-            },
-            distinct: ["order_id"],
-          });
-          return new Set(confirmedRejected.map((ro: any) => ro.order_id));
-        }
-      );
-
+      // Filter out rejected orders that haven't been confirmed yet
+      // (i.e., no item has rejection_acknowledged — member hasn't clicked "상황 확인")
       const filteredOrders = orders.filter((order: any) => {
-        if (
-          order.status === "rejected" &&
-          confirmedRejectedOrderIds.has(order.id)
-        ) {
-          return false;
+        if (order.status === "rejected") {
+          const hasAcknowledged = (order.items || []).some(
+            (item: any) => item.item_status === "rejection_acknowledged"
+          );
+          if (!hasAcknowledged) return false;
         }
         return true;
       });
@@ -3699,25 +3689,15 @@ export class OrderService {
       }
     });
 
-    // Create RejectedOrder records for each item with CORRECT supplier info
-    const rejectedOrders = await this.prisma.executeWithRetry(async () => {
-      const createPromises = items.map((item: any) => {
-        return (this.prisma as any).rejectedOrder.create({
-          data: {
-            tenant_id: tenantId,
-            order_id: orderId,
-            order_no: orderNo,
-            company_name: companyName, // ✅ From database, not frontend
-            manager_name: managerName, // ✅ From database, not frontend
-            product_name: item.productName,
-            product_brand: item.productBrand || null,
-            qty: item.qty,
-            member_name: memberName,
-          },
-        });
+    // Save rejection_member_name on each rejected OrderItem
+    await this.prisma.executeWithRetry(async () => {
+      await (this.prisma as any).orderItem.updateMany({
+        where: {
+          order_id: orderId,
+          item_status: "rejection_acknowledged",
+        },
+        data: { rejection_member_name: memberName, updated_at: new Date() },
       });
-
-      return Promise.all(createPromises);
     });
 
     // ✅ Clear cache for pending inbound orders
@@ -3725,44 +3705,42 @@ export class OrderService {
 
     return {
       message: "Rejected order confirmed successfully",
-      rejectedOrders: rejectedOrders,
     };
   }
 
   /**
    * Get rejected orders for display in order history
+   * Now queries directly from Order + OrderItem (rejection_acknowledged items)
+   * instead of the removed RejectedOrder table.
    */
   async getRejectedOrders(tenantId: string): Promise<any[]> {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const rejectedOrders = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).rejectedOrder.findMany({
-        where: {
-          tenant_id: tenantId,
-        },
-        orderBy: {
-          created_at: "desc",
-        },
-      });
-    });
-
-    // Get unique order IDs to fetch supplier details
-    const orderIds = [...new Set(rejectedOrders.map((ro: any) => ro.order_id))];
-
-    // Fetch orders to get supplier information AND order items with memos
+    // Fetch orders that have at least one rejection_acknowledged item
     const orders = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).order.findMany({
         where: {
-          id: { in: orderIds },
           tenant_id: tenantId,
+          items: {
+            some: {
+              item_status: "rejection_acknowledged",
+            },
+          },
         },
         select: {
           id: true,
+          order_no: true,
           supplier_id: true,
-          memo: true, // Include order memo
+          memo: true,
+          updated_at: true,
           items: {
+            where: {
+              item_status: {
+                in: ["rejected", "rejection_acknowledged"],
+              },
+            },
             select: {
               id: true,
               product_id: true,
@@ -3773,7 +3751,9 @@ export class OrderService {
               confirmed_unit_price: true,
               total_price: true,
               memo: true,
-              item_status: true, // Filter to rejected only in display
+              item_status: true,
+              rejection_member_name: true,
+              updated_at: true,
               product: {
                 select: {
                   name: true,
@@ -3783,31 +3763,16 @@ export class OrderService {
             },
           },
         },
+        orderBy: { updated_at: "desc" },
       });
     });
 
-    // Create a map of order_id -> supplier_id
-    const orderSupplierMap = new Map<string, string>();
-    // ✅ Create a map of order_id -> order data (items, memo)
-    const orderDataMap = new Map<string, any>();
-
-    orders.forEach((order: any) => {
-      if (order.supplier_id) {
-        orderSupplierMap.set(order.id, order.supplier_id);
-      }
-      // Store full order data including items and memo
-      orderDataMap.set(order.id, {
-        items: order.items || [],
-        memo: order.memo || null,
-      });
-    });
-
-    // Get unique supplier IDs (these are ClinicSupplierManager IDs)
+    // Collect unique ClinicSupplierManager IDs
     const clinicSupplierIds = [
-      ...new Set(Array.from(orderSupplierMap.values())),
+      ...new Set(orders.map((o: any) => o.supplier_id).filter(Boolean)),
     ];
 
-    // ✅ Fetch ClinicSupplierManagers with contact details
+    // Fetch ClinicSupplierManagers with contact details
     const clinicSuppliers = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).clinicSupplierManager.findMany({
         where: {
@@ -3829,71 +3794,51 @@ export class OrderService {
       });
     });
 
-    // Create a map of clinic_supplier_id -> full details
     const clinicSupplierDetailsMap = new Map<string, any>();
     clinicSuppliers.forEach((csm: any) => {
       clinicSupplierDetailsMap.set(csm.id, csm);
     });
 
-    // Group by order_no
-    const grouped: Record<string, any> = {};
+    return orders.map((order: any) => {
+      const clinicSupplier = order.supplier_id
+        ? clinicSupplierDetailsMap.get(order.supplier_id)
+        : null;
 
-    for (const rejectedOrder of rejectedOrders) {
-      const orderNo = rejectedOrder.order_no;
+      // Use rejection_member_name from the first acknowledged item as the confirmer
+      const acknowledgedItem = order.items.find(
+        (i: any) => i.item_status === "rejection_acknowledged"
+      );
+      const memberName = acknowledgedItem?.rejection_member_name || null;
+      const confirmedAt = acknowledgedItem?.updated_at || order.updated_at;
 
-      if (!grouped[orderNo]) {
-        // ✅ Get ClinicSupplierManager details
-        const supplierId = orderSupplierMap.get(rejectedOrder.order_id);
-        const clinicSupplier = supplierId
-          ? clinicSupplierDetailsMap.get(supplierId)
-          : null;
-
-        // ✅ Get order data (items with memos and order memo)
-        const orderData = orderDataMap.get(rejectedOrder.order_id) || {
-          items: [],
-          memo: null,
-        };
-
-        // Only include items that are rejected/rejection_acknowledged (partial reject: don't show confirmed items here)
-        const rejectedItemsOnly = (orderData.items || []).filter(
-          (item: any) =>
-            item.item_status === "rejected" ||
-            item.item_status === "rejection_acknowledged"
-        );
-        grouped[orderNo] = {
-          orderId: rejectedOrder.order_id,
-          orderNo: rejectedOrder.order_no,
-          companyName: rejectedOrder.company_name,
-          companyAddress: clinicSupplier?.company_address || null, // ✅ NEW
-          companyPhone: clinicSupplier?.company_phone || null, // ✅ NEW
-          companyEmail: clinicSupplier?.company_email || null, // ✅ NEW
-          managerName: rejectedOrder.manager_name,
-          managerPosition: clinicSupplier?.position || null, // ✅ Use from ClinicSupplierManager
-          managerPhone: clinicSupplier?.phone_number || null, // ✅ NEW
-          managerEmail:
-            clinicSupplier?.email1 || clinicSupplier?.email2 || null, // ✅ NEW
-          memberName: rejectedOrder.member_name,
-          confirmedAt: rejectedOrder.created_at,
-          items: rejectedItemsOnly.map((item: any) => ({
-            id: item.id,
-            productId: item.product_id,
-            productName: item.product?.name || rejectedOrder.product_name,
-            productBrand: item.product?.brand || rejectedOrder.product_brand,
-            orderedQuantity: item.ordered_quantity,
-            unitPrice: item.unit_price,
-            totalPrice: item.unit_price * item.ordered_quantity,
-            memo: item.memo || null,
-            itemStatus: item.item_status || null,
-          })),
-          memo: orderData.memo, // ✅ Include order-level memo
-        };
-      }
-
-      // Items already mapped above from Order table
-      // No need to push from rejectedOrder table which has limited data
-    }
-
-    return Object.values(grouped);
+      return {
+        orderId: order.id,
+        orderNo: order.order_no,
+        companyName: clinicSupplier?.company_name || null,
+        companyAddress: clinicSupplier?.company_address || null,
+        companyPhone: clinicSupplier?.company_phone || null,
+        companyEmail: clinicSupplier?.company_email || null,
+        managerName: clinicSupplier?.name || null,
+        managerPosition: clinicSupplier?.position || null,
+        managerPhone: clinicSupplier?.phone_number || null,
+        managerEmail: clinicSupplier?.email1 || clinicSupplier?.email2 || null,
+        memberName,
+        confirmedAt,
+        items: order.items.map((item: any) => ({
+          id: item.id,
+          productId: item.product_id,
+          productName: item.product?.name || null,
+          productBrand: item.product?.brand || null,
+          orderedQuantity: item.ordered_quantity,
+          unitPrice: item.unit_price,
+          totalPrice: item.unit_price * item.ordered_quantity,
+          memo: item.memo || null,
+          itemStatus: item.item_status || null,
+          rejectionMemberName: item.rejection_member_name || null,
+        })),
+        memo: order.memo || null,
+      };
+    });
   }
 
   /**
@@ -3930,8 +3875,12 @@ export class OrderService {
           updated_at: new Date(),
         },
       });
+      // Only update items that are confirmed (not pending, rejected, cancelled, or already inbounded)
       await (this.prisma as any).orderItem.updateMany({
-        where: { order_id: orderId },
+        where: {
+          order_id: orderId,
+          item_status: { in: ["confirmed"] },
+        },
         data: { item_status: "inbounded", updated_at: new Date() },
       });
     });
@@ -3965,30 +3914,37 @@ export class OrderService {
           const supplierTenantId =
             clinicSupplierManager.linkedManager.supplier.tenant_id;
 
-          // ✅ Prepare inboundItems - barcha item'lar to'liq inbound qilingan
-          const inboundItems = order.items.map((item: any) => ({
+          // Only include confirmed items in inboundItems — rejected/rejection_acknowledged items
+          // were not actually inbounded so they must not be reported to supplier as inbounded.
+          const confirmedItemsForSupplier = order.items.filter(
+            (item: any) => item.item_status === "confirmed",
+          );
+          const inboundItems = confirmedItemsForSupplier.map((item: any) => ({
             itemId: item.id,
-            productId: item.product_id, // ✅ Product ID for matching in supplier side
-            inboundQuantity: item.confirmed_quantity, // ✅ To'liq inbound (supplier confirmed quantity)
-            originalQuantity: item.ordered_quantity, // ✅ Dastlabki order quantity
+            productId: item.product_id,
+            inboundQuantity: item.confirmed_quantity,
+            originalQuantity: item.ordered_quantity,
           }));
 
-          // ✅ Update inbound_quantity and item_status for all items (to'liq inbound)
-          await this.prisma.executeWithRetry(async () => {
-            return await Promise.all(
-              order.items.map((item: any) =>
-                (this.prisma as any).orderItem.update({
-                  where: { id: item.id },
-                  data: {
-                    inbound_quantity: item.confirmed_quantity,
-                    pending_quantity: 0,
-                    item_status: "inbounded",
-                    updated_at: new Date(),
-                  },
-                })
-              )
-            );
-          });
+          // Update inbound_quantity only for confirmed items — never overwrite
+          // rejection_acknowledged, pending, cancelled, or already-inbounded items.
+          if (confirmedItemsForSupplier.length > 0) {
+            await this.prisma.executeWithRetry(async () => {
+              return await Promise.all(
+                confirmedItemsForSupplier.map((item: any) =>
+                  (this.prisma as any).orderItem.update({
+                    where: { id: item.id },
+                    data: {
+                      inbound_quantity: item.confirmed_quantity,
+                      pending_quantity: 0,
+                      item_status: "inbounded",
+                      updated_at: new Date(),
+                    },
+                  })
+                )
+              );
+            });
+          }
 
           await this.notifySupplierOrderCompleted(
             order.order_no,
@@ -4204,6 +4160,7 @@ export class OrderService {
         // ✅ Update each item's inbound_quantity
         for (const item of originalOrder.items) {
           const inboundQty = inboundedItemsMap.get(item.id);
+          const currentItemStatus = item.item_status || "pending";
 
           if (
             inboundQty !== undefined &&
@@ -4242,6 +4199,17 @@ export class OrderService {
             this.logger.log(
               `✅ Item ${item.id}: inbound ${inboundQty}, total ${totalInboundQty}/${item.confirmed_quantity}`
             );
+          } else {
+            // Item not in this inbound batch — check if it's already fully processed
+            // pending/confirmed items that are NOT being inbounded now = not fully done
+            if (
+              currentItemStatus !== "inbounded" &&
+              currentItemStatus !== "rejected" &&
+              currentItemStatus !== "rejection_acknowledged" &&
+              currentItemStatus !== "cancelled"
+            ) {
+              allItemsFullyInbound = false;
+            }
           }
         }
 

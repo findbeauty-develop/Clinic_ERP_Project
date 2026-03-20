@@ -1649,26 +1649,10 @@ export default function OrderPage() {
                         const hasRejectedItems = (order.items || []).some(
                           (item: any) => {
                             const status = item.itemStatus ?? item.item_status;
-                            if (
+                            // Only genuinely rejected items — pending items are NOT rejected
+                            return (
                               status === "rejected" ||
                               status === "rejection_acknowledged"
-                            )
-                              return true;
-                            // Confirmatsiya/inbound 0 bo'lsa va buyurtma bor bo'lsa — rejected
-                            const ordered =
-                              item.orderedQuantity ??
-                              item.ordered_quantity ??
-                              0;
-                            const confirmed =
-                              item.confirmedQuantity ??
-                              item.confirmed_quantity ??
-                              0;
-                            const inbound =
-                              item.inboundQuantity ??
-                              item.inbound_quantity ??
-                              0;
-                            return (
-                              ordered > 0 && confirmed === 0 && inbound === 0
                             );
                           }
                         );
@@ -1711,18 +1695,29 @@ export default function OrderPage() {
                         "담당자";
 
                       // Badge/card logic: sectionLabel (주문 요청 / 주문 진행). Rejected only in Rejected Orders section below.
-                      // Rejected item bor bo'lsa — "입고 완료" emas "일부 입고" ko'rsatish
+                      // If all items in this card are inbounded → "입고 완료"
+                      // If this card is "주문 요청" (pending items) → "주문 요청" (not "일부 입고")
+                      const allCardItemsInbounded =
+                        (order.items?.length ?? 0) > 0 &&
+                        order.items.every(
+                          (item: any) =>
+                            (item.itemStatus ?? item.item_status) === "inbounded"
+                        );
+                      // allCardItemsInbounded → always "입고 완료" (rejected items are in their own card)
                       const isCompleted =
-                        (order.status === "completed" ||
+                        allCardItemsInbounded ||
+                        ((order.status === "completed" ||
                           order.status === "inbound_completed") &&
-                        !hasRejectedItems;
+                          !hasRejectedItems);
                       const isCancelled =
                         !isCompleted && order.status === "cancelled";
                       const isRejected = false;
+                      // "일부 입고" only applies to non-pending cards (confirmed items still waiting inbound)
                       const isPendingInbound =
                         !isCompleted &&
                         !isCancelled &&
                         !isRejected &&
+                        sectionLabel !== "주문 요청" &&
                         (order.status === "pending_inbound" ||
                           hasRejectedItems);
                       const isSupplierConfirmed = sectionLabel === "주문 진행";

@@ -18,7 +18,7 @@ type SupplierOrderItem = {
   unitPrice: number;
   totalPrice: number;
   memo?: string | null;
-  itemStatus?: string | null; // pending | confirmed | rejected
+  itemStatus?: string | null; // pending | confirmed | rejected | clinic_inbounded | cancelled
 };
 
 type SupplierOrder = {
@@ -50,6 +50,9 @@ const statusLabels: Record<string, string> = {
   rejected: "거절됨",
   shipped: "출고됨",
   completed: "진행 완료",
+  clinic_inbounded: "입고 완료",
+  cancelled: "취소됨",
+  active: "진행중",
 };
 
 const tabs = [
@@ -301,6 +304,62 @@ export default function OrdersPage() {
     );
   };
 
+  // Compute order-level badge for "주문 내역" (all) tab based on item statuses
+  const renderOrderBadgeForAllTab = (items: SupplierOrderItem[]) => {
+    const activeItems = items.filter(
+      (i) => i.itemStatus !== "rejected" && i.itemStatus !== "cancelled"
+    );
+    const rejectedOrCancelled = items.filter(
+      (i) => i.itemStatus === "rejected" || i.itemStatus === "cancelled"
+    );
+
+    // All active (non-rejected/non-cancelled) items are clinic_inbounded → "입고 완료"
+    // Rejected items are supplier's own decision, not a partial inbound situation
+    const allActiveInbounded =
+      activeItems.length > 0 &&
+      activeItems.every((i) => i.itemStatus === "clinic_inbounded");
+
+    if (allActiveInbounded) {
+      return (
+        <span className="rounded-full px-2 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700">
+          입고 완료
+        </span>
+      );
+    }
+
+    // All items rejected
+    if (rejectedOrCancelled.length === items.length) {
+      if (items.every((i) => i.itemStatus === "cancelled")) {
+        return (
+          <span className="rounded-full px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-600">
+            취소됨
+          </span>
+        );
+      }
+      return (
+        <span className="rounded-full px-2 py-1 text-xs font-semibold bg-red-100 text-red-700">
+          거절됨
+        </span>
+      );
+    }
+
+    // Some active items are clinic_inbounded but some confirmed still pending
+    const hasInbounded = activeItems.some((i) => i.itemStatus === "clinic_inbounded");
+    if (hasInbounded) {
+      return (
+        <span className="rounded-full px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-700">
+          일부 입고
+        </span>
+      );
+    }
+
+    return (
+      <span className="rounded-full px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-600">
+        주문 내역
+      </span>
+    );
+  };
+
   // Helper function to extract rejection reason from memo
   const extractRejectionReason = (
     memo: string | null | undefined
@@ -322,7 +381,6 @@ export default function OrdersPage() {
 
     return (
       <div
-        key={order.id}
         className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
       >
         {/* Top: Date and Order Number */}
@@ -339,7 +397,9 @@ export default function OrdersPage() {
               {order.clinic?.managerName || ""}님
             </span>
           </div>
-          {renderStatusBadge(order.status, activeTab === "all")}
+          {activeTab === "all"
+            ? renderOrderBadgeForAllTab(order.items)
+            : renderStatusBadge(order.status)}
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -370,11 +430,11 @@ export default function OrdersPage() {
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">
-                  {/* ✅ "all" tab: confirmed/completed order'lar uchun confirmedQuantity */}
-                  {/* ✅ "confirmed" tab: pending quantity (item.quantity) */}
-                  {(activeTab === "all" && (order.status === "confirmed" || order.status === "completed") && item.confirmedQuantity !== undefined)
-                    ? `${item.confirmedQuantity}개`
-                    : `${item.quantity}개`}
+                  {activeTab === "all" && item.itemStatus === "clinic_inbounded" && item.inboundQuantity !== undefined
+                    ? `${item.inboundQuantity}개`
+                    : activeTab === "all" && item.confirmedQuantity !== undefined
+                      ? `${item.confirmedQuantity}개`
+                      : `${item.quantity}개`}
                 </div>
                 {isRejected ? (
                   <div className="text-right text-slate-400 text-xs">
@@ -569,7 +629,45 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {orders.map((order) => renderOrderCard(order))}
+            {activeTab === "all"
+              ? orders.flatMap((order) => {
+                  const inboundedItems = order.items.filter(
+                    (i) => i.itemStatus === "clinic_inbounded"
+                  );
+                  const rejectedItems = order.items.filter(
+                    (i) =>
+                      i.itemStatus === "rejected" ||
+                      i.itemStatus === "cancelled"
+                  );
+                  const cards = [];
+                  if (inboundedItems.length > 0) {
+                    cards.push(
+                      <div key={`${order.id}-inbound`}>
+                        {renderOrderCard({ ...order, items: inboundedItems })}
+                      </div>
+                    );
+                  }
+                  if (rejectedItems.length > 0) {
+                    cards.push(
+                      <div key={`${order.id}-rejected`}>
+                        {renderOrderCard({ ...order, items: rejectedItems })}
+                      </div>
+                    );
+                  }
+                  if (cards.length === 0) {
+                    cards.push(
+                      <div key={order.id}>
+                        {renderOrderCard(order)}
+                      </div>
+                    );
+                  }
+                  return cards;
+                })
+              : orders.map((order) => (
+                  <div key={order.id}>
+                    {renderOrderCard(order)}
+                  </div>
+                ))}
           </div>
         )}
       </div>
@@ -593,7 +691,9 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {renderStatusBadge(detailOrder.status, activeTab === "all")}
+                {activeTab === "all"
+                  ? renderOrderBadgeForAllTab(detailOrder.items)
+                  : renderStatusBadge(detailOrder.status)}
                 <button
                   onClick={() => setDetailOrder(null)}
                   className="text-slate-500 hover:text-slate-700"
@@ -649,27 +749,35 @@ export default function OrdersPage() {
                           className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
                             itemStatus === "rejected"
                               ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                              : itemStatus === "confirmed"
+                              : itemStatus === "clinic_inbounded"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                                : itemStatus === "confirmed"
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                  : itemStatus === "cancelled"
+                                    ? "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                                    : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
                           }`}
                         >
                           {itemStatus === "rejected"
                             ? "거절"
-                            : itemStatus === "confirmed"
-                              ? "접수"
-                              : "대기"}
+                            : itemStatus === "clinic_inbounded"
+                              ? "입고 완료"
+                              : itemStatus === "confirmed"
+                                ? "접수"
+                                : itemStatus === "cancelled"
+                                  ? "취소"
+                                  : "대기"}
                         </span>
                       </div>
                       <div className="truncate text-slate-500">
                         {item.brand || "-"}
                       </div>
                       <div className="text-right">
-                        {/* ✅ "주문 내역" (all) tab: Show inbound quantity if available */}
-                        {/* ✅ "클리닉 확인중" (confirmed) tab: Show pending quantity */}
-                        {activeTab === "all" && item.inboundQuantity !== undefined && item.inboundQuantity > 0
-                          ? `${item.inboundQuantity}개`  // ✅ 20개 (inbound)
-                          : `${item.quantity}개`}        // ✅ 10개 (pending)
+                        {activeTab === "all" && itemStatus === "clinic_inbounded" && item.inboundQuantity !== undefined
+                          ? `${item.inboundQuantity}개`
+                          : activeTab === "all" && item.confirmedQuantity !== undefined
+                            ? `${item.confirmedQuantity}개`
+                            : `${item.quantity}개`}
                       </div>
                       {itemStatus === "rejected" ? (
                         <div className="text-right text-slate-400 text-xs">

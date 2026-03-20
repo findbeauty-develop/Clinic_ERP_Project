@@ -393,18 +393,23 @@ export class OrderService {
             data: { item_status: "rejected", updated_at: new Date() },
           });
         } else if (rejectedItemIds.size < order.items.length) {
+          // Only reset pending/confirmed items to confirmed — do NOT touch clinic_inbounded or cancelled items
           await tx.supplierOrderItem.updateMany({
             where: {
               order_id: id,
               id: { notIn: Array.from(rejectedItemIds) },
+              item_status: { notIn: ["clinic_inbounded", "cancelled"] },
             },
             data: { item_status: "confirmed", updated_at: new Date() },
           });
         }
       } else if (dto.status === "rejected") {
-        // Full reject: no per-item reasons, set all items to rejected
+        // Full reject: set all non-inbounded items to rejected
         await tx.supplierOrderItem.updateMany({
-          where: { order_id: id },
+          where: {
+            order_id: id,
+            item_status: { notIn: ["clinic_inbounded", "cancelled"] },
+          },
           data: { item_status: "rejected", updated_at: new Date() },
         });
       }
@@ -531,15 +536,17 @@ export class OrderService {
         return;
       }
 
-      // Partial reject: har bir item uchun itemStatus (rejected/confirmed) yuboriladi
+      // Partial reject: har bir item uchun itemStatus (rejected/confirmed/clinic_inbounded) yuboriladi
       const rejectionReasonsMap = rejectionReasons || {};
-      const hasAnyConfirmed = order.items.some(
-        (i: any) => (i.item_status || "pending") === "confirmed"
-      );
+      // clinic_inbounded items also count as "active" — not fully rejected
+      const hasAnyActive = order.items.some((i: any) => {
+        const s = i.item_status || "pending";
+        return s === "confirmed" || s === "clinic_inbounded";
+      });
       const payload = {
         orderNo: order.order_no,
         clinicTenantId: order.clinic_tenant_id,
-        status: hasAnyConfirmed ? "supplier_confirmed" : "rejected",
+        status: hasAnyActive ? "supplier_confirmed" : "rejected",
         rejectionReasons: rejectionReasonsMap,
         updatedItems: order.items.map((item: any) => ({
           itemId: item.id,
@@ -550,7 +557,13 @@ export class OrderService {
           unitPrice: item.unit_price,
           totalPrice: item.total_price,
           memo: item.memo,
-          itemStatus: (item.item_status || "pending") === "rejected" ? "rejected" : "confirmed",
+          // Preserve clinic_inbounded status — do not convert to "confirmed"
+          itemStatus:
+            (item.item_status || "pending") === "rejected"
+              ? "rejected"
+              : (item.item_status || "pending") === "clinic_inbounded"
+                ? "clinic_inbounded"
+                : "confirmed",
         })),
         totalAmount: order.total_amount,
       };

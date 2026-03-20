@@ -216,7 +216,7 @@ export class OrderController {
   }
 
   /**
-   * Confirm rejected order - create RejectedOrder records
+   * Confirm rejected order - set item_status to rejection_acknowledged and save member name
    */
   @Post("rejected-order/confirm")
   @UseGuards(JwtTenantGuard)

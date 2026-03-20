@@ -438,6 +438,7 @@ model OrderItem {
   total_price            Int
   memo                   String?
   item_status            String?   @default("pending") // pending, confirmed, rejected, rejection_acknowledged, inbounded, cancelled
+  rejection_member_name  String?   // Kim "상황 확인" bosgan (rejection_acknowledged bo'lganda)
   created_at         DateTime  @default(now())
   updated_at         DateTime?
   batch              Batch?    @relation(fields: [batch_id], references: [id])
@@ -499,26 +500,6 @@ model OrderReturn {
   @@index([status])
   @@index([tenant_id, status])
   @@index([return_type])
-}
-
-model RejectedOrder {
-  id            String    @id @default(uuid())
-  tenant_id     String
-  order_id      String
-  order_no      String
-  company_name  String // Supplier company name
-  manager_name  String // Supplier manager name
-  product_name  String
-  product_brand String?
-  qty           Int // Rejected quantity
-  member_name   String // Member who checked/confirmed the rejection
-  created_at    DateTime  @default(now())
-  updated_at    DateTime?
-
-  @@index([tenant_id])
-  @@index([order_id])
-  @@index([order_no])
-  @@index([tenant_id, order_id])
 }
 
 model Supplier {

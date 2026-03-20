@@ -4680,7 +4680,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
         ) {
           order.items?.forEach((item: any) => {
             const itemStatus = item.itemStatus ?? item.item_status ?? "pending";
-            if (itemStatus !== "confirmed" && itemStatus !== "pending") return;
+            if (itemStatus !== "confirmed") return;
             const confirmedQty =
               item.confirmedQuantity || item.orderedQuantity || 0;
             const alreadyInbound = item.inboundQuantity || 0;
@@ -6033,7 +6033,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   const handleProcessOrder = async (
     order: any,
-    options?: { hasRejectedItemsInSameOrder?: boolean }
+    options?: { hasRejectedItemsInSameOrder?: boolean; hasPendingItemsInSameOrder?: boolean }
   ) => {
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
@@ -6128,14 +6128,16 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
 
-    // ✅ Rejected items bo'lsa — partial-inbound (order complete qilmaslik; rejected card qoladi)
+    // ✅ Rejected or pending items bo'lsa — partial-inbound (order complete qilmaslik)
+    const usePartialApi =
+      options?.hasRejectedItemsInSameOrder || options?.hasPendingItemsInSameOrder;
     await processInboundOrder(
       order,
       order.items,
       false,
       undefined,
       undefined,
-      options?.hasRejectedItemsInSameOrder
+      usePartialApi
     );
   };
 
@@ -6369,7 +6371,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
           ) {
             return (Object.values(lots) as number[]).reduce((a, b) => a + b, 0);
           }
-          return edited?.quantity || 0;
+          // Fall back to confirmed quantity when the user hasn't manually entered a quantity —
+          // this mirrors the completeOrder behaviour which always uses confirmed_quantity.
+          return (
+            edited?.quantity ||
+            item.confirmedQuantity ||
+            item.confirmedQty ||
+            item.confirmed_quantity ||
+            0
+          );
         };
         const inboundedItems = itemsToProcess
           .map((item: any) => {
@@ -6931,6 +6941,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
             order: any;
             sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절";
             hasRejectedItemsInSameOrder?: boolean;
+            hasPendingItemsInSameOrder?: boolean;
           };
           const cards: CardItem[] = [];
           currentOrders.forEach((order) => {
@@ -6944,11 +6955,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 (item.itemStatus ?? item.item_status ?? "pending") ===
                 "confirmed"
             );
-            const rejectedItems = (order.items || []).filter(
-              (item: any) =>
-                (item.itemStatus ?? item.item_status ?? "pending") ===
-                "rejected"
-            );
+            const rejectedItems = (order.items || []).filter((item: any) => {
+              const s = item.itemStatus ?? item.item_status ?? "pending";
+              // Include rejection_acknowledged so completeOrder is not called when
+              // there are still "handled-rejected" items alongside confirmed ones.
+              return s === "rejected" || s === "rejection_acknowledged";
+            });
             if (isRejected) {
               cards.push({ order });
             } else {
@@ -6963,23 +6975,31 @@ const PendingOrdersList = memo(function PendingOrdersList({
                   order: { ...order, items: confirmedItems },
                   sectionLabel: "주문 진행",
                   hasRejectedItemsInSameOrder: rejectedItems.length > 0,
+                  // Use partial-inbound when pending items OR rejection_acknowledged items
+                  // exist so the order doesn't prematurely become "completed".
+                  hasPendingItemsInSameOrder: pendingItems.length > 0,
                 });
               }
-              if (rejectedItems.length > 0) {
+              // Show "주문 거절" card only for strictly-rejected items (not rejection_acknowledged)
+              const strictlyRejectedItems = (order.items || []).filter(
+                (item: any) =>
+                  (item.itemStatus ?? item.item_status ?? "pending") === "rejected"
+              );
+              if (strictlyRejectedItems.length > 0) {
                 cards.push({
-                  order: { ...order, items: rejectedItems },
+                  order: { ...order, items: strictlyRejectedItems },
                   sectionLabel: "주문 거절",
                 });
               }
             }
           });
-          return cards.map(({ order, sectionLabel, hasRejectedItemsInSameOrder }, idx) => {
+          return cards.map(({ order, sectionLabel, hasRejectedItemsInSameOrder, hasPendingItemsInSameOrder }, idx) => {
             const orderId = order.id || order.orderId;
             const key = sectionLabel
               ? `${orderId}-${sectionLabel}-${idx}`
               : orderId || `order-${order.orderNo}-${idx}`;
             const processOrderHandler = (o: any) =>
-              handleProcessOrder(o, { hasRejectedItemsInSameOrder });
+              handleProcessOrder(o, { hasRejectedItemsInSameOrder, hasPendingItemsInSameOrder });
             return (
               <OrderCard
                 key={key}
