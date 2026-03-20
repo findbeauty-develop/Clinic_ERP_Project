@@ -129,6 +129,8 @@ export class OrderService {
     // ✅ Tab mantiqi SupplierOrderItem.item_status dan
     const where: any = {
       supplier_manager_id: supplierManagerId,
+      // cancelled orderlar hech qaysi tabda ko'rinmasin — faqat "all" tabda ko'rsatiladi
+      NOT: status === "all" ? undefined : { status: "cancelled" },
     };
 
     if (status === "pending") {
@@ -137,6 +139,9 @@ export class OrderService {
     } else if (status === "confirmed") {
       // 클리닉 확인중: kamida bitta confirmed item bo'lgan orderlar
       where.items = { some: { item_status: "confirmed" } };
+    } else if (status === "all") {
+      // 주문 내역: clinic_inbounded yoki rejected itemlar bo'lgan orderlar
+      where.items = { some: { item_status: { in: ["clinic_inbounded", "rejected", "cancelled"] } } };
     }
 
     const [total, orders] = await Promise.all([
@@ -153,15 +158,14 @@ export class OrderService {
     let processedOrders = orders;
 
     if (status === "all") {
-      // 주문 내역: faqat inbound yoki rejected (confirmed qo‘shilmasin)
+      // 주문 내역: clinic_inbounded, rejected, cancelled itemlar (pending/confirmed ko'rinmasin)
       processedOrders = orders
         .map((order: any) => ({
           ...order,
-          items: order.items.filter(
-            (item: any) =>
-              (item.inbound_quantity || 0) > 0 ||
-              (item.item_status || "pending") === "rejected"
-          ),
+          items: order.items.filter((item: any) => {
+            const s = item.item_status || "pending";
+            return s === "clinic_inbounded" || s === "rejected" || s === "cancelled";
+          }),
         }))
         .filter((order: any) => order.items.length > 0);
     } else if (status === "pending") {
@@ -650,24 +654,25 @@ export class OrderService {
             `   Item ${item.id} (productId: ${item.product_id}): current_inbound=${currentInboundQty}, new_inbound=${newInboundQty}, total_inbound=${totalInboundQty}, confirmed=${confirmedQty}`
           );
 
-          // ✅ Update inbound_quantity (pending_quantity will be calculated on read)
+          // ✅ Update inbound_quantity + item_status
+          const itemFullyInbound = totalInboundQty >= confirmedQty;
           await (this.prisma as any).supplierOrderItem.update({
             where: { id: item.id },
             data: {
-              inbound_quantity: totalInboundQty, // ✅ Total inbound (80 or 100)
-              // pending_quantity: confirmedQty - totalInboundQty, // ⏸️ TODO: Apply migration first!
+              inbound_quantity: totalInboundQty,
+              item_status: itemFullyInbound ? "clinic_inbounded" : "confirmed",
               updated_at: new Date(),
             },
           });
 
           // ✅ Check if item is fully inbound
-          if (totalInboundQty < confirmedQty) {
+          if (!itemFullyInbound) {
             allItemsCompleted = false;
             this.logger.log(
               `   📦 Item ${item.id}: partially inbound (${totalInboundQty}/${confirmedQty}, ${confirmedQty - totalInboundQty} remaining)`
             );
           } else {
-            this.logger.log(`   ✅ Item ${item.id}: fully inbound (${totalInboundQty}/${confirmedQty})`);
+            this.logger.log(`   ✅ Item ${item.id}: fully inbound → clinic_inbounded (${totalInboundQty}/${confirmedQty})`);
           }
         } else {
           // ✅ Item inbound qilinmagan
@@ -685,6 +690,11 @@ export class OrderService {
       // ✅ inboundItems yo'q bo'lsa, eski logika (barcha item'lar to'liq inbound)
       newStatus = "completed";
       this.logger.log(`✅ No inboundItems provided, assuming all items completed for order ${orderNo}`);
+      // Barcha itemlarni clinic_inbounded qilamiz
+      await (this.prisma as any).supplierOrderItem.updateMany({
+        where: { order_id: order.id },
+        data: { item_status: "clinic_inbounded", updated_at: new Date() },
+      });
     }
 
     const updated = await (this.prisma as any).supplierOrder.update({
@@ -731,21 +741,26 @@ export class OrderService {
       return { success: false, message: "Order not found" };
     }
 
-    // Delete order from supplier-backend (clinic cancelled, so no history needed)
+    // ✅ Delete o'rniga status = cancelled qilamiz — supplier tarixda ko'ra olsin
     await this.prisma.executeWithRetry(async () => {
-      await (this.prisma as any).supplierOrder.delete({
+      await (this.prisma as any).supplierOrder.update({
         where: { id: order.id },
+        data: { status: "cancelled", updated_at: new Date() },
+      });
+      await (this.prisma as any).supplierOrderItem.updateMany({
+        where: { order_id: order.id },
+        data: { item_status: "cancelled", updated_at: new Date() },
       });
     });
 
     this.logger.log(
-      `✅ [Order Cancel] Order ${orderNo} deleted from supplier-backend`
+      `✅ [Order Cancel] Order ${orderNo} marked as cancelled in supplier-backend`
     );
 
     return {
       success: true,
       orderNo: orderNo,
-      message: "Order cancelled and removed",
+      message: "Order cancelled",
     };
   }
 

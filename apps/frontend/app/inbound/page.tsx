@@ -6031,9 +6031,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
     }));
   };
 
-  const handleProcessOrder = async (order: any) => {
-    // ✅ DEBUG: Check order ID
-
+  const handleProcessOrder = async (
+    order: any,
+    options?: { hasRejectedItemsInSameOrder?: boolean }
+  ) => {
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
 
@@ -6127,8 +6128,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
       return;
     }
 
-    // Process the order (existing logic)
-    await processInboundOrder(order, order.items, false);
+    // ✅ Rejected items bo'lsa — partial-inbound (order complete qilmaslik; rejected card qoladi)
+    await processInboundOrder(
+      order,
+      order.items,
+      false,
+      undefined,
+      undefined,
+      options?.hasRejectedItemsInSameOrder
+    );
   };
 
   // Separate function for actual inbound processing
@@ -6137,7 +6145,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
     itemsToProcess: any[],
     isPartial: boolean = false,
     overrideEditedItems?: Record<string, any>,
-    overrideInboundManager?: string
+    overrideInboundManager?: string,
+    usePartialInboundApi: boolean = false
   ) => {
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
@@ -6346,6 +6355,77 @@ const PendingOrdersList = memo(function PendingOrdersList({
             `반품 생성 중 오류가 발생했습니다: ${returnError.message || "알 수 없는 오류"}\n입고 처리는 계속됩니다.`
           );
         }
+      }
+
+      // ✅ Rejected items bo'lsa — partial-inbound API (order complete qilmaslik; rejected card qoladi)
+      if (usePartialInboundApi) {
+        const resolveQty = (item: any) => {
+          const edited = effectiveEditedItems[item.id];
+          const lots = edited?.lotQuantities;
+          if (
+            lots &&
+            typeof lots === "object" &&
+            Object.keys(lots).length > 0
+          ) {
+            return (Object.values(lots) as number[]).reduce((a, b) => a + b, 0);
+          }
+          return edited?.quantity || 0;
+        };
+        const inboundedItems = itemsToProcess
+          .map((item: any) => {
+            const productId =
+              item.productId ??
+              item.product_id ??
+              item.product?.id ??
+              "";
+            const itemId = item.id ?? item.item_id ?? item.itemId;
+            if (!itemId) {
+              console.warn("[partial-inbound] item without id:", item);
+              return null;
+            }
+            return {
+              itemId: String(itemId),
+              productId: productId ? String(productId) : undefined,
+              inboundQty: Number(resolveQty(item)) || 0,
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => x != null && x.inboundQty > 0);
+        if (inboundedItems.length === 0) {
+          alert("입고할 제품이 없습니다.");
+          return;
+        }
+        try {
+          await apiPost(
+            `${apiUrl}/order/${orderIdToUse}/partial-inbound`,
+            {
+              inboundedItems,
+              inboundManager: inboundManager ?? "",
+            }
+          );
+        } catch (partialErr: any) {
+          const msg =
+            Array.isArray(partialErr?.message)
+              ? partialErr.message.join("\n")
+              : partialErr?.message || "partial-inbound API 오류";
+          console.error("[partial-inbound] payload:", {
+            inboundedItems,
+            inboundManager: inboundManager ?? "",
+          });
+          throw new Error(`입고 처리 실패: ${msg}`);
+        }
+        const msg =
+          batchSummaryLines.length > 0
+            ? `입고 처리가 완료되었습니다.\n\n배치:\n${batchSummaryLines.join("\n")}\n\n거절된 제품은 "상황 확인" 후 사라집니다.`
+            : `입고 처리가 완료되었습니다.\n\n거절된 제품은 "상황 확인" 후 사라집니다.`;
+        alert(msg);
+        if (inboundManager?.trim() && onAddRecentInboundStaff) {
+          onAddRecentInboundStaff(inboundManager.trim());
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("partialInboundCompleted"));
+        }
+        onRefresh();
+        return;
       }
 
       // Update order status to completed only if not partial
@@ -6599,6 +6679,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       // ✅ Set flag to force refresh pending orders list
       if (typeof window !== "undefined") {
         sessionStorage.setItem("pending_inbound_force_refresh", "true");
+        window.dispatchEvent(new CustomEvent("partialInboundCompleted"));
       }
 
       if (inboundManager?.trim() && onAddRecentInboundStaff) {
@@ -6849,6 +6930,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
           type CardItem = {
             order: any;
             sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절";
+            hasRejectedItemsInSameOrder?: boolean;
           };
           const cards: CardItem[] = [];
           currentOrders.forEach((order) => {
@@ -6880,6 +6962,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 cards.push({
                   order: { ...order, items: confirmedItems },
                   sectionLabel: "주문 진행",
+                  hasRejectedItemsInSameOrder: rejectedItems.length > 0,
                 });
               }
               if (rejectedItems.length > 0) {
@@ -6890,11 +6973,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
               }
             }
           });
-          return cards.map(({ order, sectionLabel }, idx) => {
+          return cards.map(({ order, sectionLabel, hasRejectedItemsInSameOrder }, idx) => {
             const orderId = order.id || order.orderId;
             const key = sectionLabel
               ? `${orderId}-${sectionLabel}-${idx}`
               : orderId || `order-${order.orderNo}-${idx}`;
+            const processOrderHandler = (o: any) =>
+              handleProcessOrder(o, { hasRejectedItemsInSameOrder });
             return (
               <OrderCard
                 key={key}
@@ -6902,7 +6987,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 sectionLabel={sectionLabel}
                 editedItems={editedItems}
                 updateItemField={updateItemField}
-                handleProcessOrder={handleProcessOrder}
+                handleProcessOrder={processOrderHandler}
                 processing={processing}
                 inboundManagerName={inboundManagers[orderId] ?? ""}
                 onInboundManagerChange={(value: string) => {

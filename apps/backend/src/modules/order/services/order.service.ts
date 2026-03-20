@@ -4249,10 +4249,12 @@ export class OrderService {
           throw new Error("No items to inbound");
         }
 
-        // ✅ Update order status based on inbound completion
-        const newStatus = allItemsFullyInbound
-          ? "completed"
-          : "pending_inbound";
+        // ✅ Order status: agar rejected items bo'lsa — "completed" qilma, rejected "상황 확인" gacha "pending_inbound" saqlansin
+        const hasRejectedItems = originalOrder.items.some(
+          (item: any) => (item.item_status ?? item.itemStatus) === "rejected"
+        );
+        const newStatus =
+          allItemsFullyInbound && !hasRejectedItems ? "completed" : "pending_inbound";
 
         await tx.order.update({
           where: { id: originalOrder.id },

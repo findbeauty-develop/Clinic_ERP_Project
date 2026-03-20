@@ -477,10 +477,13 @@ export const apiPost = async <T = any>(
     let errorMessage = "Request failed";
     try {
       const error = await response.json();
-      errorMessage =
-        typeof error?.message === "string"
-          ? error.message
-          : `HTTP ${response.status}: ${response.statusText}`;
+      if (typeof error?.message === "string") {
+        errorMessage = error.message;
+      } else if (Array.isArray(error?.message)) {
+        errorMessage = (error.message as string[]).join("; ");
+      } else {
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      }
     } catch {
       errorMessage = `HTTP ${response.status}: ${response.statusText || "Unknown error"}`;
     }
