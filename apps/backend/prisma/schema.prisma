@@ -24,6 +24,7 @@ model Product {
   min_stock            Int       @default(0)
   unit                 String?
   purchase_price       Int?
+  tax_rate             Float    @default(0)  // 0 = 0%, 0.1 = 10%
   sale_price           Int?
   capacity_per_product Float?
   capacity_unit        String?
@@ -437,6 +438,7 @@ model OrderItem {
   confirmed_unit_price   Int?    // Supplier tasdiqlagan narx (supplier o'zgartirsa shu yangilanadi)
   total_price            Int
   memo                   String?
+  tax_rate               Float     @default(0)
   item_status            String?   @default("pending") // pending, confirmed, rejected, rejection_acknowledged, inbounded, cancelled
   rejection_member_name  String?   // Kim "상황 확인" bosgan (rejection_acknowledged bo'lganda)
   created_at         DateTime  @default(now())

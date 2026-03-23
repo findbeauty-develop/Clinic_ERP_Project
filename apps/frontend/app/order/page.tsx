@@ -50,6 +50,7 @@ type ProductWithRisk = {
   batchNo: string | null;
   expiryDate: string | null;
   unitPrice: number | null;
+  taxRate: number | null;
   currentStock: number;
   unit: string | null;
   minStock: number;
@@ -74,6 +75,7 @@ type DraftItem = {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  taxRate?: number;
   memo?: string;
   isHighlighted?: boolean;
 };
@@ -612,6 +614,7 @@ export default function OrderPage() {
 
       const itemId = batchId ? `${productId}-${batchId}` : productId;
       const unitPrice = product.unitPrice || 0;
+      const taxRate = product.taxRate ?? 0;
       const supplierId = product.supplierId || "unknown";
 
       // 🔍 DEBUG: Product va supplier ma'lumotlarini ko'rish
@@ -640,7 +643,7 @@ export default function OrderPage() {
                 supplierId,
                 quantity: sanitizedQuantity,
                 unitPrice,
-
+                taxRate,
                 totalPrice: sanitizedQuantity * unitPrice,
                 isHighlighted: true,
               },
@@ -654,10 +657,10 @@ export default function OrderPage() {
                     id: itemId,
                     productId,
                     batchId,
-
                     supplierId,
                     quantity: sanitizedQuantity,
                     unitPrice,
+                    taxRate,
                     totalPrice: sanitizedQuantity * unitPrice,
                   },
                 ],
@@ -685,6 +688,7 @@ export default function OrderPage() {
             supplierId,
             quantity: sanitizedQuantity,
             unitPrice,
+            taxRate,
             totalPrice: sanitizedQuantity * unitPrice,
             isHighlighted: existingItemIndex < 0, // Yangi item bo'lsa highlight
           };
@@ -1444,17 +1448,9 @@ export default function OrderPage() {
                                     </span>
                                   </div>
 
-                                  {/* Unit price */}
-                                  {/* <div className="text-xs text-slate-600 dark:text-slate-400">
-                                    {item.unitPrice.toLocaleString()}원
-                                  </div> */}
-
-                                  {/* Total (unit price × qty) */}
+                                  {/* Total (tax calculated in modal only) */}
                                   <div className="text-xs font-semibold text-slate-900 dark:text-white">
-                                    {(
-                                      item.unitPrice * currentQty
-                                    ).toLocaleString()}
-                                    원
+                                    {(item.unitPrice * currentQty).toLocaleString()}원
                                   </div>
 
                                   {/* Minus button */}
@@ -1701,7 +1697,8 @@ export default function OrderPage() {
                         (order.items?.length ?? 0) > 0 &&
                         order.items.every(
                           (item: any) =>
-                            (item.itemStatus ?? item.item_status) === "inbounded"
+                            (item.itemStatus ?? item.item_status) ===
+                            "inbounded"
                         );
                       // allCardItemsInbounded → always "입고 완료" (rejected items are in their own card)
                       const isCompleted =
@@ -2052,7 +2049,7 @@ export default function OrderPage() {
                                           </span>
                                         </div>
                                         <div className="text-sm text-slate-600 dark:text-slate-400">
-                                          단가 {item.unitPrice.toLocaleString()}
+                                          단가 {item.unitPrice.toLocaleString()}원
                                         </div>
                                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
                                           총금액:{" "}
@@ -2332,69 +2329,69 @@ export default function OrderPage() {
 
                         {/* Product List */}
                         <div className="mb-3 space-y-2">
-                            {rejectedOrder.items &&
-                            Array.isArray(rejectedOrder.items) &&
-                            rejectedOrder.items.length > 0 ? (
-                              rejectedOrder.items.map(
-                                (item: any, index: number) => {
-                                  const itemStatus =
-                                    item.itemStatus ?? item.item_status;
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
-                                    >
-                                      <div className="flex items-center justify-between gap-4 px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                          <div className="text-sm font-medium text-slate-900 dark:text-white">
-                                            {item.productName || "알 수 없음"}
-                                          </div>
-                                          {itemStatus === "rejected" && (
-                                            <span className="inline-flex rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
-                                              거절
-                                            </span>
-                                          )}
+                          {rejectedOrder.items &&
+                          Array.isArray(rejectedOrder.items) &&
+                          rejectedOrder.items.length > 0 ? (
+                            rejectedOrder.items.map(
+                              (item: any, index: number) => {
+                                const itemStatus =
+                                  item.itemStatus ?? item.item_status;
+                                return (
+                                  <div
+                                    key={index}
+                                    className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
+                                  >
+                                    <div className="flex items-center justify-between gap-4 px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-sm font-medium text-slate-900 dark:text-white">
+                                          {item.productName || "알 수 없음"}
                                         </div>
-                                        <div className="text-sm text-slate-600 dark:text-slate-400">
-                                          브랜드: {item.productBrand || ""}
-                                        </div>
-                                        <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-                                          <span>
-                                            주문수량:{" "}
-                                            {item.orderedQuantity ?? 0}개
+                                        {itemStatus === "rejected" && (
+                                          <span className="inline-flex rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+                                            거절
                                           </span>
-                                        </div>
-                                        <span className="text-sm text-slate-600 dark:text-slate-400">
-                                          <span className="text-slate-400">
-                                            단가:{" "}
-                                          </span>
-                                          {item.unitPrice != null
-                                            ? Number(
-                                                item.unitPrice
-                                              ).toLocaleString()
-                                            : 0}
-                                          원
+                                        )}
+                                      </div>
+                                      <div className="text-sm text-slate-600 dark:text-slate-400">
+                                        브랜드: {item.productBrand || ""}
+                                      </div>
+                                      <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
+                                        <span>
+                                          주문수량: {item.orderedQuantity ?? 0}
+                                          개
                                         </span>
-                                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                          총금액:{" "}
-                                          {item.totalPrice != null
-                                            ? Number(
-                                                item.totalPrice
-                                              ).toLocaleString()
-                                            : 0}
-                                          원
-                                        </div>
+                                      </div>
+                                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                                        <span className="text-slate-400">
+                                          단가:{" "}
+                                        </span>
+                                        {item.unitPrice != null
+                                          ? Number(
+                                              item.unitPrice
+                                            ).toLocaleString()
+                                          : 0}
+                                        원
+                                      </span>
+                                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                                        총금액:{" "}
+                                        {item.totalPrice != null
+                                          ? Number(
+                                              item.totalPrice
+                                            ).toLocaleString()
+                                          : 0}
+                                        원
                                       </div>
                                     </div>
-                                  );
-                                }
-                              )
-                            ) : (
-                              <div className="text-sm text-slate-500 dark:text-slate-400">
-                                제품 정보가 없습니다.
-                              </div>
-                            )}
-                          </div>
+                                  </div>
+                                );
+                              }
+                            )
+                          ) : (
+                            <div className="text-sm text-slate-500 dark:text-slate-400">
+                              제품 정보가 없습니다.
+                            </div>
+                          )}
+                        </div>
                         {/* Total */}
                         <div className="mb-3 flex justify-end">
                           <div className="text-lg font-bold text-slate-900 dark:text-white">
@@ -2643,9 +2640,19 @@ export default function OrderPage() {
                     };
                     const orderNumber = generateOrderNumber();
 
-                    // Subtotal va VAT hisoblash
-                    const subtotal = group.totalAmount;
-                    const vat = Math.floor(subtotal * 0.1); // 10% VAT
+                    // Subtotal va VAT hisoblash (per-item taxRate asosida)
+                    const subtotal = group.items.reduce(
+                      (sum, item) => sum + item.unitPrice * item.quantity,
+                      0
+                    );
+                    const vat = group.items.reduce(
+                      (sum, item) =>
+                        sum +
+                        Math.floor(
+                          item.unitPrice * item.quantity * (item.taxRate ?? 0)
+                        ),
+                      0
+                    );
 
                     return (
                       <div
@@ -2709,7 +2716,10 @@ export default function OrderPage() {
                             const brand = product?.brand || "";
                             const quantity = item.quantity;
                             const unitPrice = item.unitPrice;
-                            const total = item.totalPrice;
+                            const itemTaxRate = item.taxRate ?? 0;
+                            const supplyAmount = quantity * unitPrice;
+                            const taxAmount = Math.floor(supplyAmount * itemTaxRate);
+                            const total = supplyAmount + taxAmount;
 
                             return (
                               <div
@@ -2724,14 +2734,26 @@ export default function OrderPage() {
                                     {productName}
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                                <div className="flex flex-col items-end gap-0.5 text-sm text-slate-600 dark:text-slate-400">
                                   <span>
-                                    {quantity} {product?.unit || "개"} X{" "}
+                                    {quantity} {product?.unit || "개"} ×{" "}
                                     {unitPrice.toLocaleString()}원{" "}
                                     <span className="font-semibold text-slate-900 dark:text-white">
-                                      = {total.toLocaleString()}원
+                                      = {supplyAmount.toLocaleString()}원
                                     </span>
                                   </span>
+                                  {itemTaxRate > 0 && (
+                                    <span className="text-xs text-red-500 dark:text-red-400">
+                                      부가세{" "}
+                                      <span className="font-semibold">
+                                        +{taxAmount.toLocaleString()}원
+                                      </span>{" "}
+                                      → 합계{" "}
+                                      <span className="font-semibold">
+                                        {total.toLocaleString()}원
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -2745,25 +2767,27 @@ export default function OrderPage() {
                           </div>
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-slate-600 dark:text-slate-400">
-                              합계:
+                              공급가액:
                             </span>
                             <span className="font-semibold text-slate-900 dark:text-white">
                               {subtotal.toLocaleString()}원
                             </span>
                           </div>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-600 dark:text-slate-400">
-                              VAT (10%):
-                            </span>
-                            <span className="font-semibold text-slate-900 dark:text-white">
-                              {vat.toLocaleString()}원
-                            </span>
-                          </div>
+                          {vat > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-red-600 dark:text-red-400 font-medium">
+                                부가세 (10%):
+                              </span>
+                              <span className="font-semibold text-red-600 dark:text-red-400">
+                                +{vat.toLocaleString()}원
+                              </span>
+                            </div>
+                          )}
                           <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold dark:border-slate-700">
                             <span className="text-slate-900 dark:text-white">
-                              총액:
+                              합계:
                             </span>
-                            <span className="text-slate-900 dark:text-white">
+                            <span className="text-blue-600 dark:text-blue-400">
                               {(subtotal + vat).toLocaleString()}원
                             </span>
                           </div>
@@ -3227,19 +3251,37 @@ export default function OrderPage() {
                     {/* Total Section */}
                     <div className="p-4 flex flex-col justify-end">
                       {(() => {
-                        const totalAmount = selectedOrder.totalAmount || 0;
-                        const vatAmount = Math.floor(totalAmount * 0.1);
-                        const grandTotal = totalAmount + vatAmount;
+                        const items = selectedOrder.items || [];
+                        const supplyTotal = items.reduce(
+                          (sum: number, item: any) =>
+                            sum +
+                            (item.orderedQuantity ?? item.quantity ?? 0) *
+                              (item.unitPrice ?? 0),
+                          0
+                        );
+                        const vatAmount = items.reduce(
+                          (sum: number, item: any) =>
+                            sum +
+                            Math.floor(
+                              (item.orderedQuantity ?? item.quantity ?? 0) *
+                                (item.unitPrice ?? 0) *
+                                (item.taxRate ?? 0)
+                            ),
+                          0
+                        );
+                        const grandTotal = supplyTotal + vatAmount;
                         return (
                           <>
                             <div className="text-sm text-slate-700 mb-2">
-                              [총금액] {totalAmount.toLocaleString()}
+                              [공급가액] {supplyTotal.toLocaleString()}원
                             </div>
-                            <div className="text-sm text-slate-700 mb-2">
-                              [+VAT금액] {vatAmount.toLocaleString()}
-                            </div>
+                            {vatAmount > 0 && (
+                              <div className="text-sm font-semibold text-red-600 mb-2">
+                                [+부가세] +{vatAmount.toLocaleString()}원
+                              </div>
+                            )}
                             <div className="text-sm font-semibold text-slate-900 border-t border-slate-300 pt-2 mt-2">
-                              합계: {grandTotal.toLocaleString()}
+                              합계: {grandTotal.toLocaleString()}원
                             </div>
                           </>
                         );

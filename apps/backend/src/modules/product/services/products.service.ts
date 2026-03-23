@@ -9,7 +9,11 @@ import {
 import { Prisma } from "../../../../node_modules/.prisma/client-backend";
 import { PrismaService } from "../../../core/prisma.service";
 import { saveBase64Images } from "../../../common/utils/upload.utils";
-import { CreateBatchDto, CreateProductDto, UpdateBatchDto } from "../dto/create-product.dto";
+import {
+  CreateBatchDto,
+  CreateProductDto,
+  UpdateBatchDto,
+} from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
 import { ImportProductRowDto } from "../dto/import-products.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
@@ -167,6 +171,7 @@ export class ProductsService {
           currentStock: product.current_stock,
           minStock: product.min_stock,
           purchasePrice: product.purchase_price,
+          taxRate: product.tax_rate,
           salePrice: product.sale_price,
           unit: product.unit,
           usageCapacity: product.usage_capacity,
@@ -243,6 +248,7 @@ export class ProductsService {
       currentStock: product.current_stock,
       minStock: product.min_stock,
       purchasePrice: product.purchase_price,
+      taxRate: product.tax_rate,
       salePrice: product.sale_price,
       unit: product.unit,
       usageCapacity: product.usage_capacity,
@@ -412,6 +418,7 @@ export class ProductsService {
               is_active: resolvedIsActive,
               unit: dto.unit ?? null,
               purchase_price: dto.purchasePrice ?? null, // Default/fallback price
+              tax_rate: dto.taxRate ?? 0,
               sale_price: dto.salePrice ?? null,
               current_stock: dto.currentStock ?? 0,
               min_stock: dto.minStock ?? 0,
@@ -730,6 +737,7 @@ export class ProductsService {
       inboundQty: null, // inbound_qty removed from Product table - should get from first Batch if needed
       minStock: product.min_stock,
       purchasePrice: purchasePrice, // ProductSupplier.purchase_price or Product.purchase_price
+      taxRate: product.tax_rate ?? 0,
       salePrice: product.sale_price,
       unit: product.unit,
       capacityPerProduct: product.capacity_per_product,
@@ -878,6 +886,7 @@ export class ProductsService {
         currentStock: product.current_stock,
         minStock: product.min_stock,
         purchasePrice: product.purchase_price,
+        taxRate: product.tax_rate ?? 0,
         salePrice: product.sale_price,
         unit: product.unit,
         usageCapacity: product.usage_capacity,
@@ -1073,6 +1082,7 @@ export class ProductsService {
             // is_active: resolvedIsActive,
             unit: dto.unit ?? existing.unit,
             purchase_price: dto.purchasePrice ?? existing.purchase_price,
+            tax_rate: dto.taxRate ?? existing.tax_rate,
             sale_price: dto.salePrice ?? existing.sale_price,
             current_stock: newCurrentStock, // Use the computed value
             min_stock:
@@ -1273,15 +1283,13 @@ export class ProductsService {
                     await tx.clinicSupplierManager.create({
                       data: {
                         tenant_id: tenantId,
-                        company_name:
-                          supplier.company_name || "공급업체 없음",
+                        company_name: supplier.company_name || "공급업체 없음",
                         business_number: supplier.business_number || null,
                         company_phone: supplier.company_phone || null,
                         company_email: supplier.company_email || null,
                         company_address: supplier.company_address || null,
                         name: supplier.contact_name || "담당자 없음",
-                        phone_number:
-                          supplier.contact_phone || "000-0000-0000",
+                        phone_number: supplier.contact_phone || "000-0000-0000",
                         email1: supplier.contact_email || null,
                         linked_supplier_manager_id: linkedSupplierManagerId,
                       },
@@ -1960,7 +1968,8 @@ export class ProductsService {
         ? new Date(dto.manufacture_date)
         : null;
     }
-    if (dto.purchase_price !== undefined) updateData.purchase_price = dto.purchase_price;
+    if (dto.purchase_price !== undefined)
+      updateData.purchase_price = dto.purchase_price;
     if (dto.storage !== undefined) updateData.storage = dto.storage;
     if (dto.inbound_manager !== undefined)
       updateData.inbound_manager = dto.inbound_manager;
@@ -2368,7 +2377,17 @@ export class ProductsService {
         (row as any).barcode_package_type = "BOX";
       } else {
         const bpt = (row as any).barcode_package_type.trim().toUpperCase();
-        if (!["BOX", "AMPULE", "VIAL", "UNIT", "SYRINGE", "BOTTLE", "OTHER"].includes(bpt)) {
+        if (
+          ![
+            "BOX",
+            "AMPULE",
+            "VIAL",
+            "UNIT",
+            "SYRINGE",
+            "BOTTLE",
+            "OTHER",
+          ].includes(bpt)
+        ) {
           (row as any).barcode_package_type = "BOX";
         } else {
           (row as any).barcode_package_type = bpt;
@@ -2579,7 +2598,10 @@ export class ProductsService {
                           tenant_id: tenantId,
                           product_id: productId,
                           gtin,
-                          barcode_package_type: (row as any).barcode_package_type?.trim().toUpperCase() ?? "BOX",
+                          barcode_package_type:
+                            (row as any).barcode_package_type
+                              ?.trim()
+                              .toUpperCase() ?? "BOX",
                         },
                       });
                     } catch (gtinErr: any) {

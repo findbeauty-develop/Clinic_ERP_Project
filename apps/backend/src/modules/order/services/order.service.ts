@@ -104,6 +104,7 @@ export class OrderService {
         managerName: managerName,
         managerPosition: supplierManager?.position ?? null, // Position is not in ClinicSupplierManager
         unitPrice,
+        taxRate: product.tax_rate ?? 0,
         currentStock: product.current_stock ?? 0,
         minStock: product.min_stock ?? 0,
         unit: product.unit ?? null, // ✅ Product unit
@@ -589,6 +590,7 @@ export class OrderService {
           batchId: item.batchId,
           supplierId: supplierId,
           quantity: item.quantity,
+          taxRate: product.tax_rate ?? 0,
           unitPrice: unitPrice,
           totalPrice: item.quantity * unitPrice,
           memo: item.memo,
@@ -1370,6 +1372,7 @@ export class OrderService {
         totalPrice: item.total_price,
         memo: item.memo || null,
         itemStatus: item.item_status || null,
+        taxRate: item.tax_rate ?? 0,
       }));
 
       // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
@@ -3293,7 +3296,6 @@ export class OrderService {
     this.pendingInboundCache.delete(key);
   }
 
-
   async getPendingInboundOrders(tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
@@ -3679,7 +3681,8 @@ export class OrderService {
       });
       const hasNonRejected = itemCounts.some(
         (g: any) =>
-          g.item_status !== "rejected" && g.item_status !== "rejection_acknowledged"
+          g.item_status !== "rejected" &&
+          g.item_status !== "rejection_acknowledged"
       );
       if (!hasNonRejected) {
         await (this.prisma as any).order.update({
@@ -3917,7 +3920,7 @@ export class OrderService {
           // Only include confirmed items in inboundItems — rejected/rejection_acknowledged items
           // were not actually inbounded so they must not be reported to supplier as inbounded.
           const confirmedItemsForSupplier = order.items.filter(
-            (item: any) => item.item_status === "confirmed",
+            (item: any) => item.item_status === "confirmed"
           );
           const inboundItems = confirmedItemsForSupplier.map((item: any) => ({
             itemId: item.id,
@@ -4222,7 +4225,9 @@ export class OrderService {
           (item: any) => (item.item_status ?? item.itemStatus) === "rejected"
         );
         const newStatus =
-          allItemsFullyInbound && !hasRejectedItems ? "completed" : "pending_inbound";
+          allItemsFullyInbound && !hasRejectedItems
+            ? "completed"
+            : "pending_inbound";
 
         await tx.order.update({
           where: { id: originalOrder.id },

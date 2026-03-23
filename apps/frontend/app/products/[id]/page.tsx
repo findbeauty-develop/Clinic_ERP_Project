@@ -51,6 +51,7 @@ type ProductDetail = {
   minStock: number;
   unit?: string | null;
   purchasePrice?: number | null;
+  taxRate?: number | null;
   salePrice?: number | null;
   supplierId?: string | null;
   supplierName?: string | null;
@@ -244,6 +245,7 @@ export default function ProductDetailPage() {
             data.minStock !== undefined ? data.minStock : data.min_stock,
           unit: data.unit,
           purchasePrice: data.purchasePrice || data.purchase_price,
+          taxRate: data.taxRate ?? data.tax_rate ?? 0,
           salePrice: data.salePrice || data.sale_price,
           supplierId: data.supplierId || null,
           supplierName: data.supplierName,
@@ -710,6 +712,14 @@ export default function ProductDetailPage() {
                       product.purchasePrice !== undefined
                         ? `${product.purchasePrice.toLocaleString()} 원${product?.unit ? ` / ${product.unit}` : ""}`
                         : "—"
+                    }
+                  />
+                  <ReadOnlyField
+                    label="부기세"
+                    value={
+                      product.taxRate === 0.1
+                        ? "부가세 별도 10% 추가"
+                        : "부가세 포함"
                     }
                   />
                   {/* <ReadOnlyField
@@ -1428,6 +1438,7 @@ function ProductEditForm({
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [showTaxDropdown, setShowTaxDropdown] = useState(false);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     id?: string;
     supplierId?: string;
@@ -1500,6 +1511,7 @@ function ProductEditForm({
     purchasePriceUnit: "box",
     capacityUnit: product.capacityUnit || unitOptions[0] || "cc",
     usageCapacityUnit: product.capacityUnit || unitOptions[0] || "cc",
+    taxRate: (product as any).taxRate ?? (null as number | null),
     salePriceUnit: product.capacityUnit || unitOptions[0] || "cc",
     purchasePrice: product.purchasePrice?.toString() || "",
     salePrice: product.salePrice?.toString() || "",
@@ -1941,6 +1953,7 @@ function ProductEditForm({
           ? Number(formData.purchasePrice)
           : undefined,
         salePrice: formData.salePrice ? Number(formData.salePrice) : undefined,
+        taxRate: formData.taxRate ?? undefined,
       };
 
       // 제품 재고 수량: edit form'dan olib tashlandi — yuborilmaydi
@@ -2130,6 +2143,12 @@ function ProductEditForm({
           finalProductResponse.purchasePrice ||
           finalProductResponse.purchase_price ||
           product.purchasePrice,
+        taxRate:
+          finalProductResponse.taxRate !== undefined
+            ? finalProductResponse.taxRate
+            : finalProductResponse.tax_rate !== undefined
+              ? finalProductResponse.tax_rate
+              : product.taxRate,
         salePrice:
           finalProductResponse.salePrice ||
           finalProductResponse.sale_price ||
@@ -2795,6 +2814,65 @@ function ProductEditForm({
                   box
                 </div>
               </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              부가세 포함 여부
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowTaxDropdown((prev) => !prev)}
+                className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <span
+                  className={formData.taxRate === null ? "text-slate-400" : ""}
+                >
+                  {formData.taxRate === null
+                    ? "부가세 선택해주세요."
+                    : formData.taxRate === 0
+                      ? "부가세 포함"
+                      : "부가세 별도  10% 추가"}
+                </span>
+                <svg
+                  className="h-4 w-4 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {showTaxDropdown && (
+                <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleInputChange("taxRate", 0);
+                      setShowTaxDropdown(false);
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    부가세 포함
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleInputChange("taxRate", 0.1);
+                      setShowTaxDropdown(false);
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    부가세 별도&nbsp; 10% 추가
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           {/* <div className="flex flex-col gap-2">

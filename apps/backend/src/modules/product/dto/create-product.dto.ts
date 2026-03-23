@@ -231,6 +231,11 @@ export class CreateProductDto {
   purchasePrice?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
+
+  @IsOptional()
   @IsInt()
   salePrice?: number;
 

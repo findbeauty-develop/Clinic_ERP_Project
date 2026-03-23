@@ -68,6 +68,7 @@ export default function InboundNewPage() {
   const [selectedBarcodeMethod, setSelectedBarcodeMethod] =
     useState<string>("manual");
   const [isReturnable, setIsReturnable] = useState<boolean>(false);
+  const [showTaxDropdown, setShowTaxDropdown] = useState(false);
   const [selectedManager, setSelectedManager] = useState<string>(""); // Current logged-in member name
   const [loading, setLoading] = useState(false);
   const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] =
@@ -326,6 +327,7 @@ export default function InboundNewPage() {
     usageCapacity: 1,
     usageCapacityUnit: "box", // 사용 단위 unit (alohida)
     purchasePrice: "",
+    taxRate: null as number | null,
     purchasePriceUnit: "box", // Fixed to "box" only
     salePrice: "",
     salePriceUnit: "box",
@@ -1149,6 +1151,9 @@ export default function InboundNewPage() {
       if (formData.purchasePrice) {
         payload.purchasePrice = Number(formData.purchasePrice);
       }
+      if (formData.taxRate) {
+        payload.taxRate = Number(formData.taxRate);
+      }
       if (formData.salePrice) {
         payload.salePrice = Number(formData.salePrice);
       }
@@ -1927,6 +1932,70 @@ export default function InboundNewPage() {
                 {/* <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                   공급업체로부터 구매하는 가격
                 </div> */}
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  부가세 포함 여부 <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  {/* Trigger button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowTaxDropdown((prev) => !prev)}
+                    className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700 transition focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <span
+                      className={
+                        formData.taxRate === null ? "text-slate-400" : ""
+                      }
+                    >
+                      {formData.taxRate === null
+                        ? "부가세 선택해주세요."
+                        : formData.taxRate === 0
+                          ? "부가세 포함"
+                          : "부가세 별도  10% 추가"}
+                    </span>
+                    <svg
+                      className="h-4 w-4 text-slate-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown options */}
+                  {showTaxDropdown && (
+                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleInputChange("taxRate", 0);
+                          setShowTaxDropdown(false);
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        부가세 포함
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleInputChange("taxRate", 0.1);
+                          setShowTaxDropdown(false);
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        부가세 별도&nbsp; 10% 추가
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               {/* <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
