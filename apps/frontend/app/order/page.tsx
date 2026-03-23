@@ -1450,7 +1450,10 @@ export default function OrderPage() {
 
                                   {/* Total (tax calculated in modal only) */}
                                   <div className="text-xs font-semibold text-slate-900 dark:text-white">
-                                    {(item.unitPrice * currentQty).toLocaleString()}원
+                                    {(
+                                      item.unitPrice * currentQty
+                                    ).toLocaleString()}
+                                    원
                                   </div>
 
                                   {/* Minus button */}
@@ -2049,14 +2052,31 @@ export default function OrderPage() {
                                           </span>
                                         </div>
                                         <div className="text-sm text-slate-600 dark:text-slate-400">
-                                          단가 {item.unitPrice.toLocaleString()}원
+                                          단가 {item.unitPrice.toLocaleString()}
+                                          원
                                         </div>
                                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                          총금액:{" "}
-                                          {(
-                                            (item.orderedQuantity ?? 0) *
-                                            (item.unitPrice ?? 0)
-                                          ).toLocaleString()}
+                                          {(() => {
+                                            const qty =
+                                              item.orderedQuantity ?? 0;
+                                            const price = item.unitPrice ?? 0;
+                                            const rate = item.taxRate ?? 0;
+                                            const supply = qty * price;
+                                            const tax = Math.floor(
+                                              supply * rate
+                                            );
+                                            return (
+                                              <>
+                                                총금액:{" "}
+                                                {supply.toLocaleString()}원
+                                                {/* {tax > 0 && (
+                                                  <span className="ml-1 text-red-500">
+                                                    +{tax.toLocaleString()}원
+                                                  </span>
+                                                )} */}
+                                              </>
+                                            );
+                                          })()}
                                         </div>
                                       </>
                                     )}
@@ -2078,16 +2098,32 @@ export default function OrderPage() {
                                           </span>
                                         </div>
                                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                          총금액:{" "}
-                                          {(
-                                            (item.orderedQuantity ??
+                                          {(() => {
+                                            const qty =
+                                              item.orderedQuantity ??
                                               item.confirmedQuantity ??
-                                              0) *
-                                            (item.unitPrice ??
+                                              0;
+                                            const price =
+                                              item.unitPrice ??
                                               item.orderedPrice ??
-                                              0)
-                                          ).toLocaleString()}
-                                          원
+                                              0;
+                                            const rate = item.taxRate ?? 0;
+                                            const supply = qty * price;
+                                            const tax = Math.floor(
+                                              supply * rate
+                                            );
+                                            return (
+                                              <>
+                                                총금액:{" "}
+                                                {supply.toLocaleString()}원
+                                                {tax > 0 && (
+                                                  <span className="ml-1 text-red-500">
+                                                    +{tax.toLocaleString()}원
+                                                  </span>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
                                         </div>
                                       </>
                                     )}
@@ -2160,7 +2196,39 @@ export default function OrderPage() {
                           {/* Total - 주문 거절에서도 주문 수량×단가 합계(총금액) 표시 */}
                           <div className="mb-3 flex justify-end">
                             <div className="text-lg font-bold text-slate-900 dark:text-white">
-                              총 {(order.totalAmount ?? 0).toLocaleString()}원
+                              {(() => {
+                                const base = order.totalAmount ?? 0;
+                                const vat = (order.items || []).reduce(
+                                  (sum: number, item: any) =>
+                                    sum +
+                                    Math.floor(
+                                      (item.orderedQuantity ??
+                                        item.confirmedQuantity ??
+                                        0) *
+                                        (item.unitPrice ?? 0) *
+                                        (item.taxRate ?? 0)
+                                    ),
+                                  0
+                                );
+                                return (
+                                  <>
+                                    {vat > 0 ? (
+                                      <>
+                                        <span className="ml-1 text-red-500">
+                                          부가세
+                                        </span>
+                                        <span className="ml-1 text-red-500">
+                                          +{vat.toLocaleString()}원
+                                        </span>
+                                        {" = "}총{" "}
+                                        {(base + vat).toLocaleString()}원
+                                      </>
+                                    ) : (
+                                      <>총 {base.toLocaleString()}원</>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -2373,13 +2441,26 @@ export default function OrderPage() {
                                         원
                                       </span>
                                       <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                        총금액:{" "}
-                                        {item.totalPrice != null
-                                          ? Number(
-                                              item.totalPrice
-                                            ).toLocaleString()
-                                          : 0}
-                                        원
+                                        {(() => {
+                                          const supply =
+                                            item.totalPrice != null
+                                              ? Number(item.totalPrice)
+                                              : 0;
+                                          const tax = Math.floor(
+                                            supply * (item.taxRate ?? 0)
+                                          );
+                                          return (
+                                            <>
+                                              총금액: {supply.toLocaleString()}
+                                              원
+                                              {/* {tax > 0 && (
+                                                <span className="ml-1 text-red-500">
+                                                  +{tax.toLocaleString()}원
+                                                </span>
+                                              )} */}
+                                            </>
+                                          );
+                                        })()}
                                       </div>
                                     </div>
                                   </div>
@@ -2395,15 +2476,42 @@ export default function OrderPage() {
                         {/* Total */}
                         <div className="mb-3 flex justify-end">
                           <div className="text-lg font-bold text-slate-900 dark:text-white">
-                            총{" "}
-                            {(
-                              rejectedOrder.items?.reduce(
-                                (sum: number, item: any) =>
-                                  sum + (item.totalPrice || 0),
-                                0
-                              ) ?? 0
-                            ).toLocaleString()}
-                            원
+                            {(() => {
+                              const base =
+                                rejectedOrder.items?.reduce(
+                                  (sum: number, item: any) =>
+                                    sum + (item.totalPrice || 0),
+                                  0
+                                ) ?? 0;
+                              const vat =
+                                rejectedOrder.items?.reduce(
+                                  (sum: number, item: any) =>
+                                    sum +
+                                    Math.floor(
+                                      (item.totalPrice || 0) *
+                                        (item.taxRate ?? 0)
+                                    ),
+                                  0
+                                ) ?? 0;
+                              return (
+                                <>
+                                  {vat > 0 ? (
+                                    <>
+                                      <span className="ml-1 text-red-500">
+                                        부가세
+                                      </span>
+                                      <span className="ml-1 text-red-500">
+                                        +{vat.toLocaleString()}원
+                                      </span>
+                                      {" = "}총 {(base + vat).toLocaleString()}
+                                      원
+                                    </>
+                                  ) : (
+                                    <>총 {base.toLocaleString()}원</>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -2718,7 +2826,9 @@ export default function OrderPage() {
                             const unitPrice = item.unitPrice;
                             const itemTaxRate = item.taxRate ?? 0;
                             const supplyAmount = quantity * unitPrice;
-                            const taxAmount = Math.floor(supplyAmount * itemTaxRate);
+                            const taxAmount = Math.floor(
+                              supplyAmount * itemTaxRate
+                            );
                             const total = supplyAmount + taxAmount;
 
                             return (
@@ -3172,9 +3282,6 @@ export default function OrderPage() {
                           <th className="border border-slate-300 px-3 py-2 text-right text-xs font-semibold text-slate-700">
                             할인
                           </th>
-                          <th className="border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                            비고
-                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3193,7 +3300,7 @@ export default function OrderPage() {
                                   {item.batchNo || "-"}
                                 </td>
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-center">
-                                  {item.quantity || 0}
+                                  {item.orderedQuantity ?? item.quantity ?? 0}
                                 </td>
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900 text-right">
                                   {item.unitPrice
@@ -3213,16 +3320,13 @@ export default function OrderPage() {
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600 text-right">
                                   0
                                 </td>
-                                <td className="border border-slate-300 px-3 py-2 text-sm text-slate-600">
-                                  {item.memo || "-"}
-                                </td>
                               </tr>
                             )
                           )
                         ) : (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={7}
                               className="border border-slate-300 px-3 py-4 text-center text-sm text-slate-500"
                             >
                               주문 항목이 없습니다.

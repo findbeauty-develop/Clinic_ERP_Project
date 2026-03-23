@@ -662,6 +662,7 @@ export class OrderService {
         batchId: item.batchId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
+        taxRate: item.taxRate ?? 0,
         totalPrice: item.quantity * item.unitPrice,
         // supplierId'ni product'dan olish kerak (quyida)
       }));
@@ -825,6 +826,7 @@ export class OrderService {
                   pending_quantity: isManualSupplier ? item.quantity : null,
                   unit_price: item.unitPrice,
                   total_price: item.totalPrice,
+                  tax_rate: item.taxRate ?? 0,
                   memo: item.memo ?? null,
                   item_status: initialItemStatus,
                 },

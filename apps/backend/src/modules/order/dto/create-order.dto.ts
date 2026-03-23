@@ -25,6 +25,10 @@ export class OrderItemDto {
   @Min(0)
   unitPrice!: number;
 
+  @IsNumber()
+  @IsOptional()
+  taxRate?: number; // 0 = 비과세, 0.1 = 10%
+
   @IsString()
   @IsOptional()
   memo?: string;
