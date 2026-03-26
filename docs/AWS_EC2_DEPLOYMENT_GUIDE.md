@@ -166,7 +166,6 @@ apt-get install -y git
 ### 1.10 Summary va Launch
 
 1. **Barcha sozlamalarni ko'rib chiqing:**
-
    - Instance type: t3.large
    - Key pair: clinic-erp-key
    - Security group: clinic-erp-sg (6 ta port ochiq)
@@ -891,12 +890,10 @@ docker logs clinic-erp-backend-prod | tail -50
 ### 8.5 Full Application Test
 
 1. **Login Test:**
-
    - `http://YOUR_EC2_IP:3001/login` oching
    - Test user bilan login qiling
 
 2. **Order Flow Test:**
-
    - Yangi order yarating
    - Supplier frontend'da tekshiring: `http://YOUR_EC2_IP:3003`
 
@@ -1149,19 +1146,16 @@ curl http://localhost:3001      # Frontend
 ### ⚠️ Muhim Eslatmalar
 
 1. **PrismaModule O'zgarishlari:**
-
    - `PrismaService` endi `PrismaModule` orqali global qilingan
    - Backend log'larida `PrismaService initialized` faqat 1 marta ko'rinishi kerak
    - Bu performance optimizatsiyasi - ko'p marta initialize bo'lmasligi kerak
 
 2. **Database Migration:**
-
    - Agar database schema o'zgargan bo'lsa, migration qilish kerak
    - EC2'da: `docker exec -it clinic-erp-backend-prod npx prisma migrate deploy`
    - Yoki Supabase Dashboard'dan manual migration qilish
 
 3. **Environment Variables:**
-
    - `.env` fayllar o'zgargan bo'lsa, container'larni restart qilish kerak
    - Yoki `docker compose down` va `docker compose up -d` qilish
 

@@ -44,7 +44,9 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=https://api.jaclit.com
-      # 대시보드 데스크톱 다운로드 링크 (빈 값이면 버튼 비활성)
+      # Eslatma: Dashboard desktop tugmalari uchun URL lar Next.js BUILD vaqtida image ichiga yoziladi.
+      # Faqat shu environment bilan container ishga tushirish yetmaydi — frontend image ni
+      # apps/frontend/.env.production yoki --build-arg bilan qayta yig‘ing (deploy-production.sh).
       - NEXT_PUBLIC_DESKTOP_APP_MAC_URL=${NEXT_PUBLIC_DESKTOP_APP_MAC_URL:-}
       - NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL=${NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL:-}
     env_file:

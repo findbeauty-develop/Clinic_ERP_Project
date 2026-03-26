@@ -339,6 +339,28 @@ build_and_push_images() {
     
     print_info "Backend URL: $BACKEND_URL"
     print_info "Supplier Backend URL: $SUPPLIER_BACKEND_URL"
+
+    # Desktop app download URLs — Next.js client bundle (faqat Docker BUILD vaqtida)
+    if [ -f "apps/frontend/.env.production" ]; then
+        if [ -z "${NEXT_PUBLIC_DESKTOP_APP_MAC_URL:-}" ]; then
+            NEXT_PUBLIC_DESKTOP_APP_MAC_URL=$(grep -E '^NEXT_PUBLIC_DESKTOP_APP_MAC_URL=' apps/frontend/.env.production | tail -1 | sed 's/^[^=]*=//' | tr -d '\r' | sed 's/^["'\'']//;s/["'\'']$//')
+        fi
+        if [ -z "${NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL:-}" ]; then
+            NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL=$(grep -E '^NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL=' apps/frontend/.env.production | tail -1 | sed 's/^[^=]*=//' | tr -d '\r' | sed 's/^["'\'']//;s/["'\'']$//')
+        fi
+    fi
+    export NEXT_PUBLIC_DESKTOP_APP_MAC_URL
+    export NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL
+    if [ -n "${NEXT_PUBLIC_DESKTOP_APP_MAC_URL:-}" ]; then
+        print_success "NEXT_PUBLIC_DESKTOP_APP_MAC_URL (build): $NEXT_PUBLIC_DESKTOP_APP_MAC_URL"
+    else
+        print_warning "NEXT_PUBLIC_DESKTOP_APP_MAC_URL bo'sh — Dashboardda macOS tugmasi \"준비 중\" bo'ladi"
+    fi
+    if [ -n "${NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL:-}" ]; then
+        print_success "NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL (build): $NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL"
+    else
+        print_warning "NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL bo'sh — Dashboardda Windows tugmasi \"준비 중\" bo'ladi"
+    fi
     echo ""
     
     # Buildx tayyorlash
@@ -380,6 +402,9 @@ build_and_push_images() {
         docker buildx build \
           --platform linux/amd64 \
           --build-arg NEXT_PUBLIC_API_URL=${BACKEND_URL} \
+          --build-arg NEXT_PUBLIC_SUPPLIER_API_URL=${SUPPLIER_BACKEND_URL} \
+          --build-arg NEXT_PUBLIC_DESKTOP_APP_MAC_URL="${NEXT_PUBLIC_DESKTOP_APP_MAC_URL:-}" \
+          --build-arg NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL="${NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL:-}" \
           -f apps/frontend/Dockerfile \
           -t ${DOCKER_USERNAME}/clinic-frontend:latest \
           --push . || handle_error "Clinic Frontend build xatosi"

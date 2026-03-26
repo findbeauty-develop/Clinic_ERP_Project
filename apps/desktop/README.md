@@ -116,6 +116,8 @@ Build tugagandan so'ng installer fayl:
 
 Shunda klinika **Dashboard**da ikkita alohida tugma ko‘rinadi (Mac / Windows).
 
+**Docker production:** `apps/frontend/.env.production` da shu ikkala `NEXT_PUBLIC_*` ni to‘ldiring, keyin `./deploy-production.sh` orqali **clinic-frontend** image ni qayta build/push qiling (`docker-compose` dagi runtime `environment` yetmaydi — Next.js build vaqtida yoziladi).
+
 ---
 
 ## Yangilanishlar qanday ishlaydi
