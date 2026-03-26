@@ -918,7 +918,6 @@ export default function InboundPage() {
     // Track when page is about to be hidden (user navigating away)
     const handlePageHide = () => {
       shouldRefreshOnShow = true;
-      console.log("[Pending] Page hidden - will refresh on return");
     };
 
     // Detect when page is shown (initial load or back/forward navigation)
@@ -926,7 +925,6 @@ export default function InboundPage() {
       // event.persisted = true means page loaded from bfcache (back/forward button)
       // shouldRefreshOnShow = true means we previously hid the page
       if (event.persisted || shouldRefreshOnShow) {
-        console.log("[Pending] Page restored from cache - forcing refresh");
         // Small delay to ensure page is fully loaded
         setTimeout(() => {
           fetchPendingOrders(true);
@@ -4612,7 +4610,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const [scannedItems, setScannedItems] = useState<any[]>([]);
   const [showProductConfirm, setShowProductConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<any>(null);
-  const [activeItemId, setActiveItemId] = useState<number | string | null>(null); // Track active product by itemId
+  const [activeItemId, setActiveItemId] = useState<number | string | null>(
+    null
+  ); // Track active product by itemId
   const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
   // Manual lot panel (스캐너 없이): which product's form is open
   const [expandedManualLotItemId, setExpandedManualLotItemId] = useState<
@@ -4635,7 +4635,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const scanModalOpenRef = useRef(false);
   const scanModalOrderIdRef = useRef<string | null>(null);
   // Lot accumulator — addManualLotToScannedItem har chaqiruvda yozadi, completeProductById o'qiydi (prev/ref dan yo'qolsa ham)
-  const productLotsAccumulatorRef = useRef<Map<string, Record<string, number>>>(new Map());
+  const productLotsAccumulatorRef = useRef<Map<string, Record<string, number>>>(
+    new Map()
+  );
   const manualLotFormRef = useRef(manualLotForm);
   const expandedManualLotItemIdRef = useRef(expandedManualLotItemId);
   manualLotFormRef.current = manualLotForm;
@@ -4658,12 +4660,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
       lotQuantities: p.lotQuantities,
       status: p.status,
     }));
-    console.log("[입고-DEBUG] scannedItems changed", {
-      count: scannedItems.length,
-      items: summary,
-      ref_count: scannedItemsRef.current.length,
-      accumulator_keys: Array.from(productLotsAccumulatorRef.current.keys()),
-    });
   }, [scannedItems, scanModalOpen]);
 
   // ✅ Order bo‘yicha skan modal uchun mahsulotlar ro‘yxatini qaytaradi (sync, ref/state dan oldin to‘ldirish uchun)
@@ -4731,7 +4727,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const loadPendingProducts = useCallback(
     (orderId?: string) => {
       if (!orderId) return;
-      console.log("[입고-DEBUG] loadPendingProducts", { orderId, clearingAccumulator: true });
+
       productLotsAccumulatorRef.current.clear();
       const allProducts = getPendingProductsForOrder(orderId);
       setScannedItems(allProducts);
@@ -4770,9 +4766,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
         scanModalOrderIdRef.current === orderId &&
         scannedItemsRef.current.length > 0
       ) {
-        console.log(
-          "[ScanModal] openBarcodeScanForOrder: modal allaqachon ochiq, ro‘yxatni saqlab qolamiz"
-        );
         setScanModalOrderId(orderId);
         setScanModalOpen(true);
         // Reset expanded state — Lot 배치번호 추가 boshida ko'rinmasin
@@ -4786,8 +4779,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
       productLotsAccumulatorRef.current.clear();
       const products = getPendingProductsForOrder(orderId);
       // Barcha mahsulotlar pending — Lot 배치번호 추가 faqat product ustiga bosilganda chiqadi
-      const normalized = products.map((p) => ({ ...p, status: "pending" as const }));
-      console.log("[입고-DEBUG] openBarcodeScanForOrder NEW order", { orderId, productCount: normalized.length });
+      const normalized = products.map((p) => ({
+        ...p,
+        status: "pending" as const,
+      }));
+
       productLotsAccumulatorRef.current.clear();
       setScannedItems(normalized);
       scannedItemsRef.current = normalized;
@@ -4802,7 +4798,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ Close modal and reset state
   const closeScanModal = () => {
-    console.log("[입고-DEBUG] closeScanModal - clearing accumulator");
     productLotsAccumulatorRef.current.clear();
     console.trace("[ScanModal] closeScanModal call stack");
     setScanModalOpen(false);
@@ -5206,13 +5201,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
         });
         scannedItemsRef.current = next;
         const updatedItem = next.find((x) => x.itemId === existingItem.itemId);
-        console.log("[입고-DEBUG] handleBarcodeScan UPDATE existingItem", {
-          itemId: existingItem.itemId,
-          productName: existingItem.productName,
-          lotQuantities: updatedItem?.lotQuantities,
-          quantity: updatedItem?.quantity,
-          lotKey: (parsed.batchNumber || "").trim() || "__default",
-        });
 
         return next;
       });
@@ -5370,13 +5358,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const updateScannedProduct = (itemId: number, updates: Partial<any>) => {
     const touchesLot =
       updates.lotQuantities !== undefined || updates.lotDetails !== undefined;
-    console.log("[입고-DEBUG] updateScannedProduct CALLED", {
-      itemId,
-      updateKeys: Object.keys(updates),
-      touchesLot,
-      lotQuantities: updates.lotQuantities,
-      quantity: updates.quantity,
-    });
+
     setScannedItems((prev) => {
       // Har doim prev — ref eski bo'lib, boshqa lotlarni yo'qotmasin
       const base = prev;
@@ -5387,7 +5369,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
           : (item.remainingQty ?? item.item?.confirmedQuantity ?? 0);
         let applied = { ...updates };
         // Lot ma'lumotlarini hech qachon ortiqcha overwrite qilma
-        if (!(updates.lotQuantities !== undefined)) delete applied.lotQuantities;
+        if (!(updates.lotQuantities !== undefined))
+          delete applied.lotQuantities;
         if (!(updates.lotDetails !== undefined)) delete applied.lotDetails;
         if (typeof applied.quantity === "number" && capacity > 0) {
           applied.quantity = Math.min(Math.max(0, applied.quantity), capacity);
@@ -5405,7 +5388,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
     lotKey: string,
     qty: number
   ) => {
-    console.log("[입고-DEBUG] updateScannedProductLotQty", { itemId, lotKey, qty });
     setScannedItems((prev) => {
       const base = prev;
       const next = base.map((item) => {
@@ -5441,11 +5423,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
     lotKey: string,
     details: { manufactureDate?: string; expiryDate?: string }
   ) => {
-    console.log("[입고-DEBUG] updateScannedProductLotDetails", {
-      itemId,
-      lotKey,
-      details,
-    });
     setScannedItems((prev) => {
       const base = prev;
       const next = base.map((item) => {
@@ -5463,7 +5440,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   // ✅ Remove one lot from a product (X button on sub-card); recalc quantity
   const removeScannedProductLot = (itemId: number, lotKey: string) => {
-    console.log("[입고-DEBUG] removeScannedProductLot", { itemId, lotKey });
     setScannedItems((prev) => {
       const base = prev;
       const next = base.map((item) => {
@@ -5496,25 +5472,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const qty = Math.max(0, data.quantity || 0);
     if (qty <= 0) return;
     const trimmedLot = (data.lotNumber || "").trim();
-    const refTarget = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
-    const accBefore = productLotsAccumulatorRef.current.get(String(itemId)) || {};
-    console.log("[입고-DEBUG] addManualLotToScannedItem START", {
-      itemId,
-      lotNumber: trimmedLot,
-      qty,
-      ref_lotQuantities: refTarget?.lotQuantities,
-      ref_quantity: refTarget?.quantity,
-      accumulator_before: { ...accBefore },
-    });
+    const refTarget = scannedItemsRef.current.find(
+      (p) => String(p?.itemId) === String(itemId)
+    );
+    const accBefore =
+      productLotsAccumulatorRef.current.get(String(itemId)) || {};
+
     setScannedItems((prev) => {
       // Har doim prev — ref eski bo'lib boshqa lotlarni yo'qotmasin
       const base = prev;
       const prevTarget = base.find((p) => String(p?.itemId) === String(itemId));
-      console.log("[입고-DEBUG] addManualLotToScannedItem prev state", {
-        itemId,
-        prev_lotQuantities: prevTarget?.lotQuantities,
-        prev_quantity: prevTarget?.quantity,
-      });
+
       const next = base.map((item) => {
         if (String(item?.itemId) !== String(itemId)) return item;
         const prevLots = item.lotQuantities || {};
@@ -5591,19 +5559,17 @@ const PendingOrdersList = memo(function PendingOrdersList({
         const existing = acc.get(String(itemId)) || {};
         const newLots = targetItem.lotQuantities;
         const merged: Record<string, number> = {};
-        for (const k of new Set([...Object.keys(existing), ...Object.keys(newLots)])) {
+        for (const k of new Set([
+          ...Object.keys(existing),
+          ...Object.keys(newLots),
+        ])) {
           merged[k] = Math.max(existing[k] ?? 0, newLots[k] ?? 0);
         }
         acc.set(String(itemId), merged);
       }
-      const accAfter = productLotsAccumulatorRef.current.get(String(itemId)) || {};
-      console.log("[입고-DEBUG] addManualLotToScannedItem DONE", {
-        itemId,
-        lotQuantities: targetItem?.lotQuantities,
-        quantity: targetItem?.quantity,
-        accumulator_after: { ...accAfter },
-        ref_now: scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId))?.lotQuantities,
-      });
+      const accAfter =
+        productLotsAccumulatorRef.current.get(String(itemId)) || {};
+
       return next;
     });
     setActiveItemId(itemId);
@@ -5627,14 +5593,12 @@ const PendingOrdersList = memo(function PendingOrdersList({
   const completeProductById = useCallback(
     (itemId: number | string) => {
       // 🔍 Log: bosish paytidagi holat (flushSync dan OLDIN)
-      const refAtClick = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
-      const accAtClick = productLotsAccumulatorRef.current.get(String(itemId)) || {};
-      console.log("[입고-DEBUG] completeProductById CLICK (before flushSync)", {
-        itemId,
-        ref_lotQuantities: refAtClick?.lotQuantities,
-        ref_quantity: refAtClick?.quantity,
-        accumulator: { ...accAtClick },
-      });
+      const refAtClick = scannedItemsRef.current.find(
+        (p) => String(p?.itemId) === String(itemId)
+      );
+      const accAtClick =
+        productLotsAccumulatorRef.current.get(String(itemId)) || {};
+
       // Barcha pending state yangilanishlarini commit qilish — prev eng yangi bo'lsin
       flushSync(() => {});
       // Reflardan o‘qish — closure/re-render ta’sirisiz; formani darhol tozalash
@@ -5653,37 +5617,52 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       setScannedItems((prev) => {
         // Har doim prev va ref ni birlashtirish — hech qanday lot yo'qolmasin
-        const targetInPrev = prev.find((p) => String(p?.itemId) === String(itemId));
-        const targetInRef = scannedItemsRef.current.find((p) => String(p?.itemId) === String(itemId));
+        const targetInPrev = prev.find(
+          (p) => String(p?.itemId) === String(itemId)
+        );
+        const targetInRef = scannedItemsRef.current.find(
+          (p) => String(p?.itemId) === String(itemId)
+        );
         const prevLots = targetInPrev?.lotQuantities || {};
         const refLots = targetInRef?.lotQuantities || {};
-        const accLots = productLotsAccumulatorRef.current.get(String(itemId)) || {};
+        const accLots =
+          productLotsAccumulatorRef.current.get(String(itemId)) || {};
         const mergedLots: Record<string, number> = {};
-        for (const k of new Set([...Object.keys(prevLots), ...Object.keys(refLots), ...Object.keys(accLots)])) {
-          mergedLots[k] = Math.max(prevLots[k] ?? 0, refLots[k] ?? 0, accLots[k] ?? 0);
+        for (const k of new Set([
+          ...Object.keys(prevLots),
+          ...Object.keys(refLots),
+          ...Object.keys(accLots),
+        ])) {
+          mergedLots[k] = Math.max(
+            prevLots[k] ?? 0,
+            refLots[k] ?? 0,
+            accLots[k] ?? 0
+          );
         }
-        const mergedQty = (Object.values(mergedLots) as number[]).reduce((a, b) => a + b, 0);
-        const prevQty = (Object.values(prevLots) as number[]).reduce((a, b) => a + b, 0);
-        const refQty = (Object.values(refLots) as number[]).reduce((a, b) => a + b, 0);
-        const accQty = (Object.values(accLots) as number[]).reduce((a, b) => a + b, 0);
+        const mergedQty = (Object.values(mergedLots) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        const prevQty = (Object.values(prevLots) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        const refQty = (Object.values(refLots) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
+        const accQty = (Object.values(accLots) as number[]).reduce(
+          (a, b) => a + b,
+          0
+        );
         // Har doim merge — prev yoki ref da bo'lgan barcha lotlarni saqlaymiz
         const shouldUseMerged = mergedQty > prevQty || mergedQty > refQty;
-        const baseSource = shouldUseMerged ? "merged" : refQty > prevQty && scannedItemsRef.current.length > 0 ? "ref" : "prev";
-        console.log("[입고-DEBUG] completeProductById MERGE", {
-          itemId,
-          prevLots: { ...prevLots },
-          refLots: { ...refLots },
-          accLots: { ...accLots },
-          mergedLots: { ...mergedLots },
-          prevQty,
-          refQty,
-          accQty,
-          mergedQty,
-          shouldUseMerged,
-          baseSource,
-          hasPendingManual: capturedExpanded !== null && String(capturedExpanded) === String(itemId) && Number(capturedForm.quantity) > 0,
-          capturedForm_qty: capturedForm.quantity,
-        });
+        const baseSource = shouldUseMerged
+          ? "merged"
+          : refQty > prevQty && scannedItemsRef.current.length > 0
+            ? "ref"
+            : "prev";
+
         const base = shouldUseMerged
           ? prev.map((p) => {
               if (String(p?.itemId) !== String(itemId)) return p;
@@ -5693,21 +5672,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
               for (const k of Object.keys(mergedLots)) {
                 mergedDetails[k] = refDetails[k] || prevDetails[k] || {};
               }
-              return { ...p, lotQuantities: mergedLots, lotDetails: mergedDetails, quantity: mergedQty };
+              return {
+                ...p,
+                lotQuantities: mergedLots,
+                lotDetails: mergedDetails,
+                quantity: mergedQty,
+              };
             })
-          : refQty > prevQty && scannedItemsRef.current.length > 0 ? scannedItemsRef.current : prev;
-        const targetBefore = base.find((p) => String(p?.itemId) === String(itemId));
+          : refQty > prevQty && scannedItemsRef.current.length > 0
+            ? scannedItemsRef.current
+            : prev;
+        const targetBefore = base.find(
+          (p) => String(p?.itemId) === String(itemId)
+        );
         const hasPendingManual =
           capturedExpanded !== null &&
           String(capturedExpanded) === String(itemId) &&
           Number(capturedForm.quantity) > 0;
-        console.log("[입고-DEBUG] completeProductById BASE", {
-          itemId,
-          baseSource,
-          targetBefore_lotQuantities: targetBefore?.lotQuantities,
-          targetBefore_quantity: targetBefore?.quantity,
-          hasPendingManual,
-        });
+
         let working = base;
         if (hasPendingManual) {
           const qty = Math.max(0, Number(capturedForm.quantity) || 0);
@@ -5745,7 +5727,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
               item.confirmedQuantity ??
               item.orderedQuantity ??
               rawCapacity;
-            const capacity = Math.max(rawCapacity, Number(orderQty) || 99999, newQty);
+            const capacity = Math.max(
+              rawCapacity,
+              Number(orderQty) || 99999,
+              newQty
+            );
             let finalQty = newQty;
             let finalLots = lotQuantities;
             if (newQty > capacity) {
@@ -5781,33 +5767,24 @@ const PendingOrdersList = memo(function PendingOrdersList({
                 capturedForm.productionDate || item.productionDate,
             };
           });
-          const afterPending = working.find((p) => String(p?.itemId) === String(itemId));
-          console.log("[입고-DEBUG] completeProductById after hasPendingManual merge", {
-            itemId,
-            working_lotQuantities: afterPending?.lotQuantities,
-            working_quantity: afterPending?.quantity,
-          });
+          const afterPending = working.find(
+            (p) => String(p?.itemId) === String(itemId)
+          );
         }
 
-        const workingTarget = working.find((p) => String(p?.itemId) === String(itemId));
-        console.log("[입고-DEBUG] completeProductById before status=completed", {
-          itemId,
-          hasPendingManual,
-          working_lotQuantities: workingTarget?.lotQuantities,
-          working_quantity: workingTarget?.quantity,
-        });
+        const workingTarget = working.find(
+          (p) => String(p?.itemId) === String(itemId)
+        );
 
         const updated = working.map((p: any) =>
           String(p?.itemId) === String(itemId)
             ? { ...p, status: "completed" as const }
             : p
         );
-        const targetAfter = updated.find((p) => String(p?.itemId) === String(itemId));
-        console.log("[입고-DEBUG] completeProductById DONE", {
-          itemId,
-          finalLotQuantities: targetAfter?.lotQuantities,
-          finalQuantity: targetAfter?.quantity,
-        });
+        const targetAfter = updated.find(
+          (p) => String(p?.itemId) === String(itemId)
+        );
+
         scannedItemsRef.current = updated;
         return updated;
       });
@@ -5830,17 +5807,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
       scannedItemsRef.current.length > 0
         ? scannedItemsRef.current
         : scannedItems;
-    const completedForSubmit = latestScanned.filter((p) => p.status === "completed");
-    console.log("[입고-DEBUG] submitAllScannedItems", {
-      total: latestScanned.length,
-      completedCount: completedForSubmit.length,
-      completedItems: completedForSubmit.map((p) => ({
-        itemId: p.itemId,
-        productName: p.productName,
-        lotQuantities: p.lotQuantities,
-        quantity: p.quantity,
-      })),
-    });
+    const completedForSubmit = latestScanned.filter(
+      (p) => p.status === "completed"
+    );
+
     if (latestScanned.length === 0) {
       alert("스캔된 제품이 없습니다.");
       return;
@@ -5966,17 +5936,6 @@ const PendingOrdersList = memo(function PendingOrdersList({
               )
             : Number(item.quantity ?? 0) || 0;
 
-        console.log("[입고-DEBUG] submitAllScannedItems orderItem", {
-          itemId: item.itemId,
-          productName: item.productName,
-          status: item.status,
-          item_lotQuantities: item.lotQuantities,
-          item_quantity: item.quantity,
-          effectiveLotQuantities: { ...effectiveLotQuantities },
-          effectiveQuantity,
-          hasPendingManual,
-        });
-
         const itemId = String(item.itemId);
         const payload: Record<string, any> = {
           quantity: effectiveQuantity,
@@ -6033,7 +5992,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
   const handleProcessOrder = async (
     order: any,
-    options?: { hasRejectedItemsInSameOrder?: boolean; hasPendingItemsInSameOrder?: boolean }
+    options?: {
+      hasRejectedItemsInSameOrder?: boolean;
+      hasPendingItemsInSameOrder?: boolean;
+    }
   ) => {
     // ✅ Use id or orderId as fallback
     const orderIdToUse = order.id || order.orderId;
@@ -6130,7 +6092,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     // ✅ Rejected or pending items bo'lsa — partial-inbound (order complete qilmaslik)
     const usePartialApi =
-      options?.hasRejectedItemsInSameOrder || options?.hasPendingItemsInSameOrder;
+      options?.hasRejectedItemsInSameOrder ||
+      options?.hasPendingItemsInSameOrder;
     await processInboundOrder(
       order,
       order.items,
@@ -6384,10 +6347,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
         const inboundedItems = itemsToProcess
           .map((item: any) => {
             const productId =
-              item.productId ??
-              item.product_id ??
-              item.product?.id ??
-              "";
+              item.productId ?? item.product_id ?? item.product?.id ?? "";
             const itemId = item.id ?? item.item_id ?? item.itemId;
             if (!itemId) {
               console.warn("[partial-inbound] item without id:", item);
@@ -6399,24 +6359,22 @@ const PendingOrdersList = memo(function PendingOrdersList({
               inboundQty: Number(resolveQty(item)) || 0,
             };
           })
-          .filter((x): x is NonNullable<typeof x> => x != null && x.inboundQty > 0);
+          .filter(
+            (x): x is NonNullable<typeof x> => x != null && x.inboundQty > 0
+          );
         if (inboundedItems.length === 0) {
           alert("입고할 제품이 없습니다.");
           return;
         }
         try {
-          await apiPost(
-            `${apiUrl}/order/${orderIdToUse}/partial-inbound`,
-            {
-              inboundedItems,
-              inboundManager: inboundManager ?? "",
-            }
-          );
+          await apiPost(`${apiUrl}/order/${orderIdToUse}/partial-inbound`, {
+            inboundedItems,
+            inboundManager: inboundManager ?? "",
+          });
         } catch (partialErr: any) {
-          const msg =
-            Array.isArray(partialErr?.message)
-              ? partialErr.message.join("\n")
-              : partialErr?.message || "partial-inbound API 오류";
+          const msg = Array.isArray(partialErr?.message)
+            ? partialErr.message.join("\n")
+            : partialErr?.message || "partial-inbound API 오류";
           console.error("[partial-inbound] payload:", {
             inboundedItems,
             inboundManager: inboundManager ?? "",
@@ -6983,7 +6941,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
               // Show "주문 거절" card only for strictly-rejected items (not rejection_acknowledged)
               const strictlyRejectedItems = (order.items || []).filter(
                 (item: any) =>
-                  (item.itemStatus ?? item.item_status ?? "pending") === "rejected"
+                  (item.itemStatus ?? item.item_status ?? "pending") ===
+                  "rejected"
               );
               if (strictlyRejectedItems.length > 0) {
                 cards.push({
@@ -6993,49 +6952,62 @@ const PendingOrdersList = memo(function PendingOrdersList({
               }
             }
           });
-          return cards.map(({ order, sectionLabel, hasRejectedItemsInSameOrder, hasPendingItemsInSameOrder }, idx) => {
-            const orderId = order.id || order.orderId;
-            const key = sectionLabel
-              ? `${orderId}-${sectionLabel}-${idx}`
-              : orderId || `order-${order.orderNo}-${idx}`;
-            const processOrderHandler = (o: any) =>
-              handleProcessOrder(o, { hasRejectedItemsInSameOrder, hasPendingItemsInSameOrder });
-            return (
-              <OrderCard
-                key={key}
-                order={order}
-                sectionLabel={sectionLabel}
-                editedItems={editedItems}
-                updateItemField={updateItemField}
-                handleProcessOrder={processOrderHandler}
-                processing={processing}
-                inboundManagerName={inboundManagers[orderId] ?? ""}
-                onInboundManagerChange={(value: string) => {
-                  if (orderId) {
-                    setInboundManagers((prev) => ({
-                      ...prev,
-                      [orderId]: value,
-                    }));
+          return cards.map(
+            (
+              {
+                order,
+                sectionLabel,
+                hasRejectedItemsInSameOrder,
+                hasPendingItemsInSameOrder,
+              },
+              idx
+            ) => {
+              const orderId = order.id || order.orderId;
+              const key = sectionLabel
+                ? `${orderId}-${sectionLabel}-${idx}`
+                : orderId || `order-${order.orderNo}-${idx}`;
+              const processOrderHandler = (o: any) =>
+                handleProcessOrder(o, {
+                  hasRejectedItemsInSameOrder,
+                  hasPendingItemsInSameOrder,
+                });
+              return (
+                <OrderCard
+                  key={key}
+                  order={order}
+                  sectionLabel={sectionLabel}
+                  editedItems={editedItems}
+                  updateItemField={updateItemField}
+                  handleProcessOrder={processOrderHandler}
+                  processing={processing}
+                  inboundManagerName={inboundManagers[orderId] ?? ""}
+                  onInboundManagerChange={(value: string) => {
+                    if (orderId) {
+                      setInboundManagers((prev) => ({
+                        ...prev,
+                        [orderId]: value,
+                      }));
+                    }
+                  }}
+                  rejectionConfirmManagerName={
+                    rejectionConfirmManagers[orderId] ?? ""
                   }
-                }}
-                rejectionConfirmManagerName={
-                  rejectionConfirmManagers[orderId] ?? ""
-                }
-                onRejectionConfirmManagerChange={(value: string) => {
-                  if (orderId) {
-                    setRejectionConfirmManagers((prev) => ({
-                      ...prev,
-                      [orderId]: value,
-                    }));
-                  }
-                }}
-                recentInboundStaff={recentInboundStaff}
-                onRefresh={onRefresh}
-                apiUrl={apiUrl}
-                onOpenBarcodeScan={openBarcodeScanForOrder}
-              />
-            );
-          });
+                  onRejectionConfirmManagerChange={(value: string) => {
+                    if (orderId) {
+                      setRejectionConfirmManagers((prev) => ({
+                        ...prev,
+                        [orderId]: value,
+                      }));
+                    }
+                  }}
+                  recentInboundStaff={recentInboundStaff}
+                  onRefresh={onRefresh}
+                  apiUrl={apiUrl}
+                  onOpenBarcodeScan={openBarcodeScanForOrder}
+                />
+              );
+            }
+          );
         })()}
       </div>
 
@@ -7419,17 +7391,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             onClick={() => {
                               if (!isCompleted) {
                                 setScannedItems((prev) => {
-                                  const target = prev.find((p) => String(p?.itemId) === String(item.itemId));
-                                  const refTarget = scannedItemsRef.current.find((p) => String(p?.itemId) === String(item.itemId));
-                                  const acc = productLotsAccumulatorRef.current.get(String(item.itemId)) || {};
-                                  console.log("[입고-DEBUG] card onClick (expand/switch)", {
-                                    clickedItemId: item.itemId,
-                                    prev_targetLotQuantities: target?.lotQuantities,
-                                    prev_targetQty: target?.quantity,
-                                    ref_lotQuantities: refTarget?.lotQuantities,
-                                    ref_quantity: refTarget?.quantity,
-                                    accumulator: { ...acc },
-                                  });
+                                  const target = prev.find(
+                                    (p) =>
+                                      String(p?.itemId) === String(item.itemId)
+                                  );
+                                  const refTarget =
+                                    scannedItemsRef.current.find(
+                                      (p) =>
+                                        String(p?.itemId) ===
+                                        String(item.itemId)
+                                    );
+                                  const acc =
+                                    productLotsAccumulatorRef.current.get(
+                                      String(item.itemId)
+                                    ) || {};
+
                                   return prev.map((p) => ({
                                     ...p,
                                     status:
@@ -7488,7 +7464,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                               {/* 총 입고수량 + 재입고 qolgan miqdor (mobile ham ko'rinsin) */}
                               <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
                                 <span className="sm:hidden">
-                                  {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity}개`}
+                                  {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
                                 </span>
                                 {/* {item.lotQuantities &&
                                   Object.keys(item.lotQuantities).length >
@@ -7509,7 +7485,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
                             {/* Right: 구매가 (desktop) */}
                             <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
                               <span>
-                                {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity}개`}
+                                {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
                               </span>
                               <span>
                                 구매가 {Number(purchasePrice).toLocaleString()}
@@ -7800,202 +7776,217 @@ const PendingOrdersList = memo(function PendingOrdersList({
                           {/* Lot 배치번호 추가 + 입고 — faqat product ustiga bosilganda (expanded) chiqadi */}
                           {isActive && !isCompleted && (
                             <>
-                            <div
-                              className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {expandedManualLotItemId !== item.itemId ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setExpandedManualLotItemId(item.itemId);
-                                    setManualLotForm({
-                                      lotNumber: "",
-                                      productionDate: "",
-                                      expiryDate: "",
-                                      quantity: 0,
-                                    });
-                                  }}
-                                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                                >
-                                  <span className="text-lg leading-none">
-                                    +
-                                  </span>
-                                  Lot 배치번호 추가
-                                </button>
-                              ) : (
-                                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                    <div>
-                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        Lot 번호
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={manualLotForm.lotNumber}
-                                        onChange={(e) =>
-                                          setManualLotForm((f) => ({
-                                            ...f,
-                                            lotNumber: e.target.value,
-                                          }))
-                                        }
-                                        placeholder="0000000000001"
-                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        제조일
-                                      </label>
-                                      <input
-                                        type="date"
-                                        value={manualLotForm.productionDate}
-                                        onChange={(e) =>
-                                          setManualLotForm((f) => ({
-                                            ...f,
-                                            productionDate: e.target.value,
-                                          }))
-                                        }
-                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        유효기간
-                                      </label>
-                                      <input
-                                        type="date"
-                                        value={manualLotForm.expiryDate}
-                                        onChange={(e) =>
-                                          setManualLotForm((f) => ({
-                                            ...f,
-                                            expiryDate: e.target.value,
-                                          }))
-                                        }
-                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        입고수량
-                                      </label>
-                                      <div className="flex items-center gap-1">
+                              <div
+                                className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {expandedManualLotItemId !== item.itemId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedManualLotItemId(item.itemId);
+                                      setManualLotForm({
+                                        lotNumber: "",
+                                        productionDate: "",
+                                        expiryDate: "",
+                                        quantity: 0,
+                                      });
+                                    }}
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                                  >
+                                    <span className="text-lg leading-none">
+                                      +
+                                    </span>
+                                    Lot 배치번호 추가
+                                  </button>
+                                ) : (
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                          Lot 번호
+                                        </label>
                                         <input
-                                          type="number"
-                                          min={0}
-                                          max={Math.max(
-                                            0,
-                                            capacity - (item.quantity ?? 0)
-                                          )}
-                                          value={manualLotForm.quantity || ""}
-                                          onChange={(e) => {
-                                            const v =
-                                              parseInt(e.target.value, 10) || 0;
-                                            const maxNew = Math.max(
-                                              0,
-                                              capacity - (item.quantity ?? 0)
-                                            );
+                                          type="text"
+                                          value={manualLotForm.lotNumber}
+                                          onChange={(e) =>
                                             setManualLotForm((f) => ({
                                               ...f,
-                                              quantity: Math.min(v, maxNew),
-                                            }));
-                                          }}
-                                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setManualLotForm((f) => ({
-                                              ...f,
-                                              quantity: 0,
+                                              lotNumber: e.target.value,
                                             }))
                                           }
-                                          className="rounded p-2 text-slate-400 hover:text-slate-600"
-                                          aria-label="지우기"
-                                        >
-                                          <svg
-                                            className="h-4 w-4"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
+                                          placeholder="0000000000001"
+                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                          제조일
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={manualLotForm.productionDate}
+                                          onChange={(e) =>
+                                            setManualLotForm((f) => ({
+                                              ...f,
+                                              productionDate: e.target.value,
+                                            }))
+                                          }
+                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                          유효기간
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={manualLotForm.expiryDate}
+                                          onChange={(e) =>
+                                            setManualLotForm((f) => ({
+                                              ...f,
+                                              expiryDate: e.target.value,
+                                            }))
+                                          }
+                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                          입고수량
+                                        </label>
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={Math.max(
+                                              0,
+                                              capacity - (item.quantity ?? 0)
+                                            )}
+                                            value={manualLotForm.quantity || ""}
+                                            onChange={(e) => {
+                                              const v =
+                                                parseInt(e.target.value, 10) ||
+                                                0;
+                                              const maxNew = Math.max(
+                                                0,
+                                                capacity - (item.quantity ?? 0)
+                                              );
+                                              setManualLotForm((f) => ({
+                                                ...f,
+                                                quantity: Math.min(v, maxNew),
+                                              }));
+                                            }}
+                                            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setManualLotForm((f) => ({
+                                                ...f,
+                                                quantity: 0,
+                                              }))
+                                            }
+                                            className="rounded p-2 text-slate-400 hover:text-slate-600"
+                                            aria-label="지우기"
                                           >
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              strokeWidth={2}
-                                              d="M6 18L18 6M6 6l12 12"
-                                            />
-                                          </svg>
-                                        </button>
+                                            <svg
+                                              className="h-4 w-4"
+                                              fill="none"
+                                              viewBox="0 0 24 24"
+                                              stroke="currentColor"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M6 18L18 6M6 6l12 12"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="mt-3 flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (manualLotForm.quantity > 0) {
-                                          addManualLotToScannedItem(
-                                            item.itemId,
-                                            {
-                                              lotNumber:
-                                                manualLotForm.lotNumber,
-                                              productionDate:
-                                                manualLotForm.productionDate,
-                                              expiryDate:
-                                                manualLotForm.expiryDate,
-                                              quantity: manualLotForm.quantity,
-                                            }
-                                          );
+                                    <div className="mt-3 flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (manualLotForm.quantity > 0) {
+                                            addManualLotToScannedItem(
+                                              item.itemId,
+                                              {
+                                                lotNumber:
+                                                  manualLotForm.lotNumber,
+                                                productionDate:
+                                                  manualLotForm.productionDate,
+                                                expiryDate:
+                                                  manualLotForm.expiryDate,
+                                                quantity:
+                                                  manualLotForm.quantity,
+                                              }
+                                            );
+                                            setManualLotForm({
+                                              lotNumber: "",
+                                              productionDate: "",
+                                              expiryDate: "",
+                                              quantity: 0,
+                                            });
+                                          }
+                                        }}
+                                        disabled={manualLotForm.quantity <= 0}
+                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <span className="text-lg leading-none">
+                                          +
+                                        </span>
+                                        Lot 배치번호 추가
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setExpandedManualLotItemId(null);
                                           setManualLotForm({
                                             lotNumber: "",
                                             productionDate: "",
                                             expiryDate: "",
                                             quantity: 0,
                                           });
-                                        }
-                                      }}
-                                      disabled={manualLotForm.quantity <= 0}
-                                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                      <span className="text-lg leading-none">
-                                        +
-                                      </span>
-                                      Lot 배치번호 추가
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setExpandedManualLotItemId(null);
-                                        setManualLotForm({
-                                          lotNumber: "",
-                                          productionDate: "",
-                                          expiryDate: "",
-                                          quantity: 0,
-                                        });
-                                      }}
-                                      className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                                    >
-                                      닫기
-                                    </button>
+                                        }}
+                                        className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                      >
+                                        닫기
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              )}
-                            </div>
-                            {/* 입고 — card yopiladi, border green */}
-                            <div
-                              className="border-t border-slate-200 dark:border-slate-700 p-4"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => completeProductById(item.itemId)}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                                )}
+                              </div>
+                              {/* 입고 — card yopiladi, border green */}
+                              <div
+                                className="border-t border-slate-200 dark:border-slate-700 p-4"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                입고
-                              </button>
-                            </div>
-                          </>
+                                <button
+                                  type="button"
+                                  disabled={!item.storageLocation?.trim()}
+                                  onClick={() =>
+                                    completeProductById(item.itemId)
+                                  }
+                                  title={
+                                    !item.storageLocation?.trim()
+                                      ? "보관위치를 입력해야 입고할 수 있습니다."
+                                      : ""
+                                  }
+                                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-50 dark:disabled:hover:bg-emerald-900/30"
+                                >
+                                  입고
+                                </button>
+                                {!item.storageLocation?.trim() && (
+                                  <p className="mt-1.5 text-center text-xs text-amber-600 dark:text-amber-400">
+                                    보관위치를 입력해야 입고할 수 있습니다.
+                                  </p>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       );
@@ -8320,8 +8311,8 @@ const OrderCard = memo(function OrderCard({
                         <div className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-red-900/40 dark:bg-red-900/10 dark:text-slate-300">
                           {item.orderedQuantity ??
                             item.confirmedQuantity ??
-                            "-"}
-                          개
+                            "-"}{" "}
+                          Box
                         </div>
                       </div>
 
@@ -8375,8 +8366,8 @@ const OrderCard = memo(function OrderCard({
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
                           주문 수량
                         </span>
-                        {item.orderedQuantity ?? item.confirmedQuantity ?? "-"}
-                        개
+                        {item.orderedQuantity ?? item.confirmedQuantity ?? "-"}{" "}
+                        Box
                       </span>
                       <span className="inline-flex items-center gap-2 rounded-lg  px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
@@ -8422,7 +8413,8 @@ const OrderCard = memo(function OrderCard({
                                   : Number(edited?.quantity) || 0;
                               return sum;
                             })()}{" "}
-                            | {item.pendingQuantity ?? item.confirmedQuantity}개
+                            | {item.pendingQuantity ?? item.confirmedQuantity}{" "}
+                            Box
                           </span>
                         </div>
                         <div className="flex shrink-0 items-center justify-end gap-2 text-sm">

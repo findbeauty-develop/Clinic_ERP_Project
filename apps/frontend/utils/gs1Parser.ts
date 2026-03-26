@@ -350,7 +350,10 @@ export function parseGS1Barcode(
           let idx11 = cleanedBarcode.indexOf("11", from);
           while (idx11 !== -1 && idx11 < maxEnd) {
             if (idx11 + 2 + 6 <= cleanedBarcode.length) {
-              const datePayload = cleanedBarcode.substring(idx11 + 2, idx11 + 8);
+              const datePayload = cleanedBarcode.substring(
+                idx11 + 2,
+                idx11 + 8
+              );
               const conv = convertYYMMDDtoISO(datePayload);
               if (conv.valid) {
                 bestNextAI = { ai: "11", position: idx11 };
@@ -365,7 +368,10 @@ export function parseGS1Barcode(
           let idx17 = cleanedBarcode.indexOf("17", from);
           while (idx17 !== -1 && idx17 < maxEnd) {
             if (idx17 + 2 + 6 <= cleanedBarcode.length) {
-              const datePayload = cleanedBarcode.substring(idx17 + 2, idx17 + 8);
+              const datePayload = cleanedBarcode.substring(
+                idx17 + 2,
+                idx17 + 8
+              );
               const conv = convertYYMMDDtoISO(datePayload);
               if (conv.valid) {
                 if (!bestNextAI || idx17 < bestNextAI.position) {
@@ -381,7 +387,10 @@ export function parseGS1Barcode(
 
         // 2) Generic search (wider range so AI 17 is found after long batch)
         if (!bestNextAI) {
-          const maxSearch = Math.min(40, cleanedBarcode.length - payloadStart - 2);
+          const maxSearch = Math.min(
+            40,
+            cleanedBarcode.length - payloadStart - 2
+          );
           for (let searchDist = 3; searchDist <= maxSearch; searchDist++) {
             const nextAI = findNextValidAI(
               cleanedBarcode,
@@ -465,7 +474,12 @@ export function parseGS1Barcode(
           result.prod_date = converted.date;
         } else if (ai === "17" && !result.expiry) {
           result.expiry = converted.date;
-          console.log("[gs1Parser] AI 17 유효기간:", payload, "->", converted.date);
+          console.log(
+            "[gs1Parser] AI 17 유효기간:",
+            payload,
+            "->",
+            converted.date
+          );
         }
       }
     } else {

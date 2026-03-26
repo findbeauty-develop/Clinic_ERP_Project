@@ -526,7 +526,8 @@ export class OutboundService {
               // ✅ used_count = foydalanishlar soni (butun). Hajm = used_count * usage_capacity
               const usedCountIncrement = item.outboundQty;
               const newUsedCount = currentUsedCount + usedCountIncrement;
-              const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+              const currentVolumeUsed =
+                currentUsedCount * product.usage_capacity;
               const newVolumeUsed = newUsedCount * product.usage_capacity;
 
               const previousEmptyBoxes = Math.floor(
@@ -1337,7 +1338,8 @@ export class OutboundService {
               // ✅ used_count = foydalanishlar soni (butun). Hajm = used_count * usage_capacity
               const usedCountIncrement = item.outboundQty;
               const newUsedCount = currentUsedCount + usedCountIncrement;
-              const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+              const currentVolumeUsed =
+                currentUsedCount * product.usage_capacity;
               const newVolumeUsed = newUsedCount * product.usage_capacity;
 
               const previousEmptyBoxes = Math.floor(
@@ -1606,7 +1608,7 @@ export class OutboundService {
 
             const product = productMap.get(productId);
             const isDamagedOrDefective = dto.isDamaged || dto.isDefective;
-            
+
             let batchQtyDecrement = 0; // Default
             let usedCountIncrement = 0; // ✅ Faqat oddiy outbound uchun
             let outboundCountIncrement = batchData.totalOutboundQty; // ✅ Har doim (barcha outbound turlari)
@@ -1622,7 +1624,12 @@ export class OutboundService {
               // Batch'ning hozirgi used_count'ini olish
               const currentBatch = await tx.batch.findUnique({
                 where: { id: batchId },
-                select: { used_count: true, outbound_count: true, qty: true, inbound_qty: true },
+                select: {
+                  used_count: true,
+                  outbound_count: true,
+                  qty: true,
+                  inbound_qty: true,
+                },
               });
 
               const currentUsedCount = currentBatch?.used_count || 0;
@@ -1635,8 +1642,12 @@ export class OutboundService {
 
               if (!isDamagedOrDefective) {
                 usedCountIncrement = usedCountAdd;
-                const newUsedCount = Math.max(0, currentUsedCount + usedCountAdd);
-                const currentVolumeUsed = currentUsedCount * product.usage_capacity;
+                const newUsedCount = Math.max(
+                  0,
+                  currentUsedCount + usedCountAdd
+                );
+                const currentVolumeUsed =
+                  currentUsedCount * product.usage_capacity;
                 const newVolumeUsed = newUsedCount * product.usage_capacity;
 
                 const previousEmptyBoxes = Math.floor(
@@ -1655,15 +1666,18 @@ export class OutboundService {
                 usedCountIncrement = 0;
 
                 const virtualUsedCount = currentUsedCount + usedCountAdd;
-                const currentVolumeUsed = currentUsedCount * product.usage_capacity;
-                const virtualVolumeUsed = virtualUsedCount * product.usage_capacity;
+                const currentVolumeUsed =
+                  currentUsedCount * product.usage_capacity;
+                const virtualVolumeUsed =
+                  virtualUsedCount * product.usage_capacity;
                 const previousEmptyBoxes = Math.floor(
                   currentVolumeUsed / product.capacity_per_product
                 );
                 const virtualEmptyBoxes = Math.floor(
                   virtualVolumeUsed / product.capacity_per_product
                 );
-                const emptyBoxesToDecrement = virtualEmptyBoxes - previousEmptyBoxes;
+                const emptyBoxesToDecrement =
+                  virtualEmptyBoxes - previousEmptyBoxes;
                 batchQtyDecrement = Math.max(0, emptyBoxesToDecrement);
 
                 this.logger.warn(
@@ -1691,13 +1705,13 @@ export class OutboundService {
             } else {
               // ✅ usage_capacity yoki capacity_per_product bo'lmasa: to'g'ridan-to'g'ri qty kamayadi
               batchQtyDecrement = batchData.totalOutboundQty;
-              
+
               // ✅ outbound_count yangilanadi (har doim)
               await tx.batch.update({
                 where: { id: batchId },
                 data: { outbound_count: { increment: outboundCountIncrement } },
               });
-              
+
               this.logger.debug(
                 `📦 [NO CAPACITY] batch ${batchId}: direct qty decrement ${batchQtyDecrement}, outbound_count +${outboundCountIncrement}`
               );
@@ -1709,27 +1723,28 @@ export class OutboundService {
                 where: { id: batchId },
                 select: { qty: true, inbound_qty: true },
               });
-              
+
               const currentQty = currentBatch?.qty || 0;
               const inboundQty = currentBatch?.inbound_qty || 0;
-              
+
               const maxDecrement = Math.max(0, currentQty);
               const actualDecrement = Math.min(batchQtyDecrement, maxDecrement);
-              
+
               if (actualDecrement > 0) {
                 await tx.batch.update({
                   where: { id: batchId },
                   data: { qty: { decrement: actualDecrement } },
                 });
-                
-                const currentDecrement = productStockUpdates.get(productId) || 0;
+
+                const currentDecrement =
+                  productStockUpdates.get(productId) || 0;
                 productStockUpdates.set(
                   productId,
                   currentDecrement + actualDecrement
                 );
-                
+
                 this.logger.debug(
-                  `✅ [createUnifiedOutbound] Updated qty for batch ${batchId}: ${currentQty} → ${currentQty - actualDecrement} ${isDamagedOrDefective ? '(damaged/defective - direct decrement)' : '(empty boxes)'}`
+                  `✅ [createUnifiedOutbound] Updated qty for batch ${batchId}: ${currentQty} → ${currentQty - actualDecrement} ${isDamagedOrDefective ? "(damaged/defective - direct decrement)" : "(empty boxes)"}`
                 );
               }
             }
@@ -1937,9 +1952,6 @@ export class OutboundService {
     });
 
     const newCurrentStock = totalStock._sum.qty ?? 0;
-    
-    // 🔍 DEBUG LOG
-    console.log(`[OUTBOUND - UPDATE CURRENT_STOCK] Product ${productId}: ${newCurrentStock} (after outbound ${outboundQty})`);
 
     await tx.product.update({
       where: { id: productId },
@@ -2036,7 +2048,10 @@ export class OutboundService {
 
           // ✅ used_count = foydalanishlar soni → outbound_qty ni ayiramiz
           const usedCountDecrement = outbound.outbound_qty;
-          const newUsedCount = Math.max(0, currentUsedCount - usedCountDecrement);
+          const newUsedCount = Math.max(
+            0,
+            currentUsedCount - usedCountDecrement
+          );
 
           const currentVolumeUsed = currentUsedCount * product.usage_capacity;
           const newVolumeUsed = newUsedCount * product.usage_capacity;

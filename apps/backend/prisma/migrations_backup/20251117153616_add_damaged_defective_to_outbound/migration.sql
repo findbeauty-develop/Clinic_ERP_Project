@@ -1,4 +1,0 @@
--- AlterTable
-ALTER TABLE "Outbound" ADD COLUMN IF NOT EXISTS "is_damaged" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN IF NOT EXISTS "is_defective" BOOLEAN NOT NULL DEFAULT false;
-

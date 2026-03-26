@@ -89,12 +89,12 @@ export default function ReturnsPage() {
       const searchParam = debouncedSearchQuery
         ? `?search=${encodeURIComponent(debouncedSearchQuery)}`
         : "";
-      
+
       // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const separator = searchParam ? '&' : '?';
-      
+      const separator = searchParam ? "&" : "?";
+
       const data = await apiGet<AvailableProduct[]>(
         `${apiUrl}/returns/available-products${searchParam}${separator}_t=${timestamp}&_r=${random}`
       );
@@ -116,33 +116,33 @@ export default function ReturnsPage() {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         // Page loaded from bfcache (Safari back button)
-        console.log('[Returns] Loaded from bfcache - forcing refresh');
+
         fetchAvailableProducts();
       }
     };
 
     const handlePageHide = () => {
       // Mark page as potentially cached
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('returns_was_cached', 'true');
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("returns_was_cached", "true");
       }
     };
 
-    window.addEventListener('pageshow', handlePageShow as EventListener);
-    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
 
     // Check if returning from cache
-    if (typeof window !== 'undefined') {
-      const wasCached = sessionStorage.getItem('returns_was_cached');
-      if (wasCached === 'true') {
-        sessionStorage.removeItem('returns_was_cached');
+    if (typeof window !== "undefined") {
+      const wasCached = sessionStorage.getItem("returns_was_cached");
+      if (wasCached === "true") {
+        sessionStorage.removeItem("returns_was_cached");
         fetchAvailableProducts();
       }
     }
 
     return () => {
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
-      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, [fetchAvailableProducts]);
 
@@ -163,9 +163,8 @@ export default function ReturnsPage() {
     const product = products.find((p) => p.productId === productId);
     if (!product) return;
 
-    // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
     const maxQty =
-      product.emptyBoxes !== undefined
+      product.emptyBoxes !== undefined && product.emptyBoxes > 0
         ? product.emptyBoxes
         : product.unreturnedQty;
 
@@ -201,9 +200,8 @@ export default function ReturnsPage() {
           const firstBatch = product.batches[0];
           if (!firstBatch) return prev;
 
-          // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
           const maxQty =
-            product.emptyBoxes !== undefined
+            product.emptyBoxes !== undefined && product.emptyBoxes > 0
               ? product.emptyBoxes
               : product.unreturnedQty;
 
@@ -329,8 +327,8 @@ export default function ReturnsPage() {
         alert("반납이 성공적으로 처리되었습니다.");
 
         // ✅ Set force refresh flag for history page
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('returns_history_force_refresh', 'true');
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("returns_history_force_refresh", "true");
         }
 
         // Clear selected items
@@ -450,12 +448,11 @@ export default function ReturnsPage() {
                 <div className="space-y-3 flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                   {products
                     .filter((product) => {
-                      // Agar 미반납 수량 0 bo'lsa, product'ni ko'rsatma
-                      const displayQty =
-                        product.emptyBoxes !== undefined
-                          ? product.emptyBoxes
-                          : product.unreturnedQty;
-                      return displayQty > 0;
+                      return (
+                        product.unreturnedQty > 0 ||
+                        (product.emptyBoxes !== undefined &&
+                          product.emptyBoxes > 0)
+                      );
                     })
                     .map((product) => {
                       // Calculate total selected quantity for this product
@@ -481,7 +478,8 @@ export default function ReturnsPage() {
                                   {/* Unreturned Quantity Badge */}
                                   <span className="rounded-lg bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                                     미반납 수량:{" "}
-                                    {product.emptyBoxes !== undefined
+                                    {product.emptyBoxes !== undefined &&
+                                    product.emptyBoxes > 0
                                       ? product.emptyBoxes
                                       : product.unreturnedQty}
                                     {product.unit || "개"}
@@ -496,9 +494,9 @@ export default function ReturnsPage() {
                                       );
                                       const currentQty =
                                         selectedItem?.returnQty || 0;
-                                      // emptyBoxes mavjud bo'lsa, uni ishlatish, aks holda unreturnedQty
                                       const maxQty =
-                                        product.emptyBoxes !== undefined
+                                        product.emptyBoxes !== undefined &&
+                                        product.emptyBoxes > 0
                                           ? product.emptyBoxes
                                           : product.unreturnedQty;
 

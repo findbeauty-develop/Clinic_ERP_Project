@@ -10,7 +10,11 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "test": "turbo test"
+    "test": "turbo test",
+    "desktop:dev": "pnpm --filter @jaclit/desktop dev",
+    "desktop:build": "pnpm --filter @jaclit/desktop build",
+    "desktop:icon": "pnpm --dir apps/desktop exec tauri icon",
+    "desktop:tauri": "pnpm --dir apps/desktop exec tauri"
   },
   "devDependencies": {
     "turbo": "^2.0.0"

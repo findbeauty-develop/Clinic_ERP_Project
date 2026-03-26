@@ -1,0 +1,30 @@
+[package]
+name = "jaclit-erp"
+version = "1.0.0"
+description = "Jaclit ERP - 클리닉 ERP 데스크탑 앱"
+authors = []
+license = ""
+repository = ""
+default-run = "jaclit-erp"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

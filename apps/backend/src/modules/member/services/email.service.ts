@@ -731,7 +731,7 @@ export class EmailService {
                   <div class="product-item">
                     <strong>${p.productName}${
                       p.brand ? ` (${p.brand})` : ""
-                    }</strong> - 수량: ${p.quantity}
+                    }</strong> - 수량: ${p.quantity} Box
                   </div>
                 `
                   )
@@ -1033,7 +1033,7 @@ export class EmailService {
                   <div class="product-item">
                     <strong>${p.productName}${
                       p.brand ? ` (${p.brand})` : ""
-                    }</strong> - 수량: ${p.quantity}
+                    }</strong> - 수량: ${p.quantity} Box
                   </div>
                 `
                   )

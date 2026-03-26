@@ -2152,6 +2152,7 @@ export class OrderService {
             const products = itemsWithDetails.map((item: any) => ({
               productName: item.productName || "제품",
               brand: item.brand || "",
+              quantity: item.quantity || 0,
             }));
 
             // Total quantity'ni hisoblash (barcha itemlarning quantity'sini yig'ish)
@@ -2443,8 +2444,34 @@ export class OrderService {
         const smsPromises = Array.from(itemsByManager.values()).map(
           async (group) => {
             try {
-              // Agar platform supplier bo'lsa, barcha ACTIVE manager'larga SMS yuborish
+              // Agar platform supplier bo'lsa, SMS yuborish
               if (group.isPlatformSupplier && group.supplierTenantId) {
+                // ✅ Agar specific managerId bo'lsa — FAQAT shu managerni ishlatish (receive_sms flag'dan qat'iy nazar)
+                if (group.managerId && group.phoneNumber) {
+                  const totalQuantity = group.items.reduce(
+                    (sum, item) => sum + item.quantity,
+                    0
+                  );
+                  const totalAmount = group.items.reduce(
+                    (sum, item) => sum + item.totalPrice,
+                    0
+                  );
+                  const products = group.items.map((item) => ({
+                    productName: item.productName,
+                    brand: item.brand,
+                    quantity: item.quantity,
+                  }));
+                  await this.messageService.sendOrderNotification(
+                    group.phoneNumber,
+                    finalClinicName,
+                    order.order_no,
+                    totalAmount,
+                    totalQuantity,
+                    clinicManagerName,
+                    products
+                  );
+                } else {
+                // managerId yo'q bo'lsa — receive_sms: true bo'lgan barcha active managerlarga
                 const allManagers = await this.prisma.supplierManager.findMany({
                   where: {
                     supplier_tenant_id: group.supplierTenantId,
@@ -2459,11 +2486,7 @@ export class OrderService {
                 });
 
                 if (allManagers.length > 0) {
-                  // Agar managerId bo'lsa, faqat shu manager'ga SMS yuborish
-                  // Agar bo'lmasa, barcha ACTIVE manager'larga SMS yuborish
-                  const managersToNotify = group.managerId
-                    ? allManagers.filter((m) => m.id === group.managerId)
-                    : allManagers;
+                  const managersToNotify = allManagers;
 
                   const managerSmsPromises = managersToNotify
                     .filter((manager) => manager.phone_number)
@@ -2483,6 +2506,7 @@ export class OrderService {
                         const products = group.items.map((item) => ({
                           productName: item.productName,
                           brand: item.brand,
+                          quantity: item.quantity,
                         }));
 
                         await this.messageService.sendOrderNotification(
@@ -2520,6 +2544,7 @@ export class OrderService {
                     const products = group.items.map((item) => ({
                       productName: item.productName,
                       brand: item.brand,
+                      quantity: item.quantity,
                     }));
 
                     await this.messageService.sendOrderNotification(
@@ -2533,6 +2558,7 @@ export class OrderService {
                     );
                   }
                 }
+                } // closes: else { // managerId yo'q
               } else {
                 // Manual supplier: ClinicSupplierManager telefoniga SMS
                 if (group.phoneNumber) {
@@ -2547,6 +2573,7 @@ export class OrderService {
                   const products = group.items.map((item) => ({
                     productName: item.productName,
                     brand: item.brand,
+                    quantity: item.quantity,
                   }));
 
                   await this.messageService.sendOrderNotification(

@@ -47,9 +47,17 @@ export class MessageService {
   /**
    * Send SMS using the configured provider
    */
-  async sendSMS(phoneNumber: string, message: string, isCritical: boolean = false): Promise<boolean> {
+  async sendSMS(
+    phoneNumber: string,
+    message: string,
+    isCritical: boolean = false
+  ): Promise<boolean> {
     try {
-      const smsSent = await this.provider.sendSMS(phoneNumber, message, isCritical);
+      const smsSent = await this.provider.sendSMS(
+        phoneNumber,
+        message,
+        isCritical
+      );
       if (smsSent) {
       } else {
         this.logger.warn(`Failed to send SMS to ${phoneNumber}`);
@@ -148,7 +156,7 @@ export class MessageService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string }>
+    products?: Array<{ productName: string; brand: string; quantity?: number }>
   ): Promise<boolean> {
     if (!phoneNumber) {
       this.logger.warn("Phone number is required for order notification");
@@ -167,7 +175,11 @@ export class MessageService {
     try {
       // ✅ Order notifications - critical SMS (high-value orders)
       const isCritical = totalAmount > 1000000; // 1M won dan katta
-      const smsSent = await this.provider.sendSMS(phoneNumber, message, isCritical);
+      const smsSent = await this.provider.sendSMS(
+        phoneNumber,
+        message,
+        isCritical
+      );
       if (smsSent) {
       } else {
         this.logger.warn(
@@ -194,37 +206,30 @@ export class MessageService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string }>
+    products?: Array<{ productName: string; brand: string; quantity?: number }>
   ): string {
-    let message = `[Web발신]\n`;
-    message += `[주문 알림] ${clinicName}에서 주문이 접수되었습니다.\n\n`;
+    let message = `[주문 알림] ${clinicName}에서 주문이 접수되었습니다.\n\n`;
     message += `주문번호: ${orderNo}\n`;
 
     if (clinicManagerName) {
       message += `담당자: ${clinicManagerName}\n`;
     }
 
-    // Product ma'lumotlarini formatlash
+    // Product ma'lumotlarini formatlash - barcha product nomlari va miqdori
     if (products && products.length > 0) {
-      if (products.length === 1) {
-        // Faqat bitta product bo'lsa
-        const product = products[0];
-        const productDisplay = `${product.productName}${
-          product.brand ? ` ${product.brand}` : ""
-        }`;
-        message += `제품명: ${productDisplay}\n`;
-      } else {
-        // Bir nechta product bo'lsa - birinchi product va qolganlar soni
-        const firstProduct = products[0];
-        const productDisplay = `${firstProduct.productName}${
-          firstProduct.brand ? ` ${firstProduct.brand}` : ""
-        }`;
-        message += `제품명: ${productDisplay} 외 ${products.length - 1}개\n`;
-      }
+      const productLines = products
+        .map((p) => {
+          const name = `${p.productName}${p.brand ? ` ${p.brand}` : ""}`;
+          return p.quantity !== undefined
+            ? `  - ${name} ${p.quantity} Box`
+            : `  - ${name}`;
+        })
+        .join("\n");
+      message += `제품명:\n${productLines}\n`;
     }
 
     message += `총 금액: ${totalAmount.toLocaleString("ko-KR")}원\n`;
-    message += `제품 수: ${itemCount}개\n\n`;
+    message += `제품 수: ${itemCount} Box\n\n`;
     message += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n\n`;
 
     // Supplier frontend URL

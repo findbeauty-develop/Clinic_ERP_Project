@@ -2,7 +2,9 @@ node_modules
 .env*
 .env.production
 .next
-dist
+# Faqat repo ildizidagi dist (Tauri: apps/desktop/dist alohida, commit qilinadi)
+/dist
+apps/backend/dist/
 coverage
 .turbo
 .DS_Store
@@ -11,3 +13,4 @@ coverage
 .pnpm-store/**
 # Google Cloud Vision API credentials
 apps/backend/keys/google-vision.json
+apps/desktop/src-tauri/target/

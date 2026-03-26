@@ -53,7 +53,14 @@ async function bootstrap() {
           defaultSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for Swagger UI
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for Swagger UI
-          imgSrc: ["'self'", "data:", "https:", "http://localhost:3000", "http://localhost:3001", "http://localhost:3003"],
+          imgSrc: [
+            "'self'",
+            "data:",
+            "https:",
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3003",
+          ],
           fontSrc: ["'self'", "data:", "https:"],
           connectSrc: ["'self'", "https://api.jaclit.com"],
           frameSrc: ["'self'"],
@@ -177,33 +184,42 @@ async function bootstrap() {
   );
 
   const uploadsDir = getUploadRoot();
-  app.use("/uploads", express.static(uploadsDir, {
-    setHeaders: (res, path) => {
-      // ✅ CORS header'larini qo'shish - image'lar uchun
-      const allowedOrigins = process.env.CORS_ORIGINS
-        ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
-        : [
-            "https://clinic.jaclit.com",
-            "https://supplier.jaclit.com",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://localhost:3003",
-          ];
-      
-      // Request origin'ni tekshirish
-      const requestOrigin = (res as any).req?.headers?.origin;
-      if (requestOrigin && (allowedOrigins.includes(requestOrigin) || !isProduction)) {
-        res.setHeader("Access-Control-Allow-Origin", requestOrigin);
-      } else if (!isProduction) {
-        // Development'da barcha origin'larga ruxsat
-        res.setHeader("Access-Control-Allow-Origin", "*");
-      }
-      
-      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-    },
-  }));
+  app.use(
+    "/uploads",
+    express.static(uploadsDir, {
+      setHeaders: (res, path) => {
+        // ✅ CORS header'larini qo'shish - image'lar uchun
+        const allowedOrigins = process.env.CORS_ORIGINS
+          ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+          : [
+              "https://clinic.jaclit.com",
+              "https://supplier.jaclit.com",
+              "http://localhost:3000",
+              "http://localhost:3001",
+              "http://localhost:3003",
+            ];
+
+        // Request origin'ni tekshirish
+        const requestOrigin = (res as any).req?.headers?.origin;
+        if (
+          requestOrigin &&
+          (allowedOrigins.includes(requestOrigin) || !isProduction)
+        ) {
+          res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+        } else if (!isProduction) {
+          // Development'da barcha origin'larga ruxsat
+          res.setHeader("Access-Control-Allow-Origin", "*");
+        }
+
+        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization"
+        );
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      },
+    })
+  );
 
   // ✅ Health check endpoint (for Docker healthcheck)
   app.getHttpAdapter().get("/health", (req, res) => {
@@ -218,16 +234,16 @@ async function bootstrap() {
 
   if (!isProduction) {
     try {
-  const cfg = new DocumentBuilder()
-    .setTitle("ERP API")
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .build();
-  const doc = SwaggerModule.createDocument(app, cfg);
-  SwaggerModule.setup("docs", app, doc);
-  app.getHttpAdapter().get("/docs-json", (req, res) => {
-    res.json(doc);
-  });
+      const cfg = new DocumentBuilder()
+        .setTitle("ERP API")
+        .setVersion("0.1.0")
+        .addBearerAuth()
+        .build();
+      const doc = SwaggerModule.createDocument(app, cfg);
+      SwaggerModule.setup("docs", app, doc);
+      app.getHttpAdapter().get("/docs-json", (req, res) => {
+        res.json(doc);
+      });
       console.log("Swagger documentation available at /docs");
     } catch (error: any) {
       console.warn("Swagger setup failed:", error?.message || String(error));
@@ -239,10 +255,5 @@ async function bootstrap() {
 
   const serverPort = Number(process.env.PORT) || 3000;
   await app.listen(serverPort);
-
-  console.log("\n" + "=".repeat(60));
-  console.log(`✅ Clinic Backend server is running on port ${serverPort}`);
-  console.log(`📌 Environment: ${isProduction ? "PRODUCTION" : "DEVELOPMENT"}`);
-  console.log("=".repeat(60) + "\n");
 }
 bootstrap();

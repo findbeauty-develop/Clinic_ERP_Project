@@ -154,28 +154,22 @@ export class OrderReturnService {
           : [],
       ]);
 
-      // 4. ProductSupplier'larni olish (FAQAT supplier_id yo'q bo'lgan return'lar uchun)
-      // ✅ Optimization: Faqat kerakli product'lar uchun query
+      // 4. ProductSupplier'larni olish (barcha return'lar uchun — supplier_id noto'g'ri turdagi ID bo'lishi mumkin)
+      // ✅ supplier_id = ClinicSupplierManager.id, lekin supplierMap Supplier jadvalidan qidiradi.
+      // ✅ Shuning uchun barcha product'lar uchun productSuppliersMap to'ldiriladi (fallback sifatida).
       const productsNeedingSupplier = new Set<string>();
 
-      // Return'lar orasida supplier_id yo'q bo'lganlarni topish
+      // Barcha return'larning product_id'larini qo'shish
       returns.forEach((r: any) => {
-        if (!r.supplier_id && r.product_id) {
+        if (r.product_id) {
           productsNeedingSupplier.add(r.product_id);
         }
       });
 
-      // Outbound'lar orasida supplier_id yo'q bo'lganlarni topish
+      // Outbound'lar orasidagi product_id'larni ham qo'shish
       outbounds.forEach((o: any) => {
-        // Outbound'ning product_id'si bo'lsa va supplier_id yo'q bo'lsa
         if (o.product_id) {
-          // Return'larni tekshirish
-          const hasReturnWithoutSupplier = returns.some(
-            (r: any) => r.outbound_id === o.id && !r.supplier_id
-          );
-          if (hasReturnWithoutSupplier) {
-            productsNeedingSupplier.add(o.product_id);
-          }
+          productsNeedingSupplier.add(o.product_id);
         }
       });
 
@@ -236,7 +230,7 @@ export class OrderReturnService {
         );
       } else {
         this.logger.debug(
-          `⚡ [ProductSupplier Query] Skipped - all returns have supplier_id`
+          `⚡ [ProductSupplier Query] Skipped - no product_ids found`
         );
       }
 

@@ -1,13 +1,13 @@
 /**
  * Global Barcode Scanner (IME/Hangul-safe, Focus-free)
- * 
+ *
  * Features:
  * - Layout-independent: Uses event.code instead of event.key
  * - Works globally: No focus required
  * - Uppercase only: Perfect for LOT numbers
  * - Smart detection: Differentiates scanner from manual typing
  * - Timeout support: Works with or without Enter suffix
- * 
+ *
  * @author Clinic ERP Team
  * @version 2.0.0
  */
@@ -25,20 +25,20 @@ interface ScannerConfig {
 }
 
 class GlobalBarcodeScanner {
-  private buffer: string = '';
+  private buffer: string = "";
   private lastTs: number = 0;
   private fastCount: number = 0;
   private scanStarted: boolean = false;
   private resetTimer: NodeJS.Timeout | null = null;
   private completionTimer: NodeJS.Timeout | null = null;
   private isActive: boolean = false;
-  
+
   private config: Required<ScannerConfig> = {
     onScan: () => {},
     minLen: 6,
     maxIntervalMs: 80,
     fastStartCount: 3,
-    endKey: 'Enter',
+    endKey: "Enter",
     allowInInputs: true,
     useTimeout: true,
     completionTimeoutMs: 120,
@@ -54,12 +54,12 @@ class GlobalBarcodeScanner {
    */
   start(options: ScannerConfig): void {
     if (this.isActive) {
-      console.warn('⚠️ GlobalBarcodeScanner already active');
+      console.warn("⚠️ GlobalBarcodeScanner already active");
       return;
     }
 
-    if (typeof options.onScan !== 'function') {
-      throw new Error('onScan callback is required');
+    if (typeof options.onScan !== "function") {
+      throw new Error("onScan callback is required");
     }
 
     this.config = { ...this.config, ...options };
@@ -67,16 +67,7 @@ class GlobalBarcodeScanner {
     this._hardReset();
 
     // Add global listener with capture phase
-    document.addEventListener('keydown', this.handleKeyDown, true);
-
-    if (this.config.debug) {
-      console.log('✅ GlobalBarcodeScanner started', {
-        minLen: this.config.minLen,
-        maxIntervalMs: this.config.maxIntervalMs,
-        useTimeout: this.config.useTimeout,
-        completionTimeoutMs: this.config.completionTimeoutMs,
-      });
-    }
+    document.addEventListener("keydown", this.handleKeyDown, true);
   }
 
   /**
@@ -85,13 +76,9 @@ class GlobalBarcodeScanner {
   stop(): void {
     if (!this.isActive) return;
 
-    document.removeEventListener('keydown', this.handleKeyDown, true);
+    document.removeEventListener("keydown", this.handleKeyDown, true);
     this.isActive = false;
     this._hardReset();
-
-    if (this.config.debug) {
-      console.log('🛑 GlobalBarcodeScanner stopped');
-    }
   }
 
   /**
@@ -134,10 +121,6 @@ class GlobalBarcodeScanner {
         e.preventDefault();
         e.stopPropagation();
 
-        if (this.config.debug) {
-          console.log('✅ Scan complete (Enter):', code);
-        }
-
         this.config.onScan(code);
       } else {
         this._softReset();
@@ -167,19 +150,12 @@ class GlobalBarcodeScanner {
     // Start scan if fast typing detected
     if (!this.scanStarted && this.fastCount >= this.config.fastStartCount) {
       this.scanStarted = true;
-      if (this.config.debug) {
-        console.log('🎬 Scan started!');
-      }
     }
 
     // Only prevent default after scan started
     if (this.scanStarted) {
       e.preventDefault();
       e.stopPropagation();
-    }
-
-    if (this.config.debug) {
-      console.log(`📷 Buffer: "${this.buffer}" (${this.buffer.length} chars, ${this.fastCount} fast)`);
     }
 
     // Arm timers
@@ -196,9 +172,6 @@ class GlobalBarcodeScanner {
 
     // Reset timer (safety net)
     this.resetTimer = setTimeout(() => {
-      if (this.config.debug) {
-        console.log('⏱️ Reset timeout - buffer cleared');
-      }
       this._softReset();
     }, this.config.maxIntervalMs * 3);
 
@@ -209,15 +182,8 @@ class GlobalBarcodeScanner {
           const code = this.buffer;
           this._hardReset();
 
-          if (this.config.debug) {
-            console.log('✅ Scan complete (Timeout):', code);
-          }
-
           this.config.onScan(code);
         } else {
-          if (this.config.debug) {
-            console.log('⚠️ Buffer too short, cleared:', this.buffer);
-          }
           this._softReset();
         }
       }, this.config.completionTimeoutMs);
@@ -228,7 +194,7 @@ class GlobalBarcodeScanner {
    * Soft reset: Clear buffer and state
    */
   private _softReset(): void {
-    this.buffer = '';
+    this.buffer = "";
     this.fastCount = 0;
     this.scanStarted = false;
 
@@ -257,8 +223,8 @@ class GlobalBarcodeScanner {
   private _isEditableTarget(target: EventTarget | null): boolean {
     if (!target) return false;
     const el = target as HTMLElement;
-    const tag = (el.tagName || '').toLowerCase();
-    return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+    const tag = (el.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || el.isContentEditable;
   }
 
   /**
@@ -266,11 +232,11 @@ class GlobalBarcodeScanner {
    */
   private _isIgnorableCode(code: string): boolean {
     return (
-      code === 'ShiftLeft' ||
-      code === 'ShiftRight' ||
-      code === 'CapsLock' ||
-      code === 'Tab' ||
-      code === 'Escape'
+      code === "ShiftLeft" ||
+      code === "ShiftRight" ||
+      code === "CapsLock" ||
+      code === "Tab" ||
+      code === "Escape"
     );
   }
 
@@ -295,15 +261,15 @@ class GlobalBarcodeScanner {
 
     // Special characters (common in barcodes)
     const specials: Record<string, string> = {
-      Minus: '-',
-      NumpadSubtract: '-',
-      Slash: '/',
-      NumpadDivide: '/',
-      Period: '.',
-      NumpadDecimal: '.',
+      Minus: "-",
+      NumpadSubtract: "-",
+      Slash: "/",
+      NumpadDivide: "/",
+      Period: ".",
+      NumpadDecimal: ".",
     };
 
-    return specials[code] || '';
+    return specials[code] || "";
   }
 
   /**

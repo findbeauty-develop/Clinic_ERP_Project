@@ -63,6 +63,29 @@ function DashboardContent() {
     []
   );
 
+  const desktopMacUrl = useMemo(
+    () => (process.env.NEXT_PUBLIC_DESKTOP_APP_MAC_URL ?? "").trim(),
+    []
+  );
+  const desktopWinUrl = useMemo(
+    () => (process.env.NEXT_PUBLIC_DESKTOP_APP_WINDOWS_URL ?? "").trim(),
+    []
+  );
+
+  const [desktopOsHint, setDesktopOsHint] = useState<"mac" | "windows" | null>(
+    null
+  );
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const p = navigator.platform || "";
+    // 데스크톱 설치 파일용: iPhone/iPad는 .dmg 대상 아님
+    if (p.startsWith("Mac")) {
+      setDesktopOsHint("mac");
+    } else if (p.startsWith("Win")) {
+      setDesktopOsHint("windows");
+    }
+  }, []);
+
   // Add mock order data (after line 56, before newsTabs)
   const mockOrders = [
     {
@@ -795,6 +818,92 @@ function DashboardContent() {
             ))}
           </div>
         </div>
+
+        {/* 데스크톱 앱: macOS / Windows 별도 다운로드 링크 (NEXT_PUBLIC_DESKTOP_APP_* 환경변수) */}
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="h-5 w-5"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  데스크톱 앱 다운로드
+                </h3>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Mac은 .dmg, Windows는 설치 파일(.exe 등)을 내려받아 설치하세요.
+                  웹 브라우저 없이 ERP를 실행할 수 있습니다.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {desktopMacUrl ? (
+                <a
+                  href={desktopMacUrl}
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 ${
+                    desktopOsHint === "mac"
+                      ? "bg-sky-600 ring-2 ring-sky-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
+                      : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500"
+                  }`}
+                >
+                  macOS 다운로드
+                </a>
+              ) : (
+                <span
+                  className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-400 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-500"
+                  title="관리자가 다운로드 링크를 설정하면 활성화됩니다"
+                >
+                  macOS (준비 중)
+                </span>
+              )}
+              {desktopWinUrl ? (
+                <a
+                  href={desktopWinUrl}
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 ${
+                    desktopOsHint === "windows"
+                      ? "bg-sky-600 ring-2 ring-sky-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
+                      : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500"
+                  }`}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-4 w-4 shrink-0"
+                    aria-hidden
+                  >
+                    <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801" />
+                  </svg>
+                  Windows 다운로드
+                </a>
+              ) : (
+                <span
+                  className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-400 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-500"
+                  title="관리자가 다운로드 링크를 설정하면 활성화됩니다"
+                >
+                  Windows (준비 중)
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Quick Actions - After Banner, Before Main Content */}
         {/* <div className="mb-6">
   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -1695,10 +1804,6 @@ function DashboardContent() {
                         className="flex-shrink-0 cursor-pointer group pr-2"
                         style={{
                           width: `${100 / productRecommendations.length}%`,
-                        }}
-                        onClick={() => {
-                          // Handle product click
-                          console.log("Product clicked:", product.id);
                         }}
                       >
                         <div className="relative   ">

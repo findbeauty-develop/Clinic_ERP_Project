@@ -286,7 +286,6 @@ export default function OrderPage() {
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
-        console.log("[Order] Loaded from bfcache - forcing refresh");
         fetchProducts();
       }
     };
@@ -2035,20 +2034,21 @@ export default function OrderPage() {
                                       <>
                                         <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
                                           <span>
-                                            주문수량: {item.orderedQuantity}개
+                                            주문수량: {item.orderedQuantity} Box
                                           </span>
                                           <span className="text-slate-400">
                                             |
                                           </span>
                                           <span>
-                                            확정수량: {item.confirmedQuantity}개
+                                            확정수량: {item.confirmedQuantity}{" "}
+                                            Box
                                           </span>
                                           <span className="text-slate-400">
                                             |
                                           </span>
                                           <span>
                                             입고수량:{" "}
-                                            {item.inboundQuantity || 0}개
+                                            {item.inboundQuantity || 0} Box
                                           </span>
                                         </div>
                                         <div className="text-sm text-slate-600 dark:text-slate-400">
@@ -2087,8 +2087,9 @@ export default function OrderPage() {
                                             주문 수량:{" "}
                                             {item.orderedQuantity ??
                                               item.confirmedQuantity ??
-                                              0}
-                                            개
+                                              item.inboundQuantity ??
+                                              0}{" "}
+                                            Box
                                           </span>
                                           <span className="ml-80">
                                             단가:{" "}
@@ -2426,7 +2427,7 @@ export default function OrderPage() {
                                       <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
                                         <span>
                                           주문수량: {item.orderedQuantity ?? 0}
-                                          개
+                                          Box
                                         </span>
                                       </div>
                                       <span className="text-sm text-slate-600 dark:text-slate-400">
