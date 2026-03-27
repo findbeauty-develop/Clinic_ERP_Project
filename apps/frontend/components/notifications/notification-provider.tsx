@@ -14,6 +14,7 @@ import {
   apiGet,
 } from "@/lib/api";
 import { sendDesktopNotificationIfTauri } from "@/lib/tauri-desktop-notification";
+import { sendBrowserNotificationIfPermitted } from "@/lib/browser-notification";
 
 export type NotificationItemDto = {
   id: string;
@@ -96,10 +97,18 @@ export function NotificationProvider({
 
       s.on("notification.new", (payload: NotificationItemDto) => {
         setUnreadCount((c) => c + 1);
-        void sendDesktopNotificationIfTauri({
-          title: payload.title,
-          body: payload.body,
-        });
+        void (async () => {
+          const tauri = await sendDesktopNotificationIfTauri({
+            title: payload.title,
+            body: payload.body,
+          });
+          if (!tauri.ok) {
+            sendBrowserNotificationIfPermitted({
+              title: payload.title,
+              body: payload.body,
+            });
+          }
+        })();
       });
 
       s.on("connect_error", (err: Error) => {
