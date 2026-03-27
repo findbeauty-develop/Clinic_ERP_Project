@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Jaclit ERP desktop capability","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open"]}}
+{"default":{"identifier":"default","description":"Jaclit ERP desktop capability","remote":{"urls":["https://clinic.jaclit.com","https://clinic.jaclit.com/*","https://www.clinic.jaclit.com","https://www.clinic.jaclit.com/*","https://*.jaclit.com/*"]},"local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","notification:default"]}}

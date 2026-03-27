@@ -2,6 +2,8 @@
 
 `erp.jaclit.com` ni Windows/macOS desktop ilovasi sifatida ishga tushiradi.
 
+**DMG / EXE yig‘ish va deploy bo‘yicha to‘liq qo‘llanma:** [docs/DESKTOP_BUILD_AND_DEPLOY.md](../../docs/DESKTOP_BUILD_AND_DEPLOY.md)
+
 ## Talablar
 
 ### 1. Rust o'rnatish

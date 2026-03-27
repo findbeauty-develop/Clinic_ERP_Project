@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiGet, apiPut, getTenantId } from "../../../lib/api";
+import {
+  apiGet,
+  apiPut,
+  getTenantIdAfterAuth,
+} from "../../../lib/api";
 
 type ClinicSettings = {
   allowCompanySearch: boolean;
@@ -21,19 +25,44 @@ export default function NotificationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [tauriDesktop, setTauriDesktop] = useState(false);
+  const [tauriTestMsg, setTauriTestMsg] = useState<string | null>(null);
+  const [browserNotifySupported, setBrowserNotifySupported] = useState(false);
+  const [browserTestMsg, setBrowserTestMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSettings();
   }, [apiUrl]);
 
+  useEffect(() => {
+    setBrowserNotifySupported(
+      typeof window !== "undefined" && "Notification" in window
+    );
+    let cancelled = false;
+    void import("../../../lib/tauri-desktop-notification").then(
+      ({ detectTauriDesktop }) => {
+        void detectTauriDesktop().then((v) => {
+          if (!cancelled) setTauriDesktop(v);
+        });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const fetchSettings = async () => {
     setLoading(true);
     setError(null);
     try {
-      const tenantId = getTenantId();
+      const tenantId = await getTenantIdAfterAuth();
+      const q = tenantId
+        ? `?tenantId=${encodeURIComponent(tenantId)}&tenant_id=${encodeURIComponent(tenantId)}`
+        : "";
+      const clinicsPath = `${apiUrl}/iam/members/clinics${q}`;
 
       // Fetch clinic settings - returns array, get first one
-      const clinics = await apiGet<any[]>(`${apiUrl}/iam/members/clinics`);
+      const clinics = await apiGet<any[]>(clinicsPath);
       const clinic =
         Array.isArray(clinics) && clinics.length > 0 ? clinics[0] : clinics;
 
@@ -66,7 +95,7 @@ export default function NotificationSettingsPage() {
     setSuccess(null);
 
     try {
-      const tenantId = getTenantId();
+      await getTenantIdAfterAuth();
 
       // Update clinic settings - send both fields to preserve the other one
       const updatePayload: any = {};
@@ -137,6 +166,117 @@ export default function NotificationSettingsPage() {
         {/* Settings Content */}
         {!loading && (
           <div className="space-y-8">
+            {browserNotifySupported && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-950/40">
+                <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-white">
+                  웹 브라우저 알림 테스트
+                </h3>
+                <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                  이 페이지는 Chrome 등 브라우저에서 열려 있습니다. OS 알림(브라우저
+                  알림)이 뜨는지 확인합니다. 데스크톱 앱 전용 테스트는 아래
+                  &quot;데스크톱 앱&quot; 블록을 사용하세요.
+                </p>
+                {browserTestMsg && (
+                  <p className="mb-3 text-sm text-slate-700 dark:text-slate-300">
+                    {browserTestMsg}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setBrowserTestMsg(null);
+                    if (typeof window === "undefined" || !("Notification" in window)) {
+                      return;
+                    }
+                    if (Notification.permission === "default") {
+                      const p = await Notification.requestPermission();
+                      if (p !== "granted") {
+                        setBrowserTestMsg(
+                          "알림 권한이 거부되었습니다. 브라우저 주소창 옆 자물쇠 아이콘에서 알림을 허용해 주세요."
+                        );
+                        return;
+                      }
+                    }
+                    if (Notification.permission === "granted") {
+                      try {
+                        new Notification("Jaclit ERP", {
+                          body: "브라우저 알림 테스트입니다.",
+                          icon: "/favicon.ico",
+                        });
+                        setBrowserTestMsg(
+                          "알림을 보냈습니다. 화면 구석 또는 알림 센터를 확인하세요."
+                        );
+                      } catch (e) {
+                        setBrowserTestMsg(
+                          e instanceof Error
+                            ? `실패: ${e.message}`
+                            : "알림을 표시할 수 없습니다."
+                        );
+                      }
+                    } else {
+                      setBrowserTestMsg(
+                        "이 브라우저에서 알림이 차단되어 있습니다. 설정에서 허용해 주세요."
+                      );
+                    }
+                  }}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  브라우저 테스트 알림 보내기
+                </button>
+              </div>
+            )}
+
+            {tauriDesktop && (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-6 shadow-sm dark:border-sky-500/30 dark:bg-sky-950/40">
+                <h3 className="mb-2 text-xl font-bold text-slate-900 dark:text-white">
+                  데스크톱 앱 알림 테스트
+                </h3>
+                <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                  Jaclit ERP 데스크톱(Tauri) 앱으로 이 사이트를 열었을 때만
+                  표시됩니다. OS 네이티브 알림이 표시되는지 확인합니다.
+                </p>
+                {tauriTestMsg && (
+                  <p className="mb-3 text-sm text-slate-700 dark:text-slate-300">
+                    {tauriTestMsg}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setTauriTestMsg(null);
+                    const { sendTauriTestNotificationFromWeb } = await import(
+                      "../../../lib/tauri-desktop-notification"
+                    );
+                    const r = await sendTauriTestNotificationFromWeb();
+                    if (r.ok) {
+                      setTauriTestMsg("알림을 보냈습니다. 시스템 알림을 확인하세요.");
+                    } else if (r.reason === "denied") {
+                      setTauriTestMsg("알림 권한이 거부되었습니다. OS 설정에서 허용해 주세요.");
+                    } else {
+                      setTauriTestMsg(
+                        r.reason
+                          ? `실패: ${r.reason}`
+                          : "알림을 보낼 수 없습니다."
+                      );
+                    }
+                  }}
+                  className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
+                >
+                  테스트 알림 보내기
+                </button>
+              </div>
+            )}
+
+            {!tauriDesktop && (
+              <p className="rounded-lg border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400">
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  데스크톱 앱:
+                </span>{" "}
+                Tauri 데스크톱 앱으로 로드하면 위에 &quot;데스크톱 앱 알림
+                테스트&quot; 블록이 나타나 네이티브 알림을 시험할 수 있습니다.
+              </p>
+            )}
+
             {/* 개인정보 공개 여부 Section */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
               <h3 className="mb-6 text-2xl font-bold text-slate-900 dark:text-white">

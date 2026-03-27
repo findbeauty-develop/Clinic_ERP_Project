@@ -740,6 +740,18 @@ export default function OrderPage() {
     [products]
   );
 
+  /** Draft qatorida taxRate bo‘lmasa (server draft), product jadvalidan olamiz. */
+  const resolveDraftItemTaxRate = useCallback(
+    (item: DraftItem): number => {
+      if (item.taxRate !== undefined && item.taxRate !== null) {
+        return Number(item.taxRate);
+      }
+      const p = products.find((x) => x.id === item.productId);
+      return p?.taxRate ?? 0;
+    },
+    [products]
+  );
+
   // Save prices to Product table and add to order (구매가만 입력, 판매가는 기존 값 유지)
   const handleSavePrices = useCallback(async () => {
     if (!selectedProduct || !modalPrices.purchasePrice) {
@@ -806,6 +818,7 @@ export default function OrderPage() {
           supplierId,
           quantity: pendingQuantity,
           unitPrice: purchasePrice,
+          taxRate: selectedProduct.taxRate ?? 0,
           totalPrice: pendingQuantity * purchasePrice,
           isHighlighted: true,
         };
@@ -2754,14 +2767,12 @@ export default function OrderPage() {
                       (sum, item) => sum + item.unitPrice * item.quantity,
                       0
                     );
-                    const vat = group.items.reduce(
-                      (sum, item) =>
-                        sum +
-                        Math.floor(
-                          item.unitPrice * item.quantity * (item.taxRate ?? 0)
-                        ),
-                      0
-                    );
+                    const vat = group.items.reduce((sum, item) => {
+                      const r = resolveDraftItemTaxRate(item);
+                      return (
+                        sum + Math.floor(item.unitPrice * item.quantity * r)
+                      );
+                    }, 0);
 
                     return (
                       <div
@@ -2825,7 +2836,7 @@ export default function OrderPage() {
                             const brand = product?.brand || "";
                             const quantity = item.quantity;
                             const unitPrice = item.unitPrice;
-                            const itemTaxRate = item.taxRate ?? 0;
+                            const itemTaxRate = resolveDraftItemTaxRate(item);
                             const supplyAmount = quantity * unitPrice;
                             const taxAmount = Math.floor(
                               supplyAmount * itemTaxRate
@@ -2887,7 +2898,7 @@ export default function OrderPage() {
                           {vat > 0 && (
                             <div className="flex items-center justify-between text-sm">
                               <span className="text-red-600 dark:text-red-400 font-medium">
-                                부가세 (10%):
+                                부가세:
                               </span>
                               <span className="font-semibold text-red-600 dark:text-red-400">
                                 +{vat.toLocaleString()}원
@@ -2934,9 +2945,18 @@ export default function OrderPage() {
                   <div className="text-lg font-semibold text-slate-900 dark:text-white">
                     총액:{" "}
                     {(() => {
-                      const totalSubtotal = draft.totalAmount;
-                      const totalVAT = Math.floor(totalSubtotal * 0.1);
-                      return (totalSubtotal + totalVAT).toLocaleString();
+                      const supply = draft.totalAmount;
+                      const totalVAT = draft.items.reduce(
+                        (sum, item) =>
+                          sum +
+                          Math.floor(
+                            item.unitPrice *
+                              item.quantity *
+                              resolveDraftItemTaxRate(item)
+                          ),
+                        0
+                      );
+                      return (supply + totalVAT).toLocaleString();
                     })()}
                     원
                   </div>

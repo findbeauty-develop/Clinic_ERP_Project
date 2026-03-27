@@ -370,6 +370,50 @@ export const getMemberData = (): any | null => {
   return null;
 };
 
+/** Decode JWT payload (no verify) — only to read tenant_id when refresh omits member. */
+function tryHydrateTenantFromAccessToken(token: string | null): void {
+  if (!token || tenantId) return;
+  if (typeof window === "undefined") return;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padLen = (4 - (b64.length % 4)) % 4;
+    const padded = b64 + "=".repeat(padLen);
+    const json = atob(padded);
+    const p = JSON.parse(json) as { tenant_id?: string; tenantId?: string };
+    const tid = p.tenant_id ?? p.tenantId;
+    if (tid && typeof tid === "string") {
+      tenantId = tid;
+      localStorage.setItem("erp_tenant_id", tid);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Wait for access token refresh (cookie flow), then resolve tenant id for API URLs.
+ * Call this before building /iam/members/clinics?tenantId=... so the query is not
+ * missing on first paint (getTenantId() used to run before apiGet hydrated memory).
+ */
+export const getTenantIdAfterAuth = async (): Promise<string | null> => {
+  await getAccessToken();
+  tryHydrateTenantFromAccessToken(getAuthToken());
+  let t = getTenantId();
+  if (t) return t;
+  const m = getMemberData();
+  const fromMember = m?.tenant_id as string | undefined;
+  if (fromMember) {
+    tenantId = fromMember;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("erp_tenant_id", fromMember);
+    }
+    return fromMember;
+  }
+  return null;
+};
+
 /**
  * Make an authenticated API request with timeout and deduplication
  */
@@ -379,6 +423,7 @@ export const apiRequest = async (
 ): Promise<Response> => {
   const apiUrl = getApiUrl();
   const token = await getAccessToken(); // ✅ Async token olish
+  tryHydrateTenantFromAccessToken(token);
   const tenantIdValue = getTenantId();
 
   const headers: HeadersInit = {
