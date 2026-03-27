@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { apiGet, getTenantId, getMemberData, getApiUrl } from "../../lib/api";
-import { Settings, X } from "lucide-react";
+import { useNotifications } from "../notifications/notification-provider";
+import { Settings, X, Bell } from "lucide-react";
 
 export type SidebarProps = {
   isOpen?: boolean;
@@ -200,6 +201,7 @@ const navItems = [
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const notifications = useNotifications();
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false); // hydration-safe flag
@@ -545,11 +547,23 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             </div>
           </div>
         )} */}
-        {/* Bottom Settings Button (like the screenshot) */}
-        <div className="">
+        {/* Notifications + settings */}
+        <div className="flex gap-2">
+          <Link
+            href="/notifications"
+            className="relative flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            aria-label="알림"
+          >
+            <Bell className="h-5 w-5 text-slate-500" />
+            {notifications && notifications.unreadCount > 0 && (
+              <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {notifications.unreadCount > 99 ? "99+" : notifications.unreadCount}
+              </span>
+            )}
+          </Link>
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
+            className="flex flex-1 items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
           >
             {/* Gear icon */}
             <Settings className="h-5 w-5 text-slate-500" />
@@ -603,6 +617,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                       { label: "공급업체 정보", href: "/settings/supplier" },
                       { label: "제품 가격 관리", href: "/settings/csvprice" },
                       // { label: "창고위치 관리", href: "/settings/warehouse" },
+                      { label: "알림 목록", href: "/notifications" },
                       { label: "알림 설정", href: "/settings/notifications" },
                       { label: "고객센터", href: "/settings/support" },
                     ].map((mi) => (

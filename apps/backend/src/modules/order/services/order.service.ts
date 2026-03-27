@@ -17,6 +17,9 @@ import { MessageService } from "../../member/services/message.service";
 import { EmailService } from "../../member/services/email.service";
 import { CacheManager } from "../../../common/cache";
 import { TelegramNotificationService } from "src/common/services/telegram-notification.service";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { ORDER_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
+import type { OrderSupplierNotifiedPayload } from "../../notifications/types/order-supplier-notified.payload";
 
 @Injectable()
 export class OrderService {
@@ -30,7 +33,8 @@ export class OrderService {
     private readonly orderRepository: OrderRepository,
     private readonly messageService: MessageService,
     private readonly emailService: EmailService,
-    private readonly telegramService: TelegramNotificationService
+    private readonly telegramService: TelegramNotificationService,
+    private readonly eventEmitter: EventEmitter2
   ) {
     this.pendingInboundCache = new CacheManager({
       maxSize: 100,
@@ -3042,36 +3046,23 @@ export class OrderService {
       }
     });
 
-    // 🆕 Notification: Log supplier order confirmation for clinic
-    try {
-      const statusText =
-        status === "supplier_confirmed"
-          ? "✅ Supplier confirmed"
-          : status === "rejected"
-            ? "❌ Supplier rejected"
-            : `📋 Status updated: ${status}`;
-
-      const adjustmentCount = adjustments?.length || 0;
-      const adjustmentInfo =
-        adjustmentCount > 0 ? ` (${adjustmentCount} adjustments)` : "";
-
-      // If there are adjustments, log them for visibility
-      if (adjustmentCount > 0) {
-        adjustments.forEach((adj: any, idx: number) => {
-          const product = order.items.find(
-            (item: any) => item.id === adj.itemId
-          )?.product;
-          const productName = product?.name || adj.productName || "Unknown";
-        });
+    // After DB transaction commit: in-app + realtime notifications (idempotent per webhook status)
+    if (status === "supplier_confirmed" || status === "rejected") {
+      try {
+        const payload: OrderSupplierNotifiedPayload = {
+          tenantId: clinicTenantId,
+          orderId: order.id,
+          orderNo: order.order_no,
+          sourceStatus: status,
+          rejectionReasons: rejectionReasons ?? null,
+          adjustmentsCount: Array.isArray(adjustments) ? adjustments.length : 0,
+        };
+        this.eventEmitter.emit(ORDER_SUPPLIER_NOTIFIED_EVENT, payload);
+      } catch (notificationError: any) {
+        this.logger.error(
+          `Failed to emit order supplier notification for ${orderNo}: ${notificationError.message}`
+        );
       }
-
-      // TODO: Create in-app notification table entry for clinic user
-      // await this.createClinicOrderNotification(order, status, adjustments);
-    } catch (notificationError: any) {
-      this.logger.error(
-        `Failed to create notification for order ${orderNo}: ${notificationError.message}`
-      );
-      // Don't throw - order update is more important than notification
     }
 
     // Invalidate pending inbound cache when order status changes

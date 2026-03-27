@@ -27,11 +27,11 @@ Bu hujjat **Tauri** desktop ilovasini **macOS (.dmg)** va **Windows (.exe / .msi
 
 ### 2.3. Windows (.exe / .msi)
 
-- **Rust** (rustup): https://rustup.rs  
+- **Rust** (rustup): https://rustup.rs
 - **Microsoft Edge WebView2** (runtime): Windows 11 odatda bor; Windows 10 da kerak bo‘lsa:  
-  https://developer.microsoft.com/microsoft-edge/webview2/  
+  https://developer.microsoft.com/microsoft-edge/webview2/
 - **Visual Studio Build Tools** (C++ workload):  
-  https://visualstudio.microsoft.com/visual-cpp-build-tools/  
+  https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
 **Eslatma:** macOS dan Windows uchun **to‘g‘ridan-to‘g‘ri** `tauri build` odatda **ishlamaydi**. Windows installer olish uchun **Windows mashinasi** yoki **CI (masalan GitHub Actions `windows-latest`)** ishlatiladi.
 
@@ -52,7 +52,7 @@ cd apps/desktop
 pnpm icon -- ../frontend/public/images/logo.png
 ```
 
-**`pnpm desktop:icon -- /path`** yozmang — ` -- ` Tauri CLI ni buzadi (`unexpected argument`).
+**`pnpm desktop:icon -- /path`** yozmang — `--` Tauri CLI ni buzadi (`unexpected argument`).
 
 Natija: `apps/desktop/src-tauri/icons/` ichida kerakli `.icns`, `.ico`, PNG lar.
 
@@ -103,7 +103,6 @@ Natija: `apps/desktop/src-tauri/icons/` ichida kerakli `.icns`, `.ico`, PNG lar.
    ```
 
 4. **Natijalar** (taxminiy):
-
    - **NSIS installer**:  
      `apps/desktop/src-tauri/target/release/bundle/nsis/Jaclit ERP_1.0.0_x64-setup.exe`
    - **MSI**:  
@@ -120,10 +119,10 @@ Natija: `apps/desktop/src-tauri/icons/` ichida kerakli `.icns`, `.ico`, PNG lar.
 
 Bir xil raqamni ikki joyda moslang:
 
-| Fayl | Maydon |
-|------|--------|
-| `apps/desktop/src-tauri/tauri.conf.json` | `version` |
-| `apps/desktop/src-tauri/Cargo.toml` | `[package] version` |
+| Fayl                                     | Maydon              |
+| ---------------------------------------- | ------------------- |
+| `apps/desktop/src-tauri/tauri.conf.json` | `version`           |
+| `apps/desktop/src-tauri/Cargo.toml`      | `[package] version` |
 
 Keyin qayta `pnpm desktop:build`. Installer fayl nomidagi versiya shu raqamga yaqinlashadi.
 
@@ -177,12 +176,39 @@ Bo‘sh qoldirsangiz Dashboarddagi yuklab olish tugmalari “준비 중” ko‘
 
 ## 10. Qisqa xulosa
 
-| Savol | Javob |
-|--------|--------|
-| Har kuni develop qilsam, har deployda DMG/EXE kerakmi? | **Yo‘q** — asosan veb + API deploy yetadi. |
-| Qachon qayta yig‘aman? | Tauri/Rust, capabilities, ikonka, `dist` redirect, versiya o‘zgarganda. |
-| Mac da Windows EXE olamanmi? | Odatda **yo‘q** — Windows da yoki CI da yig‘ing. |
-| DMG qayerda? | `src-tauri/target/release/bundle/dmg/` |
-| EXE qayerda? | `src-tauri/target/release/bundle/nsis/` (yoki `msi/`) |
+| Savol                                                  | Javob                                                                   |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Har kuni develop qilsam, har deployda DMG/EXE kerakmi? | **Yo‘q** — asosan veb + API deploy yetadi.                              |
+| Qachon qayta yig‘aman?                                 | Tauri/Rust, capabilities, ikonka, `dist` redirect, versiya o‘zgarganda. |
+| Mac da Windows EXE olamanmi?                           | Odatda **yo‘q** — Windows da yoki CI da yig‘ing.                        |
+| DMG qayerda?                                           | `src-tauri/target/release/bundle/dmg/`                                  |
+| EXE qayerda?                                           | `src-tauri/target/release/bundle/nsis/` (yoki `msi/`)                   |
 
 Qo‘shimcha qisqa eslatmalar `apps/desktop/README.md` faylida ham bor.
+
+Ha, haqiqiy path shu ekan.
+
+Lekin bu nomdagi rw.64295. qismi vaqtinchalik yoki generator qo‘shgan prefixga o‘xshaydi. Uni shu holatda ham yuborsa bo‘ladi.
+
+Mac’dan serverga yuborish:
+
+scp -i ~/.ssh/seoul-clinic.pem "/Users/Development/Desktop/Clinic_ERP_Project/apps/desktop/src-tauri/target/release/bundle/macos/rw.64295.Jaclit ERP_1.0.0_aarch64.dmg" ubuntu@13.209.40.48:/tmp/
+
+Keyin serverga kiring:
+
+ssh -i ~/.ssh/seoul-clinic.pem ubuntu@13.209.40.48
+
+Serverda faylni normal nom bilan joyiga qo‘ying:
+
+sudo mv -f "/tmp/rw.64295.Jaclit ERP_1.0.0_aarch64.dmg" /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+sudo chmod 644 /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+sudo chown www-data:www-data /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+
+Keyin tekshiring:
+
+curl -I https://clinic.jaclit.com/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+
+Agar 200 OK chiqsa, joyiga tushgan.
+
+Aplication run bolmasa Terminalda shuni yozish kerak
+xattr -cr /Applications/"Jaclit ERP.app"

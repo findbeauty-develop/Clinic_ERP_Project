@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
@@ -25,6 +26,7 @@ import { WeatherModule } from "./modules/weather/weather.module";
 import { SupportModule } from "./modules/support/support.module";
 import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
 import { CommonModule } from "./common/common.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 
 @Module({
   imports: [
@@ -60,6 +62,7 @@ import { CommonModule } from "./common/common.module";
       },
     ]),
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
+    EventEmitterModule.forRoot(),
     StorageModule, // Global StorageModule - Supabase Storage for file uploads
     IamModule,
     ProductModule,
@@ -68,6 +71,7 @@ import { CommonModule } from "./common/common.module";
     PackageModule,
     ReturnModule,
     OrderModule,
+    NotificationsModule,
     OrderReturnModule,
     SupplierModule,
     InventoryModule,

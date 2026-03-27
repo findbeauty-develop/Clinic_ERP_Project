@@ -119,8 +119,38 @@ model Member {
   address              String?
   must_change_password Boolean        @default(false)
   refreshTokens        RefreshToken[]
+  notifications        Notification[]
 
   @@index([tenant_id])
+}
+
+/// In-app notifications (clinic ERP). type = source of truth; title/body = snapshot at creation time.
+enum NotificationType {
+  ORDER_SUPPLIER_CONFIRMED
+  ORDER_SUPPLIER_REJECTED
+}
+
+model Notification {
+  id                    String           @id @default(uuid())
+  tenant_id             String
+  recipient_member_id   String
+  type                  NotificationType
+  title                 String
+  body                  String
+  entity_type           String
+  entity_id             String
+  payload               Json?
+  dedupe_key            String
+  read_at               DateTime?
+  created_at            DateTime         @default(now())
+  updated_at            DateTime?
+
+  recipient Member @relation(fields: [recipient_member_id], references: [id], onDelete: Cascade)
+
+  @@unique([recipient_member_id, dedupe_key])
+  @@index([tenant_id, recipient_member_id, read_at])
+  @@index([recipient_member_id, created_at(sort: Desc)])
+  @@map("notifications")
 }
 
 model RefreshToken {

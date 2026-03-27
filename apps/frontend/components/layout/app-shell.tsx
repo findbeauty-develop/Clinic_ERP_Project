@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
+import { NotificationProvider } from "@/components/notifications/notification-provider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/clinic/register/");
 
   return (
+    <NotificationProvider enabled={!hideSidebar}>
     <div className="flex min-h-screen w-full bg-gray-50 dark:bg-gray-950">
       {!hideSidebar && (
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -45,5 +47,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1">{children}</main>
       </div>
     </div>
+    </NotificationProvider>
   );
 }
