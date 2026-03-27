@@ -126,11 +126,9 @@ export class OrderService {
     const limit = query?.limit && query.limit > 0 ? query.limit : 20;
     const skip = (page - 1) * limit;
 
-    // ✅ Tab mantiqi SupplierOrderItem.item_status dan
+    // ✅ Tab mantiqi SupplierOrderItem.item_status dan (SupplierOrder.status ustuni yo'q)
     const where: any = {
       supplier_manager_id: supplierManagerId,
-      // cancelled orderlar hech qaysi tabda ko'rinmasin — faqat "all" tabda ko'rsatiladi
-      NOT: status === "all" ? undefined : { status: "cancelled" },
     };
 
     if (status === "pending") {
@@ -754,15 +752,15 @@ export class OrderService {
       return { success: false, message: "Order not found" };
     }
 
-    // ✅ Delete o'rniga status = cancelled qilamiz — supplier tarixda ko'ra olsin
+    // ✅ Barcha itemlarni cancelled — headerda status ustuni yo'q
     await this.prisma.executeWithRetry(async () => {
-      await (this.prisma as any).supplierOrder.update({
-        where: { id: order.id },
-        data: { status: "cancelled", updated_at: new Date() },
-      });
       await (this.prisma as any).supplierOrderItem.updateMany({
         where: { order_id: order.id },
         data: { item_status: "cancelled", updated_at: new Date() },
+      });
+      await (this.prisma as any).supplierOrder.update({
+        where: { id: order.id },
+        data: { updated_at: new Date() },
       });
     });
 
@@ -1000,11 +998,13 @@ export class OrderService {
     const derivedStatus =
       itemsList.length === 0
         ? "pending"
-        : itemsList.every((i: any) => (i.item_status || "pending") === "rejected")
-          ? "rejected"
-          : itemsList.every((i: any) => (i.item_status || "pending") === "confirmed")
-            ? "confirmed"
-            : "pending";
+        : itemsList.every((i: any) => (i.item_status || "pending") === "cancelled")
+          ? "cancelled"
+          : itemsList.every((i: any) => (i.item_status || "pending") === "rejected")
+            ? "rejected"
+            : itemsList.every((i: any) => (i.item_status || "pending") === "confirmed")
+              ? "confirmed"
+              : "pending";
 
     return {
       id: order.id,

@@ -144,7 +144,7 @@ model SupplierOrder {
   clinic_name         String? // Denormalized clinic name
   clinic_manager_name String? // Denormalized clinic manager name
   order_no            String    @unique
-  status              String?   @default("active") // active, cancelled
+  // Order state is derived from SupplierOrderItem.item_status (no header status column)
   total_amount        Int       @default(0)
   order_date          DateTime  @default(now())
   created_at          DateTime  @default(now())
