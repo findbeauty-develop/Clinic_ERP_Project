@@ -97,16 +97,13 @@ export function NotificationProvider({
 
       s.on("notification.new", (payload: NotificationItemDto) => {
         setUnreadCount((c) => c + 1);
+        const title = typeof payload.title === "string" ? payload.title : "";
+        const body = typeof payload.body === "string" ? payload.body : "";
         void (async () => {
-          const tauri = await sendDesktopNotificationIfTauri({
-            title: payload.title,
-            body: payload.body,
-          });
+          const tauri = await sendDesktopNotificationIfTauri({ title, body });
           if (!tauri.ok) {
-            sendBrowserNotificationIfPermitted({
-              title: payload.title,
-              body: payload.body,
-            });
+            console.warn("[Jaclit notify] Tauri toast failed:", tauri.reason);
+            sendBrowserNotificationIfPermitted({ title, body });
           }
         })();
       });

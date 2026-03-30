@@ -1,18 +1,32 @@
+use std::sync::mpsc;
+
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 
+/// Shows OS notification on the main thread (macOS / system APIs expect this).
 #[tauri::command]
 fn show_native_notification(
     app: tauri::AppHandle,
     title: String,
     body: String,
 ) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| e.to_string())
+    let (tx, rx) = mpsc::channel();
+    let app_clone = app.clone();
+    app
+        .run_on_main_thread(move || {
+            let out = app_clone
+                .notification()
+                .builder()
+                .title(title)
+                .body(body)
+                .show()
+                .map_err(|e| e.to_string());
+            let _ = tx.send(out);
+        })
+        .map_err(|e| e.to_string())?;
+
+    rx.recv()
+        .map_err(|_| "notification result channel closed".to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

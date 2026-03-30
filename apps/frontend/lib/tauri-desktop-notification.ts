@@ -17,9 +17,27 @@ export async function detectTauriDesktop(): Promise<boolean> {
   }
 }
 
+function asNotifyText(value: unknown, fallback: string): string {
+  if (value == null) return fallback;
+  const s = typeof value === "string" ? value : String(value);
+  const t = s.trim();
+  return t === "" ? fallback : t;
+}
+
+/** Next macrotask — WebSocket handlers can confuse WKWebView IPC; defer invoke. */
+function deferMacrotask(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(() => resolve(), 0);
+  });
+}
+
 async function sendNativeViaInvoke(title: string, body: string): Promise<void> {
+  await deferMacrotask();
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke<void>("show_native_notification", { title, body });
+  await invoke<void>("show_native_notification", {
+    title: asNotifyText(title, "Jaclit ERP"),
+    body: asNotifyText(body, " "),
+  });
 }
 
 /**
