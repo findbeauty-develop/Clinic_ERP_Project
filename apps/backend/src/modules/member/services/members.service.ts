@@ -262,7 +262,8 @@ export class MembersService {
     memberId: string,
     password: string,
     tenantId?: string,
-    res?: Response
+    res?: Response,
+    opts?: { exposeRefreshTokenInBody?: boolean }
   ) {
     try {
       // Find member by member_id (which is unique globally)
@@ -368,7 +369,7 @@ export class MembersService {
 
       const mustChangePassword = member.must_change_password || false;
 
-      return {
+      const base = {
         message: "You successfully login",
         access_token: accessToken, // ✅ Faqat access token qaytariladi
         member: {
@@ -381,6 +382,11 @@ export class MembersService {
           mustChangePassword: mustChangePassword,
         },
       };
+
+      if (opts?.exposeRefreshTokenInBody) {
+        return { ...base, refresh_token: refreshToken };
+      }
+      return base;
     } catch (error: any) {
       // Handle database connection errors
       const errorMessage = error?.message || String(error);

@@ -69,12 +69,20 @@ export class MembersController {
   @UseInterceptors(SecurityInterceptor) // ✅ Security metrics tracking
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // ✅ 5 requests per minute (brute force himoya)
   @ApiOperation({ summary: "Login member by member_id and password" })
-  async login(@Body() dto: MemberLoginDto, @Res() res: Response) {
+  async login(
+    @Body() dto: MemberLoginDto,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const desktopShell =
+      req.headers["x-jaclit-desktop-shell"] === "1" ||
+      req.headers["x-jaclit-desktop-shell"] === "true";
     const result = await this.service.login(
       dto.memberId,
       dto.password,
       undefined,
-      res
+      res,
+      { exposeRefreshTokenInBody: desktopShell }
     );
     return res.json(result);
   }
@@ -107,7 +115,9 @@ export class MembersController {
   @Post("logout")
   @ApiOperation({ summary: "Logout member and invalidate refresh token" })
   async logout(@Req() req: Request, @Res() res: Response) {
-    const refreshToken = req.cookies?.refresh_token;
+    const refreshToken =
+      req.cookies?.refresh_token ||
+      (req.headers["x-refresh-token"] as string | undefined);
     console.log(
       "[Logout] Refresh token from cookie:",
       refreshToken ? "exists" : "not found"

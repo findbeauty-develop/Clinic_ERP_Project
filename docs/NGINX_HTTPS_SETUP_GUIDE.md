@@ -318,7 +318,10 @@ server {
 
     # Security Headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
+    # CRITICAL: Do NOT set X-Frame-Options for clinic. SAMEORIGIN/DENY breaks the Tauri DMG shell
+    # (iframe loads https://clinic… — see docs/DESKTOP_BUILD_AND_DEPLOY.md §1.2).
+    # Next.js adds CSP `frame-ancestors` (tauri.localhost + tauri://) for clickjacking control instead.
+    # add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
@@ -354,6 +357,8 @@ server {
     }
 }
 ```
+
+**Clinic + Tauri desktop:** deploydan keyin `curl -sI https://clinic.jaclit.com | grep -i x-frame` hech narsa qaytarmasligi kerak. Agar `X-Frame-Options: SAMEORIGIN` ko‘rinsa — bu qatorni `clinic.conf` dan olib tashlang, `sudo nginx -t && sudo systemctl reload nginx` qiling (yoki `sites-enabled`dagi boshqa fayl/snippet ham tekshiring).
 
 ### 5.3 Supplier Frontend Nginx Config
 

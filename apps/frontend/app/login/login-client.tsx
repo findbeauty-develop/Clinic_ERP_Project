@@ -3,6 +3,11 @@
 import { FormEvent, useMemo, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiUrl } from "../../lib/api";
+import {
+  isJaclitDesktopShellIframe,
+  persistDesktopShellFlagFromUrl,
+  setDesktopShellRefreshToken,
+} from "../../lib/jaclit-desktop-shell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,11 +51,17 @@ export default function LoginPage() {
     try {
       const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       console.log(`[Login] Starting login request: ${requestId}`);
-      
+
+      persistDesktopShellFlagFromUrl();
+      const desktopShell = isJaclitDesktopShellIframe();
+
       const response = await fetch(`${apiUrl}/iam/members/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ Cookie'ni yuborish (refresh token)
+        headers: {
+          "Content-Type": "application/json",
+          ...(desktopShell ? { "X-Jaclit-Desktop-Shell": "1" } : {}),
+        },
+        credentials: "include", // ✅ Cookie (brauzer) + body refresh (Tauri iframe shell)
         body: JSON.stringify({ memberId, password }),
       });
 
@@ -79,6 +90,14 @@ export default function LoginPage() {
         if (result.member) {
           // ✅ Member data'ni memory'da saqlash
           setMemberData(result.member);
+        }
+
+        if (
+          desktopShell &&
+          typeof result.refresh_token === "string" &&
+          result.refresh_token.length > 0
+        ) {
+          setDesktopShellRefreshToken(result.refresh_token);
         }
       }
 

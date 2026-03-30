@@ -9,6 +9,7 @@ Bu hujjat **Tauri** desktop ilovasini **macOS (.dmg)** va **Windows (.exe / .msi
 - `apps/desktop/src-tauri/tauri.conf.json` ichida **`frontendDist`: `../dist`** — release buildda WebView birinchi navbatda `apps/desktop/dist` dagi minimal **qobiq** (`index.html`) ni ochadi.
 - Bu qobiq **to‘liq redirect qilmaydi**: asosiy hujjat **Tauri asset** manbasi (`tauri://localhost` / macOS) da qoladi, **`https://clinic.jaclit.com`** esa **to‘liq o‘lchamli iframe** ichida yuklanadi. Sabab: macOS WebKit **HTTPS** sahifadan `ipc://localhost` ga `fetch` ni *mixed content* sifatida bloklaydi — shu bois `invoke()` (jumladan native bildirishnoma) ishlamay qolardi.
 - Iframe ichidagi frontend `?jaclit_desktop_shell=1` va `postMessage` orqali faqat **`show_native_notification`** ni parent freymga proksi qiladi (`apps/frontend/lib/tauri-desktop-notification.ts`).
+- **Auth:** iframe “uchinchi tomon” kontekstida `api.*` ga **refresh cookie** ko‘pincha yuborilmaydi. Shuning uchun login so‘rovida `X-Jaclit-Desktop-Shell: 1` yuboriladi, backend **`refresh_token`** ni JSON da qaytaradi, frontend **`sessionStorage`** da saqlaydi va `/iam/members/refresh` + logout da **`X-Refresh-Token`** ishlatadi. **Frontend va backend** ikkalasi ham yangilangan bo‘lishi kerak (deploy).
 - **Ko‘p UI/API o‘zgarishlari** hali ham **saytni deploy qilish** bilan yetadi — **har safar yangi DMG shart emas**, lekin **shell / bridge** o‘zgarganda yoki yangi `invoke` kerak bo‘lsa — `dist/index.html` yoki Rust tarafni yangilab qayta yig‘ish kerak.
 - **Yangi installer** kerak bo‘ladi, agar: Rust/Tauri kodi, `tauri.conf.json`, `capabilities`, ikonka, versiya raqami yoki `dist/index.html` dagi iframe URL / bridge mantiqi o‘zgarsa.
 
@@ -26,6 +27,24 @@ Bu hujjat **Tauri** desktop ilovasini **macOS (.dmg)** va **Windows (.exe / .msi
 3. API: `apps/frontend/.env.local` ichida `NEXT_PUBLIC_*` larni **staging/prod API**ga qarab sozlang (yoki lokal backend ishga tushiring).
 
 **DevTools:** `tauri dev` / `desktop:dev:local` **debug** buildda ilova ochilganda inspector avtomatik ochiladi (`debug_assertions`). Release `pnpm desktop:build` da yo‘q — sinov uchun `pnpm --dir apps/desktop exec tauri build --debug` yoki Safari **Develop** menyusi.
+
+### 1.2 `Refused to display … in a frame` / `X-Frame-Options: SAMEORIGIN`
+
+Brauzer yoki Tauri konsoli shunday xato bersa, javob sarlavhasida **`X-Frame-Options: SAMEORIGIN`** (yoki `DENY`) bor — bu **iframe ichida** clinic sahifasini ochishni taqiqlaydi.
+
+**Nima qilish kerak**
+
+1. **Nginx** (yoki boshqa reverse proxy) da **clinic frontend** `server` bloki uchun `add_header X-Frame-Options …` qatorini **o‘chirib tashlang** yoki umuman qo‘ymang. To‘g‘ri namuna: `docs/NGINX_HTTPS_SETUP_GUIDE.md` → bo‘lim 5.2 (clinic) — u yerda bu sarlavha izoh bilan o‘chirilgan.
+2. Global `snippets` / `conf.d` da ham `X-Frame-Options` clinic ga tushmasin — kerak bo‘lsa faqat API domenlari uchun alohida qoldiring.
+3. Deploy qilingan **Next.js** `Content-Security-Policy` ichida `frame-ancestors` bor (`apps/frontend/next.config.js`) — u Tauri manbalariga ruxsat beradi; lekin **X-Frame-Options hali ham bo‘lsa**, ayrim brauzerlar iframe ni baribir bloklaydi.
+
+Tekshirish:
+
+```bash
+curl -sI https://clinic.jaclit.com | grep -iE 'x-frame|content-security-policy'
+```
+
+`X-Frame-Options` chiqmasligi yaxshi; CSP da `frame-ancestors` bo‘lsa yetarli (clickjacking uchun aniqroq nazorat).
 
 ---
 

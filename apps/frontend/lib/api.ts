@@ -2,6 +2,12 @@
  * API helper functions for making authenticated requests
  */
 
+import {
+  getDesktopShellRefreshToken,
+  persistDesktopShellFlagFromUrl,
+  setDesktopShellRefreshToken,
+} from "./jaclit-desktop-shell";
+
 // Global in-memory cache for GET requests
 const requestCache = new Map<
   string,
@@ -146,11 +152,19 @@ export const handleLogout = async () => {
   tenantId = null;
   refreshPromise = null; // ✅ Refresh promise'ni ham tozalash
 
+  const shellRefresh = getDesktopShellRefreshToken();
+  setDesktopShellRefreshToken(null);
+
   // ✅ Backend'ga logout request
   try {
+    const headers: Record<string, string> = {};
+    if (shellRefresh) {
+      headers["X-Refresh-Token"] = shellRefresh;
+    }
     await fetch(`${getApiUrl()}/iam/members/logout`, {
       method: "POST",
       credentials: "include", // ✅ Cookie'ni yuborish
+      headers: Object.keys(headers).length ? headers : undefined,
     });
   } catch (error) {
     console.error("Logout error:", error);
@@ -221,14 +235,21 @@ export const getAccessToken = async (
   // ✅ Refresh token bilan yangi access token olish
   refreshPromise = (async () => {
     try {
+      persistDesktopShellFlagFromUrl();
       const refreshUrl = `${getApiUrl()}/iam/members/refresh`;
+
+      const refreshHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      const shellRt = getDesktopShellRefreshToken();
+      if (shellRt) {
+        refreshHeaders["X-Refresh-Token"] = shellRt;
+      }
 
       const response = await fetch(refreshUrl, {
         method: "POST",
-        credentials: "include", // ✅ Cookie'ni yuborish
-        headers: {
-          "Content-Type": "application/json",
-        },
+        credentials: "include", // ✅ Cookie (normal brauzer) + header (Tauri iframe shell)
+        headers: refreshHeaders,
       });
 
       if (response.ok) {

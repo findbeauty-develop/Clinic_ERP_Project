@@ -157,6 +157,8 @@ async function bootstrap() {
       "Authorization",
       "X-API-Key",
       "X-Tenant-Id", // ✅ Tenant ID header
+      "X-Refresh-Token", // ✅ Tauri iframe shell (cookie blocked; same as controller)
+      "X-Jaclit-Desktop-Shell", // ✅ Login: return refresh_token in JSON for desktop shell
       "x-session-id", // ✅ Session ID header (order draft uchun)
       "Cache-Control", // ✅ Cache control header
       "Pragma", // ✅ Pragma header (cache-busting uchun)

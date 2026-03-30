@@ -18,6 +18,14 @@ const nextConfig = {
       process.env.NODE_ENV === "development"
         ? " http://localhost:3000 http://127.0.0.1:3000 http://localhost:3001 http://127.0.0.1:3001 http://localhost:3002 http://127.0.0.1:3002"
         : "";
+    // Tauri DMG shell embeds this site in an iframe (tauri:// on macOS, http(s)://tauri.localhost on Win).
+    // Nginx must NOT send X-Frame-Options: SAMEORIGIN for clinic — that header blocks embedding regardless.
+    const frameAncestors = [
+      "'self'",
+      "http://tauri.localhost",
+      "https://tauri.localhost",
+      "tauri://localhost",
+    ].join(" ");
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
@@ -25,6 +33,7 @@ const nextConfig = {
       "img-src 'self' data: https: blob:",
       "font-src 'self' data: https:",
       "frame-src 'self' https:",
+      `frame-ancestors ${frameAncestors}`,
       `connect-src 'self' ipc: http://ipc.localhost https: wss: ws: data: blob:${devLocalConnect}`,
     ].join("; ");
     return [{ source: "/:path*", headers: [{ key: "Content-Security-Policy", value: csp }] }];

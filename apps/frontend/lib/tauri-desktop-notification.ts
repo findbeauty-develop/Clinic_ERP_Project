@@ -10,33 +10,10 @@
  * We avoid @tauri-apps/plugin-notification from remote pages (ipc:// mixed-content blocks).
  */
 
-const DESKTOP_SHELL_QS = "jaclit_desktop_shell";
-const DESKTOP_SHELL_STORAGE = "jaclit_desktop_shell";
-
-function persistDesktopShellFlagFromUrl(): void {
-  if (typeof window === "undefined") return;
-  try {
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get(DESKTOP_SHELL_QS) === "1") {
-      sessionStorage.setItem(DESKTOP_SHELL_STORAGE, "1");
-    }
-  } catch {
-    /* private mode / storage blocked */
-  }
-}
-
-/** True when embedded in the Tauri DMG iframe shell (see apps/desktop/dist/index.html). */
-function isJaclitDesktopShellIframe(): boolean {
-  if (typeof window === "undefined" || window.self === window.top) return false;
-  try {
-    persistDesktopShellFlagFromUrl();
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get(DESKTOP_SHELL_QS) === "1") return true;
-    return sessionStorage.getItem(DESKTOP_SHELL_STORAGE) === "1";
-  } catch {
-    return false;
-  }
-}
+import {
+  isJaclitDesktopShellIframe,
+  persistDesktopShellFlagFromUrl,
+} from "./jaclit-desktop-shell";
 
 function isAllowedTauriParentOrigin(origin: string): boolean {
   return (
