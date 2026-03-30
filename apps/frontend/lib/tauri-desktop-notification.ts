@@ -3,12 +3,87 @@
  * @tauri-apps/* for the server (avoids "Cannot find module './577.js'" / corrupt .next).
  *
  * - Primary: `invoke("show_native_notification")` (same path as settings test).
+ * - DMG shell (`apps/desktop/dist/index.html`) loads the site in an **iframe** so the top document
+ *   stays on the Tauri asset origin; macOS WebKit otherwise blocks `ipc://` from HTTPS (mixed content).
+ *   In that case we proxy `invoke` via `postMessage` to the parent frame.
  * - If `invoke` fails (e.g. macOS permission denied), the error propagates so the UI can show it.
  * We avoid @tauri-apps/plugin-notification from remote pages (ipc:// mixed-content blocks).
  */
 
+const DESKTOP_SHELL_QS = "jaclit_desktop_shell";
+const DESKTOP_SHELL_STORAGE = "jaclit_desktop_shell";
+
+function persistDesktopShellFlagFromUrl(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get(DESKTOP_SHELL_QS) === "1") {
+      sessionStorage.setItem(DESKTOP_SHELL_STORAGE, "1");
+    }
+  } catch {
+    /* private mode / storage blocked */
+  }
+}
+
+/** True when embedded in the Tauri DMG iframe shell (see apps/desktop/dist/index.html). */
+function isJaclitDesktopShellIframe(): boolean {
+  if (typeof window === "undefined" || window.self === window.top) return false;
+  try {
+    persistDesktopShellFlagFromUrl();
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get(DESKTOP_SHELL_QS) === "1") return true;
+    return sessionStorage.getItem(DESKTOP_SHELL_STORAGE) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedTauriParentOrigin(origin: string): boolean {
+  return (
+    origin === "tauri://localhost" ||
+    /^https?:\/\/tauri\.localhost$/i.test(origin)
+  );
+}
+
+function invokeViaParentTauriBridge<T>(cmd: string, payload: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+
+    const timeoutMs = 30000;
+    const timer = window.setTimeout(() => {
+      window.removeEventListener("message", onMessage);
+      reject(new Error("Tauri parent bridge timeout"));
+    }, timeoutMs);
+
+    function onMessage(e: MessageEvent) {
+      if (!isAllowedTauriParentOrigin(e.origin)) return;
+      const d = e.data as {
+        v?: number;
+        t?: string;
+        id?: string;
+        ok?: boolean;
+        data?: unknown;
+        err?: string;
+      };
+      if (!d || d.v !== 1 || d.t !== "invoke-result" || d.id !== id) return;
+      window.removeEventListener("message", onMessage);
+      window.clearTimeout(timer);
+      if (d.ok) resolve(d.data as T);
+      else reject(new Error(d.err || "invoke failed"));
+    }
+
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage({ v: 1, t: "invoke", id, cmd, payload }, "*");
+  });
+}
+
 export async function detectTauriDesktop(): Promise<boolean> {
   if (typeof window === "undefined") return false;
+  persistDesktopShellFlagFromUrl();
+  if (isJaclitDesktopShellIframe()) return true;
   try {
     const { isTauri } = await import("@tauri-apps/api/core");
     return isTauri();
@@ -39,8 +114,13 @@ async function sendNativeViaInvokeThenEmit(title: string, body: string): Promise
   const t = asNotifyText(title, "Jaclit ERP");
   const b = asNotifyText(body, " ");
   await deferForSocketToast();
-  const { invoke } = await import("@tauri-apps/api/core");
   try {
+    if (isJaclitDesktopShellIframe()) {
+      await invokeViaParentTauriBridge<void>("show_native_notification", { title: t, body: b });
+      console.info("[Jaclit notify] parent-bridge invoke(show_native_notification) ok");
+      return;
+    }
+    const { invoke } = await import("@tauri-apps/api/core");
     await invoke<void>("show_native_notification", { title: t, body: b });
     console.info("[Jaclit notify] invoke(show_native_notification) ok");
   } catch (invokeErr) {
@@ -64,11 +144,13 @@ export async function sendTauriTestNotificationFromWeb(): Promise<{
     return { ok: false, reason: "server" };
   }
   try {
-    const { isTauri } = await import("@tauri-apps/api/core");
-    if (!isTauri()) {
-      return { ok: false, reason: "not-tauri" };
+    persistDesktopShellFlagFromUrl();
+    if (!isJaclitDesktopShellIframe()) {
+      const { isTauri } = await import("@tauri-apps/api/core");
+      if (!isTauri()) {
+        return { ok: false, reason: "not-tauri" };
+      }
     }
-    // Same path as socket toasts: invoke → emit fallback (ACL / IPC quirks).
     await sendNativeViaInvokeThenEmit("Jaclit ERP", "데스크톱 알림 테스트");
     return { ok: true };
   } catch (e) {
@@ -88,10 +170,13 @@ export async function sendDesktopNotificationIfTauri(opts: {
     return { ok: false, reason: "server" };
   }
   try {
-    const { isTauri } = await import("@tauri-apps/api/core");
-    if (!isTauri()) {
-      console.info("[Jaclit notify] skip: not inside Tauri webview");
-      return { ok: false, reason: "not-tauri" };
+    persistDesktopShellFlagFromUrl();
+    if (!isJaclitDesktopShellIframe()) {
+      const { isTauri } = await import("@tauri-apps/api/core");
+      if (!isTauri()) {
+        console.info("[Jaclit notify] skip: not inside Tauri webview");
+        return { ok: false, reason: "not-tauri" };
+      }
     }
     await sendNativeViaInvokeThenEmit(opts.title, opts.body);
     return { ok: true };

@@ -5,23 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jaclit ERP</title>
     <style>
+      html,
       body {
         margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
+        height: 100%;
+        overflow: hidden;
         background: #0f172a;
-        font-family: -apple-system, sans-serif;
-        color: #94a3b8;
-        font-size: 14px;
+      }
+      #jaclit-app-frame {
+        border: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
       }
     </style>
   </head>
   <body>
-    <p>로딩 중...</p>
+    <!--
+      Do not replace the whole WebView with https:// — macOS WebKit blocks ipc:// from HTTPS
+      (mixed content), so Tauri invoke() breaks. Keep this document on the Tauri asset origin and
+      load the live site inside an iframe; the app uses postMessage to proxy invoke (see
+      apps/frontend/lib/tauri-desktop-notification.ts).
+    -->
+    <iframe
+      id="jaclit-app-frame"
+      title="Jaclit ERP"
+      src="https://clinic.jaclit.com/?jaclit_desktop_shell=1"
+      allow="clipboard-read; clipboard-write; fullscreen"
+    ></iframe>
     <script>
-      window.location.replace("https://clinic.jaclit.com");
+      (function () {
+        function isAllowedChildOrigin(origin) {
+          return (
+            origin === "https://clinic.jaclit.com" ||
+            origin === "https://www.clinic.jaclit.com"
+          );
+        }
+        window.addEventListener("message", function (e) {
+          if (!isAllowedChildOrigin(e.origin)) return;
+          var msg = e.data;
+          if (!msg || msg.v !== 1 || msg.t !== "invoke") return;
+          var cmd = msg.cmd;
+          if (cmd !== "show_native_notification") return;
+          var internals = window.__TAURI_INTERNALS__;
+          if (!internals || typeof internals.invoke !== "function") return;
+          var id = msg.id;
+          var payload = msg.payload;
+          var target = e.source;
+          var childOrigin = e.origin;
+          internals
+            .invoke(cmd, payload)
+            .then(function (data) {
+              if (target && typeof target.postMessage === "function") {
+                target.postMessage(
+                  { v: 1, t: "invoke-result", id: id, ok: true, data: data },
+                  childOrigin
+                );
+              }
+            })
+            .catch(function (err) {
+              if (target && typeof target.postMessage === "function") {
+                target.postMessage(
+                  {
+                    v: 1,
+                    t: "invoke-result",
+                    id: id,
+                    ok: false,
+                    err: err != null ? String(err) : "invoke failed",
+                  },
+                  childOrigin
+                );
+              }
+            });
+        });
+      })();
     </script>
   </body>
 </html>

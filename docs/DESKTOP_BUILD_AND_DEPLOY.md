@@ -6,10 +6,11 @@ Bu hujjat **Tauri** desktop ilovasini **macOS (.dmg)** va **Windows (.exe / .msi
 
 ## 1. Loyiha qanday ishlaydi (muhim)
 
-- `apps/desktop/src-tauri/tauri.conf.json` ichida **`frontendDist`: `../dist`** — release buildda WebView birinchi navbatda `apps/desktop/dist` dagi minimal sahifani ochadi.
-- `apps/desktop/dist/index.html` hozirgi holatda brauzerni **`https://clinic.jaclit.com`** ga yo‘naltiradi.
-- Demak, **ko‘p o‘zgarishlar** (UI, API, bildirishnomalar) **veb saytni deploy qilish** bilan foydalanuvchiga yetadi — **har safar yangi DMG/EXE shart emas**.
-- **Yangi installer** kerak bo‘ladi, agar: Rust/Tauri kodi, `tauri.conf.json`, `capabilities`, ikonka, versiya raqami yoki `dist/index.html` dagi URL o‘zgarsa.
+- `apps/desktop/src-tauri/tauri.conf.json` ichida **`frontendDist`: `../dist`** — release buildda WebView birinchi navbatda `apps/desktop/dist` dagi minimal **qobiq** (`index.html`) ni ochadi.
+- Bu qobiq **to‘liq redirect qilmaydi**: asosiy hujjat **Tauri asset** manbasi (`tauri://localhost` / macOS) da qoladi, **`https://clinic.jaclit.com`** esa **to‘liq o‘lchamli iframe** ichida yuklanadi. Sabab: macOS WebKit **HTTPS** sahifadan `ipc://localhost` ga `fetch` ni *mixed content* sifatida bloklaydi — shu bois `invoke()` (jumladan native bildirishnoma) ishlamay qolardi.
+- Iframe ichidagi frontend `?jaclit_desktop_shell=1` va `postMessage` orqali faqat **`show_native_notification`** ni parent freymga proksi qiladi (`apps/frontend/lib/tauri-desktop-notification.ts`).
+- **Ko‘p UI/API o‘zgarishlari** hali ham **saytni deploy qilish** bilan yetadi — **har safar yangi DMG shart emas**, lekin **shell / bridge** o‘zgarganda yoki yangi `invoke` kerak bo‘lsa — `dist/index.html` yoki Rust tarafni yangilab qayta yig‘ish kerak.
+- **Yangi installer** kerak bo‘ladi, agar: Rust/Tauri kodi, `tauri.conf.json`, `capabilities`, ikonka, versiya raqami yoki `dist/index.html` dagi iframe URL / bridge mantiqi o‘zgarsa.
 
 ### 1.1 Lokal sinov (har safar deploy qilmaslik)
 
@@ -75,7 +76,7 @@ Natija: `apps/desktop/src-tauri/icons/` ichida kerakli `.icns`, `.ico`, PNG lar.
 
 ## 4. macOS: DMG yig‘ish
 
-1. **Kod yangi bo‘lsa**, `apps/desktop/dist/index.html` ichidagi redirect URL to‘g‘ri ekanini tekshiring (`https://clinic.jaclit.com` yoki prod domeningiz).
+1. **Kod yangi bo‘lsa**, `apps/desktop/dist/index.html` ichidagi **iframe `src`** prod domeningiz bilan mos ekanini tekshiring (`https://clinic.jaclit.com/...`). Native bildirishnoma bridge'i **deploy qilingan** frontenddagi `tauri-desktop-notification.ts` bilan ishlaydi — avvalo saytni yangilang, keyin DMG ni sinang.
 
 2. Rootdan:
 
