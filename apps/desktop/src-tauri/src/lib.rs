@@ -1,32 +1,28 @@
-use std::sync::mpsc;
-
+use serde::Deserialize;
+use tauri::Listener;
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 
-/// Shows OS notification on the main thread (macOS / system APIs expect this).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeNotifyPayload {
+    title: String,
+    body: String,
+}
+
+/// Settings “test notification” — `invoke` / postMessage IPC.
 #[tauri::command]
 fn show_native_notification(
     app: tauri::AppHandle,
     title: String,
     body: String,
 ) -> Result<(), String> {
-    let (tx, rx) = mpsc::channel();
-    let app_clone = app.clone();
-    app
-        .run_on_main_thread(move || {
-            let out = app_clone
-                .notification()
-                .builder()
-                .title(title)
-                .body(body)
-                .show()
-                .map_err(|e| e.to_string());
-            let _ = tx.send(out);
-        })
-        .map_err(|e| e.to_string())?;
-
-    rx.recv()
-        .map_err(|_| "notification result channel closed".to_string())?
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +32,19 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![show_native_notification])
         .setup(|app| {
+            let notify_app = app.handle().clone();
+            app.listen("native-notification", move |event| {
+                let Ok(payload) = serde_json::from_str::<NativeNotifyPayload>(event.payload()) else {
+                    return;
+                };
+                let _ = notify_app
+                    .notification()
+                    .builder()
+                    .title(payload.title)
+                    .body(payload.body)
+                    .show();
+            });
+
             let open = tauri::menu::MenuItem::with_id(
                 app,
                 "tray_open",

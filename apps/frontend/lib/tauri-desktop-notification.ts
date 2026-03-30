@@ -2,9 +2,10 @@
  * Tauri desktop helpers — use dynamic import() only so Next.js does not bundle
  * @tauri-apps/* for the server (avoids "Cannot find module './577.js'" / corrupt .next).
  *
- * Native toasts use only Rust `show_native_notification` (invoke). We do not use
- * @tauri-apps/plugin-notification from remote HTTPS pages: it calls ipc:// URLs that
- * WebKit blocks as mixed/insecure content, so is_permission_granted / sendNotification fail.
+ * - Settings test: `invoke("show_native_notification")`.
+ * - Socket / order toasts: `emit("native-notification")` → Rust `listen` (often more reliable
+ *   after WebSocket callbacks than `invoke` on remote HTTPS WebViews).
+ * We avoid @tauri-apps/plugin-notification from remote pages (ipc:// mixed-content blocks).
  */
 
 export async function detectTauriDesktop(): Promise<boolean> {
@@ -24,10 +25,21 @@ function asNotifyText(value: unknown, fallback: string): string {
   return t === "" ? fallback : t;
 }
 
-/** Next macrotask — WebSocket handlers can confuse WKWebView IPC; defer invoke. */
+/** Next macrotask — defer before `invoke` from UI clicks. */
 function deferMacrotask(): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(() => resolve(), 0);
+  });
+}
+
+/** Stronger defer after Socket.IO — leave WebSocket stack before Tauri IPC. */
+function deferForSocketToast(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.setTimeout(() => resolve(), 0);
+      });
+    });
   });
 }
 
@@ -38,6 +50,19 @@ async function sendNativeViaInvoke(title: string, body: string): Promise<void> {
     title: asNotifyText(title, "Jaclit ERP"),
     body: asNotifyText(body, " "),
   });
+}
+
+async function sendNativeViaEmitThenInvoke(title: string, body: string): Promise<void> {
+  const t = asNotifyText(title, "Jaclit ERP");
+  const b = asNotifyText(body, " ");
+  await deferForSocketToast();
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit("native-notification", { title: t, body: b });
+  } catch {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<void>("show_native_notification", { title: t, body: b });
+  }
 }
 
 /**
@@ -79,7 +104,7 @@ export async function sendDesktopNotificationIfTauri(opts: {
     if (!isTauri()) {
       return { ok: false, reason: "not-tauri" };
     }
-    await sendNativeViaInvoke(opts.title, opts.body);
+    await sendNativeViaEmitThenInvoke(opts.title, opts.body);
     return { ok: true };
   } catch (e) {
     return {

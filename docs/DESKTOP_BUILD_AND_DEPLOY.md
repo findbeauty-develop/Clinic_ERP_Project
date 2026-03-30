@@ -189,26 +189,16 @@ Qo‘shimcha qisqa eslatmalar `apps/desktop/README.md` faylida ham bor.
 Ha, haqiqiy path shu ekan.
 
 Lekin bu nomdagi rw.64295. qismi vaqtinchalik yoki generator qo‘shgan prefixga o‘xshaydi. Uni shu holatda ham yuborsa bo‘ladi.
+ls "apps/desktop/src-tauri/target/release/bundle/dmg/"
 
-Mac’dan serverga yuborish:
+scp -i ~/.ssh/seoul-clinic.pem \
+ "apps/desktop/src-tauri/target/release/bundle/dmg/Jaclit ERP_1.0.0_aarch64.dmg" \
+ ubuntu@13.209.40.48:/tmp/
 
-scp -i ~/.ssh/seoul-clinic.pem "/Users/Development/Desktop/Clinic_ERP_Project/apps/desktop/src-tauri/target/release/bundle/macos/rw.64295.Jaclit ERP_1.0.0_aarch64.dmg" ubuntu@13.209.40.48:/tmp/
-
-Keyin serverga kiring:
-
-ssh -i ~/.ssh/seoul-clinic.pem ubuntu@13.209.40.48
-
-Serverda faylni normal nom bilan joyiga qo‘ying:
-
-sudo mv -f "/tmp/rw.64295.Jaclit ERP_1.0.0_aarch64.dmg" /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+sudo mv -f "/tmp/Jaclit ERP_1.0.0_aarch64.dmg" /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
 sudo chmod 644 /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
 sudo chown www-data:www-data /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
 
-Keyin tekshiring:
-
 curl -I https://clinic.jaclit.com/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
 
-Agar 200 OK chiqsa, joyiga tushgan.
-
-Aplication run bolmasa Terminalda shuni yozish kerak
 xattr -cr /Applications/"Jaclit ERP.app"
