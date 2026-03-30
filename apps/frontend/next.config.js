@@ -11,15 +11,12 @@ const nextConfig = {
         : false,
   },
   /**
-   * Tauri desktop WebView: @tauri-apps/plugin-notification IPC fetch uses
-   * ipc: and http://ipc.localhost — without these in connect-src, the console shows
-   * "Fetch API cannot load ipc://... due to access control checks".
+   * Tauri / local dev: connect-src needs ipc:, ws:, and localhost API ports.
    */
   async headers() {
-    // next dev: API is often http://localhost:3000 (not covered by connect-src https:)
     const devLocalConnect =
       process.env.NODE_ENV === "development"
-        ? " http://localhost:3000 http://127.0.0.1:3000 http://localhost:3002 http://127.0.0.1:3002"
+        ? " http://localhost:3000 http://127.0.0.1:3000 http://localhost:3001 http://127.0.0.1:3001 http://localhost:3002 http://127.0.0.1:3002"
         : "";
     const csp = [
       "default-src 'self'",

@@ -176,6 +176,14 @@ export default function NotificationSettingsPage() {
                   알림)이 뜨는지 확인합니다. 데스크톱 앱 전용 테스트는 아래
                   &quot;데스크톱 앱&quot; 블록을 사용하세요.
                 </p>
+                {tauriDesktop && (
+                  <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-100">
+                    <span className="font-medium">데스크톱 앱(Tauri):</span> OS
+                    네이티브 알림은 아래 파란색 &quot;데스크톱 앱 알림 테스트&quot;만
+                    사용하면 됩니다. 위 브라우저 알림 권한과 무관하며, WebView에서는
+                    브라우저 알림이 차단되어 있어도 정상입니다.
+                  </p>
+                )}
                 {browserTestMsg && (
                   <p className="mb-3 text-sm text-slate-700 dark:text-slate-300">
                     {browserTestMsg}
@@ -215,7 +223,9 @@ export default function NotificationSettingsPage() {
                       }
                     } else {
                       setBrowserTestMsg(
-                        "이 브라우저에서 알림이 차단되어 있습니다. 설정에서 허용해 주세요."
+                        tauriDesktop
+                          ? "이 WebView에서 브라우저 알림이 차단된 상태입니다. OS 토스트 확인은 아래 파란색 ‘데스크톱 앱 알림 테스트’를 누르세요(브라우저 권한 불필요)."
+                          : "이 브라우저에서 알림이 차단되어 있습니다. 설정에서 허용해 주세요."
                       );
                     }
                   }}

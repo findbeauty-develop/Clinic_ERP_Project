@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tauri dev",
+    "dev:local": "tauri dev --config src-tauri/tauri.local.conf.json",
     "build": "tauri build",
     "tauri": "tauri",
     "icon": "tauri icon"

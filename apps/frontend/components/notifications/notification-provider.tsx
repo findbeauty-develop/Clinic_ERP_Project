@@ -95,12 +95,22 @@ export function NotificationProvider({
 
       setSocket(s);
 
+      s.on("connect", () => {
+        console.info("[Jaclit notify] socket connected", base);
+      });
+
       s.on("notification.new", (payload: NotificationItemDto) => {
         setUnreadCount((c) => c + 1);
         const title = typeof payload.title === "string" ? payload.title : "";
         const body = typeof payload.body === "string" ? payload.body : "";
+        console.info("[Jaclit notify] notification.new", {
+          id: payload.id,
+          title: title.slice(0, 80),
+          bodyLen: body.length,
+        });
         void (async () => {
           const tauri = await sendDesktopNotificationIfTauri({ title, body });
+          console.info("[Jaclit notify] desktop toast result", tauri);
           if (!tauri.ok) {
             console.warn("[Jaclit notify] Tauri toast failed:", tauri.reason);
             sendBrowserNotificationIfPermitted({ title, body });

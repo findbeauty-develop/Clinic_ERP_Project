@@ -11,6 +11,21 @@ Bu hujjat **Tauri** desktop ilovasini **macOS (.dmg)** va **Windows (.exe / .msi
 - Demak, **ko‘p o‘zgarishlar** (UI, API, bildirishnomalar) **veb saytni deploy qilish** bilan foydalanuvchiga yetadi — **har safar yangi DMG/EXE shart emas**.
 - **Yangi installer** kerak bo‘ladi, agar: Rust/Tauri kodi, `tauri.conf.json`, `capabilities`, ikonka, versiya raqami yoki `dist/index.html` dagi URL o‘zgarsa.
 
+### 1.1 Lokal sinov (har safar deploy qilmaslik)
+
+`tauri.conf.json`dagi **`devUrl`** odatda **`https://clinic.jaclit.com`** — shuning uchun `pnpm desktop:dev` eski deploy qilingan JS ni yuklaydi.
+
+**Lokal Next.js + Tauri** (bildirishnoma / UI ni darhol sinash):
+
+1. **Terminal 1** (frontend, port **3001**): repoda  
+   `pnpm --filter @erp/frontend dev`
+2. **Terminal 2** (desktop): repoda  
+   `pnpm desktop:dev:local`  
+   Bu `tauri.local.conf.json` orqali WebView **`http://localhost:3001`** dan ochiladi; **`capabilities`**da `localhost` allaqachon ruxsat etilgan.
+3. API: `apps/frontend/.env.local` ichida `NEXT_PUBLIC_*` larni **staging/prod API**ga qarab sozlang (yoki lokal backend ishga tushiring).
+
+**DevTools:** `tauri dev` / `desktop:dev:local` **debug** buildda ilova ochilganda inspector avtomatik ochiladi (`debug_assertions`). Release `pnpm desktop:build` da yo‘q — sinov uchun `pnpm --dir apps/desktop exec tauri build --debug` yoki Safari **Develop** menyusi.
+
 ---
 
 ## 2. Oldindan talablar

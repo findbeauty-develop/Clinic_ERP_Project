@@ -3,7 +3,7 @@
  * @tauri-apps/* for the server (avoids "Cannot find module './577.js'" / corrupt .next).
  *
  * - Primary: `invoke("show_native_notification")` (same path as settings test).
- * - Fallback: `emit("native-notification")` → Rust `listen` only if `invoke` throws.
+ * - If `invoke` fails (e.g. macOS permission denied), the error propagates so the UI can show it.
  * We avoid @tauri-apps/plugin-notification from remote pages (ipc:// mixed-content blocks).
  */
 
@@ -24,14 +24,7 @@ function asNotifyText(value: unknown, fallback: string): string {
   return t === "" ? fallback : t;
 }
 
-/** Next macrotask — defer before `invoke` from UI clicks. */
-function deferMacrotask(): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(() => resolve(), 0);
-  });
-}
-
-/** Stronger defer after Socket.IO — leave WebSocket stack before Tauri IPC. */
+/** Stronger defer after Socket.IO / UI — leave current stack before Tauri IPC. */
 function deferForSocketToast(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
@@ -42,15 +35,6 @@ function deferForSocketToast(): Promise<void> {
   });
 }
 
-async function sendNativeViaInvoke(title: string, body: string): Promise<void> {
-  await deferMacrotask();
-  const { invoke } = await import("@tauri-apps/api/core");
-  await invoke<void>("show_native_notification", {
-    title: asNotifyText(title, "Jaclit ERP"),
-    body: asNotifyText(body, " "),
-  });
-}
-
 async function sendNativeViaInvokeThenEmit(title: string, body: string): Promise<void> {
   const t = asNotifyText(title, "Jaclit ERP");
   const b = asNotifyText(body, " ");
@@ -58,15 +42,19 @@ async function sendNativeViaInvokeThenEmit(title: string, body: string): Promise
   const { invoke } = await import("@tauri-apps/api/core");
   try {
     await invoke<void>("show_native_notification", { title: t, body: b });
-  } catch {
-    const { emit } = await import("@tauri-apps/api/event");
-    await emit("native-notification", { title: t, body: b });
+    console.info("[Jaclit notify] invoke(show_native_notification) ok");
+  } catch (invokeErr) {
+    console.warn(
+      "[Jaclit notify] invoke(show_native_notification) failed — macOS: System Settings → Notifications → Jaclit ERP; or read Rust error below:",
+      invokeErr
+    );
+    throw invokeErr;
   }
 }
 
 /**
  * Sends a native notification via Tauri (desktop app only).
- * Uses Rust notify-rust only (`invoke` → postMessage IPC); no plugin-notification.
+ * Uses `invoke` then `emit` fallback; no plugin-notification.
  */
 export async function sendTauriTestNotificationFromWeb(): Promise<{
   ok: boolean;
@@ -80,7 +68,8 @@ export async function sendTauriTestNotificationFromWeb(): Promise<{
     if (!isTauri()) {
       return { ok: false, reason: "not-tauri" };
     }
-    await sendNativeViaInvoke("Jaclit ERP", "데스크톱 알림 테스트");
+    // Same path as socket toasts: invoke → emit fallback (ACL / IPC quirks).
+    await sendNativeViaInvokeThenEmit("Jaclit ERP", "데스크톱 알림 테스트");
     return { ok: true };
   } catch (e) {
     return {
@@ -101,6 +90,7 @@ export async function sendDesktopNotificationIfTauri(opts: {
   try {
     const { isTauri } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
+      console.info("[Jaclit notify] skip: not inside Tauri webview");
       return { ok: false, reason: "not-tauri" };
     }
     await sendNativeViaInvokeThenEmit(opts.title, opts.body);

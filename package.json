@@ -12,6 +12,7 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "desktop:dev": "pnpm --filter @jaclit/desktop dev",
+    "desktop:dev:local": "pnpm --filter @jaclit/desktop dev:local",
     "desktop:build": "pnpm --filter @jaclit/desktop build",
     "desktop:icon": "pnpm --dir apps/desktop exec tauri icon",
     "desktop:tauri": "pnpm --dir apps/desktop exec tauri"
