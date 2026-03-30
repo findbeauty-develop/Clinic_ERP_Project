@@ -1,14 +1,6 @@
-use serde::Deserialize;
 use tauri::Listener;
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NativeNotifyPayload {
-    title: String,
-    body: String,
-}
 
 /// Settings “test notification” — `invoke` / postMessage IPC.
 #[tauri::command]
@@ -34,14 +26,24 @@ pub fn run() {
         .setup(|app| {
             let notify_app = app.handle().clone();
             app.listen("native-notification", move |event| {
-                let Ok(payload) = serde_json::from_str::<NativeNotifyPayload>(event.payload()) else {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(event.payload()) else {
                     return;
                 };
+                let title = v
+                    .get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("Jaclit ERP")
+                    .to_string();
+                let body = v
+                    .get("body")
+                    .and_then(|b| b.as_str())
+                    .unwrap_or(" ")
+                    .to_string();
                 let _ = notify_app
                     .notification()
                     .builder()
-                    .title(payload.title)
-                    .body(payload.body)
+                    .title(title)
+                    .body(body)
                     .show();
             });
 

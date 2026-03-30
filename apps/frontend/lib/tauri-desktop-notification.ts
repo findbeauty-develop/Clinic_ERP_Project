@@ -2,9 +2,8 @@
  * Tauri desktop helpers — use dynamic import() only so Next.js does not bundle
  * @tauri-apps/* for the server (avoids "Cannot find module './577.js'" / corrupt .next).
  *
- * - Settings test: `invoke("show_native_notification")`.
- * - Socket / order toasts: `emit("native-notification")` → Rust `listen` (often more reliable
- *   after WebSocket callbacks than `invoke` on remote HTTPS WebViews).
+ * - Primary: `invoke("show_native_notification")` (same path as settings test).
+ * - Fallback: `emit("native-notification")` → Rust `listen` only if `invoke` throws.
  * We avoid @tauri-apps/plugin-notification from remote pages (ipc:// mixed-content blocks).
  */
 
@@ -52,16 +51,16 @@ async function sendNativeViaInvoke(title: string, body: string): Promise<void> {
   });
 }
 
-async function sendNativeViaEmitThenInvoke(title: string, body: string): Promise<void> {
+async function sendNativeViaInvokeThenEmit(title: string, body: string): Promise<void> {
   const t = asNotifyText(title, "Jaclit ERP");
   const b = asNotifyText(body, " ");
   await deferForSocketToast();
+  const { invoke } = await import("@tauri-apps/api/core");
   try {
+    await invoke<void>("show_native_notification", { title: t, body: b });
+  } catch {
     const { emit } = await import("@tauri-apps/api/event");
     await emit("native-notification", { title: t, body: b });
-  } catch {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke<void>("show_native_notification", { title: t, body: b });
   }
 }
 
@@ -104,7 +103,7 @@ export async function sendDesktopNotificationIfTauri(opts: {
     if (!isTauri()) {
       return { ok: false, reason: "not-tauri" };
     }
-    await sendNativeViaEmitThenInvoke(opts.title, opts.body);
+    await sendNativeViaInvokeThenEmit(opts.title, opts.body);
     return { ok: true };
   } catch (e) {
     return {
