@@ -3,7 +3,12 @@
   "identifier": "default",
   "description": "Jaclit ERP desktop capability",
   "windows": ["main"],
-  "permissions": ["core:default", "shell:allow-open", "notification:default"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "notification:default",
+    "allow-show-native-notification"
+  ],
   "remote": {
     "urls": [
       "https://clinic.jaclit.com",

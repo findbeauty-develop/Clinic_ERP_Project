@@ -387,6 +387,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows showing OS-native notifications via Rust (notify-rust), including from socket-driven events without user gesture.",
+          "type": "string",
+          "const": "allow-show-native-notification",
+          "markdownDescription": "Allows showing OS-native notifications via Rust (notify-rust), including from socket-driven events without user gesture."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

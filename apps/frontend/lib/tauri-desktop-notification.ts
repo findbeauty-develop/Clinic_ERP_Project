@@ -1,6 +1,10 @@
 /**
  * Tauri desktop helpers — use dynamic import() only so Next.js does not bundle
  * @tauri-apps/* for the server (avoids "Cannot find module './577.js'" / corrupt .next).
+ *
+ * Native toasts use only Rust `show_native_notification` (invoke). We do not use
+ * @tauri-apps/plugin-notification from remote HTTPS pages: it calls ipc:// URLs that
+ * WebKit blocks as mixed/insecure content, so is_permission_granted / sendNotification fail.
  */
 
 export async function detectTauriDesktop(): Promise<boolean> {
@@ -13,9 +17,14 @@ export async function detectTauriDesktop(): Promise<boolean> {
   }
 }
 
+async function sendNativeViaInvoke(title: string, body: string): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke<void>("show_native_notification", { title, body });
+}
+
 /**
  * Sends a native notification via Tauri (desktop app only).
- * CSP must allow connect-src: ipc: http://ipc.localhost for remote HTTPS pages.
+ * Uses Rust notify-rust only (`invoke` → postMessage IPC); no plugin-notification.
  */
 export async function sendTauriTestNotificationFromWeb(): Promise<{
   ok: boolean;
@@ -29,21 +38,7 @@ export async function sendTauriTestNotificationFromWeb(): Promise<{
     if (!isTauri()) {
       return { ok: false, reason: "not-tauri" };
     }
-    const { isPermissionGranted, requestPermission, sendNotification } =
-      await import("@tauri-apps/plugin-notification");
-
-    let granted = await isPermissionGranted();
-    if (!granted) {
-      const p = await requestPermission();
-      granted = p === "granted";
-    }
-    if (!granted) {
-      return { ok: false, reason: "denied" };
-    }
-    sendNotification({
-      title: "Jaclit ERP",
-      body: "데스크톱 알림 테스트",
-    });
+    await sendNativeViaInvoke("Jaclit ERP", "데스크톱 알림 테스트");
     return { ok: true };
   } catch (e) {
     return {
@@ -66,18 +61,7 @@ export async function sendDesktopNotificationIfTauri(opts: {
     if (!isTauri()) {
       return { ok: false, reason: "not-tauri" };
     }
-    const { isPermissionGranted, requestPermission, sendNotification } =
-      await import("@tauri-apps/plugin-notification");
-
-    let granted = await isPermissionGranted();
-    if (!granted) {
-      const p = await requestPermission();
-      granted = p === "granted";
-    }
-    if (!granted) {
-      return { ok: false, reason: "denied" };
-    }
-    sendNotification({ title: opts.title, body: opts.body });
+    await sendNativeViaInvoke(opts.title, opts.body);
     return { ok: true };
   } catch (e) {
     return {

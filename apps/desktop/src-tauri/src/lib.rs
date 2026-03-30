@@ -1,11 +1,26 @@
 use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 
+#[tauri::command]
+fn show_native_notification(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![show_native_notification])
         .setup(|app| {
             let open = tauri::menu::MenuItem::with_id(
                 app,

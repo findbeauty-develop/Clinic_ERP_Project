@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-show-native-notification"
+description = "Allows showing OS-native notifications via Rust (notify-rust), including from socket-driven events without user gesture."
+commands.allow = ["show_native_notification"]
