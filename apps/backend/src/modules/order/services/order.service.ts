@@ -3217,6 +3217,34 @@ export class OrderService {
     // After DB transaction commit: in-app + realtime notifications (idempotent per webhook status)
     if (status === "supplier_confirmed" || status === "rejected") {
       try {
+        // Fetch supplier company & manager name
+        let supplierCompanyName: string | null = null;
+        let supplierManagerName: string | null = null;
+        if (order.supplier_id) {
+          const mgr = await (this.prisma as any).clinicSupplierManager.findUnique({
+            where: { id: order.supplier_id },
+            select: { company_name: true, name: true },
+          });
+          if (mgr) {
+            supplierCompanyName = mgr.company_name ?? null;
+            supplierManagerName = mgr.name ?? null;
+          }
+        }
+
+        // Build product summary: "제품A, 제품B 등 총 N개 제품"
+        const productNames: string[] = (order.items ?? [])
+          .map((item: any) => item.product?.name ?? item.product_name)
+          .filter(Boolean);
+        const totalCount = productNames.length;
+        let productSummary: string | null = null;
+        if (totalCount > 0) {
+          const preview = productNames.slice(0, 2).join(", ");
+          productSummary =
+            totalCount > 2
+              ? `${preview} 등 총 ${totalCount}개 제품`
+              : `${preview} 총 ${totalCount}개 제품`;
+        }
+
         const payload: OrderSupplierNotifiedPayload = {
           tenantId: clinicTenantId,
           orderId: order.id,
@@ -3224,6 +3252,9 @@ export class OrderService {
           sourceStatus: status,
           rejectionReasons: rejectionReasons ?? null,
           adjustmentsCount: Array.isArray(adjustments) ? adjustments.length : 0,
+          supplierCompanyName,
+          supplierManagerName,
+          productSummary,
         };
         this.eventEmitter.emit(ORDER_SUPPLIER_NOTIFIED_EVENT, payload);
       } catch (notificationError: any) {

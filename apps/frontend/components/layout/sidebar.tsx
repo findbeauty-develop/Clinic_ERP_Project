@@ -3,9 +3,32 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, getTenantId, getMemberData, getApiUrl } from "../../lib/api";
+import {
+  apiGet,
+  apiRequest,
+  getTenantId,
+  getMemberData,
+  getApiUrl,
+} from "../../lib/api";
 import { useNotifications } from "../notifications/notification-provider";
-import { Settings, X, Bell } from "lucide-react";
+import { Settings, X, Bell, ChevronLeft } from "lucide-react";
+
+type NotifItem = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  entityType: string;
+  entityId: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+type NotifListResponse = {
+  items: NotifItem[];
+  total: number;
+  hasMore: boolean;
+};
 
 export type SidebarProps = {
   isOpen?: boolean;
@@ -113,7 +136,7 @@ const navItems = [
       </svg>
     ),
   },
-   {
+  {
     href: "/order",
     label: "주문",
     icon: (
@@ -153,7 +176,7 @@ const navItems = [
       </svg>
     ),
   },
- 
+
   // {
   //   label: "CSV 입고",
   //   isDropdown: true,
@@ -211,6 +234,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
   const [clinicLogo, setClinicLogo] = useState<string>("");
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [notifItems, setNotifItems] = useState<NotifItem[]>([]);
+  const [notifTab, setNotifTab] = useState<"unread" | "all">("unread");
+  const [notifLoading, setNotifLoading] = useState(false);
   const loadUserInfo = useCallback(() => {
     const memberData = localStorage.getItem("erp_member_data");
     if (!memberData) {
@@ -259,7 +286,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             // ✅ Check if URL is already full URL (starts with http)
             const logoUrl = clinicInfo.logo_url;
             setClinicLogo(
-              logoUrl.startsWith('http') ? logoUrl : `${getApiUrl()}${logoUrl}`
+              logoUrl.startsWith("http") ? logoUrl : `${getApiUrl()}${logoUrl}`
             );
           } else {
             setClinicLogo(""); // Default logo
@@ -287,6 +314,61 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     }
   }, []);
 
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true);
+    try {
+      const res = await apiGet<NotifListResponse>(
+        "/notifications?limit=50&page=1",
+        {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        }
+      );
+      setNotifItems(res?.items ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  const markRead = useCallback(
+    async (id: string) => {
+      try {
+        await apiRequest(`/notifications/${id}/read`, { method: "PATCH" });
+        setNotifItems((prev) =>
+          prev.map((n) =>
+            n.id === id ? { ...n, readAt: new Date().toISOString() } : n
+          )
+        );
+        await notifications?.refreshUnread();
+      } catch {
+        /* ignore */
+      }
+    },
+    [notifications]
+  );
+
+  const markAllRead = useCallback(async () => {
+    const unread = notifItems.filter((n) => !n.readAt);
+    await Promise.all(
+      unread.map((n) =>
+        apiRequest(`/notifications/${n.id}/read`, { method: "PATCH" })
+      )
+    );
+    setNotifItems((prev) =>
+      prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() }))
+    );
+    await notifications?.refreshUnread();
+  }, [notifItems, notifications]);
+
+  const openNotifPanel = useCallback(() => {
+    setShowNotifPanel(true);
+    void fetchNotifications();
+  }, [fetchNotifications]);
+
   useEffect(() => {
     setMounted(true);
     loadUserInfo();
@@ -307,7 +389,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         // ✅ Check if URL is already full URL
         const logoUrl = e.detail.logoUrl;
         setClinicLogo(
-          logoUrl.startsWith('http') ? logoUrl : `${getApiUrl()}${logoUrl}`
+          logoUrl.startsWith("http") ? logoUrl : `${getApiUrl()}${logoUrl}`
         );
       }
     };
@@ -350,22 +432,163 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     });
   };
 
+  const unreadCount = notifications?.unreadCount ?? 0;
+  const filteredNotifs =
+    notifTab === "unread" ? notifItems.filter((n) => !n.readAt) : notifItems;
+
   return (
     <aside
       className={`fixed left-0 top-0 z-40 flex h-screen w-80 flex-col bg-[#fcfcfc] px-6 py-8 text-black border border-gray-400 dark:border-gray-700 transition-transform duration-300 ease-in-out ${
         isOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      {/* Close (hamburger yopish) tugmasi */}
+      {/* Bell / Alert icon — top-right */}
+      <button
+        type="button"
+        onClick={openNotifPanel}
+        className="absolute right-3 top-4 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+        aria-label="알림"
+      >
+        <Bell className="h-6 w-6" />
+        {unreadCount > 0 && (
+          <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Collapse button — vertically centered on right edge */}
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          className="absolute -right-3.5 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md text-slate-500 hover:bg-slate-100 hover:text-slate-800"
           aria-label="메뉴 닫기"
         >
-          <X className="h-5 w-5" />
+          <ChevronLeft className="h-4 w-4" />
         </button>
+      )}
+
+      {/* ───── Notification Panel Overlay ───── */}
+      {showNotifPanel && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowNotifPanel(false)}
+          />
+          <div className="absolute left-full top-0 z-50 flex h-full w-96 flex-col bg-[#fcfcfc] shadow-2xl border-l border-slate-200">
+            {" "}
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 flex-shrink-0">
+              <h2 className="text-lg font-bold text-slate-900">알람</h2>
+              <button
+                onClick={() => setShowNotifPanel(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Tabs + 모두읽음 */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2 flex-shrink-0">
+              <div className="flex gap-5">
+                <button
+                  onClick={() => setNotifTab("unread")}
+                  className={`pb-1 text-sm font-medium transition-colors ${
+                    notifTab === "unread"
+                      ? "border-b-2 border-indigo-600 text-indigo-600"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  미확인
+                </button>
+                <button
+                  onClick={() => setNotifTab("all")}
+                  className={`pb-1 text-sm font-medium transition-colors ${
+                    notifTab === "all"
+                      ? "border-b-2 border-indigo-600 text-indigo-600"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  전체
+                </button>
+              </div>
+              <button
+                onClick={markAllRead}
+                className="text-xs text-slate-500 hover:text-slate-800"
+              >
+                모두읽음
+              </button>
+            </div>
+            {/* Notification list */}
+            <div className="flex-1 overflow-y-auto">
+              {notifLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+                </div>
+              ) : filteredNotifs.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  {notifTab === "unread"
+                    ? "읽지 않은 알림이 없습니다."
+                    : "알림이 없습니다."}
+                </p>
+              ) : (
+                filteredNotifs.map((notif) => {
+                  const lines = notif.body.split("\n").filter(Boolean);
+                  const actionLine = lines[lines.length - 1] ?? "";
+                  const descLines = lines.slice(0, -1).join(" ");
+                  const isAccepted = actionLine.includes("수락");
+                  const isRejected = actionLine.includes("반려");
+                  const isUnread = !notif.readAt;
+                  const dateStr = notif.createdAt
+                    ? new Date(notif.createdAt).toLocaleDateString("ko-KR", {
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "";
+
+                  return (
+                    <button
+                      key={notif.id}
+                      onClick={() => markRead(notif.id)}
+                      className={`w-full border-b border-slate-100 px-5 py-4 text-left transition hover:bg-slate-50 ${
+                        isUnread ? "bg-indigo-50/40" : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-900 leading-tight">
+                          {notif.title}
+                        </span>
+                        <span className="flex-shrink-0 text-[11px] text-slate-400">
+                          {dateStr}
+                        </span>
+                      </div>
+                      {descLines && (
+                        <p className="mt-1 text-xs text-slate-600 leading-snug">
+                          {descLines}
+                        </p>
+                      )}
+                      {actionLine && (
+                        <p
+                          className={`mt-1 text-xs font-medium ${
+                            isAccepted
+                              ? "text-indigo-600"
+                              : isRejected
+                                ? "text-red-500"
+                                : "text-slate-500"
+                          }`}
+                        >
+                          {actionLine}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Logo & Clinic Info Section */}
@@ -547,29 +770,14 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             </div>
           </div>
         )} */}
-        {/* Notifications + settings */}
-        <div className="flex gap-2">
-          <Link
-            href="/notifications"
-            className="relative flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-            aria-label="알림"
-          >
-            <Bell className="h-5 w-5 text-slate-500" />
-            {notifications && notifications.unreadCount > 0 && (
-              <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {notifications.unreadCount > 99 ? "99+" : notifications.unreadCount}
-              </span>
-            )}
-          </Link>
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="flex flex-1 items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
-          >
-            {/* Gear icon */}
-            <Settings className="h-5 w-5 text-slate-500" />
-            <span className="text-sm font-medium">설정</span>
-          </button>
-        </div>
+        {/* Settings */}
+        <button
+          onClick={() => setShowSettingsModal(true)}
+          className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm transition hover:bg-slate-50"
+        >
+          <Settings className="h-5 w-5 text-slate-500" />
+          <span className="text-sm font-medium">설정</span>
+        </button>
 
         {/* Settings Modal */}
         {showSettingsModal && (

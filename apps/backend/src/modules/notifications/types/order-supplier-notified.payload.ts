@@ -7,4 +7,7 @@ export interface OrderSupplierNotifiedPayload {
   sourceStatus: OrderSupplierWebhookStatus;
   rejectionReasons?: Record<string, string> | null;
   adjustmentsCount: number;
+  supplierCompanyName?: string | null;
+  supplierManagerName?: string | null;
+  productSummary?: string | null;
 }

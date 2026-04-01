@@ -33,12 +33,19 @@ export class NotificationService {
 
     const dedupeKey = `order:${data.orderId}:webhook:${data.sourceStatus}`;
 
-    const title =
-      data.sourceStatus === "rejected" ? "주문 거절" : "주문 확정";
-    const body =
+    const supplierLabel = [data.supplierCompanyName, data.supplierManagerName]
+      .filter(Boolean)
+      .join(" ");
+    const title = supplierLabel || (data.sourceStatus === "rejected" ? "주문 거절" : "주문 확정");
+
+    const actionLine =
       data.sourceStatus === "rejected"
-        ? `공급업체가 주문번호 ${data.orderNo}를 거절했습니다.`
-        : `공급업체가 주문번호 ${data.orderNo}를 확정했습니다.`;
+        ? "요청을 반려했습니다."
+        : "요청을 수락했습니다.";
+    const descLine = data.productSummary
+      ? `${data.productSummary}의 주문`
+      : `주문번호 ${data.orderNo}의 주문`;
+    const body = `${descLine}\n${actionLine}`;
 
     const payloadJson = {
       orderNo: data.orderNo,
