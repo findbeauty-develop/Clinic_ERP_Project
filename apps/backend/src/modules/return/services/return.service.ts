@@ -253,13 +253,22 @@ export class ReturnService {
           emptyBoxes = Math.max(0, previousEmptyBoxes - returnedEmptyBoxes);
         }
 
-        // Agar qaytarilishi mumkin bo'lgan miqdor 0 yoki kichik bo'lsa VA emptyBoxes ham 0 yoki undefined bo'lsa, o'tkazib yuborish
-        // Lekin agar unreturnedQty > 0 yoki emptyBoxes > 0 bo'lsa, product'ni ko'rsatish
-        if (
-          unreturnedQty <= 0 &&
-          (emptyBoxes === undefined || emptyBoxes <= 0)
-        ) {
-          return null;
+        // usage_capacity bor mahsulot: faqat emptyBoxes > 0 bo'lganda ko'rsat (qisman ishlatiladigan quti)
+        // usage_capacity yo'q mahsulot: oddiy unreturnedQty > 0 bo'lganda ko'rsat
+        const hasUsageCapacity =
+          product.usage_capacity != null &&
+          product.usage_capacity > 0 &&
+          product.capacity_per_product != null &&
+          product.capacity_per_product > 0;
+
+        if (hasUsageCapacity) {
+          if (!emptyBoxes || emptyBoxes <= 0) {
+            return null;
+          }
+        } else {
+          if (unreturnedQty <= 0) {
+            return null;
+          }
         }
 
         // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)

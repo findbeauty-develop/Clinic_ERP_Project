@@ -703,6 +703,7 @@ export class OrderService {
         where: { id: item.productId, tenant_id: tenantId },
         select: {
           id: true,
+          name: true,
           productSupplier: {
             select: {
               clinic_supplier_manager_id: true,
@@ -713,6 +714,11 @@ export class OrderService {
 
       if (!product) {
         throw new NotFoundException(`Product not found: ${item.productId}`);
+      }
+
+      // 주문 시점 제품명 스냅샷 저장 (item에 없으면 DB에서 가져온 이름 사용)
+      if (!item.productName) {
+        item.productName = product.name ?? null;
       }
 
       // DTO'dan kelgan items'ga supplierId qo'shish (clinic_supplier_manager_id ishlatamiz)
@@ -823,6 +829,7 @@ export class OrderService {
                   tenant_id: tenantId,
                   order_id: order.id,
                   product_id: item.productId,
+                  product_name: item.productName ?? null,
                   batch_id: item.batchId ?? null,
                   ordered_quantity: item.quantity,
                   confirmed_quantity: isManualSupplier ? item.quantity : null,

@@ -448,11 +448,21 @@ export default function ReturnsPage() {
                 <div className="space-y-3 flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-200 dark:[&::-webkit-scrollbar-thumb]:border-slate-700">
                   {products
                     .filter((product) => {
-                      return (
-                        product.unreturnedQty > 0 ||
-                        (product.emptyBoxes !== undefined &&
-                          product.emptyBoxes > 0)
-                      );
+                      // usage_capacity bor (qisman ishlatiladigan) mahsulot: faqat emptyBoxes > 0 bo'lganda ko'rsat
+                      // usage_capacity yo'q mahsulot: unreturnedQty > 0 bo'lganda ko'rsat
+                      if (
+                        product.emptyBoxes !== undefined &&
+                        product.emptyBoxes > 0
+                      ) {
+                        return true;
+                      }
+                      if (
+                        product.emptyBoxes === undefined &&
+                        product.unreturnedQty > 0
+                      ) {
+                        return true;
+                      }
+                      return false;
                     })
                     .map((product) => {
                       // Calculate total selected quantity for this product

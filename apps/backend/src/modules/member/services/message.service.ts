@@ -28,14 +28,9 @@ export class MessageService {
 
   private getProvider(name: string): IMessageProvider {
     switch (name.toLowerCase()) {
-      case "twilio":
-        return this.twilioProvider;
-      case "coolsms":
-        return this.coolSMSProvider;
       case "kakao":
         return this.kakaoProvider;
-      case "ktcommunis":
-        return this.ktCommunisProvider;
+
       case "solapi":
         return this.solapiProvider;
       default:

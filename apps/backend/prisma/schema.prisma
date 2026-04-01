@@ -456,8 +456,9 @@ model OrderItem {
   order_id           String
   product_id         String
   batch_id           String?
-  unit               String? 
-  
+  unit               String?
+  product_name       String?   // 주문 시점의 제품명 (스냅샷 — 이후 제품 이름이 바뀌어도 보존)
+
   // ✅ Quantity fields - clear semantics
   ordered_quantity   Int       // Clinic order qilgan (dastlabki, o'zgarmas)
   confirmed_quantity Int?      // Supplier tasdiqlagan (supplier adjustment) - nullable until confirmed
