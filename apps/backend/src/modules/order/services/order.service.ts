@@ -1584,6 +1584,43 @@ export class OrderService {
     }
   }
 
+  /** SMS/Email uchun order + items dan umumiy payload (supplier xabarlari) */
+  private extractOrderSupplierNotifyPayload(
+    fullOrder: any | null | undefined,
+    fallbackOrder: any
+  ): {
+    products?: Array<{ productName: string; brand: string; quantity: number }>;
+    itemCount: number;
+    orderNo: string;
+    totalAmount: number;
+    managerName?: string;
+  } {
+    const items = fullOrder?.items ?? [];
+    const products =
+      items.length > 0
+        ? items.map((item: any) => ({
+            productName: item.product?.name || "제품",
+            brand: item.product?.brand || "",
+            quantity: item.ordered_quantity ?? 0,
+          }))
+        : undefined;
+    const itemCount = items.reduce(
+      (sum: number, item: any) => sum + (item.ordered_quantity || 0),
+      0
+    );
+    return {
+      products,
+      itemCount,
+      orderNo: fullOrder?.order_no ?? fallbackOrder.order_no,
+      totalAmount:
+        Number(fullOrder?.total_amount ?? fallbackOrder.total_amount) || 0,
+      managerName:
+        (fullOrder?.clinic_manager_name ??
+          fallbackOrder.clinic_manager_name) ||
+        undefined,
+    };
+  }
+
   /**
    * Send SMS and Email to platform supplier about cancellation
    */
@@ -1625,33 +1662,37 @@ export class OrderService {
       });
 
       const clinicName = clinic?.name || "병원";
+      const cancelledAtLabel = new Date().toLocaleString("ko-KR");
+      const fullOrder = await this.orderRepository.findById(
+        order.id,
+        order.tenant_id
+      );
+      const p = this.extractOrderSupplierNotifyPayload(fullOrder, order);
 
-      // SMS notification
       if (phoneNumber) {
-        const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
-          order.order_no
-        }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
-          "ko-KR"
-        )}`;
-
-        await this.messageService.sendSMS(phoneNumber, message);
+        await this.messageService.sendOrderCancellationNotification(
+          phoneNumber,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          cancelledAtLabel,
+          p.managerName,
+          p.products
+        );
       }
 
-      // Email notification
       if (email) {
-        const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
-        const emailBody = `
-          <h2>주문이 취소되었습니다</h2>
-          <p><strong>클리닉:</strong> ${clinicName}</p>
-          <p><strong>주문번호:</strong> ${order.order_no}</p>
-          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
-          <p><strong>취소일시:</strong> ${new Date().toLocaleString(
-            "ko-KR"
-          )}</p>
-          <p style="color: red;">※ 이 주문은 클리닉에서 취소되었습니다.</p>
-        `;
-
-        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        await this.emailService.sendOrderCancellationEmail(
+          email,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          cancelledAtLabel,
+          p.managerName,
+          p.products
+        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1683,33 +1724,37 @@ export class OrderService {
       });
 
       const clinicName = clinic?.name || "병원";
+      const cancelledAtLabel = new Date().toLocaleString("ko-KR");
+      const fullOrder = await this.orderRepository.findById(
+        order.id,
+        order.tenant_id
+      );
+      const p = this.extractOrderSupplierNotifyPayload(fullOrder, order);
 
-      // SMS notification
       if (phoneNumber) {
-        const message = `[주문 취소]\n${clinicName}에서 주문번호 ${
-          order.order_no
-        }를 취소했습니다.\n금액: ${order.total_amount?.toLocaleString()}원\n취소일시: ${new Date().toLocaleString(
-          "ko-KR"
-        )}`;
-
-        await this.messageService.sendSMS(phoneNumber, message);
+        await this.messageService.sendOrderCancellationNotification(
+          phoneNumber,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          cancelledAtLabel,
+          p.managerName,
+          p.products
+        );
       }
 
-      // Email notification
       if (email) {
-        const emailSubject = `[주문 취소] ${clinicName} - 주문번호 ${order.order_no}`;
-        const emailBody = `
-          <h2>주문이 취소되었습니다</h2>
-          <p><strong>클리닉:</strong> ${clinicName}</p>
-          <p><strong>주문번호:</strong> ${order.order_no}</p>
-          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
-          <p><strong>취소일시:</strong> ${new Date().toLocaleString(
-            "ko-KR"
-          )}</p>
-          <p style="color: red;">※ 이 주문은 클리닉에서 취소되었습니다.</p>
-        `;
-
-        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        await this.emailService.sendOrderCancellationEmail(
+          email,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          cancelledAtLabel,
+          p.managerName,
+          p.products
+        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1742,30 +1787,35 @@ export class OrderService {
       });
 
       const clinicName = clinic?.name || "병원";
+      const fullOrder = await this.orderRepository.findById(
+        order.id,
+        tenantId
+      );
+      const p = this.extractOrderSupplierNotifyPayload(fullOrder, order);
 
-      // SMS notification
       if (phoneNumber) {
-        const smsMessage = `[새 주문]\n${clinicName}에서 주문이 도착했습니다.\n주문번호: ${
-          order.order_no
-        }\n금액: ${order.total_amount?.toLocaleString()}원`;
-
-        await this.messageService.sendSMS(phoneNumber, smsMessage);
+        await this.messageService.sendOrderNotification(
+          phoneNumber,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          p.managerName,
+          p.products,
+          "manual"
+        );
       }
 
-      // Email notification
       if (email) {
-        const emailSubject = `[새 주문] ${clinicName} - 주문번호 ${order.order_no}`;
-        const emailBody = `
-          <h2>새로운 주문이 도착했습니다</h2>
-          <p><strong>클리닉:</strong> ${clinicName}</p>
-          <p><strong>주문번호:</strong> ${order.order_no}</p>
-          <p><strong>주문금액:</strong> ${order.total_amount?.toLocaleString()}원</p>
-          <p><strong>주문일시:</strong> ${new Date().toLocaleString(
-            "ko-KR"
-          )}</p>
-        `;
-
-        await this.emailService.sendEmail(email, emailSubject, emailBody);
+        await this.emailService.sendOrderNotificationEmail(
+          email,
+          clinicName,
+          p.orderNo,
+          p.totalAmount,
+          p.itemCount,
+          p.managerName,
+          p.products
+        );
       }
     } catch (error: any) {
       this.logger.error(
@@ -1849,6 +1899,99 @@ export class OrderService {
       updatedAt: draft.updated_at,
       expiresAt: draft.expires_at,
     };
+  }
+
+  /** 동일 번호로 주문 알림 SMS가 중복 발송되지 않도록 비교 키 (표기/그룹키 분리 대응) */
+  private normalizeOrderNotifySmsPhoneKey(
+    phone: string | null | undefined
+  ): string | null {
+    const digits = phone?.replace(/\D/g, "") ?? "";
+    if (digits.length < 9) {
+      return null;
+    }
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+  }
+
+  /**
+   * Product별 그룹 키가 달라도(연동 유무 등) 같은 전화번호면 한 번만 보내고 품목은 합친다.
+   */
+  private mergeOrderNotifySmsGroups(
+    groups: Iterable<{
+      managerId: string | null;
+      supplierTenantId: string | null;
+      phoneNumber: string | null;
+      phoneSource: string;
+      items: Array<{
+        productName: string;
+        brand: string;
+        quantity: number;
+        totalPrice: number;
+      }>;
+      isPlatformSupplier: boolean;
+    }>
+  ): Array<{
+    managerId: string | null;
+    supplierTenantId: string | null;
+    phoneNumber: string;
+    phoneSource: string;
+    items: Array<{
+      productName: string;
+      brand: string;
+      quantity: number;
+      totalPrice: number;
+    }>;
+    isPlatformSupplier: boolean;
+  }> {
+    const byKey = new Map<
+      string,
+      {
+        managerId: string | null;
+        supplierTenantId: string | null;
+        phoneNumber: string;
+        phoneSource: string;
+        items: Array<{
+          productName: string;
+          brand: string;
+          quantity: number;
+          totalPrice: number;
+        }>;
+        isPlatformSupplier: boolean;
+      }
+    >();
+
+    for (const group of groups) {
+      if (!group.phoneNumber) {
+        continue;
+      }
+      const key = this.normalizeOrderNotifySmsPhoneKey(group.phoneNumber);
+      if (!key) {
+        continue;
+      }
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, {
+          managerId: group.managerId,
+          supplierTenantId: group.supplierTenantId,
+          phoneNumber: group.phoneNumber,
+          phoneSource: group.phoneSource,
+          items: [...group.items],
+          isPlatformSupplier: group.isPlatformSupplier,
+        });
+      } else {
+        existing.items.push(...group.items);
+        if (group.isPlatformSupplier) {
+          existing.isPlatformSupplier = true;
+        }
+        if (group.supplierTenantId) {
+          existing.supplierTenantId = group.supplierTenantId;
+        }
+        if (group.managerId) {
+          existing.managerId = group.managerId;
+        }
+      }
+    }
+
+    return Array.from(byKey.values());
   }
 
   /**
@@ -2167,7 +2310,7 @@ export class OrderService {
               0
             );
 
-            // Send SMS via MessageService (yangi format bilan)
+            // Send SMS via MessageService (수기 공급업체 전용 문구)
             const smsSent = await this.messageService.sendOrderNotification(
               manualPhoneNumber,
               finalClinicName,
@@ -2175,7 +2318,8 @@ export class OrderService {
               order.total_amount,
               totalQuantity,
               finalClinicManagerName,
-              products
+              products,
+              "manual"
             );
           } catch (smsError: any) {
             this.logger.error(
@@ -2444,8 +2588,12 @@ export class OrderService {
           });
         }
 
+        const dedupedSmsGroups = this.mergeOrderNotifySmsGroups(
+          itemsByManager.values()
+        );
+
         // Har bir manager'ga bitta SMS yuborish (barcha product'lar bilan)
-        const smsPromises = Array.from(itemsByManager.values()).map(
+        const smsPromises = dedupedSmsGroups.map(
           async (group) => {
             try {
               // Agar platform supplier bo'lsa, SMS yuborish
@@ -2475,93 +2623,105 @@ export class OrderService {
                     products
                   );
                 } else {
-                // managerId yo'q bo'lsa — receive_sms: true bo'lgan barcha active managerlarga
-                const allManagers = await this.prisma.supplierManager.findMany({
-                  where: {
-                    supplier_tenant_id: group.supplierTenantId,
-                    status: "ACTIVE",
-                    receive_sms: true,
-                  },
-                  select: {
-                    id: true,
-                    name: true,
-                    phone_number: true,
-                  },
-                });
-
-                if (allManagers.length > 0) {
-                  const managersToNotify = allManagers;
-
-                  const managerSmsPromises = managersToNotify
-                    .filter((manager) => manager.phone_number)
-                    .map(async (manager) => {
-                      try {
-                        // Barcha product'lar uchun umumiy miqdor va narx
-                        const totalQuantity = group.items.reduce(
-                          (sum, item) => sum + item.quantity,
-                          0
-                        );
-                        const totalAmount = group.items.reduce(
-                          (sum, item) => sum + item.totalPrice,
-                          0
-                        );
-
-                        // Barcha product'lar ro'yxati
-                        const products = group.items.map((item) => ({
-                          productName: item.productName,
-                          brand: item.brand,
-                          quantity: item.quantity,
-                        }));
-
-                        await this.messageService.sendOrderNotification(
-                          manager.phone_number,
-                          finalClinicName,
-                          order.order_no,
-                          totalAmount,
-                          totalQuantity,
-                          clinicManagerName,
-                          products
-                        );
-                      } catch (smsError: any) {
-                        this.logger.error(
-                          `❌ Failed to send SMS to SupplierManager ${
-                            manager.name
-                          } (${manager.phone_number}): ${
-                            smsError?.message || "Unknown error"
-                          }`
-                        );
-                      }
+                  // managerId yo'q bo'lsa — receive_sms: true bo'lgan barcha active managerlarga
+                  const allManagers =
+                    await this.prisma.supplierManager.findMany({
+                      where: {
+                        supplier_tenant_id: group.supplierTenantId,
+                        status: "ACTIVE",
+                        receive_sms: true,
+                      },
+                      select: {
+                        id: true,
+                        name: true,
+                        phone_number: true,
+                      },
                     });
 
-                  await Promise.all(managerSmsPromises);
-                } else {
-                  // Fallback: Agar ACTIVE manager bo'lmasa, ClinicSupplierManager telefoniga SMS
-                  if (group.phoneNumber) {
-                    const totalQuantity = group.items.reduce(
-                      (sum, item) => sum + item.quantity,
-                      0
-                    );
-                    const totalAmount = group.items.reduce(
-                      (sum, item) => sum + item.totalPrice,
-                      0
-                    );
-                    const products = group.items.map((item) => ({
-                      productName: item.productName,
-                      brand: item.brand,
-                      quantity: item.quantity,
-                    }));
+                  if (allManagers.length > 0) {
+                    const managersToNotify = allManagers;
+                    const seenNotifyPhones = new Set<string>();
 
-                    await this.messageService.sendOrderNotification(
-                      group.phoneNumber,
-                      finalClinicName,
-                      order.order_no,
-                      totalAmount,
-                      totalQuantity,
-                      clinicManagerName,
-                      products
-                    );
+                    const managerSmsPromises = managersToNotify
+                      .filter((manager) => manager.phone_number)
+                      .filter((manager) => {
+                        const pk = this.normalizeOrderNotifySmsPhoneKey(
+                          manager.phone_number
+                        );
+                        if (!pk || seenNotifyPhones.has(pk)) {
+                          return false;
+                        }
+                        seenNotifyPhones.add(pk);
+                        return true;
+                      })
+                      .map(async (manager) => {
+                        try {
+                          // Barcha product'lar uchun umumiy miqdor va narx
+                          const totalQuantity = group.items.reduce(
+                            (sum, item) => sum + item.quantity,
+                            0
+                          );
+                          const totalAmount = group.items.reduce(
+                            (sum, item) => sum + item.totalPrice,
+                            0
+                          );
+
+                          // Barcha product'lar ro'yxati
+                          const products = group.items.map((item) => ({
+                            productName: item.productName,
+                            brand: item.brand,
+                            quantity: item.quantity,
+                          }));
+
+                          await this.messageService.sendOrderNotification(
+                            manager.phone_number,
+                            finalClinicName,
+                            order.order_no,
+                            totalAmount,
+                            totalQuantity,
+                            clinicManagerName,
+                            products
+                          );
+                        } catch (smsError: any) {
+                          this.logger.error(
+                            `❌ Failed to send SMS to SupplierManager ${
+                              manager.name
+                            } (${manager.phone_number}): ${
+                              smsError?.message || "Unknown error"
+                            }`
+                          );
+                        }
+                      });
+
+                    await Promise.all(managerSmsPromises);
+                  } else {
+                    // Fallback: Agar ACTIVE manager bo'lmasa, ClinicSupplierManager telefoniga SMS
+                    if (group.phoneNumber) {
+                      const totalQuantity = group.items.reduce(
+                        (sum, item) => sum + item.quantity,
+                        0
+                      );
+                      const totalAmount = group.items.reduce(
+                        (sum, item) => sum + item.totalPrice,
+                        0
+                      );
+                      const products = group.items.map((item) => ({
+                        productName: item.productName,
+                        brand: item.brand,
+                        quantity: item.quantity,
+                      }));
+
+                      await this.messageService.sendOrderNotification(
+                        group.phoneNumber,
+                        finalClinicName,
+                        order.order_no,
+                        totalAmount,
+                        totalQuantity,
+                        clinicManagerName,
+                        products
+                      );
+                    }
                   }
-                }
                 } // closes: else { // managerId yo'q
               } else {
                 // Manual supplier: ClinicSupplierManager telefoniga SMS
@@ -2587,7 +2747,8 @@ export class OrderService {
                     totalAmount,
                     totalQuantity,
                     clinicManagerName,
-                    products
+                    products,
+                    "manual"
                   );
                 }
               }

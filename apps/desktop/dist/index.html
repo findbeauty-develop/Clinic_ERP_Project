@@ -97,6 +97,36 @@
             });
         });
       })();
+
+      // Safari / Web Inspector: select the **top** document (Tauri shell), then run:
+      //   jaclitDebugShellInvoke()
+      //   jaclitDebugShellInvoke({ title: "A", body: "B" })
+      // If this works but clinic iframe does not → bridge/postMessage or web code.
+      // If this fails → Rust / macOS Notifications / Tauri IPC on the shell document.
+      window.jaclitDebugShellInvoke = function (opts) {
+        opts = opts || {};
+        var title = typeof opts.title === "string" ? opts.title : "Jaclit ERP";
+        var body =
+          typeof opts.body === "string" ? opts.body : "Shell → Rust invoke test";
+        var internals = window.__TAURI_INTERNALS__;
+        if (!internals || typeof internals.invoke !== "function") {
+          console.error(
+            "[Jaclit shell] jaclitDebugShellInvoke: __TAURI_INTERNALS__.invoke missing"
+          );
+          return Promise.reject(new Error("invoke missing"));
+        }
+        console.info("[Jaclit shell] jaclitDebugShellInvoke → show_native_notification");
+        return internals
+          .invoke("show_native_notification", { title: title, body: body })
+          .then(function (r) {
+            console.info("[Jaclit shell] jaclitDebugShellInvoke ok", r);
+            return r;
+          })
+          .catch(function (e) {
+            console.error("[Jaclit shell] jaclitDebugShellInvoke error", e);
+            throw e;
+          });
+      };
     </script>
   </body>
 </html>

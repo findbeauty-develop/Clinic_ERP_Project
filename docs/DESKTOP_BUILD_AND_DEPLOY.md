@@ -201,9 +201,10 @@ Bo‘sh qoldirsangiz Dashboarddagi yuklab olish tugmalari “준비 중” ko‘
 ## 9. Tekshiruv ro‘yxati (release oldidan)
 
 - [ ] `clinic.jaclit.com` (yoki prod URL) ochiladi va login ishlaydi.
-- [ ] `apps/desktop/dist/index.html` dagi redirect shu prod URL ga yo‘naltiradi.
+- [ ] `apps/desktop/dist/index.html` dagi **iframe `src`** prod URL bilan mos (`https://clinic…/?jaclit_desktop_shell=1`); **to‘liq redirect** ishlatilmaydi.
+- [ ] Nginx da clinic uchun **`X-Frame-Options` yo‘q** (§1.2).
 - [ ] `capabilities/default.json` dagi `remote.urls` prod domenni qamrab oladi.
-- [ ] macOS: ilovani ochib, tray va (kerak bo‘lsa) test bildirishnomani tekshiring.
+- [ ] macOS: tray **“Test notification”** va (ixtiyoriy) §11 dagi `jaclitDebugShellInvoke()`.
 - [ ] Windows: WebView2 o‘rnatilgan oddiy mashinada EXE ni sinab ko‘ring.
 - [ ] Yuklab olish URL lari brauzerda 200 qaytaradi va fayl to‘liq yuklanadi.
 
@@ -214,26 +215,40 @@ Bo‘sh qoldirsangiz Dashboarddagi yuklab olish tugmalari “준비 중” ko‘
 | Savol                                                  | Javob                                                                   |
 | ------------------------------------------------------ | ----------------------------------------------------------------------- |
 | Har kuni develop qilsam, har deployda DMG/EXE kerakmi? | **Yo‘q** — asosan veb + API deploy yetadi.                              |
-| Qachon qayta yig‘aman?                                 | Tauri/Rust, capabilities, ikonka, `dist` redirect, versiya o‘zgarganda. |
+| Qachon qayta yig‘aman?                                 | Tauri/Rust, capabilities, ikonka, **`dist` shell (iframe)**, versiya o‘zgarganda. |
 | Mac da Windows EXE olamanmi?                           | Odatda **yo‘q** — Windows da yoki CI da yig‘ing.                        |
 | DMG qayerda?                                           | `src-tauri/target/release/bundle/dmg/`                                  |
 | EXE qayerda?                                           | `src-tauri/target/release/bundle/nsis/` (yoki `msi/`)                   |
 
 Qo‘shimcha qisqa eslatmalar `apps/desktop/README.md` faylida ham bor.
 
-Ha, haqiqiy path shu ekan.
+---
 
-Lekin bu nomdagi rw.64295. qismi vaqtinchalik yoki generator qo‘shgan prefixga o‘xshaydi. Uni shu holatda ham yuborsa bo‘ladi.
+## 11. Debug: OS toast qayerda sindi?
+
+Loyiha **`tauri-plugin-notification` ishlatmaydi** — bildirishnoma **`show_native_notification`** + macOS da `osascript` (`macos_notify.rs`). Tray menyudagi **“Test notification”** to‘g‘ridan-to‘g‘ri shu yo‘lni sinaydi (**invoke emas**).
+
+| Qadam | Nima qilish | Natija |
+| ----- | ----------- | ------ |
+| 1 | Tray → **Test notification** | Chiqsa: Rust / macOS yo‘li taxminan OK. Chiqmasa: **System Settings → Notifications → Jaclit ERP**, yoki `osascript` xatosi. |
+| 2 | Safari **Develop** → ilova → **yuqori** hujjat (shell) ni tanlang; konsolda: `jaclitDebugShellInvoke()` | `apps/desktop/dist/index.html` da qo‘yilgan; **`title`/`body` beriladi**. OK bo‘lsa: Tauri **IPC shell** da ishlaydi; muammo **iframe / clinic JS** tomonda. |
+| 3 | Clinic (iframe) konsolida socket / `[Jaclit notify]` loglari | Bridge yoki auth (`X-Refresh-Token` / deploy mosligi) — batafsil §1 va frontend `tauri-desktop-notification.ts`. |
+| 4 | API refresh | `POST` **`https://api…/iam/members/refresh`** (nisbiy `/iam/...` emas), `credentials: "include"`; iframe da cookie bo‘lmasa header oqimi kerak (§1). |
+
+**Eslatma:** `invoke("show_native_notification")` **argsiz** chaqirilmasin — doim `{ title, body }` bering (shell helper ham shuni qiladi).
+
+### DMG ni serverga qo‘yish (misol)
+
+```bash
+# Mac’da build qilingan DMG yo‘lini tekshiring:
 ls "apps/desktop/src-tauri/target/release/bundle/dmg/"
 
-scp -i ~/.ssh/seoul-clinic.pem \
- "apps/desktop/src-tauri/target/release/bundle/dmg/Jaclit ERP_1.0.0_aarch64.dmg" \
- ubuntu@13.209.40.48:/tmp/
-
-sudo mv -f "/tmp/Jaclit ERP_1.0.0_aarch64.dmg" /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
-sudo chmod 644 /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
-sudo chown www-data:www-data /var/www/clinic/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+# Serverga nusxa (SSH kalit va host o‘zingizniki):
+# scp -i ~/.ssh/key.pem "…/Jaclit ERP_1.0.0_aarch64.dmg" ubuntu@HOST:/tmp/
+# sudo mv /tmp/….dmg /var/www/…/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+# sudo chmod 644 … && sudo chown www-data:www-data …
 
 curl -I https://clinic.jaclit.com/downloads/Jaclit-ERP-1.0.0-aarch64.dmg
+```
 
-xattr -cr /Applications/"Jaclit ERP.app"
+Gatekeeper: `xattr -cr /Applications/"Jaclit ERP.app"` (faqat lokal testda kerak bo‘lishi mumkin).

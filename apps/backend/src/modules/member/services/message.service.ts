@@ -146,9 +146,7 @@ export class MessageService {
     return message;
   }
 
-  /**
-   * Order notification'ni SMS orqali supplier'ga yuborish
-   */
+  /** 플랫폼 가입 공급업체 vs 비가입(수기) 공급업체 — 본문(주문번호·제품·금액 등)은 동일, 머리말/맺음말만 다름 */
   async sendOrderNotification(
     phoneNumber: string,
     clinicName: string,
@@ -156,21 +154,32 @@ export class MessageService {
     totalAmount: number,
     itemCount: number,
     clinicManagerName?: string,
-    products?: Array<{ productName: string; brand: string; quantity?: number }>
+    products?: Array<{ productName: string; brand: string; quantity?: number }>,
+    smsFormat: "platform" | "manual" = "platform"
   ): Promise<boolean> {
     if (!phoneNumber) {
       this.logger.warn("Phone number is required for order notification");
       return false;
     }
 
-    const message = this.formatOrderNotificationMessage(
-      clinicName,
-      orderNo,
-      totalAmount,
-      itemCount,
-      clinicManagerName,
-      products
-    );
+    const message =
+      smsFormat === "manual"
+        ? this.formatManualSupplierOrderNotificationMessage(
+            clinicName,
+            orderNo,
+            totalAmount,
+            itemCount,
+            clinicManagerName,
+            products
+          )
+        : this.formatOrderNotificationMessage(
+            clinicName,
+            orderNo,
+            totalAmount,
+            itemCount,
+            clinicManagerName,
+            products
+          );
 
     try {
       // ✅ Order notifications - critical SMS (high-value orders)
@@ -197,8 +206,43 @@ export class MessageService {
     }
   }
 
+  /** 주문번호·담당자·제품·금액·수량 — 플랫폼/수기 SMS 공통 본문 */
+  private buildOrderNotificationDetailBlock(
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity?: number }>,
+    includeOrderNoLine = true
+  ): string {
+    let block = "";
+    if (includeOrderNoLine) {
+      block += `주문번호: ${orderNo}\n`;
+    }
+
+    if (clinicManagerName) {
+      block += `담당자: ${clinicManagerName}\n`;
+    }
+
+    if (products && products.length > 0) {
+      const productLines = products
+        .map((p) => {
+          const name = `${p.productName}${p.brand ? ` ${p.brand}` : ""}`;
+          return p.quantity !== undefined
+            ? `  - ${name} ${p.quantity} Box`
+            : `  - ${name}`;
+        })
+        .join("\n");
+      block += `제품명:\n${productLines}\n`;
+    }
+
+    block += `총 금액: ${totalAmount.toLocaleString("ko-KR")}원\n`;
+    block += `제품 총 수량: ${itemCount} Box\n`;
+    return block;
+  }
+
   /**
-   * Order notification message format
+   * 플랫폼 가입 공급업체용 주문 알림 SMS
    */
   private formatOrderNotificationMessage(
     clinicName: string,
@@ -208,14 +252,115 @@ export class MessageService {
     clinicManagerName?: string,
     products?: Array<{ productName: string; brand: string; quantity?: number }>
   ): string {
-    let message = `[주문 알림] ${clinicName}에서 주문이 접수되었습니다.\n\n`;
+    let message = `[주문 알림]\n클리닉: ${clinicName}\n신규 주문이 접수되었습니다.\n\n`;
+    message += this.buildOrderNotificationDetailBlock(
+      orderNo,
+      totalAmount,
+      itemCount,
+      clinicManagerName,
+      products
+    );
+    message += `\n자세한 내용은 공급업체 플랫폼에서 확인하세요.\n\n`;
+
+    const supplierFrontendUrl = this.configService.get<string>(
+      "SUPPLIER_FRONTEND_URL"
+    );
+    if (!supplierFrontendUrl) {
+      this.logger.warn(
+        "SUPPLIER_FRONTEND_URL is not set in .env, using default localhost URL"
+      );
+    }
+    const baseUrl = supplierFrontendUrl || "https://supplier.jaclit.com";
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+    message += `${cleanBaseUrl}/orders`;
+
+    return message;
+  }
+
+  /**
+   * 플랫폼 미가입(수기) 공급업체용 — 주문번호로 바로 시작(별도 머리줄 없음, 플랫폼 URL 없음).
+   */
+  private formatManualSupplierOrderNotificationMessage(
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity?: number }>
+  ): string {
+    let message = `주문번호: ${orderNo}\n클리닉: ${clinicName}\n\n`;
+    message += this.buildOrderNotificationDetailBlock(
+      orderNo,
+      totalAmount,
+      itemCount,
+      clinicManagerName,
+      products,
+      false
+    );
+    message += `\n자세한 내용은 공급업체 플랫폼에서 확인하세요.\n\n`;
+    const supplierFrontendUrl = this.configService.get<string>(
+      "SUPPLIER_FRONTEND_URL"
+    );
+    const baseUrl = supplierFrontendUrl || "https://supplier.jaclit.com";
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+    message += `${cleanBaseUrl}/orders`;
+    return message;
+  }
+
+  /**
+   * 주문 취소 SMS (format — 주문 알림 bilan bir xil tuzilma, to'liq mahsulotlar)
+   */
+  async sendOrderCancellationNotification(
+    phoneNumber: string,
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    cancelledAtLabel: string,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity?: number }>
+  ): Promise<boolean> {
+    if (!phoneNumber) {
+      this.logger.warn("Phone number is required for cancellation SMS");
+      return false;
+    }
+
+    const message = this.formatOrderCancellationMessage(
+      clinicName,
+      orderNo,
+      totalAmount,
+      itemCount,
+      cancelledAtLabel,
+      clinicManagerName,
+      products
+    );
+
+    try {
+      return await this.provider.sendSMS(phoneNumber, message, false);
+    } catch (error: any) {
+      this.logger.error(
+        `Error sending cancellation SMS: ${error?.message || "Unknown error"}`
+      );
+      return false;
+    }
+  }
+
+  private formatOrderCancellationMessage(
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    cancelledAtLabel: string,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity?: number }>
+  ): string {
+    let message = `[주문 취소]\n클리닉: ${clinicName}\n클리닉에서 아래 주문을 취소했습니다.\n\n`;
     message += `주문번호: ${orderNo}\n`;
 
     if (clinicManagerName) {
       message += `담당자: ${clinicManagerName}\n`;
     }
 
-    // Product ma'lumotlarini formatlash - barcha product nomlari va miqdori
     if (products && products.length > 0) {
       const productLines = products
         .map((p) => {
@@ -229,20 +374,14 @@ export class MessageService {
     }
 
     message += `총 금액: ${totalAmount.toLocaleString("ko-KR")}원\n`;
-    message += `제품 수: ${itemCount} Box\n\n`;
+    message += `제품 총 수량: ${itemCount} Box\n`;
+    message += `취소일시: ${cancelledAtLabel}\n\n`;
     message += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n\n`;
 
-    // Supplier frontend URL
     const supplierFrontendUrl = this.configService.get<string>(
       "SUPPLIER_FRONTEND_URL"
     );
-    if (!supplierFrontendUrl) {
-      this.logger.warn(
-        "SUPPLIER_FRONTEND_URL is not set in .env, using default localhost URL"
-      );
-    }
     const baseUrl = supplierFrontendUrl || "https://supplier.jaclit.com";
-    // Trailing slash'ni olib tashlash
     const cleanBaseUrl = baseUrl.replace(/\/$/, "");
     message += `${cleanBaseUrl}/orders`;
 

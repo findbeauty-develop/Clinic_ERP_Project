@@ -555,7 +555,7 @@ export class EmailService {
     clinicManagerName?: string,
     products?: Array<{ productName: string; brand: string; quantity: number }>
   ): { subject: string; htmlBody: string; textBody: string } {
-    const subject = `[주문 알림] ${clinicName}에서 주문이 접수되었습니다`;
+    const subject = `[주문 알림] ${orderNo} · ${clinicName}`;
 
     // HTML body
     let htmlBody = `
@@ -704,10 +704,11 @@ export class EmailService {
         <div class="container">
           <div class="header">
             <h1>주문 알림</h1>
+            <p>${clinicName}</p>
           </div>
           <div class="content">
             <div class="order-info">
-              <h2>${clinicName}에서 주문이 접수되었습니다</h2>
+              <h2>신규 주문이 접수되었습니다</h2>
               <p><strong>주문번호:</strong> ${orderNo}</p>
               ${
                 clinicManagerName
@@ -717,7 +718,7 @@ export class EmailService {
               <p><strong>총 금액:</strong> ${totalAmount.toLocaleString(
                 "ko-KR"
               )}원</p>
-              <p><strong>제품 수:</strong> ${itemCount}개</p>
+              <p><strong>제품 총 수량:</strong> ${itemCount} Box</p>
             </div>
             
             ${
@@ -759,26 +760,144 @@ export class EmailService {
     `;
 
     // Text body (fallback)
-    let textBody = `[주문 알림] ${clinicName}에서 주문이 접수되었습니다.\n\n`;
+    let textBody = `[주문 알림]\n클리닉: ${clinicName}\n신규 주문이 접수되었습니다.\n\n`;
     textBody += `주문번호: ${orderNo}\n`;
     if (clinicManagerName) {
       textBody += `담당자: ${clinicManagerName}\n`;
     }
     if (products && products.length > 0) {
-      textBody += `\n주문 제품:\n`;
+      textBody += `\n제품명:\n`;
       products.forEach((p) => {
-        textBody += `- ${p.productName}${
-          p.brand ? ` (${p.brand})` : ""
-        } - 수량: ${p.quantity}\n`;
+        textBody += `  - ${p.productName}${
+          p.brand ? ` ${p.brand}` : ""
+        } ${p.quantity} Box\n`;
       });
     }
     textBody += `\n총 금액: ${totalAmount.toLocaleString("ko-KR")}원\n`;
-    textBody += `제품 수: ${itemCount}개\n\n`;
+    textBody += `제품 총 수량: ${itemCount} Box\n\n`;
     textBody += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n`;
     textBody += `${
       this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
       "https://supplier.jaclit.com"
     }/orders`;
+
+    return { subject, htmlBody, textBody };
+  }
+
+  /**
+   * 주문 취소 email — 주문 알림 bilan bir xil to'liq tarkib
+   */
+  async sendOrderCancellationEmail(
+    email: string,
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    cancelledAtLabel: string,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity: number }>
+  ): Promise<boolean> {
+    if (!email) {
+      this.logger.warn("Email is required for cancellation notification");
+      return false;
+    }
+
+    const { subject, htmlBody, textBody } =
+      this.formatOrderCancellationEmail(
+        clinicName,
+        orderNo,
+        totalAmount,
+        itemCount,
+        cancelledAtLabel,
+        clinicManagerName,
+        products
+      );
+
+    return this.sendEmail(email, subject, htmlBody, textBody);
+  }
+
+  private formatOrderCancellationEmail(
+    clinicName: string,
+    orderNo: string,
+    totalAmount: number,
+    itemCount: number,
+    cancelledAtLabel: string,
+    clinicManagerName?: string,
+    products?: Array<{ productName: string; brand: string; quantity: number }>
+  ): { subject: string; htmlBody: string; textBody: string } {
+    const subject = `[주문 취소] ${orderNo} · ${clinicName}`;
+    const supplierBase =
+      this.configService.get<string>("SUPPLIER_FRONTEND_URL") ||
+      "https://supplier.jaclit.com";
+    const supplierOrdersUrl = `${supplierBase.replace(/\/$/, "")}/orders`;
+
+    let htmlBody = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="UTF-8"></head>
+      <body style="margin:0;padding:0;background:#f3f5f7;font-family:Arial,sans-serif;color:#1f2937;">
+        <div style="width:100%;background:#f3f5f7;padding:24px 12px;">
+          <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:14px;border:1px solid #e5e7eb;overflow:hidden;">
+            <div style="background:#b91c1c;padding:28px 22px;text-align:center;color:#fff;">
+              <h1 style="margin:0;font-size:20px;">주문 취소</h1>
+              <p style="margin:8px 0 0;font-size:13px;opacity:0.95;">${clinicName}</p>
+            </div>
+            <div style="padding:22px;">
+              <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#b91c1c;">클리닉에서 아래 주문을 취소했습니다.</p>
+              <p><strong>주문번호:</strong> ${orderNo}</p>
+              ${
+                clinicManagerName
+                  ? `<p><strong>담당자:</strong> ${clinicManagerName}</p>`
+                  : ""
+              }
+              <p><strong>총 금액:</strong> ${totalAmount.toLocaleString("ko-KR")}원</p>
+              <p><strong>제품 총 수량:</strong> ${itemCount} Box</p>
+              <p><strong>취소일시:</strong> ${cancelledAtLabel}</p>
+              ${
+                products && products.length > 0
+                  ? `<div style="margin-top:16px;padding:14px;background:#f9fafb;border:1px solid #eef2f7;border-radius:12px;">
+                <p style="margin:0 0 10px;font-weight:700;">제품명</p>
+                ${products
+                  .map(
+                    (p) => `
+                  <p style="margin:8px 0;font-size:13px;">· ${p.productName}${
+                    p.brand ? ` (${p.brand})` : ""
+                  } — ${p.quantity} Box</p>
+                `
+                  )
+                  .join("")}
+              </div>`
+                  : ""
+              }
+              <p style="margin-top:18px;color:#6b7280;font-size:13px;">자세한 내용은 공급업체 플랫폼에서 확인하세요.</p>
+              <div style="text-align:center;margin-top:18px;">
+                <a href="${supplierOrdersUrl}" style="display:inline-block;background:#374151;color:#fff!important;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700;font-size:14px;">주문 목록 보기</a>
+              </div>
+            </div>
+            <div style="text-align:center;padding:18px;font-size:12px;color:#6b7280;">※ 이 주문은 클리닉에서 취소되었습니다.</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    let textBody = `[주문 취소]\n클리닉: ${clinicName}\n클리닉에서 아래 주문을 취소했습니다.\n\n`;
+    textBody += `주문번호: ${orderNo}\n`;
+    if (clinicManagerName) {
+      textBody += `담당자: ${clinicManagerName}\n`;
+    }
+    if (products && products.length > 0) {
+      textBody += `\n제품명:\n`;
+      products.forEach((p) => {
+        textBody += `  - ${p.productName}${
+          p.brand ? ` ${p.brand}` : ""
+        } ${p.quantity} Box\n`;
+      });
+    }
+    textBody += `총 금액: ${totalAmount.toLocaleString("ko-KR")}원\n`;
+    textBody += `제품 총 수량: ${itemCount} Box\n`;
+    textBody += `취소일시: ${cancelledAtLabel}\n\n`;
+    textBody += `자세한 내용은 공급업체 플랫폼에서 확인하세요.\n${supplierOrdersUrl}`;
 
     return { subject, htmlBody, textBody };
   }

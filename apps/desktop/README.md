@@ -133,4 +133,6 @@ Shunda klinika **Dashboard**da ikkita alohida tugma ko‘rinadi (Mac / Windows).
 
 ## URL o'zgartirish
 
-`src-tauri/tauri.conf.json` faylida `devUrl` va `dist/index.html` dagi redirect — masalan `https://clinic.jaclit.com` bo‘lishi kerak.
+`src-tauri/tauri.conf.json` da `devUrl` va `dist/index.html` dagi **iframe `src`** — masalan `https://clinic.jaclit.com/?jaclit_desktop_shell=1`.
+
+**OS toast debug:** `docs/DESKTOP_BUILD_AND_DEPLOY.md` → §11 (`jaclitDebugShellInvoke`, tray test).
