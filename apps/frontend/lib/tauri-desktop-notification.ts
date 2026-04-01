@@ -16,10 +16,30 @@ import {
 } from "./jaclit-desktop-shell";
 
 function isAllowedTauriParentOrigin(origin: string): boolean {
+  const o = origin.replace(/\/$/, "");
   return (
-    origin === "tauri://localhost" ||
-    /^https?:\/\/tauri\.localhost$/i.test(origin)
+    o === "tauri://localhost" ||
+    /^https?:\/\/tauri\.localhost$/i.test(o)
   );
+}
+
+/**
+ * Accept parent replies even when WebKit reports an odd `event.origin` for the Tauri shell
+ * (e.g. empty, "null", or tauri: variants). The pending invoke id is unguessable, so matching
+ * `e.source === window.parent` is sufficient for our one-level iframe.
+ */
+function isTrustedParentReply(e: MessageEvent): boolean {
+  if (typeof window === "undefined" || window.self === window.top) return false;
+  try {
+    if (e.source !== window.parent) return false;
+  } catch {
+    return false;
+  }
+  const o = e.origin || "";
+  if (isAllowedTauriParentOrigin(o)) return true;
+  if (o === "null" || o === "") return true;
+  if (/^tauri:/i.test(o)) return true;
+  return false;
 }
 
 function invokeViaParentTauriBridge<T>(cmd: string, payload: Record<string, unknown>): Promise<T> {
@@ -36,7 +56,7 @@ function invokeViaParentTauriBridge<T>(cmd: string, payload: Record<string, unkn
     }, timeoutMs);
 
     function onMessage(e: MessageEvent) {
-      if (!isAllowedTauriParentOrigin(e.origin)) return;
+      if (!isTrustedParentReply(e)) return;
       const d = e.data as {
         v?: number;
         t?: string;

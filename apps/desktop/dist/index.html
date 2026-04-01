@@ -47,12 +47,30 @@
           if (!msg || msg.v !== 1 || msg.t !== "invoke") return;
           var cmd = msg.cmd;
           if (cmd !== "show_native_notification") return;
-          var internals = window.__TAURI_INTERNALS__;
-          if (!internals || typeof internals.invoke !== "function") return;
           var id = msg.id;
           var payload = msg.payload;
           var target = e.source;
           var childOrigin = e.origin;
+          var internals = window.__TAURI_INTERNALS__;
+          if (!internals || typeof internals.invoke !== "function") {
+            console.warn(
+              "[Jaclit shell] __TAURI_INTERNALS__.invoke missing; cannot proxy",
+              cmd
+            );
+            if (target && typeof target.postMessage === "function") {
+              target.postMessage(
+                {
+                  v: 1,
+                  t: "invoke-result",
+                  id: id,
+                  ok: false,
+                  err: "Tauri invoke API not available in shell page",
+                },
+                childOrigin
+              );
+            }
+            return;
+          }
           internals
             .invoke(cmd, payload)
             .then(function (data) {
