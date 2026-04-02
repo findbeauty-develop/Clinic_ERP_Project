@@ -15,6 +15,7 @@ import { CacheManager } from "../../../common/cache";
 import { ReturnSupplierNotifiedPayload } from "../../notifications/types/return-supplier-notification.payload";
 import { RETURN_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { NotificationService } from "src/modules/notifications/notification.service";
 
 @Injectable()
 export class ReturnService {
@@ -29,7 +30,8 @@ export class ReturnService {
     private readonly supplierReturnNotificationService: SupplierReturnNotificationService,
     private readonly messageService: MessageService,
     private readonly emailService: EmailService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly notificationService: NotificationService
   ) {
     this.availableProductsCache = new CacheManager({
       maxSize: 100,
@@ -817,8 +819,7 @@ export class ReturnService {
         if (productWithSupplier.name) {
           productSummary = `${productWithSupplier.name} ${returnRecord.return_qty}개`;
         }
-        const csm =
-          productWithSupplier.productSupplier?.clinicSupplierManager;
+        const csm = productWithSupplier.productSupplier?.clinicSupplierManager;
         if (csm) {
           supplierCompanyName = csm.company_name ?? null;
           supplierManagerName = csm.name ?? null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, X, RotateCw } from "lucide-react";
 import { apiGet, apiPatch } from "../../lib/api";
 
@@ -43,6 +43,7 @@ const HIDE_HEADER_PAGES = [
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [showPanel, setShowPanel] = useState(false);
@@ -252,7 +253,9 @@ export function Header() {
                     const lines = notif.body.split("\n").filter(Boolean);
                     const actionLine = lines[lines.length - 1] ?? "";
                     const descLines = lines.slice(0, -1).join(" ");
-                    const isNew = actionLine.includes("새 주문");
+                    const isNew =
+                      actionLine.includes("새 주문") ||
+                      actionLine.includes("반납 요청");
                     const isUnread = !notif.readAt;
                     const dateStr = notif.createdAt
                       ? new Date(notif.createdAt).toLocaleDateString("ko-KR", {
@@ -266,7 +269,19 @@ export function Header() {
                     return (
                       <button
                         key={notif.id}
-                        onClick={() => markRead(notif.id)}
+                        type="button"
+                        onClick={async () => {
+                          await markRead(notif.id);
+                          if (notif.entityType === "return") {
+                            router.push("/returns");
+                          } else if (
+                            notif.entityType === "order" ||
+                            notif.type === "new_order"
+                          ) {
+                            router.push("/orders");
+                          }
+                          setShowPanel(false);
+                        }}
                         className={`w-full border-b border-slate-100 px-5 py-4 text-left transition hover:bg-slate-50 ${
                           isUnread ? "bg-indigo-50/40" : "bg-white"
                         }`}

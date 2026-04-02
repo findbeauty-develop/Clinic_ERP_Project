@@ -1,11 +1,15 @@
 import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
+import { NotificationService } from "../notifications/notification.service";
 
 @Injectable()
 export class ReturnService {
   private readonly logger = new Logger(ReturnService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService
+  ) {}
 
   /**
    * SupplierManager uchun return request'larni olish
@@ -1071,6 +1075,17 @@ export class ReturnService {
           }. SMS notification is sent from clinic-backend.`
         );
 
+        await this.notifyReturnRequestCreated({
+          items,
+          clinicName,
+          clinicManagerName,
+          supplierManagerId,
+          supplierTenantId,
+          returnRequestId: updatedRequest.id,
+          returnNo: updatedRequest.return_no,
+          dedupeSuffix: `append-${Date.now()}`,
+        });
+
         return this.formatReturnRequest(updatedRequest);
       } else {
         // Check if return_no already exists (to avoid unique constraint error)
@@ -1140,6 +1155,17 @@ export class ReturnService {
             }. SMS notification is sent from clinic-backend.`
           );
 
+          await this.notifyReturnRequestCreated({
+            items,
+            clinicName,
+            clinicManagerName,
+            supplierManagerId,
+            supplierTenantId,
+            returnRequestId: updatedRequest.id,
+            returnNo: updatedRequest.return_no,
+            dedupeSuffix: `append-${Date.now()}`,
+          });
+
           return this.formatReturnRequest(updatedRequest);
         }
 
@@ -1186,6 +1212,7 @@ export class ReturnService {
             },
           });
         });
+        
 
         // SMS notification clinic-backend'da yuboriladi
         this.logger.log(
@@ -1193,6 +1220,16 @@ export class ReturnService {
             supplierManagerId || "not specified"
           }. SMS notification is sent from clinic-backend.`
         );
+
+        await this.notifyReturnRequestCreated({
+          items,
+          clinicName,
+          clinicManagerName,
+          supplierManagerId,
+          supplierTenantId,
+          returnRequestId: returnRequest.id,
+          returnNo,
+        });
 
         return this.formatReturnRequest(returnRequest);
       }
@@ -1203,6 +1240,90 @@ export class ReturnService {
       );
       throw new BadRequestException(
         `Return request create failed: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * In-app notification for supplier header (polling). Mirrors order notification pattern.
+   */
+  private async notifyReturnRequestCreated(params: {
+    items: any[];
+    clinicName: string;
+    clinicManagerName?: string | null;
+    supplierManagerId: string | null | undefined;
+    supplierTenantId: string;
+    returnRequestId: string;
+    returnNo: string;
+    dedupeSuffix?: string;
+  }): Promise<void> {
+    const {
+      items,
+      clinicName,
+      clinicManagerName,
+      supplierManagerId,
+      supplierTenantId,
+      returnRequestId,
+      returnNo,
+      dedupeSuffix,
+    } = params;
+
+    try {
+      const productNames: string[] = items
+        .map((item: any) => item.productName || item.product_name)
+        .filter(Boolean);
+      const totalCount = productNames.length;
+      const preview = productNames.slice(0, 2).join(", ");
+      const productSummary =
+        totalCount > 2
+          ? `${preview} 등 총 ${totalCount}개 제품`
+          : totalCount > 0
+            ? `${preview} 총 ${totalCount}개 제품`
+            : "반납";
+
+      const notifTitle = clinicName
+        ? `${clinicName}${clinicManagerName ? " " + clinicManagerName : ""}`
+        : "클리닉";
+      const notifBody = `${productSummary}의 반납\n반납 요청이 들어왔습니다.`;
+
+      const dedupeBase = dedupeSuffix
+        ? `new_return:${returnRequestId}:${dedupeSuffix}`
+        : `new_return:${returnRequestId}`;
+
+      if (supplierManagerId) {
+        await this.notificationService.create({
+          supplierManagerId,
+          type: "new_return",
+          title: notifTitle,
+          body: notifBody,
+          entityType: "return",
+          entityId: returnRequestId,
+          payload: { returnNo },
+          dedupeKey: dedupeBase,
+        });
+      } else {
+        const managers = await (this.prisma as any).supplierManager.findMany({
+          where: { supplier_tenant_id: supplierTenantId },
+          select: { id: true },
+        });
+        if (managers.length > 0) {
+          await this.notificationService.createMany(
+            managers.map((m: any) => ({
+              supplierManagerId: m.id,
+              type: "new_return",
+              title: notifTitle,
+              body: notifBody,
+              entityType: "return",
+              entityId: returnRequestId,
+              payload: { returnNo },
+              dedupeKey: `${dedupeBase}:${m.id}`,
+            }))
+          );
+        }
+      }
+    } catch (notifErr: any) {
+      this.logger.warn(
+        `Return notification failed (non-critical): ${notifErr?.message}`
       );
     }
   }
