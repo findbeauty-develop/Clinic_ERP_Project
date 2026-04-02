@@ -12,6 +12,9 @@ import { CreateReturnDto, CreateReturnItemDto } from "../dto/create-return.dto";
 import { MessageService } from "../../member/services/message.service";
 import { EmailService } from "../../member/services/email.service";
 import { CacheManager } from "../../../common/cache";
+import { ReturnSupplierNotifiedPayload } from "../../notifications/types/return-supplier-notification.payload";
+import { RETURN_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 @Injectable()
 export class ReturnService {
@@ -25,7 +28,8 @@ export class ReturnService {
     private readonly returnRepository: ReturnRepository,
     private readonly supplierReturnNotificationService: SupplierReturnNotificationService,
     private readonly messageService: MessageService,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly eventEmitter: EventEmitter2
   ) {
     this.availableProductsCache = new CacheManager({
       maxSize: 100,
@@ -138,7 +142,7 @@ export class ReturnService {
           capacity_per_product: true, // 사용 단위 uchun
           returnPolicy: {
             select: {
-            is_returnable: true,
+              is_returnable: true,
               refund_amount: true,
             },
           },
@@ -274,18 +278,18 @@ export class ReturnService {
         // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
         const batchDetails = (product.outbounds || []).map((outbound: any) => {
           const batchReturned = returnedByOutbound.get(outbound.id) || 0;
-            const availableQty = outbound.outbound_qty - batchReturned;
+          const availableQty = outbound.outbound_qty - batchReturned;
 
-            return {
-              batchId: outbound.batch_id,
-              batchNo: outbound.batch_no,
-              outboundId: outbound.id,
-              outboundQty: outbound.outbound_qty,
-              returnedQty: batchReturned,
-              availableQty: availableQty > 0 ? availableQty : 0,
-              outboundDate: outbound.outbound_date,
-              managerName: outbound.manager_name,
-            };
+          return {
+            batchId: outbound.batch_id,
+            batchNo: outbound.batch_no,
+            outboundId: outbound.id,
+            outboundQty: outbound.outbound_qty,
+            returnedQty: batchReturned,
+            availableQty: availableQty > 0 ? availableQty : 0,
+            outboundDate: outbound.outbound_date,
+            managerName: outbound.manager_name,
+          };
         });
 
         // Search filter
@@ -495,7 +499,8 @@ export class ReturnService {
               productDetails.capacity_per_product > 0
             ) {
               const usedCount = batch.used_count || 0;
-              const volumeUsed = usedCount * (productDetails.usage_capacity || 0);
+              const volumeUsed =
+                usedCount * (productDetails.usage_capacity || 0);
 
               const previousEmptyBoxes = Math.floor(
                 volumeUsed / productDetails.capacity_per_product
@@ -781,6 +786,55 @@ export class ReturnService {
           },
         });
       });
+
+      // Fetch product + supplier info for notification
+      let supplierCompanyName: string | null = null;
+      let supplierManagerName: string | null = null;
+      let productSummary: string | null = null;
+
+      const productWithSupplier = await this.prisma.executeWithRetry(
+        async () => {
+          return (this.prisma as any).product.findFirst({
+            where: { id: returnRecord.product_id },
+            select: {
+              name: true,
+              productSupplier: {
+                select: {
+                  clinicSupplierManager: {
+                    select: {
+                      company_name: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+        }
+      );
+
+      if (productWithSupplier) {
+        if (productWithSupplier.name) {
+          productSummary = `${productWithSupplier.name} ${returnRecord.return_qty}개`;
+        }
+        const csm =
+          productWithSupplier.productSupplier?.clinicSupplierManager;
+        if (csm) {
+          supplierCompanyName = csm.company_name ?? null;
+          supplierManagerName = csm.name ?? null;
+        }
+      }
+
+      // In-app notification emit
+      await this.eventEmitter.emit(RETURN_SUPPLIER_NOTIFIED_EVENT, {
+        tenantId: returnRecord.tenant_id,
+        returnId: returnRecord.id,
+        returnNo: returnRecord.return_no,
+        sourceStatus: "accepted",
+        supplierCompanyName,
+        supplierManagerName,
+        productSummary,
+      } satisfies ReturnSupplierNotifiedPayload);
 
       return { success: true, message: "Return accept webhook processed" };
     } catch (error: any) {

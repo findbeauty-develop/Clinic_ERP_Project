@@ -5,6 +5,7 @@ import { NotificationRecipientResolverService } from "./notification-recipient-r
 import { NotificationsGateway } from "./notifications.gateway";
 import { toNotificationItemDto } from "./notification.mapper";
 import type { OrderSupplierNotifiedPayload } from "./types/order-supplier-notified.payload";
+import { ReturnSupplierNotifiedPayload } from "./types/return-supplier-notification.payload";
 
 @Injectable()
 export class NotificationService {
@@ -36,7 +37,9 @@ export class NotificationService {
     const supplierLabel = [data.supplierCompanyName, data.supplierManagerName]
       .filter(Boolean)
       .join(" ");
-    const title = supplierLabel || (data.sourceStatus === "rejected" ? "주문 거절" : "주문 확정");
+    const title =
+      supplierLabel ||
+      (data.sourceStatus === "rejected" ? "주문 거절" : "주문 확정");
 
     const actionLine =
       data.sourceStatus === "rejected"
@@ -74,6 +77,68 @@ export class NotificationService {
     if (result.count === 0) {
       return;
     }
+
+    const created = await this.prisma.notification.findMany({
+      where: {
+        tenant_id: data.tenantId,
+        dedupe_key: dedupeKey,
+      },
+    });
+
+    for (const row of created) {
+      this.gateway.emitNotificationNew(
+        row.recipient_member_id,
+        toNotificationItemDto(row)
+      );
+    }
+  }
+
+  async createFromReturnSupplierEvent(
+    data: ReturnSupplierNotifiedPayload
+  ): Promise<void> {
+    const recipientIds = await this.recipientResolver.resolveClinicRecipients(
+      data.tenantId
+    );
+    if (recipientIds.length === 0) return;
+
+    const notificationType =
+      data.sourceStatus === "rejected"
+        ? NotificationType.RETURN_SUPPLIER_REJECTED
+        : NotificationType.RETURN_SUPPLIER_ACCEPTED;
+
+    const supplierLabel = [data.supplierCompanyName, data.supplierManagerName]
+      .filter(Boolean)
+      .join(" ");
+    const title = supplierLabel || "공급업체";
+
+    const actionLine =
+      data.sourceStatus === "rejected"
+        ? "반납 요청을 반려했습니다."
+        : "반납 접수가 완료되었습니다.";
+    const descLine = data.productSummary
+      ? `${data.productSummary}의 반납`
+      : `반납번호 ${data.returnNo}의 반납`;
+    const body = `${descLine}\n${actionLine}`;
+
+    const dedupeKey = `return:${data.returnId}:${data.sourceStatus}`;
+
+    const rows = recipientIds.map((recipient_member_id) => ({
+      tenant_id: data.tenantId,
+      recipient_member_id,
+      type: notificationType,
+      title,
+      body,
+      entity_type: "return",
+      entity_id: data.returnId,
+      payload: { returnNo: data.returnNo, sourceStatus: data.sourceStatus },
+      dedupe_key: dedupeKey,
+    }));
+
+    const result = await this.prisma.notification.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+    if (result.count === 0) return;
 
     const created = await this.prisma.notification.findMany({
       where: {

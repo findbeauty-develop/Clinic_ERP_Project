@@ -852,8 +852,8 @@ export class ReturnService {
       const isValidFormat =
         returnNo &&
         typeof returnNo === "string" &&
-        returnNo.length === 20 &&
-        /^\d{20}$/.test(returnNo);
+        returnNo.length >= 10 &&
+        /^\d+$/.test(returnNo);
 
       if (isValidFormat) {
         try {
@@ -885,7 +885,7 @@ export class ReturnService {
         }
       } else {
         this.logger.warn(
-          `returnNo format check failed. Expected: 20 digits (YYYYMMDD000000XXXXXX), got: ${returnNo} (length: ${returnNo?.length})`
+          `returnNo format check failed. Expected: numeric string >=10 digits, got: ${returnNo} (length: ${returnNo?.length})`
         );
       }
     } catch (error: any) {

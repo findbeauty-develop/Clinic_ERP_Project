@@ -4,6 +4,7 @@ import { NotificationRecipientResolverService } from "./notification-recipient-r
 import { OrderSupplierNotifiedListener } from "./order-supplier-notified.listener";
 import { NotificationsGateway } from "./notifications.gateway";
 import { NotificationsController } from "./notifications.controller";
+import { ReturnSupplierNotifiedListener } from "./return-supplier-notified.listener";
 
 @Module({
   controllers: [NotificationsController],
@@ -11,6 +12,7 @@ import { NotificationsController } from "./notifications.controller";
     NotificationService,
     NotificationRecipientResolverService,
     OrderSupplierNotifiedListener,
+    ReturnSupplierNotifiedListener,
     NotificationsGateway,
   ],
   exports: [NotificationService],

@@ -33,6 +33,7 @@ type NotificationContextValue = {
   unreadCount: number;
   refreshUnread: () => Promise<void>;
   socket: Socket | null;
+  lastNotification: NotificationItemDto | null;
 };
 
 const NotificationContext = createContext<NotificationContextValue | null>(
@@ -52,6 +53,8 @@ export function NotificationProvider({
 }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [lastNotification, setLastNotification] =
+    useState<NotificationItemDto | null>(null);
 
   const refreshUnread = useCallback(async () => {
     if (!enabled) return;
@@ -75,7 +78,7 @@ export function NotificationProvider({
     let cancelled = false;
 
     void (async () => {
-      const token = await getAccessToken(true);
+      const token = await getAccessToken();
       if (!token || cancelled) return;
 
       const base = getApiUrl();
@@ -101,6 +104,7 @@ export function NotificationProvider({
 
       s.on("notification.new", (payload: NotificationItemDto) => {
         setUnreadCount((c) => c + 1);
+        setLastNotification(payload);
         const title = typeof payload.title === "string" ? payload.title : "";
         const body = typeof payload.body === "string" ? payload.body : "";
         console.info("[Jaclit notify] notification.new", {
@@ -139,7 +143,7 @@ export function NotificationProvider({
 
   return (
     <NotificationContext.Provider
-      value={{ unreadCount, refreshUnread, socket }}
+      value={{ unreadCount, refreshUnread, socket, lastNotification }}
     >
       {children}
     </NotificationContext.Provider>

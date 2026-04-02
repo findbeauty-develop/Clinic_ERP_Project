@@ -225,6 +225,7 @@ const navItems = [
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const notifications = useNotifications();
+  const lastNotification = notifications?.lastNotification ?? null;
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false); // hydration-safe flag
@@ -368,6 +369,25 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     setShowNotifPanel(true);
     void fetchNotifications();
   }, [fetchNotifications]);
+
+  // Socket orqali yangi notification kelganda real-time yangilash
+  useEffect(() => {
+    if (!lastNotification) return;
+    const newItem: NotifItem = {
+      id: lastNotification.id,
+      type: lastNotification.type,
+      title: lastNotification.title,
+      body: lastNotification.body,
+      entityType: lastNotification.entityType,
+      entityId: lastNotification.entityId,
+      readAt: lastNotification.readAt,
+      createdAt: lastNotification.createdAt,
+    };
+    setNotifItems((prev) => {
+      if (prev.some((n) => n.id === newItem.id)) return prev;
+      return [newItem, ...prev];
+    });
+  }, [lastNotification]);
 
   useEffect(() => {
     setMounted(true);
@@ -551,7 +571,15 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                   return (
                     <button
                       key={notif.id}
-                      onClick={() => markRead(notif.id)}
+                      onClick={() => {
+                        markRead(notif.id);
+                        if (notif.entityType === "return") {
+                          router.push("/returns");
+                        } else if (notif.entityType === "order") {
+                          router.push("/order");
+                        }
+                        setShowNotifPanel(false);
+                      }}
                       className={`w-full border-b border-slate-100 px-5 py-4 text-left transition hover:bg-slate-50 ${
                         isUnread ? "bg-indigo-50/40" : ""
                       }`}

@@ -6,9 +6,8 @@ import { SupplierReturnNotificationService } from "./services/supplier-return-no
 import { SupabaseService } from "../../common/supabase.service";
 import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { MemberModule } from "../member/member.module";
-
 @Module({
-  imports: [MemberModule], // Import MemberModule to use MessageService
+  imports: [MemberModule], // Import MemberModule to use MessageService; EventEmitter2 is global via app.module
   controllers: [ReturnController],
   providers: [
     ReturnService,

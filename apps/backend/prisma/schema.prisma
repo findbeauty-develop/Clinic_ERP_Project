@@ -128,6 +128,8 @@ model Member {
 enum NotificationType {
   ORDER_SUPPLIER_CONFIRMED
   ORDER_SUPPLIER_REJECTED
+  RETURN_SUPPLIER_ACCEPTED
+  RETURN_SUPPLIER_REJECTED
 }
 
 model Notification {

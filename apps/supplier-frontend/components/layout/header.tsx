@@ -51,6 +51,7 @@ export function Header() {
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const prevUnreadRef = useRef(0);
 
   const shouldHide = HIDE_HEADER_PAGES.some((p) => pathname.startsWith(p));
 
@@ -64,9 +65,11 @@ export function Header() {
       const data = await apiGet<{ count: number }>(
         "/supplier/notifications/unread-count",
       );
-      setUnreadCount(typeof data?.count === "number" ? data.count : 0);
+      const newCount = typeof data?.count === "number" ? data.count : 0;
+      setUnreadCount(newCount);
+      return newCount;
     } catch {
-      /* ignore */
+      return 0;
     }
   }, []);
 
@@ -116,13 +119,25 @@ export function Header() {
     void fetchNotifications();
   }, [fetchNotifications]);
 
-  // Poll unread count every 30s
+  // Poll every 5s: unread count + panel ichidagi ro'yxatni yangilash
   useEffect(() => {
     if (shouldHide) return;
-    void fetchUnreadCount();
-    const id = setInterval(() => void fetchUnreadCount(), 30000);
+
+    const tick = async () => {
+      const newCount = await fetchUnreadCount();
+      // yangi notification kelganda - ro'yxatni qayta yuklash
+      if (newCount > prevUnreadRef.current) {
+        prevUnreadRef.current = newCount;
+        void fetchNotifications();
+      } else {
+        prevUnreadRef.current = newCount;
+      }
+    };
+
+    void tick();
+    const id = setInterval(() => void tick(), 5000);
     return () => clearInterval(id);
-  }, [fetchUnreadCount, shouldHide]);
+  }, [fetchUnreadCount, fetchNotifications, shouldHide]);
 
   // Close panel when clicking outside
   useEffect(() => {
