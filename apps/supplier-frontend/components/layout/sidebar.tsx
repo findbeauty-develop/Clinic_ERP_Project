@@ -142,7 +142,6 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(4);
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
@@ -262,7 +261,7 @@ export function Sidebar() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(!isOpen)}
-className="hamburger-button fixed top-[18px] left-4 z-50 rounded-lg bg-white p-2 shadow-lg border border-gray-200 hover:bg-white active:bg-white"
+          className="hamburger-button fixed top-[18px] left-4 z-50 rounded-lg bg-white p-2 shadow-lg border border-gray-200 hover:bg-white active:bg-white"
           aria-label="Toggle menu"
         >
           <svg
@@ -278,13 +277,7 @@ className="hamburger-button fixed top-[18px] left-4 z-50 rounded-lg bg-white p-2
               strokeLinejoin="round"
               d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
             />
-            
           </svg>
-          {/* {notificationCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-              {notificationCount}
-            </span>
-          )} */}
         </button>
       )}
 

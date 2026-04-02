@@ -32,7 +32,9 @@ export default function ClinicsManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedClinics, setExpandedClinics] = useState<Set<string>>(new Set());
+  const [expandedClinics, setExpandedClinics] = useState<Set<string>>(
+    new Set(),
+  );
   const [memos, setMemos] = useState<Record<string, string>>({});
   const [savingMemo, setSavingMemo] = useState<string | null>(null);
 
@@ -48,8 +50,8 @@ export default function ClinicsManagementPage() {
       const query = searchQuery.toLowerCase();
       setFilteredClinics(
         clinics.filter((item) =>
-          item.clinic.name.toLowerCase().includes(query)
-        )
+          item.clinic.name.toLowerCase().includes(query),
+        ),
       );
     }
   }, [searchQuery, clinics]);
@@ -61,7 +63,7 @@ export default function ClinicsManagementPage() {
       const data = await apiGet<Clinic[]>("/supplier/manager/clinics");
       // Sort by clinic name alphabetically
       const sorted = data.sort((a, b) =>
-        a.clinic.name.localeCompare(b.clinic.name, "ko")
+        a.clinic.name.localeCompare(b.clinic.name, "ko"),
       );
       setClinics(sorted);
       setFilteredClinics(sorted);
@@ -121,7 +123,6 @@ export default function ClinicsManagementPage() {
     }
   };
 
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -143,7 +144,9 @@ export default function ClinicsManagementPage() {
       {/* Header */}
       <div className="bg-white px-4 py-4 shadow-sm">
         <div className="flex items-center mt-2 justify-between">
-          <h1 className="text-xl ml-14 font-bold text-slate-900">거래처 데이터 관리</h1>
+          <h1 className="text-xl font-bold text-slate-900">
+            거래처 데이터 관리
+          </h1>
           <button
             onClick={() => router.back()}
             className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300"
@@ -231,49 +234,65 @@ export default function ClinicsManagementPage() {
                     {/* Clinic Info Fields */}
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">병의원명</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          병의원명
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.name}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">종류</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          종류
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.category}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">소재지</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          소재지
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.location}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">진료과목</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          진료과목
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.medical_subjects}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">성명</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          성명
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.doctor_name || "—"}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">면허종류</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          면허종류
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.license_type}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">면허번호</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          면허번호
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.license_number}
                         </span>
                       </div>
                       <div className="flex items-start justify-between gap-4">
-                        <span className="text-slate-600 flex-shrink-0">문서발급번호</span>
+                        <span className="text-slate-600 flex-shrink-0">
+                          문서발급번호
+                        </span>
                         <span className="font-medium text-slate-900 text-right break-words">
                           {item.clinic.document_issue_number}
                         </span>
@@ -286,18 +305,27 @@ export default function ClinicsManagementPage() {
                         <div className="flex items-center gap-2">
                           {item.memo ? (
                             <span className="text-slate-600 font-medium">
-                              메모: <span className="text-slate-900">{item.memo}</span>
+                              메모:{" "}
+                              <span className="text-slate-900">
+                                {item.memo}
+                              </span>
                             </span>
                           ) : (
-                            <span className="text-slate-600 font-medium">메모</span>
+                            <span className="text-slate-600 font-medium">
+                              메모
+                            </span>
                           )}
                         </div>
                         <button
                           onClick={() => handleSaveMemo(item.tenant_id)}
-                          disabled={savingMemo === item.tenant_id || !clinicMemo.trim()}
+                          disabled={
+                            savingMemo === item.tenant_id || !clinicMemo.trim()
+                          }
                           className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:from-indigo-600 hover:to-purple-700 hover:shadow-lg disabled:bg-slate-300 disabled:cursor-not-allowed"
                         >
-                          {savingMemo === item.tenant_id ? "저장 중..." : "메모 저장"}
+                          {savingMemo === item.tenant_id
+                            ? "저장 중..."
+                            : "메모 저장"}
                         </button>
                       </div>
                       <textarea
@@ -309,11 +337,13 @@ export default function ClinicsManagementPage() {
                         rows={4}
                         className="w-full rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                       />
-                      {item.memo && clinicMemo !== item.memo && clinicMemo.trim() && (
-                        <p className="mt-2 text-xs text-slate-500">
-                          저장된 메모: {item.memo}
-                        </p>
-                      )}
+                      {item.memo &&
+                        clinicMemo !== item.memo &&
+                        clinicMemo.trim() && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            저장된 메모: {item.memo}
+                          </p>
+                        )}
                     </div>
                   </div>
                 )}
@@ -325,4 +355,3 @@ export default function ClinicsManagementPage() {
     </div>
   );
 }
-

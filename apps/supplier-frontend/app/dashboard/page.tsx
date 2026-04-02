@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [returnExchanges, setReturnExchanges] = useState<ReturnExchange[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
-   const [notificationCount, setNotificationCount] = useState("");
+  const [notificationCount, setNotificationCount] = useState("");
   const [stats, setStats] = useState<DashboardStats>({
     totalCompanies: 40,
     totalReceivables: 217800000,
@@ -107,7 +107,7 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         if (clinicsResponse.ok) {
@@ -181,7 +181,7 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         if (ordersResponse.ok) {
@@ -256,7 +256,7 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         // Create a map of clinic name -> clinic tenant ID
@@ -265,7 +265,8 @@ export default function DashboardPage() {
           const ordersForMappingData = await ordersForMappingResponse.json();
           (ordersForMappingData.orders || []).forEach((order: any) => {
             const clinicName = order.clinic?.name || order.clinicName;
-            const clinicTenantId = order.clinic?.tenantId || order.clinicTenantId;
+            const clinicTenantId =
+              order.clinic?.tenantId || order.clinicTenantId;
             if (clinicName && clinicTenantId) {
               clinicTenantIdMap.set(clinicName, clinicTenantId);
             }
@@ -280,18 +281,23 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         if (exchangesResponse.ok) {
           const exchangesData = await exchangesResponse.json();
-          const allExchanges = exchangesData.notifications || exchangesData.returns || [];
+          const allExchanges =
+            exchangesData.notifications || exchangesData.returns || [];
 
           // Format exchanges data - sort by date (newest first) and get latest 3
           const formattedExchanges: ReturnExchange[] = allExchanges
             .sort((a: any, b: any) => {
-              const dateA = new Date(a.createdAt || a.returnDate || a.created_at || 0);
-              const dateB = new Date(b.createdAt || b.returnDate || b.created_at || 0);
+              const dateA = new Date(
+                a.createdAt || a.returnDate || a.created_at || 0,
+              );
+              const dateB = new Date(
+                b.createdAt || b.returnDate || b.created_at || 0,
+              );
               return dateB.getTime() - dateA.getTime();
             })
             .slice(0, 3)
@@ -309,7 +315,10 @@ export default function DashboardPage() {
 
               // Format timestamp
               const returnDate = new Date(
-                item.createdAt || item.returnDate || item.created_at || new Date()
+                item.createdAt ||
+                  item.returnDate ||
+                  item.created_at ||
+                  new Date(),
               );
               const month = String(returnDate.getMonth() + 1).padStart(2, "0");
               const day = String(returnDate.getDate()).padStart(2, "0");
@@ -321,8 +330,12 @@ export default function DashboardPage() {
               const timeType =
                 item.status === "PENDING" ? "요청시간" : "확인시간";
 
-              const clinicName = item.clinicName || item.clinic_name || "알 수 없음";
-              const clinicTenantId = item.clinicTenantId || item.clinic_tenant_id || clinicTenantIdMap.get(clinicName);
+              const clinicName =
+                item.clinicName || item.clinic_name || "알 수 없음";
+              const clinicTenantId =
+                item.clinicTenantId ||
+                item.clinic_tenant_id ||
+                clinicTenantIdMap.get(clinicName);
 
               return {
                 id: item.id || item.returnId,
@@ -336,7 +349,10 @@ export default function DashboardPage() {
 
           setReturnExchanges(formattedExchanges);
         } else {
-          console.error("Failed to fetch exchanges:", exchangesResponse.statusText);
+          console.error(
+            "Failed to fetch exchanges:",
+            exchangesResponse.statusText,
+          );
           setReturnExchanges([]);
         }
       } catch (error) {
@@ -358,7 +374,7 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         // Create a map of clinic name -> clinic tenant ID
@@ -367,7 +383,8 @@ export default function DashboardPage() {
           const ordersForMappingData = await ordersForMappingResponse.json();
           (ordersForMappingData.orders || []).forEach((order: any) => {
             const clinicName = order.clinic?.name || order.clinicName;
-            const clinicTenantId = order.clinic?.tenantId || order.clinicTenantId;
+            const clinicTenantId =
+              order.clinic?.tenantId || order.clinicTenantId;
             if (clinicName && clinicTenantId) {
               clinicTenantIdMap.set(clinicName, clinicTenantId);
             }
@@ -381,25 +398,33 @@ export default function DashboardPage() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          }
+          },
         );
 
         if (returnsResponse.ok) {
           const returnsData = await returnsResponse.json();
-          const allReturns = returnsData.notifications || returnsData.returns || [];
+          const allReturns =
+            returnsData.notifications || returnsData.returns || [];
 
           // Format returns data - sort by date (newest first) and get latest 3
           const formattedReturns: Return[] = allReturns
             .sort((a: any, b: any) => {
-              const dateA = new Date(a.createdAt || a.returnDate || a.created_at || 0);
-              const dateB = new Date(b.createdAt || b.returnDate || b.created_at || 0);
+              const dateA = new Date(
+                a.createdAt || a.returnDate || a.created_at || 0,
+              );
+              const dateB = new Date(
+                b.createdAt || b.returnDate || b.created_at || 0,
+              );
               return dateB.getTime() - dateA.getTime();
             })
             .slice(0, 3)
             .map((item: any) => {
               // Format timestamp
               const returnDate = new Date(
-                item.createdAt || item.returnDate || item.created_at || new Date()
+                item.createdAt ||
+                  item.returnDate ||
+                  item.created_at ||
+                  new Date(),
               );
               const month = String(returnDate.getMonth() + 1).padStart(2, "0");
               const day = String(returnDate.getDate()).padStart(2, "0");
@@ -407,8 +432,12 @@ export default function DashboardPage() {
               const minutes = String(returnDate.getMinutes()).padStart(2, "0");
               const timestamp = `${month}-${day} ${hours}:${minutes}`;
 
-              const clinicName = item.clinicName || item.clinic_name || "알 수 없음";
-              const clinicTenantId = item.clinicTenantId || item.clinic_tenant_id || clinicTenantIdMap.get(clinicName);
+              const clinicName =
+                item.clinicName || item.clinic_name || "알 수 없음";
+              const clinicTenantId =
+                item.clinicTenantId ||
+                item.clinic_tenant_id ||
+                clinicTenantIdMap.get(clinicName);
 
               return {
                 id: item.id || item.returnId,
@@ -456,34 +485,28 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Top Navigation Bar */}
-      <div
-  className="sticky top-0 z-30 flex items-center justify-between bg-white px-4 py-4 shadow-sm"
+      {/* <div
+        className="sticky top-0 z-30 flex items-center justify-between bg-white px-4 py-4 shadow-sm"
         style={{ backgroundColor: "#ffffff" }}
       >
         <h1 className="text-lg font-bold ml-14 mt-2 text-gray-900">대시보드</h1>
         <button className="relative flex ml-2 mt-2 items-center justify-center">
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    strokeWidth={1.5}
-    stroke="currentColor"
-    className="h-6 w-6 text-gray-700"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-    />
-  </svg>
-
-  {/* {notificationCount > 0 && (
-    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-      {notificationCount}
-    </span>
-  )} */}
-</button>
-      </div>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-6 w-6 text-gray-700"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+            />
+          </svg>
+        </button>
+      </div> */}
 
       {/* Dashboard Content */}
       <div className="p-4 space-y-4">
@@ -540,13 +563,17 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
-                      order.status
+                      order.status,
                     )}`}
                   >
                     {order.status}
                   </span>
                   <Link
-                    href={order.clinicTenantId ? `/settlement/${order.clinicTenantId}` : `/orders`}
+                    href={
+                      order.clinicTenantId
+                        ? `/settlement/${order.clinicTenantId}`
+                        : `/orders`
+                    }
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {order.clinicName}
@@ -582,13 +609,17 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
-                      item.status
+                      item.status,
                     )}`}
                   >
                     {item.status}
                   </span>
                   <Link
-                    href={item.clinicTenantId ? `/settlement/${item.clinicTenantId}` : `/exchanges`}
+                    href={
+                      item.clinicTenantId
+                        ? `/settlement/${item.clinicTenantId}`
+                        : `/exchanges`
+                    }
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {item.clinicName}
@@ -622,13 +653,17 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
-                      item.status
+                      item.status,
                     )}`}
                   >
                     {item.status}
                   </span>
                   <Link
-                    href={item.clinicTenantId ? `/settlement/${item.clinicTenantId}` : `/returns`}
+                    href={
+                      item.clinicTenantId
+                        ? `/settlement/${item.clinicTenantId}`
+                        : `/returns`
+                    }
                     className="text-sm font-medium text-gray-900 underline hover:text-blue-600"
                   >
                     {item.clinicName}
@@ -644,7 +679,7 @@ export default function DashboardPage() {
 
         {/* 나의 전산 Section */}
         {/* <div className="bg-white rounded-lg shadow-sm p-4"> */}
-          {/* <div className="flex items-center justify-between mb-3">
+        {/* <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">나의 전산</h2>
             <Link
               href="/settings"
@@ -653,25 +688,25 @@ export default function DashboardPage() {
               전체 보기
             </Link>
           </div> */}
-          {/* <div className="grid grid-cols-1 gap-3"> */}
-            {/* 총 업체수 Card */}
-            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+        {/* <div className="grid grid-cols-1 gap-3"> */}
+        {/* 총 업체수 Card */}
+        {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-1">총 업체수</p>
               <p className="text-lg font-bold text-gray-900">
                 {stats.totalCompanies}
               </p>
             </div> */}
 
-            {/* 총 미수금 Card */}
-            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+        {/* 총 미수금 Card */}
+        {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-1">총 미수금</p>
               <p className="text-lg font-bold text-gray-900">
                 {formatCurrency(stats.totalReceivables)}
               </p>
             </div> */}
 
-            {/* TOP 3 Card */}
-            {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+        {/* TOP 3 Card */}
+        {/* <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs text-gray-600 mb-2">TOP 3</p>
               <div className="space-y-1">
                 {stats.topCompanies.map((company, index) => (
@@ -689,7 +724,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div> */}
-          {/* </div> */}
+        {/* </div> */}
         {/* </div> */}
       </div>
     </div>

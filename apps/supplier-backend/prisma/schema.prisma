@@ -241,6 +241,25 @@ model SupplierReturnItem {
   @@index([return_request_id])
 }
 
+// Supplier in-app notifications
+model SupplierNotification {
+  id                  String    @id @default(uuid())
+  supplier_manager_id String    // Which supplier manager receives this
+  type                String    // "new_order", "return_request", etc.
+  title               String
+  body                String
+  entity_type         String    @default("order")
+  entity_id           String?
+  payload             Json?
+  read_at             DateTime?
+  dedupe_key          String?   @unique
+  created_at          DateTime  @default(now())
+  updated_at          DateTime?
+
+  @@index([supplier_manager_id])
+  @@index([supplier_manager_id, read_at])
+}
+
 // Phone number verification code (for phone number change)
 model PhoneVerificationCode {
   id         String   @id @default(uuid())

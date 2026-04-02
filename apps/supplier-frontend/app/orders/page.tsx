@@ -76,7 +76,7 @@ type ItemAdjustment = {
 
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<"pending" | "confirmed" | "all">(
-    "pending"
+    "pending",
   );
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -92,7 +92,7 @@ export default function OrdersPage() {
   const [rejectionReasons, setRejectionReasons] = useState<
     Record<string, string>
   >({});
-   const [notificationCount, setNotificationCount] = useState("");
+  const [notificationCount, setNotificationCount] = useState("");
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
@@ -104,7 +104,7 @@ export default function OrdersPage() {
     setError(null);
     try {
       const data = await apiGet<OrdersResponse>(
-        `/supplier/orders?status=${statusParam}`
+        `/supplier/orders?status=${statusParam}`,
       );
       const orderList = data.orders || [];
       setOrders(orderList);
@@ -173,8 +173,8 @@ export default function OrdersPage() {
       try {
         await Promise.all(
           orderIds.map((id) =>
-            apiPut(`/supplier/orders/${id}/status`, { status })
-          )
+            apiPut(`/supplier/orders/${id}/status`, { status }),
+          ),
         );
         await fetchOrders();
       } catch (err: any) {
@@ -200,7 +200,7 @@ export default function OrdersPage() {
 
     orders.forEach((order) => {
       const selectedInOrder = order.items.filter((item) =>
-        selectedItems.has(item.id)
+        selectedItems.has(item.id),
       );
       if (selectedInOrder.length > 0) {
         affectedOrders.push({
@@ -218,7 +218,7 @@ export default function OrdersPage() {
 
     // Warning for partial selection
     const partialSelections = affectedOrders.filter(
-      (a) => a.selectedCount < a.totalCount
+      (a) => a.selectedCount < a.totalCount,
     );
 
     if (partialSelections.length > 0) {
@@ -228,12 +228,12 @@ export default function OrdersPage() {
           (a) =>
             `${a.order.clinic?.name || "클리닉"} (${a.selectedCount}/${
               a.totalCount
-            }개 선택)`
+            }개 선택)`,
         )
         .join("\n");
 
       const confirmed = confirm(
-        `⚠️ 일부 제품만 선택되었습니다:\n\n${orderNames}\n\n주의: 현재 시스템은 전체 주문 단위로 ${statusText} 처리됩니다.\n선택하지 않은 제품도 함께 ${statusText} 됩니다.\n\n계속하시겠습니까?`
+        `⚠️ 일부 제품만 선택되었습니다:\n\n${orderNames}\n\n주의: 현재 시스템은 전체 주문 단위로 ${statusText} 처리됩니다.\n선택하지 않은 제품도 함께 ${statusText} 됩니다.\n\n계속하시겠습니까?`,
       );
 
       if (!confirmed) return;
@@ -243,8 +243,8 @@ export default function OrdersPage() {
     try {
       await Promise.all(
         affectedOrders.map((a) =>
-          apiPut(`/supplier/orders/${a.order.id}/status`, { status })
-        )
+          apiPut(`/supplier/orders/${a.order.id}/status`, { status }),
+        ),
       );
       await fetchOrders();
       setSelectedItems(new Set()); // Clear selection after update
@@ -266,7 +266,7 @@ export default function OrdersPage() {
 
   const renderStatusBadge = (
     status: string,
-    showWarehouseBadge: boolean = false
+    showWarehouseBadge: boolean = false,
   ) => {
     // Show "입고 완료" badge for completed orders in "주문 내역" tab
     if (status === "completed" && showWarehouseBadge) {
@@ -276,7 +276,7 @@ export default function OrdersPage() {
         </span>
       );
     }
-    
+
     // Show "일부 입고" badge for confirmed orders with inbound in "주문 내역" tab
     if (status === "confirmed" && showWarehouseBadge) {
       return (
@@ -291,12 +291,12 @@ export default function OrdersPage() {
       status === "pending"
         ? "bg-amber-100 text-amber-700"
         : status === "confirmed"
-        ? "bg-blue-100 text-blue-700"
-        : status === "rejected"
-        ? "bg-red-100 text-red-700"
-        : status === "completed"
-        ? "bg-emerald-100 text-emerald-700"
-        : "bg-slate-100 text-slate-700";
+          ? "bg-blue-100 text-blue-700"
+          : status === "rejected"
+            ? "bg-red-100 text-red-700"
+            : status === "completed"
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-slate-100 text-slate-700";
     return (
       <span className={`rounded-full px-2 py-1 text-xs font-semibold ${color}`}>
         {label}
@@ -307,10 +307,10 @@ export default function OrdersPage() {
   // Compute order-level badge for "주문 내역" (all) tab based on item statuses
   const renderOrderBadgeForAllTab = (items: SupplierOrderItem[]) => {
     const activeItems = items.filter(
-      (i) => i.itemStatus !== "rejected" && i.itemStatus !== "cancelled"
+      (i) => i.itemStatus !== "rejected" && i.itemStatus !== "cancelled",
     );
     const rejectedOrCancelled = items.filter(
-      (i) => i.itemStatus === "rejected" || i.itemStatus === "cancelled"
+      (i) => i.itemStatus === "rejected" || i.itemStatus === "cancelled",
     );
 
     // All active (non-rejected/non-cancelled) items are clinic_inbounded → "입고 완료"
@@ -344,7 +344,9 @@ export default function OrdersPage() {
     }
 
     // Some active items are clinic_inbounded but some confirmed still pending
-    const hasInbounded = activeItems.some((i) => i.itemStatus === "clinic_inbounded");
+    const hasInbounded = activeItems.some(
+      (i) => i.itemStatus === "clinic_inbounded",
+    );
     if (hasInbounded) {
       return (
         <span className="rounded-full px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-700">
@@ -362,7 +364,7 @@ export default function OrdersPage() {
 
   // Helper function to extract rejection reason from memo
   const extractRejectionReason = (
-    memo: string | null | undefined
+    memo: string | null | undefined,
   ): string | null => {
     if (!memo) return null;
     const match = memo.match(/\[거절 사유:\s*([^\]]+)\]/);
@@ -372,17 +374,15 @@ export default function OrdersPage() {
   const renderOrderCard = (order: SupplierOrder) => {
     const date = new Date(order.orderDate);
     const dateStr = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
+      date.getMonth() + 1,
     ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(
-      date.getHours()
+      date.getHours(),
     ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
     const isRejected = order.status === "rejected";
 
     return (
-      <div
-        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-      >
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         {/* Top: Date and Order Number */}
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm text-slate-500">{dateStr}</div>
@@ -430,9 +430,12 @@ export default function OrdersPage() {
                 </div>
                 <div className="text-slate-500">{item.brand || "-"}</div>
                 <div className="text-slate-500">
-                  {activeTab === "all" && item.itemStatus === "clinic_inbounded" && item.inboundQuantity !== undefined
+                  {activeTab === "all" &&
+                  item.itemStatus === "clinic_inbounded" &&
+                  item.inboundQuantity !== undefined
                     ? `${item.inboundQuantity}개`
-                    : activeTab === "all" && item.confirmedQuantity !== undefined
+                    : activeTab === "all" &&
+                        item.confirmedQuantity !== undefined
                       ? `${item.confirmedQuantity}개`
                       : `${item.quantity}개`}
                 </div>
@@ -479,7 +482,7 @@ export default function OrdersPage() {
                 }
                 onClick={() => {
                   const selectedInOrder = order.items.filter((item) =>
-                    selectedItems.has(item.id)
+                    selectedItems.has(item.id),
                   );
                   if (selectedInOrder.length === 0) return;
 
@@ -501,7 +504,7 @@ export default function OrdersPage() {
                 }
                 onClick={() => {
                   const selectedInOrder = order.items.filter((item) =>
-                    selectedItems.has(item.id)
+                    selectedItems.has(item.id),
                   );
                   if (selectedInOrder.length === 0) return;
 
@@ -533,86 +536,76 @@ export default function OrdersPage() {
   const hasPendingSelected = orders.some(
     (order) =>
       order.status === "pending" &&
-      order.items.some((item) => selectedItems.has(item.id))
+      order.items.some((item) => selectedItems.has(item.id)),
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
+    <div className="min-h-screen bg-slate-50  pb-24">
+      {/* <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-3">
               주문
             </h1>
-            
           </div>
-          <div className="flex items-center justify-center mt-2"><button
-            onClick={() => fetchOrders()}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-              />
-            </svg>
-            새로고침
-          </button>
-            <button className="relative flex ml-2  items-center justify-center">
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    strokeWidth={1.5}
-    stroke="currentColor"
-    className="h-6 w-6 text-gray-700"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-    />
-  </svg>
-
-  {/* {notificationCount > 0 && (
-    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-      {notificationCount}
-    </span>
-  )} */}
-</button></div>
-          
-
-        </div>
-        
-       
-       
-      </div>
-       <div className="mt-4 ml-4 flex gap-2">
-          {tabs.map((tab) => (
+          <div className="flex items-center justify-center mt-2">
             <button
-              key={tab.key}
-              onClick={() =>
-                setActiveTab(tab.key as "pending" | "confirmed" | "all")
-              }
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                activeTab === tab.key
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-700 border border-slate-200"
-              }`}
+              onClick={() => fetchOrders()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
-              {tab.label}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+              새로고침
             </button>
-          ))}
+            <button className="relative flex ml-2  items-center justify-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="h-6 w-6 text-gray-700"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
+      </div> */}
+      <div className="ml-4 flex gap-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() =>
+              setActiveTab(tab.key as "pending" | "confirmed" | "all")
+            }
+            className={`rounded-md mt-4 px-4 py-2 text-sm font-semibold ${
+              activeTab === tab.key
+                ? "bg-slate-800 text-white"
+                : "bg-white text-slate-700 border border-slate-200"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       <div className="px-4 pt-4">
         {loading ? (
@@ -632,41 +625,37 @@ export default function OrdersPage() {
             {activeTab === "all"
               ? orders.flatMap((order) => {
                   const inboundedItems = order.items.filter(
-                    (i) => i.itemStatus === "clinic_inbounded"
+                    (i) => i.itemStatus === "clinic_inbounded",
                   );
                   const rejectedItems = order.items.filter(
                     (i) =>
                       i.itemStatus === "rejected" ||
-                      i.itemStatus === "cancelled"
+                      i.itemStatus === "cancelled",
                   );
                   const cards = [];
                   if (inboundedItems.length > 0) {
                     cards.push(
                       <div key={`${order.id}-inbound`}>
                         {renderOrderCard({ ...order, items: inboundedItems })}
-                      </div>
+                      </div>,
                     );
                   }
                   if (rejectedItems.length > 0) {
                     cards.push(
                       <div key={`${order.id}-rejected`}>
                         {renderOrderCard({ ...order, items: rejectedItems })}
-                      </div>
+                      </div>,
                     );
                   }
                   if (cards.length === 0) {
                     cards.push(
-                      <div key={order.id}>
-                        {renderOrderCard(order)}
-                      </div>
+                      <div key={order.id}>{renderOrderCard(order)}</div>,
                     );
                   }
                   return cards;
                 })
               : orders.map((order) => (
-                  <div key={order.id}>
-                    {renderOrderCard(order)}
-                  </div>
+                  <div key={order.id}>{renderOrderCard(order)}</div>
                 ))}
           </div>
         )}
@@ -730,13 +719,15 @@ export default function OrdersPage() {
                     (item as SupplierOrderItem).itemStatus === "rejected"
                       ? extractRejectionReason(item.memo)
                       : null;
-                  const itemStatus = (item as SupplierOrderItem).itemStatus ?? "pending";
+                  const itemStatus =
+                    (item as SupplierOrderItem).itemStatus ?? "pending";
 
                   return (
                     <div
                       key={item.id}
                       className={`grid py-2 text-sm text-slate-700 ${
-                        detailOrder.status === "rejected" || itemStatus === "rejected"
+                        detailOrder.status === "rejected" ||
+                        itemStatus === "rejected"
                           ? "grid-cols-4"
                           : "grid-cols-6"
                       }`}
@@ -773,9 +764,12 @@ export default function OrdersPage() {
                         {item.brand || "-"}
                       </div>
                       <div className="text-right">
-                        {activeTab === "all" && itemStatus === "clinic_inbounded" && item.inboundQuantity !== undefined
+                        {activeTab === "all" &&
+                        itemStatus === "clinic_inbounded" &&
+                        item.inboundQuantity !== undefined
                           ? `${item.inboundQuantity}개`
-                          : activeTab === "all" && item.confirmedQuantity !== undefined
+                          : activeTab === "all" &&
+                              item.confirmedQuantity !== undefined
                             ? `${item.confirmedQuantity}개`
                             : `${item.quantity}개`}
                       </div>
@@ -816,7 +810,7 @@ export default function OrdersPage() {
                   disabled={updating}
                   onClick={() =>
                     handleStatusUpdate("rejected", [detailOrder.id]).then(() =>
-                      setDetailOrder(null)
+                      setDetailOrder(null),
                     )
                   }
                   className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
@@ -827,7 +821,7 @@ export default function OrdersPage() {
                   disabled={updating}
                   onClick={() =>
                     handleStatusUpdate("confirmed", [detailOrder.id]).then(() =>
-                      setDetailOrder(null)
+                      setDetailOrder(null),
                     )
                   }
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
@@ -961,7 +955,7 @@ export default function OrdersPage() {
                         {/* Total */}
                         <div className="ml-auto text-right font-semibold text-slate-900 text-xs whitespace-nowrap">
                           {formatNumber(
-                            adjustment.actualQuantity * adjustment.actualPrice
+                            adjustment.actualQuantity * adjustment.actualPrice,
                           )}{" "}
                           원
                         </div>
@@ -1069,8 +1063,8 @@ export default function OrdersPage() {
                 {formatNumber(
                   Object.values(itemAdjustments).reduce(
                     (sum, adj) => sum + adj.actualQuantity * adj.actualPrice,
-                    0
-                  )
+                    0,
+                  ),
                 )}
                 원
               </div>
@@ -1103,7 +1097,7 @@ export default function OrdersPage() {
                           quantityChangeNote: adj.quantityChangeNote || null,
                           priceChangeReason: adj.priceChangeReason || null,
                           priceChangeNote: adj.priceChangeNote || null,
-                        })
+                        }),
                       );
                       // If modal has no adjustments (full-order flow), send all items with default quantity/price
                       if (
@@ -1126,7 +1120,7 @@ export default function OrdersPage() {
                         {
                           status: "confirmed",
                           adjustments,
-                        }
+                        },
                       );
 
                       const isPartial =
@@ -1135,7 +1129,7 @@ export default function OrdersPage() {
                       alert(
                         isPartial
                           ? "✅ 일부 제품이 접수되었습니다.\n나머지 제품은 대기 상태로 유지됩니다."
-                          : "주문이 접수되었습니다."
+                          : "주문이 접수되었습니다.",
                       );
                       setConfirmOrder(null);
                       setItemAdjustments({});
@@ -1280,7 +1274,7 @@ export default function OrdersPage() {
                   onClick={async () => {
                     // Validate: at least one rejection reason should be provided
                     const hasReasons = Object.values(rejectionReasons).some(
-                      (reason) => reason.trim() !== ""
+                      (reason) => reason.trim() !== "",
                     );
                     if (!hasReasons) {
                       alert("최소 하나의 거절 사유를 입력해주세요.");
@@ -1290,8 +1284,10 @@ export default function OrdersPage() {
                     setUpdating(true);
                     try {
                       // Item-level reject: backend sets rejected items from rejectionReasons, rest to confirmed
-                      const rejectionItemIds = Object.keys(rejectionReasons).filter(
-                        (id) => (rejectionReasons[id] || "").trim() !== ""
+                      const rejectionItemIds = Object.keys(
+                        rejectionReasons,
+                      ).filter(
+                        (id) => (rejectionReasons[id] || "").trim() !== "",
                       );
                       const effectiveReasons: Record<string, string> = {};
                       rejectionItemIds.forEach((id) => {
@@ -1304,15 +1300,16 @@ export default function OrdersPage() {
                         {
                           status: "rejected",
                           rejectionReasons: effectiveReasons,
-                        }
+                        },
                       );
                       if (
                         effectiveReasons &&
                         Object.keys(effectiveReasons).length > 0 &&
-                        Object.keys(effectiveReasons).length < rejectOrder.items.length
+                        Object.keys(effectiveReasons).length <
+                          rejectOrder.items.length
                       ) {
                         alert(
-                          "✅ 일부 제품이 거절되었습니다.\n나머지 제품은 접수 처리되었습니다."
+                          "✅ 일부 제품이 거절되었습니다.\n나머지 제품은 접수 처리되었습니다.",
                         );
                       } else {
                         alert("주문이 거절되었습니다.");

@@ -120,6 +120,36 @@ export async function apiPut<T>(
   return response.json();
 }
 
+export async function apiPatch<T>(
+  endpoint: string,
+  data?: unknown
+): Promise<T> {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("supplier_access_token")
+      : null;
+
+  const response = await fetch(`${apiUrl}${endpoint}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+  });
+
+  if (response.status === 401) {
+    clearAuthAndRedirect();
+    throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+  }
+
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export async function apiDelete<T>(
   endpoint: string,
   data?: unknown

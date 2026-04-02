@@ -4,6 +4,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { ManagerModule } from "./modules/manager/manager.module";
 import { ReturnModule } from "./modules/return/return.module";
 import { OrderModule } from "./modules/order/order.module";
+import { NotificationModule } from "./modules/notifications/notification.module";
 import { PrismaService } from "./core/prisma.service";
 
 @Module({
@@ -36,6 +37,7 @@ import { PrismaService } from "./core/prisma.service";
     ManagerModule,
     ReturnModule,
     OrderModule,
+    NotificationModule,
   ],
   providers: [PrismaService],
   exports: [PrismaService],

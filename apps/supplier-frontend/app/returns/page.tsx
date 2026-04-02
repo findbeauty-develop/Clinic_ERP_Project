@@ -71,7 +71,7 @@ export default function ReturnsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(10); // Items per page
-   const [notificationCount, setNotificationCount] = useState("");
+  const [notificationCount, setNotificationCount] = useState("");
 
   // Fetch notifications
   const fetchNotifications = async (page: number = currentPage) => {
@@ -158,7 +158,7 @@ export default function ReturnsPage() {
     // Convert to array and sort by date (newest first)
     const groupedArray = Object.values(grouped).sort(
       (a, b) =>
-        new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime()
+        new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime(),
     );
 
     setGroupedNotifications(groupedArray);
@@ -227,7 +227,7 @@ export default function ReturnsPage() {
       const acceptPromises = selectedNotification.notifications
         .filter((n) => n.status === "PENDING")
         .map((n) =>
-          apiPut(`/supplier/returns/${n.id}/accept`, { adjustments })
+          apiPut(`/supplier/returns/${n.id}/accept`, { adjustments }),
         );
 
       await Promise.all(acceptPromises);
@@ -274,13 +274,12 @@ export default function ReturnsPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
-      
+      {/* 
       <div className="bg-white p-4 shadow-sm flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900  ml-14 mt-2">반납</h1>
-       
-        
-       <div className="flex items-center justify-center mt-2"><button
-          
+
+        <div className="flex items-center justify-center mt-2">
+          <button
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
@@ -300,38 +299,32 @@ export default function ReturnsPage() {
             </svg>
             새로고침
           </button>
-            <button className="relative flex ml-2  items-center justify-center">
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    strokeWidth={1.5}
-    stroke="currentColor"
-    className="h-6 w-6 text-gray-700"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-    />
-  </svg>
-
-  {/* {notificationCount > 0 && (
-    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-      {notificationCount}
-    </span>
-  )} */}
-</button></div>
-      </div>
-      
+          <button className="relative flex ml-2  items-center justify-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="h-6 w-6 text-gray-700"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+              />
+            </svg>
+          </button>
+        </div>
+      </div> */}
 
       {/* Tabs */}
-      <div className="mt-3 ml-4 flex gap-2">
+      <div className=" ml-4 flex gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as "pending" | "all")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${
+            className={`rounded-md px-4 mt-4 py-2 text-sm font-semibold ${
               activeTab === tab.key
                 ? "bg-slate-800 text-white"
                 : "bg-white text-slate-700 border border-slate-200"
@@ -657,8 +650,8 @@ export default function ReturnsPage() {
                               0,
                               Math.min(
                                 adjustment.originalQuantity,
-                                parseInt(e.target.value) || 0
-                              )
+                                parseInt(e.target.value) || 0,
+                              ),
                             );
                             setItemAdjustments((prev) => ({
                               ...prev,

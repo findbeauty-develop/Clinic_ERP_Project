@@ -3,12 +3,16 @@ import { PrismaService } from "../../core/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-status.dto";
 import { PartialAcceptDto } from "./dto/partial-accept.dto";
+import { NotificationService } from "../notifications/notification.service";
 
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   /**
    * Clinic → Supplier order yaratish (supplier manager yoki tenant bo'yicha)
@@ -89,6 +93,61 @@ export class OrderService {
 
         return result;
       });
+
+      // Send in-app notification to supplier manager(s)
+      try {
+        const productNames: string[] = (order.items ?? [])
+          .map((item: any) => item.product_name)
+          .filter(Boolean);
+        const totalCount = productNames.length;
+        const preview = productNames.slice(0, 2).join(", ");
+        const productSummary =
+          totalCount > 2
+            ? `${preview} 등 총 ${totalCount}개 제품`
+            : totalCount > 0
+            ? `${preview} 총 ${totalCount}개 제품`
+            : "주문";
+
+        const notifTitle = clinicName
+          ? `${clinicName}${clinicManagerName ? " " + clinicManagerName : ""}`
+          : "클리닉";
+        const notifBody = `${productSummary}의 주문\n새 주문이 들어왔습니다.`;
+
+        if (supplierManagerId) {
+          await this.notificationService.create({
+            supplierManagerId,
+            type: "new_order",
+            title: notifTitle,
+            body: notifBody,
+            entityType: "order",
+            entityId: order.id,
+            payload: { orderNo, totalAmount, itemCount: totalCount },
+            dedupeKey: `new_order:${order.id}`,
+          });
+        } else if (supplierTenantId) {
+          // Notify all managers of this supplier tenant
+          const managers = await (this.prisma as any).supplierManager.findMany({
+            where: { supplier_tenant_id: supplierTenantId },
+            select: { id: true },
+          });
+          if (managers.length > 0) {
+            await this.notificationService.createMany(
+              managers.map((m: any) => ({
+                supplierManagerId: m.id,
+                type: "new_order",
+                title: notifTitle,
+                body: notifBody,
+                entityType: "order",
+                entityId: order.id,
+                payload: { orderNo, totalAmount, itemCount: totalCount },
+                dedupeKey: `new_order:${order.id}:${m.id}`,
+              }))
+            );
+          }
+        }
+      } catch (notifErr: any) {
+        this.logger.warn(`Notification creation failed (non-critical): ${notifErr?.message}`);
+      }
 
       return this.formatOrder(order);
     } catch (error: any) {

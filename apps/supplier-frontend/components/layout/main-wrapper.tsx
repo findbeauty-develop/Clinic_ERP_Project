@@ -17,7 +17,7 @@ export function MainWrapper({ children }: { children: React.ReactNode }) {
   const shouldHideSidebar = hideSidebarPages.some(page => pathname.startsWith(page));
 
   return (
-    <main className={shouldHideSidebar ? "" : "lg:pl-64"}>
+    <main className="flex-1">
       {children}
     </main>
   );

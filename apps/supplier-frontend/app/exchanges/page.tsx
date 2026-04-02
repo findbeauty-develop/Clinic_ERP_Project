@@ -33,10 +33,14 @@ interface ReturnRequest {
 }
 
 export default function ExchangesPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "processing" | "history">("pending");
+  const [activeTab, setActiveTab] = useState<
+    "pending" | "processing" | "history"
+  >("pending");
   const [requests, setRequests] = useState<ReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRequest, setSelectedRequest] = useState<ReturnRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<ReturnRequest | null>(
+    null,
+  );
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -46,17 +50,18 @@ export default function ExchangesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(10);
-   const [notificationCount, setNotificationCount] = useState("");
+  const [notificationCount, setNotificationCount] = useState("");
 
   // Clinic backend URL for images
-  const clinicBackendUrl = process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "https://api.jaclit.com";
+  const clinicBackendUrl =
+    process.env.NEXT_PUBLIC_CLINIC_BACKEND_URL || "https://api.jaclit.com";
 
   // Fetch return requests
   const fetchRequests = async (page: number = currentPage) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      
+
       // Map tab to status
       if (activeTab === "pending") {
         params.append("status", "PENDING");
@@ -65,11 +70,11 @@ export default function ExchangesPage() {
       } else {
         params.append("status", "ALL");
       }
-      
+
       // Filter by return category: only product returns/exchanges (제품 반품/교환)
       // Product returns/exchanges have "|" (e.g., "주문|반품", "불량|교환", "주문|교환", "불량|반품")
       params.append("returnCategory", "product");
-      
+
       params.append("page", page.toString());
       params.append("limit", limit.toString());
 
@@ -83,24 +88,26 @@ export default function ExchangesPage() {
       }>(`/supplier/returns?${params.toString()}`);
 
       // Map response to our format
-      const mappedRequests: ReturnRequest[] = response.notifications.map((notif: any) => ({
-        id: notif.id,
-        returnNo: notif.returnNo || notif.id,
-        clinicName: notif.clinicName,
-        clinicManagerName: notif.returnManagerName,
-        items: notif.items || [],
-        status: notif.status === "ACCEPTED" ? "PROCESSING" : notif.status,
-        createdAt: notif.createdAt || notif.returnDate,
-        confirmedAt: notif.confirmedAt,
-        completedAt: notif.completedAt,
-        rejectedAt: notif.rejectedAt,
-      }));
+      const mappedRequests: ReturnRequest[] = response.notifications.map(
+        (notif: any) => ({
+          id: notif.id,
+          returnNo: notif.returnNo || notif.id,
+          clinicName: notif.clinicName,
+          clinicManagerName: notif.returnManagerName,
+          items: notif.items || [],
+          status: notif.status === "ACCEPTED" ? "PROCESSING" : notif.status,
+          createdAt: notif.createdAt || notif.returnDate,
+          confirmedAt: notif.confirmedAt,
+          completedAt: notif.completedAt,
+          rejectedAt: notif.rejectedAt,
+        }),
+      );
 
       setRequests(mappedRequests);
       setTotal(response.total);
       setTotalPages(response.totalPages || Math.ceil(response.total / limit));
       setCurrentPage(response.page || page);
-      
+
       // ✅ Update notification count from API response
       // if (response.unreadCount !== undefined) {
       //   setNotificationCount(response.unreadCount);
@@ -118,7 +125,7 @@ export default function ExchangesPage() {
   //   try {
   //     const supplierApiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api-supplier.jaclit.com";
   //     const token = localStorage.getItem("supplier_access_token");
-      
+
   //     if (!token) return;
 
   //     // Fetch unread counts for different notification types
@@ -203,8 +210,13 @@ export default function ExchangesPage() {
     try {
       setProcessing(true);
       // Send itemId if it's a single item request
-      const itemId = selectedRequest.items.length === 1 ? selectedRequest.items[0].id : undefined;
-      await apiPut(`/supplier/returns/${selectedRequest.id}/accept`, { itemId });
+      const itemId =
+        selectedRequest.items.length === 1
+          ? selectedRequest.items[0].id
+          : undefined;
+      await apiPut(`/supplier/returns/${selectedRequest.id}/accept`, {
+        itemId,
+      });
       setShowConfirmModal(false);
       setSelectedRequest(null);
       await fetchRequests();
@@ -255,7 +267,7 @@ export default function ExchangesPage() {
       setShowCompleteModal(false);
       setSelectedRequest(null);
       await fetchRequests();
-     // await fetchNotificationCount(); // ✅ Update notification count
+      // await fetchNotificationCount(); // ✅ Update notification count
     } catch (error: any) {
       console.error("Error marking as received:", error);
       alert("처리에 실패했습니다: " + error.message);
@@ -291,18 +303,20 @@ export default function ExchangesPage() {
       status === "PENDING"
         ? "요청 확인 대기"
         : status === "PROCESSING"
-        ? "요청 진행"
-        : status === "COMPLETED"
-        ? items?.[0]?.returnType?.includes("교환") ? "교환 완료" : "반품 완료"
-        : "요청 거절";
+          ? "요청 진행"
+          : status === "COMPLETED"
+            ? items?.[0]?.returnType?.includes("교환")
+              ? "교환 완료"
+              : "반품 완료"
+            : "요청 거절";
     const color =
       status === "PENDING"
         ? "bg-amber-100 text-amber-700"
         : status === "PROCESSING"
-        ? "bg-blue-100 text-blue-700"
-        : status === "COMPLETED"
-        ? "bg-emerald-100 text-emerald-700"
-        : "bg-red-100 text-red-700";
+          ? "bg-blue-100 text-blue-700"
+          : status === "COMPLETED"
+            ? "bg-emerald-100 text-emerald-700"
+            : "bg-red-100 text-red-700";
     return (
       <span className={`rounded-full px-2 py-1 text-xs font-semibold ${color}`}>
         {label}
@@ -313,100 +327,94 @@ export default function ExchangesPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header and Tabs */}
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
+      {/* <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
         <div className="flex-1 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-4">반품 및 교환</h1>
-          
-         <div className="flex items-center justify-center mt-2"><button
-            onClick={() => {
-              fetchRequests(currentPage);
-             // fetchNotificationCount();
-            }}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-              />
-            </svg>
-            새로고침
-          </button>
-            <button 
+          <h1 className="text-2xl font-bold text-slate-900 ml-14 mt-4">
+            반품 및 교환
+          </h1>
+
+          <div className="flex items-center justify-center mt-2">
+            <button
               onClick={() => {
-               // fetchNotificationCount();
+                fetchRequests(currentPage);
+              }}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+              새로고침
+            </button>
+            <button
+              onClick={() => {
                 fetchRequests(currentPage);
               }}
               className="relative flex ml-2 items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
               title="알림 새로고침"
             >
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    strokeWidth={1.5}
-    stroke="currentColor"
-    className="h-6 w-6 text-gray-700"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-    />
-  </svg>
-
-  {/* {notificationCount > 0 && (
-    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-      {notificationCount}
-    </span>
-  )} */}
-</button></div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="h-6 w-6 text-gray-700"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-  
-        
+      </div> */}
+      {/* Tabs */}
+      <div className="mb-3 flex gap-2 ml-3">
+        <button
+          onClick={() => setActiveTab("pending")}
+          className={`rounded-md px-4 mt-4 py-2 text-sm font-semibold ${
+            activeTab === "pending"
+              ? "bg-slate-800 text-white"
+              : "bg-white text-slate-700 border border-slate-200"
+          }`}
+        >
+          요청 확인 대기
+        </button>
+        <button
+          onClick={() => setActiveTab("processing")}
+          className={`rounded-md mt-4 px-4 py-2 text-sm font-semibold ${
+            activeTab === "processing"
+              ? "bg-slate-800 text-white"
+              : "bg-white text-slate-700 border border-slate-200"
+          }`}
+        >
+          요청 진행
+        </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={`rounded-md px-4 mt-4 py-2 text-sm font-semibold ${
+            activeTab === "history"
+              ? "bg-slate-800 text-white"
+              : "bg-white text-slate-700 border border-slate-200"
+          }`}
+        >
+          반품 내역
+        </button>
       </div>
-{/* Tabs */}
-        <div className="mt-4 mb-3 flex gap-2 ml-3">
-          <button
-            onClick={() => setActiveTab("pending")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${
-              activeTab === "pending"
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 border border-slate-200"
-            }`}
-          >
-            요청 확인 대기
-          </button>
-          <button
-            onClick={() => setActiveTab("processing")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${
-              activeTab === "processing"
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 border border-slate-200"
-            }`}
-          >
-            요청 진행
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${
-              activeTab === "history"
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 border border-slate-200"
-            }`}
-          >
-            반품 내역
-          </button>
-        </div>
       {/* Content */}
       <div className="p-2 sm:p-4">
         {/* Loading State */}
@@ -423,8 +431,8 @@ export default function ExchangesPage() {
               {activeTab === "pending"
                 ? "대기 중인 요청이 없습니다."
                 : activeTab === "processing"
-                ? "진행 중인 요청이 없습니다."
-                : "반품 내역이 없습니다."}
+                  ? "진행 중인 요청이 없습니다."
+                  : "반품 내역이 없습니다."}
             </p>
           </div>
         )}
@@ -435,182 +443,194 @@ export default function ExchangesPage() {
             {requests.flatMap((request) => {
               const date = new Date(request.createdAt);
               const dateStr = `${date.getFullYear()}-${String(
-                date.getMonth() + 1
-              ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(
-                date.getHours()
-              ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-              
+                date.getMonth() + 1,
+              ).padStart(
+                2,
+                "0",
+              )}-${String(date.getDate()).padStart(2, "0")} ${String(
+                date.getHours(),
+              ).padStart(
+                2,
+                "0",
+              )}:${String(date.getMinutes()).padStart(2, "0")}`;
+
               return request.items.map((item, itemIndex) => {
                 // Get item status (default to pending if not set)
                 const itemStatus = item.status || "pending";
-                
+
                 // Filter items based on active tab
-                if (activeTab === "pending" && itemStatus !== "pending") return null;
-                if (activeTab === "processing" && itemStatus !== "processing") return null;
-                if (activeTab === "history" && itemStatus !== "completed" && itemStatus !== "rejected") return null;
-                
+                if (activeTab === "pending" && itemStatus !== "pending")
+                  return null;
+                if (activeTab === "processing" && itemStatus !== "processing")
+                  return null;
+                if (
+                  activeTab === "history" &&
+                  itemStatus !== "completed" &&
+                  itemStatus !== "rejected"
+                )
+                  return null;
+
                 return (
-                <div
-                  key={`${request.id}-${item.id || itemIndex}`}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  {/* Top: Date and Return Number */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm text-slate-500">{dateStr}</div>
-                    <div className="text-xs text-slate-500">
-                      반품번호: {request.returnNo}
+                  <div
+                    key={`${request.id}-${item.id || itemIndex}`}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    {/* Top: Date and Return Number */}
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-sm text-slate-500">{dateStr}</div>
+                      <div className="text-xs text-slate-500">
+                        반품번호: {request.returnNo}
+                      </div>
                     </div>
+
+                    {/* Clinic Name and Status */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="text-lg font-semibold text-slate-900">
+                        {request.clinicName}{" "}
+                        <span className="text-sm text-slate-500">
+                          {request.clinicManagerName}님
+                        </span>
+                      </div>
+                      {renderStatusBadge(itemStatus.toUpperCase(), [item])}
+                    </div>
+                    {/* 1-qator: 제품명 / 반환유형 / 수량 */}
+                    <div className="flex items-center py-2 text-sm font-semibold text-slate-700 gap-4">
+                      {/* LEFT – 제품명 */}
+                      <div className="flex-1 min-w-0">
+                        <span className="truncate">{item.productName}</span>
+                      </div>
+
+                      {/* CENTER – 반환유형 (입고일 bilan bir xil ustun) */}
+                      <div className="w-32">
+                        {item.returnType && (
+                          <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                            {formatReturnType(item.returnType)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* RIGHT – 수량 */}
+                      <div className="flex-1 flex justify-end text-slate-500 font-semibold whitespace-nowrap">
+                        {item.qty}개
+                      </div>
+                    </div>
+
+                    {/* 2-qator: 주문번호 / 배치번호 | 입고일 | 금액/거절됨 */}
+                    <div className="mb-2 flex items-center gap-4 text-xs text-slate-500">
+                      {/* LEFT – 주문번호 / 배치번호 */}
+                      <div className="flex-1 flex flex-wrap items-center gap-2">
+                        {item.orderNo && <span>주문번호: {item.orderNo}</span>}
+                        {item.batchNo && item.returnType?.includes("불량") && (
+                          <span>배치번호: {item.batchNo}</span>
+                        )}
+                      </div>
+
+                      {/* CENTER – 입고일 (yuqoridagi 반환유형 bilan bir xil joydan boshlanadi) */}
+                      <div className="w-32">
+                        {item.inboundDate && (
+                          <span>입고일: {item.inboundDate}</span>
+                        )}
+                      </div>
+
+                      {/* RIGHT – 금액 yoki 거절됨 */}
+                      <div className="flex-1 flex justify-end whitespace-nowrap">
+                        {request.status === "REJECTED" ? (
+                          <span className="text-slate-400 font-semibold">
+                            거절됨
+                          </span>
+                        ) : (
+                          <span className="font-semibold">
+                            {formatCurrency(item.totalPrice)}원
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Return Type */}
+
+                    {item.images && item.images.length > 0 && (
+                      <div className="mt-3 flex w-full items-center gap-5 overflow-x-auto pb-1">
+                        {item.images.slice(0, 5).map((img, imgIdx) => (
+                          <img
+                            key={imgIdx}
+                            src={
+                              img.startsWith("http")
+                                ? img
+                                : `${clinicBackendUrl}${img}`
+                            }
+                            alt={`Image ${imgIdx + 1}`}
+                            className="h-28 w-28 flex-shrink-0 rounded-xl border border-slate-200 object-cover"
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Memo */}
+                    {item.memo && (
+                      <div className="mt-2 w-full">
+                        <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          <span className="font-semibold text-slate-700">
+                            메모:{" "}
+                          </span>
+                          <span className="break-words">{item.memo}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    {itemStatus === "pending" && activeTab === "pending" && (
+                      <div className="flex items-center justify-end gap-2 border-t  px-0.9 py-3 mt-4">
+                        <button
+                          onClick={() => {
+                            // Create a temporary request with only this item
+                            const singleItemRequest = {
+                              ...request,
+                              items: [item],
+                            };
+                            setSelectedRequest(singleItemRequest);
+                            setShowRejectModal(true);
+                          }}
+                          className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                        >
+                          요청 거절
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Create a temporary request with only this item
+                            const singleItemRequest = {
+                              ...request,
+                              items: [item],
+                            };
+                            setSelectedRequest(singleItemRequest);
+                            setShowConfirmModal(true);
+                          }}
+                          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          요청 확인
+                        </button>
+                      </div>
+                    )}
+                    {itemStatus === "processing" &&
+                      activeTab === "processing" && (
+                        <div className="flex items-center justify-end gap-2 px-0.9 py-3 mt-4">
+                          <button
+                            onClick={() => {
+                              // Create a temporary request with only this item
+                              const singleItemRequest = {
+                                ...request,
+                                items: [item],
+                              };
+                              setSelectedRequest(singleItemRequest);
+                              setShowCompleteModal(true);
+                            }}
+                            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                          >
+                            제품 받았음
+                          </button>
+                        </div>
+                      )}
                   </div>
-
-                  {/* Clinic Name and Status */}
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="text-lg font-semibold text-slate-900">
-                      {request.clinicName}{" "}
-                      <span className="text-sm text-slate-500">
-                        {request.clinicManagerName}님
-                      </span>
-                    </div>
-                    {renderStatusBadge(itemStatus.toUpperCase(), [item])}
-                  </div>
-{/* 1-qator: 제품명 / 반환유형 / 수량 */}
-<div className="flex items-center py-2 text-sm font-semibold text-slate-700 gap-4">
-  {/* LEFT – 제품명 */}
-  <div className="flex-1 min-w-0">
-    <span className="truncate">{item.productName}</span>
-  </div>
-
-  {/* CENTER – 반환유형 (입고일 bilan bir xil ustun) */}
-  <div className="w-32">
-    {item.returnType && (
-      <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-        {formatReturnType(item.returnType)}
-      </span>
-    )}
-  </div>
-
-  {/* RIGHT – 수량 */}
-  <div className="flex-1 flex justify-end text-slate-500 font-semibold whitespace-nowrap">
-    {item.qty}개
-  </div>
-</div>
-
-{/* 2-qator: 주문번호 / 배치번호 | 입고일 | 금액/거절됨 */}
-<div className="mb-2 flex items-center gap-4 text-xs text-slate-500">
-  {/* LEFT – 주문번호 / 배치번호 */}
-  <div className="flex-1 flex flex-wrap items-center gap-2">
-    {item.orderNo && <span>주문번호: {item.orderNo}</span>}
-    {item.batchNo && item.returnType?.includes("불량") && (
-      <span>배치번호: {item.batchNo}</span>
-    )}
-  </div>
-
-  {/* CENTER – 입고일 (yuqoridagi 반환유형 bilan bir xil joydan boshlanadi) */}
-  <div className="w-32">
-    {item.inboundDate && <span>입고일: {item.inboundDate}</span>}
-  </div>
-
-  {/* RIGHT – 금액 yoki 거절됨 */}
-  <div className="flex-1 flex justify-end whitespace-nowrap">
-    {request.status === "REJECTED" ? (
-      <span className="text-slate-400 font-semibold">거절됨</span>
-    ) : (
-      <span className="font-semibold">
-        {formatCurrency(item.totalPrice)}원
-      </span>
-    )}
-  </div>
-</div>
-
-
-                 
-
-                 
-
-                  {/* Return Type */}
-                  
-
-                 
-                 
-
-                  {item.images && item.images.length > 0 && (
-  <div className="mt-3 flex w-full items-center gap-5 overflow-x-auto pb-1">
-    {item.images.slice(0, 5).map((img, imgIdx) => (
-      <img
-        key={imgIdx}
-        src={img.startsWith("http") ? img : `${clinicBackendUrl}${img}`}
-        alt={`Image ${imgIdx + 1}`}
-        className="h-28 w-28 flex-shrink-0 rounded-xl border border-slate-200 object-cover"
-      />
-    ))}
-  </div>
-)}
-
-
-
-
-                   {/* Memo */}
-                   {item.memo && (
-  <div className="mt-2 w-full">
-    <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-      <span className="font-semibold text-slate-700">메모: </span>
-      <span className="break-words">{item.memo}</span>
-    </div>
-  </div>
-)}
-
-                  {/* Action Buttons */}
-                  {itemStatus === "pending" && activeTab === "pending" && (
-                    <div className="flex items-center justify-end gap-2 border-t  px-0.9 py-3 mt-4">
-                      <button
-                        onClick={() => {
-                          // Create a temporary request with only this item
-                          const singleItemRequest = {
-                            ...request,
-                            items: [item]
-                          };
-                          setSelectedRequest(singleItemRequest);
-                          setShowRejectModal(true);
-                        }}
-                        className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-                      >
-                        요청 거절
-                      </button>
-                      <button
-                        onClick={() => {
-                          // Create a temporary request with only this item
-                          const singleItemRequest = {
-                            ...request,
-                            items: [item]
-                          };
-                          setSelectedRequest(singleItemRequest);
-                          setShowConfirmModal(true);
-                        }}
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        요청 확인
-                      </button>
-                    </div>
-                  )}
-                  {itemStatus === "processing" && activeTab === "processing" && (
-                    <div className="flex items-center justify-end gap-2 px-0.9 py-3 mt-4">
-                      <button
-                        onClick={() => {
-                          // Create a temporary request with only this item
-                          const singleItemRequest = {
-                            ...request,
-                            items: [item]
-                          };
-                          setSelectedRequest(singleItemRequest);
-                          setShowCompleteModal(true);
-                        }}
-                        className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-                      >
-                        제품 받았음
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
+                );
               });
             })}
           </div>
@@ -639,12 +659,15 @@ export default function ExchangesPage() {
                   return false;
                 })
                 .map((page, index, array) => {
-                  const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
-                  
+                  const showEllipsisBefore =
+                    index > 0 && page - array[index - 1] > 1;
+
                   return (
                     <div key={page} className="flex items-center gap-1">
                       {showEllipsisBefore && (
-                        <span className="px-1 sm:px-2 text-xs sm:text-sm text-slate-500">...</span>
+                        <span className="px-1 sm:px-2 text-xs sm:text-sm text-slate-500">
+                          ...
+                        </span>
                       )}
                       <button
                         onClick={() => handlePageChange(page)}
@@ -678,7 +701,8 @@ export default function ExchangesPage() {
         {/* Pagination Info */}
         {!loading && requests.length > 0 && (
           <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-slate-600">
-            {total}개 중 {((currentPage - 1) * limit) + 1}-{Math.min(currentPage * limit, total)}개 표시
+            {total}개 중 {(currentPage - 1) * limit + 1}-
+            {Math.min(currentPage * limit, total)}개 표시
           </div>
         )}
       </div>
@@ -687,7 +711,9 @@ export default function ExchangesPage() {
       {showConfirmModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">요청 확인</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">
+              요청 확인
+            </h3>
             <p className="text-sm sm:text-base text-slate-700 mb-3 sm:mb-4">
               {selectedRequest.clinicName}의 반품/교환 요청을 확인하시겠습니까?
             </p>
@@ -718,7 +744,9 @@ export default function ExchangesPage() {
       {showRejectModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">요청 거절</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">
+              요청 거절
+            </h3>
             <p className="text-sm sm:text-base text-slate-700 mb-2">
               {selectedRequest.clinicName}의 반품/교환 요청을 거절하시겠습니까?
             </p>
@@ -757,7 +785,9 @@ export default function ExchangesPage() {
       {showCompleteModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">제품 받았음</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">
+              제품 받았음
+            </h3>
             <p className="text-sm sm:text-base text-slate-700 mb-3 sm:mb-4">
               {selectedRequest.clinicName}의 반품/교환 제품을 받으셨습니까?
             </p>
@@ -786,4 +816,3 @@ export default function ExchangesPage() {
     </div>
   );
 }
-
