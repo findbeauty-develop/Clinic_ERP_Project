@@ -14,5 +14,7 @@ coverage
 # Google Cloud Vision API credentials
 apps/backend/keys/google-vision.json
 apps/desktop/src-tauri/target/
+apps/backend/uploads/
+apps/supplier-backend/uploads/
 docs/*.md
 docs/
