@@ -23,13 +23,17 @@ export class NotificationsController {
   @ApiOperation({ summary: "List notifications for the current member" })
   async list(
     @Tenant() tenantId: string,
-    @Req() req: { user: { id: string } },
+    @Req() req: { user: { id: string; member_id?: string | null } },
     @Query("limit") limitStr?: string,
     @Query("page") pageStr?: string
   ) {
     const limit = parseInt(limitStr || "20", 10);
     const page = parseInt(pageStr || "1", 10);
-    return this.notificationService.listForMember(tenantId, req.user.id, {
+    const memberPk = await this.notificationService.resolveRecipientMemberIdForList(
+      tenantId,
+      req.user
+    );
+    return this.notificationService.listForMember(tenantId, memberPk, {
       limit,
       page,
     });
@@ -39,11 +43,15 @@ export class NotificationsController {
   @ApiOperation({ summary: "Unread notification count" })
   async unreadCount(
     @Tenant() tenantId: string,
-    @Req() req: { user: { id: string } }
+    @Req() req: { user: { id: string; member_id?: string | null } }
   ) {
+    const memberPk = await this.notificationService.resolveRecipientMemberIdForList(
+      tenantId,
+      req.user
+    );
     const count = await this.notificationService.unreadCount(
       tenantId,
-      req.user.id
+      memberPk
     );
     return { count };
   }
@@ -53,8 +61,12 @@ export class NotificationsController {
   async markRead(
     @Param("id") id: string,
     @Tenant() tenantId: string,
-    @Req() req: { user: { id: string } }
+    @Req() req: { user: { id: string; member_id?: string | null } }
   ) {
-    return this.notificationService.markRead(id, tenantId, req.user.id);
+    const memberPk = await this.notificationService.resolveRecipientMemberIdForList(
+      tenantId,
+      req.user
+    );
+    return this.notificationService.markRead(id, tenantId, memberPk);
   }
 }

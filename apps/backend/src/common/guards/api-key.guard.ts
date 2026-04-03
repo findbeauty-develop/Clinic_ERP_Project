@@ -13,7 +13,10 @@ export class ApiKeyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const apiKey = request.headers["x-api-key"];
-    const validApiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+    const validApiKey =
+      process.env.SUPPLIER_BACKEND_API_KEY ||
+      process.env.API_KEY_SECRET ||
+      "";
 
     if (!validApiKey) {
       this.logger.error("API Key not configured on server");

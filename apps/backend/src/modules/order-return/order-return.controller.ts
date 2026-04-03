@@ -62,6 +62,38 @@ export class OrderReturnController {
     }
   }
 
+  @Post("webhook/accept")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({
+    summary: "Webhook: Supplier order-return (교환/환불) 수락",
+  })
+  async handleOrderReturnAcceptWebhook(
+    @Body() dto: { return_no: string; status?: string }
+  ) {
+    try {
+      return await this.service.handleOrderReturnAcceptWebhook(dto);
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      throw error;
+    }
+  }
+
+  @Post("webhook/reject")
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({
+    summary: "Webhook: Supplier order-return (교환/환불) 거절",
+  })
+  async handleOrderReturnRejectWebhook(
+    @Body() dto: { return_no: string; reason?: string }
+  ) {
+    try {
+      return await this.service.handleOrderReturnRejectWebhook(dto);
+    } catch (error: any) {
+      console.error("Webhook error:", error);
+      throw error;
+    }
+  }
+
   @Post(":id/process")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()

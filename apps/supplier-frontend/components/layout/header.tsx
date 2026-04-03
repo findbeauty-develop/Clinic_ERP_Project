@@ -12,6 +12,7 @@ type NotifItem = {
   body: string;
   entityType: string;
   entityId: string | null;
+  payload?: Record<string, unknown> | null;
   readAt: string | null;
   createdAt: string;
 };
@@ -255,7 +256,9 @@ export function Header() {
                     const descLines = lines.slice(0, -1).join(" ");
                     const isNew =
                       actionLine.includes("새 주문") ||
-                      actionLine.includes("반납 요청");
+                      actionLine.includes("반납 요청") ||
+                      actionLine.includes("반품 요청") ||
+                      actionLine.includes("교환 요청");
                     const isUnread = !notif.readAt;
                     const dateStr = notif.createdAt
                       ? new Date(notif.createdAt).toLocaleDateString("ko-KR", {
@@ -273,7 +276,17 @@ export function Header() {
                         onClick={async () => {
                           await markRead(notif.id);
                           if (notif.entityType === "return") {
-                            router.push("/returns");
+                            const cat =
+                              notif.payload &&
+                              typeof notif.payload.returnCategory ===
+                                "string"
+                                ? notif.payload.returnCategory
+                                : null;
+                            router.push(
+                              cat === "empty_box"
+                                ? "/returns"
+                                : "/exchanges",
+                            );
                           } else if (
                             notif.entityType === "order" ||
                             notif.type === "new_order"

@@ -1,64 +1,36 @@
-# ERP Monorepo
+# Supplier Backend
 
-Production-ready ERP skeleton with Next.js frontend, NestJS backend, Prisma (Supabase Postgres), and Supabase Auth.
+Supplier management system backend built with NestJS.
 
-## Tech Stack
+## Setup
 
-- **Frontend**: Next.js (App Router), Tailwind CSS, shadcn/ui ready
-- **Backend**: NestJS, Prisma, Supabase Auth
-- **Monorepo**: pnpm workspaces + Turborepo
-- **Database**: Supabase PostgreSQL
-
-## Quick Start
-
-See [SETUP.md](./SETUP.md) for detailed setup instructions.
-
-1. **Install dependencies:**
-   ```bash
-   pnpm install
-   ```
-
-2. **Configure environment variables:**
-   - Create `apps/frontend/.env.local` (see SETUP.md for template)
-   - Create `apps/backend/.env` (see SETUP.md for template)
-
-3. **Initialize database:**
-   ```bash
-   pnpm --filter backend prisma migrate dev --name init
-   ```
-
-4. **Start development servers:**
-   ```bash
-   pnpm dev
-   ```
-
-## Access Points
-
-- **Frontend**: http://localhost:3001 (or Next.js default port)
-- **Backend API**: http://localhost:3000
-- **Swagger Docs**: http://localhost:3000/docs
-- **Swagger JSON**: http://localhost:3000/docs-json
-
-## Project Structure
-
-```
-/
-├── apps/
-│   ├── frontend/     # Next.js App Router
-│   └── backend/      # NestJS API
-├── packages/
-│   ├── types/        # Shared TypeScript types
-│   ├── api-client/   # OpenAPI client (future)
-│   └── config/       # Shared configs (ESLint, TypeScript)
-└── turbo.json        # Turborepo config
+1. Install dependencies:
+```bash
+pnpm install
 ```
 
-## Features
+2. Copy environment file:
+```bash
+cp .env.example .env
+```
 
-- Multi-tenant ready with `tenant_id` plumbing
-- JWT authentication via Supabase
-- Role-based access control (RBAC)
-- MVC architecture: Controller → Service → Repository
-- Swagger/OpenAPI documentation
-- TypeScript strict mode
+3. Update `.env` with your database and configuration.
+
+4. Generate Prisma Client (migrations are managed by clinic-backend):
+```bash
+pnpm prisma generate
+```
+
+**Important:** This backend shares the database with clinic-backend. Migrations should be run from the clinic-backend only to avoid conflicts. This backend only generates the Prisma Client for database access.
+
+5. Start development server:
+```bash
+pnpm dev
+```
+
+Server will run on `http://localhost:3002`
+
+## API Documentation
+
+Swagger docs available at `http://localhost:3002/docs`
 

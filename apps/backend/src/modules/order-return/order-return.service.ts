@@ -4,6 +4,8 @@ import { MessageService } from "../member/services/message.service";
 import { EmailService } from "../member/services/email.service";
 import { saveBase64Images } from "../../common/utils/upload.utils";
 import { CacheManager } from "../../common/cache";
+import type { OrderReturnSupplierNotifiedPayload } from "../notifications/types/order-return-notified.payload";
+import { NotificationService } from "../notifications/notification.service";
 
 @Injectable()
 export class OrderReturnService {
@@ -15,7 +17,8 @@ export class OrderReturnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly messageService: MessageService,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly notificationService: NotificationService
   ) {
     this.returnsCache = new CacheManager({
       maxSize: 100,
@@ -372,6 +375,40 @@ export class OrderReturnService {
     );
   }
 
+  /** OrderReturn.unit_price = 제품 단가 (판매가 우선, 없으면 매입가, 마지막으로 DTO) */
+  private resolveOrderReturnUnitPrice(
+    itemUnit: unknown,
+    product: {
+      sale_price?: number | null;
+      purchase_price?: number | null;
+    } | null
+  ): number {
+    const sale = product?.sale_price;
+    const purch = product?.purchase_price;
+    if (sale != null && !Number.isNaN(Number(sale)) && Number(sale) > 0) {
+      return Math.floor(Number(sale));
+    }
+    if (purch != null && !Number.isNaN(Number(purch)) && Number(purch) > 0) {
+      return Math.floor(Number(purch));
+    }
+    if (sale != null && !Number.isNaN(Number(sale))) {
+      return Math.floor(Number(sale));
+    }
+    if (purch != null && !Number.isNaN(Number(purch))) {
+      return Math.floor(Number(purch));
+    }
+    const n = Number(itemUnit);
+    if (
+      itemUnit != null &&
+      itemUnit !== "" &&
+      !Number.isNaN(n) &&
+      n >= 0
+    ) {
+      return Math.floor(n);
+    }
+    return 0;
+  }
+
   async createFromInbound(tenantId: string, dto: any) {
     const { orderId, orderNo, items } = dto;
 
@@ -433,8 +470,16 @@ export class OrderReturnService {
 
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
-          items.map((item: any) => {
+          items.map(async (item: any) => {
             const batchCreatedAt = batchDateMap.get(item.batchNo);
+            const pRow = await (this.prisma as any).product.findFirst({
+              where: { id: item.productId, tenant_id: tenantId },
+              select: { sale_price: true, purchase_price: true },
+            });
+            const unitPrice = this.resolveOrderReturnUnitPrice(
+              item.unitPrice,
+              pRow
+            );
             return (this.prisma as any).orderReturn.create({
               data: {
                 tenant_id: tenantId,
@@ -446,7 +491,7 @@ export class OrderReturnService {
                 brand: item.brand || null,
                 return_quantity: item.returnQuantity,
                 total_quantity: item.totalQuantity,
-                unit_price: item.unitPrice,
+                unit_price: unitPrice,
                 return_type: "주문|반품",
                 status: "pending",
                 supplier_id: order?.supplier_id || null,
@@ -1421,17 +1466,11 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         `📦 [createFromOutbound] Creating return for outbound ${outboundId}: is_damaged=${outbound.is_damaged}, is_defective=${outbound.is_defective}, returnType=${returnType}`
       );
 
-      // Get supplier_id from product via ProductSupplier -> ClinicSupplierManager -> linkedManager
-      let supplierId = null;
-      if (
-        outbound.product?.productSupplier?.clinicSupplierManager?.linkedManager
-          ?.supplier
-      ) {
-        supplierId =
-          outbound.product.productSupplier.clinicSupplierManager.linkedManager
-            .supplier.id;
-      } else {
-      }
+      // OrderReturn.supplier_id = ClinicSupplierManager.id (Order bilan bir xil)
+      const supplierId =
+        outbound.product?.productSupplier?.clinic_supplier_manager_id ??
+        outbound.product?.productSupplier?.clinicSupplierManager?.id ??
+        null;
 
       // Get return manager: try to find member_id from manager_name (full_name)
       let returnManager = dto.returnManager || null;
@@ -1468,30 +1507,64 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         batchCreatedAt = batch?.created_at || null;
       }
 
+      const isPlaceholderProductName = (v: unknown) => {
+        if (v == null) return true;
+        const s = String(v).trim();
+        return s === "" || s === "알 수 없음";
+      };
+
       const returns = await this.prisma.executeWithRetry(async () => {
         return Promise.all(
-          items.map((item: any) => {
-            // Get batch_no from multiple sources as fallback
+          items.map(async (item: any) => {
             const itemBatchNo =
               item.batchNo || outbound.batch_no || outbound.batch?.batch_no;
+            const pid = item.productId || outbound.product_id;
 
-            // Debug log
+            const pRow = await (this.prisma as any).product.findFirst({
+              where: { id: pid, tenant_id: tenantId },
+              select: {
+                name: true,
+                sale_price: true,
+                purchase_price: true,
+                brand: true,
+              },
+            });
+
+            const nameCandidates = [
+              item.productName,
+              outbound.product?.name,
+              pRow?.name,
+            ];
+            const productName =
+              nameCandidates.find((n) => !isPlaceholderProductName(n)) ??
+              "알 수 없음";
+
+            const unitPrice = this.resolveOrderReturnUnitPrice(item.unitPrice, {
+              sale_price: pRow?.sale_price ?? outbound.product?.sale_price,
+              purchase_price:
+                pRow?.purchase_price ?? outbound.product?.purchase_price,
+            });
+
+            const brand =
+              item.brand ||
+              outbound.product?.brand ||
+              pRow?.brand ||
+              null;
 
             return (this.prisma as any).orderReturn.create({
               data: {
                 tenant_id: tenantId,
-                order_id: null, // No order for defective/damaged products
-                order_no: null, // No order number for defective/damaged products
+                order_id: null,
+                order_no: null,
                 outbound_id: outboundId,
                 batch_no: itemBatchNo,
-                product_id: item.productId || outbound.product_id,
-                product_name:
-                  item.productName || outbound.product?.name || "알 수 없음",
-                brand: item.brand || outbound.product?.brand || null,
+                product_id: pid,
+                product_name: productName,
+                brand,
                 return_quantity: item.returnQuantity || outbound.outbound_qty,
                 total_quantity: item.totalQuantity || outbound.outbound_qty,
-                unit_price: item.unitPrice || outbound.product?.sale_price || 0,
-                return_type: returnType, // ✅ Use dynamic returnType based on is_damaged/is_defective
+                unit_price: unitPrice,
+                return_type: returnType,
                 status: "pending",
                 supplier_id: supplierId,
                 return_manager: returnManager,
@@ -1547,6 +1620,22 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         });
       });
 
+      const payload = await this.buildOrderReturnSupplierNotificationPayload(
+        updated,
+        "completed"
+      );
+      if (payload) {
+        try {
+          await this.notificationService.createFromOrderReturnSupplierEvent(
+            payload
+          );
+        } catch (e: any) {
+          this.logger.error(
+            `Order-return completed notification: ${e?.message || e}`
+          );
+        }
+      }
+
       return { success: true, message: "Return status updated to completed" };
     } catch (error: any) {
       this.logger.error(
@@ -1559,6 +1648,193 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         message: `Failed to handle return complete: ${error.message}`,
       };
     }
+  }
+
+  /**
+   * Webhook: supplier accepted return/exchange request (요청 수락)
+   */
+  async handleOrderReturnAcceptWebhook(dto: { return_no: string }) {
+    try {
+      const row = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { return_no: dto.return_no },
+        });
+      });
+      if (!row) {
+        return { success: false, message: "Order return not found" };
+      }
+
+      const updated = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.update({
+          where: { id: row.id },
+          data: { status: "processing", updated_at: new Date() },
+        });
+      });
+
+      const payload = await this.buildOrderReturnSupplierNotificationPayload(
+        updated,
+        "accepted"
+      );
+      if (payload) {
+        try {
+          await this.notificationService.createFromOrderReturnSupplierEvent(
+            payload
+          );
+        } catch (e: any) {
+          this.logger.error(
+            `Order-return accept notification: ${e?.message || e}`
+          );
+        }
+      }
+
+      return { success: true, message: "Order return accept webhook processed" };
+    } catch (error: any) {
+      this.logger.error(
+        `handleOrderReturnAcceptWebhook: ${error.message}`,
+        error.stack
+      );
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Webhook: supplier rejected return/exchange request (요청 반려)
+   */
+  async handleOrderReturnRejectWebhook(dto: {
+    return_no: string;
+    reason?: string;
+  }) {
+    try {
+      const row = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.findFirst({
+          where: { return_no: dto.return_no },
+        });
+      });
+      if (!row) {
+        return { success: false, message: "Order return not found" };
+      }
+
+      const updated = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).orderReturn.update({
+          where: { id: row.id },
+          data: { status: "rejected", updated_at: new Date() },
+        });
+      });
+
+      const payload = await this.buildOrderReturnSupplierNotificationPayload(
+        updated,
+        "rejected",
+        dto.reason
+      );
+      if (payload) {
+        try {
+          await this.notificationService.createFromOrderReturnSupplierEvent(
+            payload
+          );
+        } catch (e: any) {
+          this.logger.error(
+            `Order-return reject notification: ${e?.message || e}`
+          );
+        }
+      }
+
+      return { success: true, message: "Order return reject webhook processed" };
+    } catch (error: any) {
+      this.logger.error(
+        `handleOrderReturnRejectWebhook: ${error.message}`,
+        error.stack
+      );
+      return { success: false, message: error.message };
+    }
+  }
+
+  private async buildOrderReturnSupplierNotificationPayload(
+    row: any,
+    action: OrderReturnSupplierNotifiedPayload["action"],
+    rejectionReason?: string | null
+  ): Promise<OrderReturnSupplierNotifiedPayload | null> {
+    if (!row?.tenant_id || !row?.id) return null;
+
+    const category: "exchange" | "refund" = row.return_type?.includes("교환")
+      ? "exchange"
+      : "refund";
+    const qty = row.return_quantity ?? 0;
+
+    const isUnknownProductName = (name: string | null | undefined) =>
+      !name ||
+      !String(name).trim() ||
+      String(name).trim() === "알 수 없음";
+
+    let displayProductName: string | null = null;
+    if (!isUnknownProductName(row.product_name)) {
+      displayProductName = String(row.product_name).trim();
+    }
+
+    let supplierCompanyName: string | null = null;
+    let supplierManagerName: string | null = null;
+
+    if (row.supplier_id) {
+      const csm = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).clinicSupplierManager.findFirst({
+          where: { id: row.supplier_id, tenant_id: row.tenant_id },
+          select: { company_name: true, name: true },
+        });
+      });
+      if (csm) {
+        supplierCompanyName = csm.company_name ?? null;
+        supplierManagerName = csm.name ?? null;
+      }
+    }
+
+    // product_name = "알 수 없음" yoki supplier bo'sh — Product zanjiridan to'ldirish
+    if (row.product_id && (!displayProductName || !supplierCompanyName)) {
+      const product = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).product.findFirst({
+          where: { id: row.product_id, tenant_id: row.tenant_id },
+          select: {
+            name: true,
+            productSupplier: {
+              select: {
+                clinicSupplierManager: {
+                  select: { company_name: true, name: true },
+                },
+              },
+            },
+          },
+        });
+      });
+      if (product) {
+        if (!displayProductName && !isUnknownProductName(product.name)) {
+          displayProductName = String(product.name).trim();
+        }
+        if (!supplierCompanyName) {
+          const csm2 = product.productSupplier?.clinicSupplierManager;
+          if (csm2) {
+            supplierCompanyName = csm2.company_name ?? null;
+            supplierManagerName = csm2.name ?? null;
+          }
+        }
+      }
+    }
+
+    let productSummary: string | null = null;
+    if (displayProductName) {
+      productSummary = `${displayProductName} ${qty}개`;
+    } else if (row.batch_no) {
+      productSummary = `배치 ${row.batch_no} ${qty}개`;
+    }
+
+    return {
+      tenantId: row.tenant_id,
+      orderReturnId: row.id,
+      returnNo: row.return_no ?? null,
+      action,
+      productSummary,
+      supplierCompanyName,
+      supplierManagerName,
+      category,
+      rejectionReason: rejectionReason ?? null,
+    };
   }
 
   /**

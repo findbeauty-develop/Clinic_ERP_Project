@@ -397,6 +397,15 @@ export class ReturnService {
               },
             });
           });
+
+          // 단일 품목 요청 시 프론트가 itemId를 넣음 — 이 분기에서는 기존에 웹훅이 빠져 클리닉 알림이 안 갔음
+          this.sendAcceptWebhookToClinic({ id: notificationId }).catch(
+            (error) => {
+              this.logger.error(
+                `Failed to send accept webhook to clinic (single-item path): ${error.message}`
+              );
+            }
+          );
         }
 
         return {
@@ -615,6 +624,15 @@ export class ReturnService {
           },
         });
       });
+
+      this.sendOrderReturnRejectWebhookToClinic(
+        returnRequest.return_no,
+        reason
+      ).catch((err) =>
+        this.logger.warn(
+          `Order-return reject webhook failed: ${err?.message || err}`
+        )
+      );
 
       return {
         success: true,
@@ -852,14 +870,20 @@ export class ReturnService {
         return;
       }
 
-      const returnNo = requestWithReturnNo.return_no;
-      const isValidFormat =
+      const returnNo = requestWithReturnNo.return_no as string;
+      // 빈 박스 반납 등 구형: 숫자-only 반납번호 → clinic /returns/webhook/accept
+      const isLegacyNumericReturn =
         returnNo &&
         typeof returnNo === "string" &&
         returnNo.length >= 10 &&
         /^\d+$/.test(returnNo);
+      // 클리닉 제품 반품/교환: 반품번호 B + YYYYMMDD + … → /order-returns/webhook/accept
+      const isClinicOrderReturnNo =
+        typeof returnNo === "string" &&
+        returnNo.length >= 10 &&
+        returnNo.startsWith("B");
 
-      if (isValidFormat) {
+      if (isLegacyNumericReturn) {
         try {
           const webhookResponse = await fetch(
             `${clinicBackendUrl}/returns/webhook/accept`,
@@ -887,9 +911,38 @@ export class ReturnService {
             `Accept webhook fetch error for return_no ${returnNo}: ${fetchError.message}`
           );
         }
-      } else {
+      }
+
+      if (isClinicOrderReturnNo) {
+        try {
+          const orRes = await fetch(
+            `${clinicBackendUrl}/order-returns/webhook/accept`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": supplierApiKey,
+              },
+              body: JSON.stringify({
+                return_no: returnNo,
+                status: "processing",
+              }),
+            }
+          );
+          if (!orRes.ok) {
+            const t = await orRes.text();
+            this.logger.warn(
+              `Order-return accept webhook: ${orRes.status} ${t} return_no=${returnNo}`
+            );
+          }
+        } catch (e: any) {
+          this.logger.warn(
+            `Order-return accept webhook error return_no=${returnNo}: ${e?.message}`
+          );
+        }
+      } else if (!isLegacyNumericReturn) {
         this.logger.warn(
-          `returnNo format check failed. Expected: numeric string >=10 digits, got: ${returnNo} (length: ${returnNo?.length})`
+          `Unknown return_no format, skipping webhooks: ${returnNo} (length: ${returnNo?.length})`
         );
       }
     } catch (error: any) {
@@ -898,6 +951,39 @@ export class ReturnService {
         error.stack
       );
       // Don't throw - webhook failure shouldn't break return acceptance
+    }
+  }
+
+  private async sendOrderReturnRejectWebhookToClinic(
+    returnNo: string | null | undefined,
+    reason?: string
+  ): Promise<void> {
+    if (!returnNo || typeof returnNo !== "string") return;
+
+    const clinicBackendUrl =
+      process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+    const supplierApiKey =
+      process.env.SUPPLIER_BACKEND_API_KEY ||
+      process.env.API_KEY_SECRET ||
+      "";
+    if (!supplierApiKey) return;
+
+    const res = await fetch(
+      `${clinicBackendUrl}/order-returns/webhook/reject`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": supplierApiKey,
+        },
+        body: JSON.stringify({ return_no: returnNo, reason: reason ?? null }),
+      }
+    );
+    if (!res.ok) {
+      const t = await res.text();
+      this.logger.warn(
+        `Order-return reject webhook: ${res.status} ${t} return_no=${returnNo}`
+      );
     }
   }
 
@@ -1245,6 +1331,30 @@ export class ReturnService {
   }
 
   /**
+   * 클리닉에서 온 제품 반품/교환 요청 알림 문구.
+   * 「반납」은 대여 반납 뉘앙스라 제품 거래에는 「반품」「교환」을 씀.
+   */
+  private phrasesForClinicReturnRequest(items: any[]): {
+    kindNoun: "반품" | "교환";
+    requestLine: string;
+  } {
+    const types = items.map((i: any) =>
+      String(i.returnType ?? i.return_type ?? "")
+    );
+    const anyExchange = types.some((t) => t.includes("교환"));
+    if (anyExchange) {
+      return {
+        kindNoun: "교환",
+        requestLine: "교환 요청이 들어왔습니다.",
+      };
+    }
+    return {
+      kindNoun: "반품",
+      requestLine: "반품 요청이 들어왔습니다.",
+    };
+  }
+
+  /**
    * In-app notification for supplier header (polling). Mirrors order notification pattern.
    */
   private async notifyReturnRequestCreated(params: {
@@ -1274,17 +1384,25 @@ export class ReturnService {
         .filter(Boolean);
       const totalCount = productNames.length;
       const preview = productNames.slice(0, 2).join(", ");
+      const phrases = this.phrasesForClinicReturnRequest(items);
+      const notificationPayload = {
+        returnNo,
+        returnCategory: "product" as const,
+        kind: phrases.kindNoun,
+      };
       const productSummary =
         totalCount > 2
           ? `${preview} 등 총 ${totalCount}개 제품`
           : totalCount > 0
             ? `${preview} 총 ${totalCount}개 제품`
-            : "반납";
+            : items.length > 0
+              ? `총 ${items.length}개 제품`
+              : "제품";
 
       const notifTitle = clinicName
         ? `${clinicName}${clinicManagerName ? " " + clinicManagerName : ""}`
         : "클리닉";
-      const notifBody = `${productSummary}의 반납\n반납 요청이 들어왔습니다.`;
+      const notifBody = `${productSummary}의 ${phrases.kindNoun}\n${phrases.requestLine}`;
 
       const dedupeBase = dedupeSuffix
         ? `new_return:${returnRequestId}:${dedupeSuffix}`
@@ -1298,7 +1416,7 @@ export class ReturnService {
           body: notifBody,
           entityType: "return",
           entityId: returnRequestId,
-          payload: { returnNo },
+          payload: notificationPayload,
           dedupeKey: dedupeBase,
         });
       } else {
@@ -1315,7 +1433,7 @@ export class ReturnService {
               body: notifBody,
               entityType: "return",
               entityId: returnRequestId,
-              payload: { returnNo },
+              payload: notificationPayload,
               dedupeKey: `${dedupeBase}:${m.id}`,
             }))
           );

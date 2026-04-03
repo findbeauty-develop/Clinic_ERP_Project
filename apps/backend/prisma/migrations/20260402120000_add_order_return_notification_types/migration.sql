@@ -1,0 +1,4 @@
+-- Add NotificationType enum values for order-return (교환/환불) supplier webhooks
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ORDER_RETURN_SUPPLIER_ACCEPTED';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ORDER_RETURN_SUPPLIER_REJECTED';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ORDER_RETURN_SUPPLIER_COMPLETED';

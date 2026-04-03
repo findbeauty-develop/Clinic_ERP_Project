@@ -575,6 +575,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                         markRead(notif.id);
                         if (notif.entityType === "return") {
                           router.push("/returns");
+                        } else if (notif.entityType === "order_return") {
+                          router.push("/order-returns");
                         } else if (notif.entityType === "order") {
                           router.push("/order");
                         }

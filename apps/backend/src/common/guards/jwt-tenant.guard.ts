@@ -43,10 +43,15 @@ export class JwtTenantGuard implements CanActivate {
         }
 
         if (!tenantId) throw new ForbiddenException("Tenant not assigned");
+        const meta = (data.user.user_metadata as any) ?? {};
         req.user = {
           id: data.user.id,
           email: data.user.email,
-          roles: (data.user.user_metadata as any)?.roles ?? [],
+          roles: meta?.roles ?? [],
+          member_id:
+            meta?.member_id ??
+            meta?.memberId ??
+            null,
         };
         req.tenantId = tenantId;
         return true;

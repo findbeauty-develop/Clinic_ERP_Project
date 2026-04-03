@@ -546,7 +546,10 @@ const ReturnCard = memo(function ReturnCard({
           <div className="flex items-center gap-1">
             <span className="font-medium">단가:</span>
             <span className="font-semibold text-blue-600 underline dark:text-blue-400">
-              {returnItem.refund_amount?.toLocaleString() || 0}원
+              {Number(
+                returnItem.unit_price ?? returnItem.unitPrice ?? 0
+              ).toLocaleString()}
+              원
             </span>
           </div>
         </div>

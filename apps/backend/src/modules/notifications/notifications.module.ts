@@ -5,7 +5,6 @@ import { OrderSupplierNotifiedListener } from "./order-supplier-notified.listene
 import { NotificationsGateway } from "./notifications.gateway";
 import { NotificationsController } from "./notifications.controller";
 import { ReturnSupplierNotifiedListener } from "./return-supplier-notified.listener";
-
 @Module({
   controllers: [NotificationsController],
   providers: [

@@ -6,6 +6,7 @@ import { NotificationsGateway } from "./notifications.gateway";
 import { toNotificationItemDto } from "./notification.mapper";
 import type { OrderSupplierNotifiedPayload } from "./types/order-supplier-notified.payload";
 import { ReturnSupplierNotifiedPayload } from "./types/return-supplier-notification.payload";
+import type { OrderReturnSupplierNotifiedPayload } from "./types/order-return-notified.payload";
 
 @Injectable()
 export class NotificationService {
@@ -16,6 +17,18 @@ export class NotificationService {
     private readonly recipientResolver: NotificationRecipientResolverService,
     private readonly gateway: NotificationsGateway
   ) {}
+
+  /** List/markRead must use same id as stored in Notification.recipient_member_id. */
+  async resolveRecipientMemberIdForList(
+    tenantId: string,
+    jwtUser: { id: string; member_id?: string | null }
+  ): Promise<string> {
+    const pk = await this.recipientResolver.resolveMemberPrimaryKey(
+      tenantId,
+      jwtUser
+    );
+    return pk ?? jwtUser.id;
+  }
 
   async createFromOrderSupplierEvent(
     data: OrderSupplierNotifiedPayload
@@ -131,6 +144,84 @@ export class NotificationService {
       entity_type: "return",
       entity_id: data.returnId,
       payload: { returnNo: data.returnNo, sourceStatus: data.sourceStatus },
+      dedupe_key: dedupeKey,
+    }));
+
+    const result = await this.prisma.notification.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+    if (result.count === 0) return;
+
+    const created = await this.prisma.notification.findMany({
+      where: {
+        tenant_id: data.tenantId,
+        dedupe_key: dedupeKey,
+      },
+    });
+
+    for (const row of created) {
+      this.gateway.emitNotificationNew(
+        row.recipient_member_id,
+        toNotificationItemDto(row)
+      );
+    }
+  }
+
+  async createFromOrderReturnSupplierEvent(
+    data: OrderReturnSupplierNotifiedPayload
+  ): Promise<void> {
+    const recipientIds = await this.recipientResolver.resolveClinicRecipients(
+      data.tenantId
+    );
+    if (recipientIds.length === 0) return;
+
+    let notificationType: NotificationType;
+    let actionLine: string;
+    if (data.action === "accepted") {
+      notificationType = NotificationType.ORDER_RETURN_SUPPLIER_ACCEPTED;
+      actionLine = "요청 확인되었습니다.";
+    } else if (data.action === "rejected") {
+      notificationType = NotificationType.ORDER_RETURN_SUPPLIER_REJECTED;
+      actionLine = "요청 반려했습니다.";
+    } else {
+      notificationType = NotificationType.ORDER_RETURN_SUPPLIER_COMPLETED;
+      actionLine = "제품을 받았습니다.";
+    }
+
+    const supplierLabel = [data.supplierCompanyName, data.supplierManagerName]
+      .filter(Boolean)
+      .join(" ");
+    const title = supplierLabel || "공급업체";
+
+    const category = data.category ?? "refund";
+    const kindLabel = category === "exchange" ? "교환" : "환불";
+    const descLine = data.productSummary
+      ? `${data.productSummary}의 ${kindLabel}`
+      : data.returnNo
+        ? `반품번호 ${data.returnNo}의 ${kindLabel}`
+        : `${kindLabel} 요청`;
+    let body = `${descLine}\n${actionLine}`;
+    if (data.action === "rejected" && data.rejectionReason?.trim()) {
+      body += `\n사유: ${data.rejectionReason.trim()}`;
+    }
+
+    const dedupeKey = `order_return:${data.orderReturnId}:${data.action}`;
+
+    const rows = recipientIds.map((recipient_member_id) => ({
+      tenant_id: data.tenantId,
+      recipient_member_id,
+      type: notificationType,
+      title,
+      body,
+      entity_type: "order_return",
+      entity_id: data.orderReturnId,
+      payload: {
+        returnNo: data.returnNo,
+        action: data.action,
+        category,
+        rejectionReason: data.rejectionReason ?? undefined,
+      },
       dedupe_key: dedupeKey,
     }));
 
