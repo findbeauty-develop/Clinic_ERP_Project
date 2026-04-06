@@ -154,7 +154,10 @@ export default function SettlementPage() {
 
             // Determine return type from items
             const returnType = returnItem.items?.some((item: any) => 
-              item.returnType?.includes("교환") || item.return_type?.includes("교환")
+              item.returnType?.includes("교환") ||
+              item.return_type?.includes("교환") ||
+              item.returnType === "defective_exchange" ||
+              item.return_type === "defective_exchange"
             ) ? "반품 및 교환" : "반납";
 
             // ✅ Extract product names from return items
@@ -286,7 +289,10 @@ export default function SettlementPage() {
             const timestamp = `${month}-${day} ${hours}:${minutes}`;
 
             const returnType = returnItem.items?.some((item: any) => 
-              item.returnType?.includes("교환") || item.return_type?.includes("교환")
+              item.returnType?.includes("교환") ||
+              item.return_type?.includes("교환") ||
+              item.returnType === "defective_exchange" ||
+              item.return_type === "defective_exchange"
             ) ? "반품 및 교환" : "반납";
 
             const productNames = returnItem.items?.map((item: any) => 
@@ -417,7 +423,10 @@ export default function SettlementPage() {
             const timestamp = `${month}-${day} ${hours}:${minutes}`;
 
             const returnType = returnItem.items?.some((item: any) => 
-              item.returnType?.includes("교환") || item.return_type?.includes("교환")
+              item.returnType?.includes("교환") ||
+              item.return_type?.includes("교환") ||
+              item.returnType === "defective_exchange" ||
+              item.return_type === "defective_exchange"
             ) ? "반품 및 교환" : "반납";
 
             const productNames = returnItem.items?.map((item: any) => 

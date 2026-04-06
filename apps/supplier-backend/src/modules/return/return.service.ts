@@ -11,6 +11,35 @@ export class ReturnService {
     private readonly notificationService: NotificationService
   ) {}
 
+  /** Clinic defective flow: defective_exchange | defective_return, or legacy "…|…" strings */
+  private isProductCategoryReturnType(rt: string | null | undefined): boolean {
+    if (!rt) return false;
+    if (rt === "defective_exchange" || rt === "defective_return") return true;
+    return rt.includes("|");
+  }
+
+  private isEmptyBoxCategoryReturnType(rt: string | null | undefined): boolean {
+    if (!rt) return true;
+    return !this.isProductCategoryReturnType(rt);
+  }
+
+  private matchesDeprecatedReturnTypeFilter(
+    itemReturnType: string | null | undefined,
+    filter: "반품" | "교환"
+  ): boolean {
+    if (!itemReturnType) return false;
+    if (filter === "교환") {
+      return (
+        itemReturnType.includes("교환") ||
+        itemReturnType === "defective_exchange"
+      );
+    }
+    return (
+      itemReturnType.includes("반품") ||
+      itemReturnType === "defective_return"
+    );
+  }
+
   /**
    * SupplierManager uchun return request'larni olish
    */
@@ -88,12 +117,9 @@ export class ReturnService {
         filteredRequests = returnRequests.filter((request: any) => {
           const hasMatchingItem = request.items?.some((item: any) => {
             if (filters.returnCategory === "empty_box") {
-              // Empty box returns: return_type does NOT contain "|"
-              // OR return_type is null/undefined (for backward compatibility)
-              return !item.return_type || !item.return_type.includes("|");
+              return this.isEmptyBoxCategoryReturnType(item.return_type);
             } else if (filters.returnCategory === "product") {
-              // Product returns/exchanges: return_type contains "|" (e.g., "주문|반품", "불량|교환")
-              return item.return_type && item.return_type.includes("|");
+              return this.isProductCategoryReturnType(item.return_type);
             }
             return false;
           });
@@ -105,7 +131,10 @@ export class ReturnService {
         filteredRequests = returnRequests.filter((request: any) => {
           // Check if any item in the request matches the return_type filter
           const hasMatchingItem = request.items?.some((item: any) => {
-            return item.return_type?.includes(filters.returnType);
+            return this.matchesDeprecatedReturnTypeFilter(
+              item.return_type,
+              filters.returnType!
+            );
           });
           return hasMatchingItem;
         });
@@ -131,11 +160,9 @@ export class ReturnService {
           if (filters?.returnCategory) {
             filteredItems = filteredItems.filter((item: any) => {
               if (filters.returnCategory === "empty_box") {
-                // Empty box returns: return_type does NOT contain "|"
-                return !item.return_type || !item.return_type.includes("|");
+                return this.isEmptyBoxCategoryReturnType(item.return_type);
               } else if (filters.returnCategory === "product") {
-                // Product returns/exchanges: return_type contains "|"
-                return item.return_type && item.return_type.includes("|");
+                return this.isProductCategoryReturnType(item.return_type);
               }
               return false;
             });
@@ -143,8 +170,10 @@ export class ReturnService {
           // DEPRECATED: Filter by returnType (for backward compatibility)
           else if (filters?.returnType) {
             filteredItems = filteredItems.filter((item: any) => {
-              // Check if return_type contains the filter value (e.g., "반품" or "교환")
-              return item.return_type?.includes(filters.returnType);
+              return this.matchesDeprecatedReturnTypeFilter(
+                item.return_type,
+                filters.returnType!
+              );
             });
           }
 
@@ -882,6 +911,11 @@ export class ReturnService {
         typeof returnNo === "string" &&
         returnNo.length >= 10 &&
         returnNo.startsWith("B");
+      const isClinicDefectiveReturnId =
+        typeof returnNo === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          returnNo
+        );
 
       if (isLegacyNumericReturn) {
         try {
@@ -913,7 +947,7 @@ export class ReturnService {
         }
       }
 
-      if (isClinicOrderReturnNo) {
+      if (isClinicOrderReturnNo || isClinicDefectiveReturnId) {
         try {
           const orRes = await fetch(
             `${clinicBackendUrl}/order-returns/webhook/accept`,
@@ -940,7 +974,11 @@ export class ReturnService {
             `Order-return accept webhook error return_no=${returnNo}: ${e?.message}`
           );
         }
-      } else if (!isLegacyNumericReturn) {
+      } else if (
+        !isLegacyNumericReturn &&
+        !isClinicOrderReturnNo &&
+        !isClinicDefectiveReturnId
+      ) {
         this.logger.warn(
           `Unknown return_no format, skipping webhooks: ${returnNo} (length: ${returnNo?.length})`
         );
@@ -1341,7 +1379,9 @@ export class ReturnService {
     const types = items.map((i: any) =>
       String(i.returnType ?? i.return_type ?? "")
     );
-    const anyExchange = types.some((t) => t.includes("교환"));
+    const anyExchange = types.some(
+      (t) => t.includes("교환") || t === "defective_exchange"
+    );
     if (anyExchange) {
       return {
         kindNoun: "교환",

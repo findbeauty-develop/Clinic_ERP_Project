@@ -507,37 +507,39 @@ model OrderDraft {
   @@index([expires_at])
 }
 
-model OrderReturn {
-  id              String    @id @default(uuid())
-  tenant_id       String
-  order_id        String? // Optional for defective products from outbound
-  order_no        String? // Optional for defective products from outbound
-  outbound_id     String? // For defective products from outbound
-  return_no       String? // 반품번호: B + YYYYMMDD + 6 random digits
-  batch_no        String
-  product_id      String
-  product_name    String
-  brand           String?
-  return_quantity Int // 미입고수량 (excess/defective qty)
-  total_quantity  Int // confirmedQuantity from supplier (for order returns) or outbound qty (for defective)
-  unit_price      Int
-  return_type     String // "주문|반품", "주문|교환", "불량|반품", "불량|교환"
-  status          String    @default("pending") // "pending", "processing", "completed", "rejected"
-  memo            String?
-  images          String[]  @default([])
-  return_manager  String? // 반품 담당자
-  supplier_id     String?
-  inbound_date    DateTime  @default(now())
-  created_at      DateTime  @default(now())
-  updated_at      DateTime?
+enum DefectiveReturnType {
+  defective_exchange
+  defective_return
+}
+
+/// Outbound / defective product return-exchange (주문 기반 반품은 추후 별도 테이블)
+model DefectiveProductReturn {
+  id                      String              @id @default(uuid())
+  tenant_id               String
+  supplier_manager_id     String? // ClinicSupplierManager.id
+  defective_return_no     String              @unique // B + YYYYMMDD + 6 digits (supplier/clinic display)
+  defective_return_type   DefectiveReturnType
+  product_id              String
+  product_name            String
+  brand                   String?
+  return_quantity         Int
+  total_quantity          Int
+  unit_price              Int
+  status                  String              @default("pending") // pending, processing, completed, rejected
+  memo                    String?
+  images                  String[]            @default([])
+  return_manager          String?
+  inbound_date            DateTime            @default(now())
+  created_at              DateTime            @default(now())
+  updated_at              DateTime?
+
+  clinicSupplierManager ClinicSupplierManager? @relation(fields: [supplier_manager_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id])
-  @@index([order_id])
-  @@index([outbound_id])
-  @@index([return_no])
+  @@index([supplier_manager_id])
   @@index([status])
   @@index([tenant_id, status])
-  @@index([return_type])
+  @@index([defective_return_type])
 }
 
 model Supplier {
@@ -627,9 +629,10 @@ model ClinicSupplierManager {
   updated_at DateTime @updatedAt
 
   // Relations
-  productSuppliers ProductSupplier[] // Products mapped to this supplier
-  clinicLinks      ClinicSupplierLink[] // Trade links created from this contact
-  SupplierManager  SupplierManager?
+  productSuppliers       ProductSupplier[] // Products mapped to this supplier
+  clinicLinks            ClinicSupplierLink[] // Trade links created from this contact
+  SupplierManager        SupplierManager?
+  defectiveProductReturns DefectiveProductReturn[]
 
   @@index([tenant_id])
   @@index([tenant_id, phone_number])

@@ -899,17 +899,6 @@ ${footer}`;
       ).toString();
       const returnNo = `${dateStr}${randomDigits}`; // YYYYMMDD + 000000 + 6 random digits
 
-      // Check if this return_no already exists in OrderReturn and Return tables
-      // (to avoid conflicts, since both OrderReturn and Return send to supplier-backend)
-      const existingOrderReturn = await this.prisma.executeWithRetry(
-        async () => {
-          return (this.prisma as any).orderReturn.findFirst({
-            where: { return_no: returnNo },
-            select: { id: true },
-          });
-        }
-      );
-
       const existingReturn = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).return.findFirst({
           where: { return_no: returnNo },
@@ -917,8 +906,7 @@ ${footer}`;
         });
       });
 
-      // If not exists, return this number
-      if (!existingOrderReturn && !existingReturn) {
+      if (!existingReturn) {
         return returnNo;
       }
 

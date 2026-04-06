@@ -56,27 +56,31 @@ export default function OrderReturnsPage() {
   }, [fetchReturns]);
 
   const formatReturnType = (returnType: string) => {
-    if (returnType.includes("불량") && returnType.includes("교환"))
-      return "반품 | 교환";
-    if (returnType.includes("불량") && returnType.includes("반품"))
-      return "반품 | 불량";
-    if (returnType.includes("주문") && returnType.includes("교환"))
-      return "주문 | 교환";
-    if (returnType.includes("주문") && returnType.includes("반품"))
-      return "주문 | 반품";
+    if (returnType === "defective_exchange") return "교환";
+    if (returnType === "defective_return") return "반품";
+    if (returnType.includes("교환") && !returnType.includes("반품"))
+      return returnType.includes("주문") ? "주문 | 교환" : "교환";
+    if (returnType.includes("반품"))
+      return returnType.includes("주문") ? "주문 | 반품" : "반품";
     return returnType;
   };
 
   const getStatusBadge = (returnType: string, status: string) => {
     if (status === "completed") {
-      if (returnType?.includes("교환")) {
+      if (
+        returnType === "defective_exchange" ||
+        returnType?.includes("교환")
+      ) {
         return {
           text: "교환완료",
           className:
             "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 border border-slate-200",
           textClassName: "text-sm font-medium text-green-700",
         };
-      } else if (returnType?.includes("반품")) {
+      } else if (
+        returnType === "defective_return" ||
+        returnType?.includes("반품")
+      ) {
         return {
           text: "반품완료",
           className:
@@ -190,17 +194,22 @@ const ReturnCard = memo(function ReturnCard({
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
 
+  useEffect(() => {
+    if (returnItem.defective_return_type) {
+      setReturnType(returnItem.defective_return_type);
+    }
+  }, [returnItem.id, returnItem.defective_return_type]);
+
   // Get return manager name from backend response (for display in non-editable tabs)
   const managerName = returnItem.returnManagerName || "";
 
-  // ✅ FIX: Check dropdown visibility based on backend return_type, not state
-  const isOrderReturn = returnItem.return_type?.includes("주문");
-  const isDefectiveReturn = returnItem.return_type?.includes("불량");
-  const showReturnTypeDropdown = isOrderReturn || isDefectiveReturn;
+  const showReturnTypeDropdown = true;
 
-  // Check selected values from state
-  const isExchange = returnType?.includes("교환");
-  const isReturn = returnType?.includes("반품");
+  const isExchange =
+    returnType === "defective_exchange" || returnType?.includes("교환");
+  const isReturn =
+    returnType === "defective_return" ||
+    (returnType?.includes("반품") && !returnType?.includes("교환"));
   const isProcessingTab = activeTab === "in-progress";
   const isHistoryTab = activeTab === "history";
   const isProcessingTabWithInputs = activeTab === "processing";
@@ -247,7 +256,7 @@ const ReturnCard = memo(function ReturnCard({
     try {
       const { apiPut } = await import("../../lib/api");
       await apiPut(`${apiUrl}/order-returns/${returnItem.id}/return-type`, {
-        return_type: newType,
+        defective_return_type: newType,
       });
     } catch (err: any) {
       console.error("Failed to update return type:", err);
@@ -267,12 +276,11 @@ const ReturnCard = memo(function ReturnCard({
     try {
       const { apiPost } = await import("../../lib/api");
 
-      // Keep the original return type that user selected
-      // - 주문|교환 → 주문|교환
-      // - 주문|반품 → 주문|반품
-      // - 불량|교환 → 불량|교환
-      // - 불량|반품 → 불량|반품
-      const finalReturnType = returnType || "주문|교환";
+      const finalDefectiveReturnType =
+        returnType === "defective_exchange" ||
+        returnType === "defective_return"
+          ? returnType
+          : "defective_exchange";
 
       const response = await apiPost(
         `${apiUrl}/order-returns/${returnItem.id}/process`,
@@ -280,7 +288,7 @@ const ReturnCard = memo(function ReturnCard({
           memo: memo || null,
           returnManager: returnManagerName || null,
           images: images,
-          return_type: finalReturnType, // Always "주문|교환" for order-returns page
+          defective_return_type: finalDefectiveReturnType,
         }
       );
 
@@ -345,7 +353,10 @@ const ReturnCard = memo(function ReturnCard({
   };
 
   const statusBadge = isHistoryTab
-    ? getStatusBadge(returnType, returnItem.status)
+    ? getStatusBadge(
+        returnType || returnItem.defective_return_type || "",
+        returnItem.status
+      )
     : null;
 
   return (
@@ -417,9 +428,9 @@ const ReturnCard = memo(function ReturnCard({
                 ""
               )}
             </div>
-            {returnItem.return_no && (
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                반품번호: {returnItem.return_no}
+            {returnItem.defective_return_no && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
+                불량반품번호: {returnItem.defective_return_no}
               </div>
             )}
           </div>
@@ -438,17 +449,10 @@ const ReturnCard = memo(function ReturnCard({
                   <option value="" disabled>
                     사유 선택*
                   </option>
-                  {isOrderReturn ? (
-                    <>
-                      <option value="주문|교환">주문 | 교환</option>
-                      <option value="주문|반품">주문 | 반품</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="불량|교환">반품 | 교환</option>
-                      <option value="불량|반품">반품 | 불량</option>
-                    </>
-                  )}
+                  <>
+                    <option value="defective_exchange">교환</option>
+                    <option value="defective_return">반품</option>
+                  </>
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                   <svg
@@ -468,12 +472,14 @@ const ReturnCard = memo(function ReturnCard({
               </div>
             ) : (
               <select
-                value={returnItem.return_type || ""}
+                value={returnItem.defective_return_type || ""}
                 className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 appearance-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
                 disabled
               >
                 <option>
-                  {formatReturnType(returnItem.return_type || "")}
+                  {formatReturnType(
+                    returnItem.defective_return_type || ""
+                  )}
                 </option>
               </select>
             )}
@@ -500,24 +506,11 @@ const ReturnCard = memo(function ReturnCard({
         </div>
         {/* Product Name */}
         <div className="mb-4"></div>
-        {/* Product Details Row: 배치번호/주문번호, 입고, 미입고수량, 단가 */}
+        {/* Product Details Row: 입고, 수량, 단가 */}
         <div className="mb-3 flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
           <h3 className="text-base font-semibold text-slate-900 dark:text-white">
             {returnItem.product_name || "알 수 없음"}
           </h3>
-          {/* Show 주문번호 for 주문 returns, 배치번호 for 불량 returns */}
-          {isOrderReturn && returnItem.order_no && (
-            <div className="flex items-center gap-1">
-              <span className="font-medium">주문번호:</span>
-              <span>{returnItem.order_no}</span>
-            </div>
-          )}
-          {isDefectiveReturn && returnItem.batch_no && (
-            <div className="flex items-center gap-1">
-              <span className="font-medium">배치번호:</span>
-              <span>{returnItem.batch_no}</span>
-            </div>
-          )}
           <div className="flex items-center gap-1">
             <span className="font-medium">입고:</span>
             <span>
@@ -527,12 +520,12 @@ const ReturnCard = memo(function ReturnCard({
           <div className="flex items-center gap-1">
             <span className="font-medium">
               {isHistoryTab
-                ? "교환수량:"
+                ? returnItem.defective_return_type === "defective_exchange"
+                  ? "교환수량:"
+                  : "반품수량:"
                 : isExchange
                   ? "교환수량:"
-                  : isDefectiveReturn
-                    ? "불량수량:"
-                    : "교환수량:"}
+                  : "반품수량:"}
             </span>
             <span className="font-semibold text-rose-600 dark:text-rose-400">
               {returnItem.return_quantity}개
@@ -630,7 +623,7 @@ const ReturnCard = memo(function ReturnCard({
               </div>
             </div>
 
-            {/* Return Manager & Process Button (only for 주문 or 불량 returns) */}
+            {/* Return Manager & Process Button (defective / damaged returns) */}
             {showReturnTypeDropdown && (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -661,7 +654,8 @@ const ReturnCard = memo(function ReturnCard({
                   >
                     {processing
                       ? "처리 중..."
-                      : returnType === "주문|교환" || returnType === "불량|교환"
+                      : returnType === "defective_exchange" ||
+                          returnType?.includes("교환")
                         ? "교환하기"
                         : "반품하기"}
                   </button>
@@ -756,7 +750,9 @@ const ReturnCard = memo(function ReturnCard({
             {/* Header with Title and Close Button */}
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h2 className="text-lg font-bold text-slate-900">
-                {formatReturnType(returnType || returnItem.return_type || "")}
+                {formatReturnType(
+                  returnType || returnItem.defective_return_type || ""
+                )}
               </h2>
               <button
                 onClick={() => setShowDetailModal(false)}

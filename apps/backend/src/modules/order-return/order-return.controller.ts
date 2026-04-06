@@ -113,9 +113,13 @@ export class OrderReturnController {
   async updateReturnType(
     @Tenant() tenantId: string,
     @Param("id") id: string,
-    @Body() dto: { return_type: string }
+    @Body() dto: { defective_return_type: string }
   ) {
-    return this.service.updateReturnType(tenantId, id, dto.return_type);
+    return this.service.updateReturnType(
+      tenantId,
+      id,
+      dto.defective_return_type
+    );
   }
 
   @Put(":id/confirm-exchange")

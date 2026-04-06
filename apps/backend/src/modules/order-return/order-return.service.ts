@@ -7,6 +7,14 @@ import { CacheManager } from "../../common/cache";
 import type { OrderReturnSupplierNotifiedPayload } from "../notifications/types/order-return-notified.payload";
 import { NotificationService } from "../notifications/notification.service";
 
+const DEFECTIVE_RETURN_TYPE_VALUES = [
+  "defective_exchange",
+  "defective_return",
+] as const;
+
+export type DefectiveReturnTypeValue =
+  (typeof DEFECTIVE_RETURN_TYPE_VALUES)[number];
+
 @Injectable()
 export class OrderReturnService {
   private readonly logger = new Logger(OrderReturnService.name);
@@ -41,75 +49,80 @@ export class OrderReturnService {
       where.status = status;
     }
 
-    // ✅ NOTE: Cannot filter by outbound relation in where clause (Prisma limitation)
-    // Will filter damaged/defective outbounds after fetching data
-
     const data = await this.prisma.executeWithRetry(async () => {
-      // 1. Barcha return'larni bir marta olish (faqat kerakli fieldlar)
-      const returns = await (this.prisma as any).orderReturn.findMany({
-        where,
-        orderBy: { created_at: "desc" },
-        select: {
-          id: true,
-          return_no: true,
-          return_type: true,
-          return_quantity: true,
-          status: true,
-          memo: true,
-          images: true,
-          return_manager: true,
-          supplier_id: true,
-          product_id: true,
-          outbound_id: true,
-          order_no: true,
-          batch_no: true,
-          inbound_date: true,
-          created_at: true,
-          unit_price: true,
-          total_quantity: true,
-          product_name: true,
-          brand: true,
-          order_id: true,
-          updated_at: true,
-        },
-      });
+      const returns = await (this.prisma as any).defectiveProductReturn.findMany(
+        {
+          where,
+          orderBy: { created_at: "desc" },
+          select: {
+            id: true,
+            defective_return_no: true,
+            defective_return_type: true,
+            return_quantity: true,
+            status: true,
+            memo: true,
+            images: true,
+            return_manager: true,
+            supplier_manager_id: true,
+            product_id: true,
+            inbound_date: true,
+            created_at: true,
+            unit_price: true,
+            total_quantity: true,
+            product_name: true,
+            brand: true,
+            updated_at: true,
+          },
+        }
+      );
 
       if (returns.length === 0) {
         return [];
       }
 
-      // 2. Barcha unique ID'larni yig'ish
-      const supplierIds = [
-        ...new Set(returns.map((r: any) => r.supplier_id).filter(Boolean)),
+      const csmIds = [
+        ...new Set(
+          returns.map((r: any) => r.supplier_manager_id).filter(Boolean)
+        ),
       ];
       const productIds = [
         ...new Set(returns.map((r: any) => r.product_id).filter(Boolean)),
-      ];
-      const outboundIds = [
-        ...new Set(returns.map((r: any) => r.outbound_id).filter(Boolean)),
       ];
       const returnManagerIds = [
         ...new Set(returns.map((r: any) => r.return_manager).filter(Boolean)),
       ];
 
-      // 3. Parallel fetching - barcha ma'lumotlarni bir marta olish
-      const [suppliers, products, outbounds, members] = await Promise.all([
-        supplierIds.length > 0
-          ? (this.prisma as any).supplier.findMany({
-              where: { id: { in: supplierIds } },
+      const [csmRows, products, members] = await Promise.all([
+        csmIds.length > 0
+          ? (this.prisma as any).clinicSupplierManager.findMany({
+              where: { id: { in: csmIds }, tenant_id: tenantId },
               select: {
                 id: true,
                 company_name: true,
-                managers: {
-                  where: { status: "ACTIVE" },
-                  take: 1,
-                  orderBy: { created_at: "asc" },
+                name: true,
+                position: true,
+                phone_number: true,
+                email1: true,
+                linkedManager: {
                   select: {
                     id: true,
-                    name: true,
-                    position: true,
-                    phone_number: true,
-                    email1: true,
+                    supplier: {
+                      select: {
+                        company_name: true,
+                        managers: {
+                          where: { status: "ACTIVE" },
+                          take: 1,
+                          orderBy: { created_at: "asc" },
+                          select: {
+                            id: true,
+                            name: true,
+                            position: true,
+                            phone_number: true,
+                            email1: true,
+                          },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -126,17 +139,6 @@ export class OrderReturnService {
                     refund_amount: true,
                   },
                 },
-              },
-            })
-          : [],
-        outboundIds.length > 0
-          ? (this.prisma as any).outbound.findMany({
-              where: { id: { in: outboundIds }, tenant_id: tenantId },
-              select: {
-                id: true,
-                product_id: true,
-                is_damaged: true, // ✅ ADD: To filter out damaged/defective returns
-                is_defective: true, // ✅ ADD: To filter out damaged/defective returns
               },
             })
           : [],
@@ -157,36 +159,13 @@ export class OrderReturnService {
           : [],
       ]);
 
-      // 4. ProductSupplier'larni olish (barcha return'lar uchun — supplier_id noto'g'ri turdagi ID bo'lishi mumkin)
-      // ✅ supplier_id = ClinicSupplierManager.id, lekin supplierMap Supplier jadvalidan qidiradi.
-      // ✅ Shuning uchun barcha product'lar uchun productSuppliersMap to'ldiriladi (fallback sifatida).
-      const productsNeedingSupplier = new Set<string>();
-
-      // Barcha return'larning product_id'larini qo'shish
-      returns.forEach((r: any) => {
-        if (r.product_id) {
-          productsNeedingSupplier.add(r.product_id);
-        }
-      });
-
-      // Outbound'lar orasidagi product_id'larni ham qo'shish
-      outbounds.forEach((o: any) => {
-        if (o.product_id) {
-          productsNeedingSupplier.add(o.product_id);
-        }
-      });
-
       const productSuppliersMap = new Map();
-      if (productsNeedingSupplier.size > 0) {
-        this.logger.debug(
-          `🔍 [ProductSupplier Query] Querying for ${productsNeedingSupplier.size} products (out of ${returns.length} returns)`
-        );
-
+      if (productIds.length > 0) {
         const productSuppliers = await (
           this.prisma as any
         ).productSupplier.findMany({
           where: {
-            product_id: { in: Array.from(productsNeedingSupplier) },
+            product_id: { in: productIds },
             tenant_id: tenantId,
           },
           select: {
@@ -200,6 +179,7 @@ export class OrderReturnService {
                 email1: true,
                 linkedManager: {
                   select: {
+                    id: true,
                     supplier: {
                       select: {
                         company_name: true,
@@ -223,120 +203,95 @@ export class OrderReturnService {
             },
           },
         });
-
         productSuppliers.forEach((ps: any) => {
           productSuppliersMap.set(ps.product_id, ps);
         });
-
-        this.logger.debug(
-          `✅ [ProductSupplier Query] Found ${productSuppliers.length} product suppliers`
-        );
-      } else {
-        this.logger.debug(
-          `⚡ [ProductSupplier Query] Skipped - no product_ids found`
-        );
       }
 
-      // 5. Map'lar yaratish tez lookup uchun
-      const supplierMap = new Map(suppliers.map((s: any) => [s.id, s]));
+      const csmMap = new Map(csmRows.map((c: any) => [c.id, c]));
       const productMap = new Map(products.map((p: any) => [p.id, p]));
-      const outboundMap = new Map(outbounds.map((o: any) => [o.id, o]));
       const memberMap = new Map();
       members.forEach((m: any) => {
         memberMap.set(m.member_id, m);
         memberMap.set(m.full_name, m);
       });
 
-      // 6. Return'larni enrich qilish (N+1 problem yo'q)
+      const applyCsmDisplay = (
+        clinicManager: any,
+        supplierManagerIdOut: { value: string | null }
+      ) => {
+        let supplierName = "알 수 없음";
+        let managerName = "";
+        let managerPosition = "";
+        let managerPhone = "";
+        let managerEmail = "";
+        if (clinicManager.linkedManager?.supplier) {
+          const platformSupplier = clinicManager.linkedManager.supplier;
+          supplierName =
+            platformSupplier.company_name ||
+            clinicManager.company_name ||
+            "알 수 없음";
+          const manager = platformSupplier.managers?.[0];
+          managerName = manager?.name || clinicManager.name || "";
+          managerPosition = manager?.position || clinicManager.position || "";
+          managerPhone =
+            manager?.phone_number || clinicManager.phone_number || "";
+          managerEmail = manager?.email1 || clinicManager.email1 || "";
+          supplierManagerIdOut.value = manager?.id || null;
+        } else {
+          supplierName = clinicManager.company_name || "알 수 없음";
+          managerName = clinicManager.name || "";
+          managerPosition = clinicManager.position || "";
+          managerPhone = clinicManager.phone_number || "";
+          managerEmail = clinicManager.email1 || "";
+          supplierManagerIdOut.value = clinicManager.linkedManager?.id || null;
+        }
+        return {
+          supplierName,
+          managerName,
+          managerPosition,
+          managerPhone,
+          managerEmail,
+        };
+      };
+
       const returnsWithSupplier = returns.map((returnItem: any) => {
         let supplierName = "알 수 없음";
         let managerName = "";
         let managerPosition = "";
         let managerPhone = "";
         let managerEmail = "";
-        let supplierManagerId = null;
+        let supplierManagerId: string | null = null;
         let returnManagerName = "";
 
-        // Return manager name
         if (returnItem.return_manager) {
           const member = memberMap.get(returnItem.return_manager);
           returnManagerName = member?.full_name || returnItem.return_manager;
         }
 
-        // Supplier info
-        if (returnItem.supplier_id) {
-          const supplier = supplierMap.get(returnItem.supplier_id) as any;
-          if (supplier) {
-            supplierName = supplier.company_name || "알 수 없음";
-            const manager = supplier.managers?.[0];
-            managerName = manager?.name || "";
-            managerPosition = manager?.position || "";
-            managerPhone = manager?.phone_number || "";
-            managerEmail = manager?.email1 || "";
-            supplierManagerId = manager?.id || null;
-          } else if (returnItem.product_id) {
-            // Fallback: Try via ProductSupplier
-            const productSupplier = productSuppliersMap.get(
-              returnItem.product_id
-            );
-            if (productSupplier?.clinicSupplierManager) {
-              const clinicManager = productSupplier.clinicSupplierManager;
-              if (clinicManager.linkedManager?.supplier) {
-                const platformSupplier = clinicManager.linkedManager.supplier;
-                supplierName =
-                  platformSupplier.company_name ||
-                  clinicManager.company_name ||
-                  "알 수 없음";
-                const manager = platformSupplier.managers?.[0];
-                managerName = manager?.name || clinicManager.name || "";
-                managerPosition =
-                  manager?.position || clinicManager.position || "";
-                managerPhone =
-                  manager?.phone_number || clinicManager.phone_number || "";
-                managerEmail = manager?.email1 || clinicManager.email1 || "";
-                supplierManagerId = manager?.id || null;
-              } else {
-                supplierName = clinicManager.company_name || "알 수 없음";
-                managerName = clinicManager.name || "";
-                managerPosition = clinicManager.position || "";
-                managerPhone = clinicManager.phone_number || "";
-                managerEmail = clinicManager.email1 || "";
-                supplierManagerId = null;
-              }
-            }
+        const smIdHolder = { value: null as string | null };
+        if (returnItem.supplier_manager_id) {
+          const csm = csmMap.get(returnItem.supplier_manager_id);
+          if (csm) {
+            const d = applyCsmDisplay(csm, smIdHolder);
+            supplierName = d.supplierName;
+            managerName = d.managerName;
+            managerPosition = d.managerPosition;
+            managerPhone = d.managerPhone;
+            managerEmail = d.managerEmail;
+            supplierManagerId = smIdHolder.value;
           }
-        } else if (returnItem.outbound_id) {
-          // For defective products from outbound
-          const outbound = outboundMap.get(returnItem.outbound_id) as any;
-          if (outbound?.product_id) {
-            const productSupplier = productSuppliersMap.get(
-              outbound.product_id
-            ) as any;
-            if (productSupplier?.clinicSupplierManager) {
-              const clinicManager = productSupplier.clinicSupplierManager;
-              if (clinicManager.linkedManager?.supplier) {
-                const platformSupplier = clinicManager.linkedManager.supplier;
-                supplierName =
-                  platformSupplier.company_name ||
-                  clinicManager.company_name ||
-                  "알 수 없음";
-                const manager = platformSupplier.managers?.[0];
-                managerName = manager?.name || clinicManager.name || "";
-                managerPosition =
-                  manager?.position || clinicManager.position || "";
-                managerPhone =
-                  manager?.phone_number || clinicManager.phone_number || "";
-                managerEmail = manager?.email1 || clinicManager.email1 || "";
-                supplierManagerId = manager?.id || null;
-              } else {
-                supplierName = clinicManager.company_name || "알 수 없음";
-                managerName = clinicManager.name || "";
-                managerPosition = clinicManager.position || "";
-                managerPhone = clinicManager.phone_number || "";
-                managerEmail = clinicManager.email1 || "";
-                supplierManagerId = null;
-              }
-            }
+        } else if (returnItem.product_id) {
+          const ps = productSuppliersMap.get(returnItem.product_id);
+          const clinicManager = ps?.clinicSupplierManager;
+          if (clinicManager) {
+            const d = applyCsmDisplay(clinicManager, smIdHolder);
+            supplierName = d.supplierName;
+            managerName = d.managerName;
+            managerPosition = d.managerPosition;
+            managerPhone = d.managerPhone;
+            managerEmail = d.managerEmail;
+            supplierManagerId = smIdHolder.value;
           }
         }
 
@@ -375,6 +330,90 @@ export class OrderReturnService {
     );
   }
 
+  private isDefectiveReturnTypeValue(v: string): v is DefectiveReturnTypeValue {
+    return (DEFECTIVE_RETURN_TYPE_VALUES as readonly string[]).includes(v);
+  }
+
+  /** SMS / supplier UI: 교환 vs 반품 */
+  private defectiveReturnTypeKorean(
+    t: string | null | undefined
+  ): "교환" | "반품" {
+    return t === "defective_exchange" ? "교환" : "반품";
+  }
+
+  /**
+   * Resolve defective_return_type from DTO (supports legacy Korean strings once).
+   */
+  private resolveDefectiveReturnType(
+    dto: any,
+    existing: string | null | undefined
+  ): DefectiveReturnTypeValue {
+    const raw =
+      dto?.defective_return_type ?? dto?.return_type ?? dto?.returnType ?? "";
+    const s = String(raw).trim();
+    if (this.isDefectiveReturnTypeValue(s)) {
+      return s;
+    }
+    if (s.includes("교환")) {
+      return "defective_exchange";
+    }
+    if (s.includes("반품")) {
+      return "defective_return";
+    }
+    if (existing && this.isDefectiveReturnTypeValue(existing)) {
+      return existing;
+    }
+    return "defective_exchange";
+  }
+
+  private async generateDefectiveReturnNumber(): Promise<string> {
+    const maxAttempts = 15;
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
+      const date = new Date();
+      const y = String(date.getFullYear());
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      const randomDigits = Math.floor(
+        100000 + Math.random() * 900000
+      ).toString();
+      const no = `B${y}${m}${d}${randomDigits}`;
+      const existing = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).defectiveProductReturn.findFirst({
+          where: { defective_return_no: no },
+          select: { id: true },
+        });
+      });
+      if (!existing) {
+        return no;
+      }
+    }
+    const ts = Date.now().toString().slice(-6);
+    const date = new Date();
+    const y = String(date.getFullYear());
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `B${y}${m}${d}${ts}`;
+  }
+
+  private async findDefectiveReturnByWebhookReturnNo(
+    returnNo: string
+  ): Promise<any | null> {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(returnNo)) {
+      return this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).defectiveProductReturn.findFirst({
+          where: { id: returnNo },
+        });
+      });
+    }
+    return this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).defectiveProductReturn.findFirst({
+        where: { defective_return_no: returnNo },
+      });
+    });
+  }
+
   /** OrderReturn.unit_price = 제품 단가 (판매가 우선, 없으면 매입가, 마지막으로 DTO) */
   private resolveOrderReturnUnitPrice(
     itemUnit: unknown,
@@ -398,160 +437,15 @@ export class OrderReturnService {
       return Math.floor(Number(purch));
     }
     const n = Number(itemUnit);
-    if (
-      itemUnit != null &&
-      itemUnit !== "" &&
-      !Number.isNaN(n) &&
-      n >= 0
-    ) {
+    if (itemUnit != null && itemUnit !== "" && !Number.isNaN(n) && n >= 0) {
       return Math.floor(n);
     }
     return 0;
   }
 
-  async createFromInbound(tenantId: string, dto: any) {
-    const { orderId, orderNo, items } = dto;
-
-    if (!items || items.length === 0) {
-      return { message: "No returns to create" };
-    }
-
-    if (!orderId || !orderNo) {
-      throw new BadRequestException("orderId and orderNo are required");
-    }
-
-    try {
-      // Get supplier_id from order
-      const order = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).order.findFirst({
-          where: { id: orderId, tenant_id: tenantId },
-          select: { supplier_id: true },
-        });
-      });
-
-      // Get return manager: try to find member_id from inboundManager
-      let returnManager = dto.returnManager || null;
-      if (!returnManager && dto.inboundManager) {
-        // Try to find member by member_id first, then by full_name
-        const member = await (this.prisma as any).member.findFirst({
-          where: {
-            OR: [
-              { member_id: dto.inboundManager },
-              { full_name: dto.inboundManager },
-            ],
-            tenant_id: tenantId,
-          },
-          select: {
-            member_id: true,
-          },
-        });
-        returnManager = member?.member_id || dto.inboundManager; // Fallback to original value if not found
-      }
-
-      // Get batch created_at dates for inbound_date
-      const batchNos = items.map((item: any) => item.batchNo).filter(Boolean);
-      const batches = await this.prisma.executeWithRetry(async () => {
-        if (batchNos.length === 0) return [];
-        return (this.prisma as any).batch.findMany({
-          where: {
-            batch_no: { in: batchNos },
-            tenant_id: tenantId,
-          },
-          select: {
-            batch_no: true,
-            created_at: true,
-          },
-        });
-      });
-
-      const batchDateMap = new Map(
-        batches.map((b: any) => [b.batch_no, b.created_at])
-      );
-
-      const returns = await this.prisma.executeWithRetry(async () => {
-        return Promise.all(
-          items.map(async (item: any) => {
-            const batchCreatedAt = batchDateMap.get(item.batchNo);
-            const pRow = await (this.prisma as any).product.findFirst({
-              where: { id: item.productId, tenant_id: tenantId },
-              select: { sale_price: true, purchase_price: true },
-            });
-            const unitPrice = this.resolveOrderReturnUnitPrice(
-              item.unitPrice,
-              pRow
-            );
-            return (this.prisma as any).orderReturn.create({
-              data: {
-                tenant_id: tenantId,
-                order_id: orderId,
-                order_no: orderNo,
-                batch_no: item.batchNo,
-                product_id: item.productId,
-                product_name: item.productName,
-                brand: item.brand || null,
-                return_quantity: item.returnQuantity,
-                total_quantity: item.totalQuantity,
-                unit_price: unitPrice,
-                return_type: "주문|반품",
-                status: "pending",
-                supplier_id: order?.supplier_id || null,
-                return_manager: returnManager,
-                inbound_date: batchCreatedAt || new Date(),
-              },
-            });
-          })
-        );
-      });
-
-      return { created: returns.length, returns };
-    } catch (error: any) {
-      console.error(`❌ Error creating returns:`, error);
-      throw new BadRequestException(
-        `Failed to create returns: ${error?.message || "Unknown error"}`
-      );
-    }
-  }
-
-  /**
-   * Generate unique return number: B + YYYYMMDD + 6 random digits
-   * Checks database to ensure uniqueness
-   */
-  private async generateReturnNumber(): Promise<string> {
-    const maxAttempts = 10;
-    let attempts = 0;
-
-    while (attempts < maxAttempts) {
-      const date = new Date();
-      const year = String(date.getFullYear()); // YYYY
-      const month = String(date.getMonth() + 1).padStart(2, "0"); // MM
-      const day = String(date.getDate()).padStart(2, "0"); // DD
-      const dateStr = `${year}${month}${day}`; // YYYYMMDD
-
-      // Random 6 digits
-      const randomDigits = Math.floor(
-        100000 + Math.random() * 900000
-      ).toString();
-      const returnNo = `B${dateStr}${randomDigits}`;
-
-      // Check if this return_no already exists in OrderReturn table
-      const existing = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
-          where: { return_no: returnNo },
-          select: { id: true },
-        });
-      });
-
-      // If not exists, return this number
-      if (!existing) {
-        return returnNo;
-      }
-
-      attempts++;
-    }
-
-    // If all attempts failed, throw error
+  async createFromInbound(_tenantId: string, _dto: any) {
     throw new BadRequestException(
-      "Failed to generate unique return number after multiple attempts"
+      "주문 기반 반품은 추후 별도 API에서 지원 예정입니다. DefectiveProductReturn은 불량/출고 반품만 처리합니다."
     );
   }
 
@@ -559,9 +453,8 @@ export class OrderReturnService {
     // Invalidate cache
     this.invalidateCache(tenantId);
 
-    // Get return item first to check if it already has return_no
     const returnItem = await this.prisma.executeWithRetry(async () => {
-      return (this.prisma as any).orderReturn.findFirst({
+      return (this.prisma as any).defectiveProductReturn.findFirst({
         where: { id, tenant_id: tenantId },
       });
     });
@@ -570,67 +463,45 @@ export class OrderReturnService {
       throw new BadRequestException("Return not found");
     }
 
-    // Save images if provided
     let imageUrls: string[] = [];
     if (dto.images && dto.images.length > 0) {
       imageUrls = await saveBase64Images("returns", dto.images, tenantId);
     }
 
-    // Generate return number if not exists
-    const returnNo =
-      returnItem.return_no || (await this.generateReturnNumber());
-
-    // Update return with all data
     const finalImages =
       imageUrls.length > 0 ? imageUrls : returnItem.images || [];
 
-    // Determine return_type BEFORE database update (so we can use it for supplier notification)
-    const existingReturnType = returnItem.return_type || "";
-    const dtoReturnType = dto.return_type || "";
+    const finalDefectiveReturnType = this.resolveDefectiveReturnType(
+      dto,
+      returnItem.defective_return_type
+    );
 
-    let finalReturnType: string;
-    if (existingReturnType.startsWith("불량")) {
-      // Defective product - if dto.return_type contains "교환", use "불량|교환", otherwise keep existing
-      if (dtoReturnType && dtoReturnType.includes("교환")) {
-        finalReturnType = "불량|교환"; // For exchanges page
-      } else if (dtoReturnType && dtoReturnType.includes("반품")) {
-        finalReturnType = "불량|반품";
-      } else {
-        // Keep existing type
-        finalReturnType = existingReturnType;
-      }
-    } else if (
-      dtoReturnType &&
-      (dtoReturnType.startsWith("주문") || dtoReturnType.startsWith("불량"))
-    ) {
-      // Use dto.return_type if provided and valid
-      finalReturnType = dtoReturnType;
-    } else {
-      // Default: "주문|교환" for order returns (order-returns page -> exchanges page)
-      finalReturnType = "주문|교환";
+    let defectiveReturnNo = returnItem.defective_return_no as string | null;
+    if (!defectiveReturnNo) {
+      defectiveReturnNo = await this.generateDefectiveReturnNumber();
     }
 
     const updatedReturn = await this.prisma.executeWithRetry(async () => {
       const updateData: any = {
-        return_no: returnNo,
         return_manager: dto.returnManager || null,
         memo: dto.memo || null,
         images: finalImages,
-        status: "pending", // Keep as pending until supplier confirms
+        status: "pending",
         updated_at: new Date(),
-        return_type: finalReturnType, // Set the determined return_type
+        defective_return_type: finalDefectiveReturnType,
+        defective_return_no: defectiveReturnNo,
       };
 
-      return (this.prisma as any).orderReturn.update({
+      return (this.prisma as any).defectiveProductReturn.update({
         where: { id, tenant_id: tenantId },
         data: updateData,
       });
     });
 
-    // Ensure images and updated return_type are included in the return object for sending to supplier
     const returnWithImages = {
       ...updatedReturn,
-      return_type: finalReturnType, // Use the determined return_type
+      defective_return_type: finalDefectiveReturnType,
+      defective_return_no: defectiveReturnNo,
       images: finalImages,
     };
 
@@ -640,7 +511,7 @@ export class OrderReturnService {
 
       // After successfully sending to supplier, update status to "processing"
       const finalReturn = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.update({
+        return (this.prisma as any).defectiveProductReturn.update({
           where: { id, tenant_id: tenantId },
           data: {
             status: "processing",
@@ -661,6 +532,142 @@ export class OrderReturnService {
     }
   }
 
+  /** Manual ClinicSupplierManager (no platform linked manager): SMS + email for defective return */
+  private async notifyManualClinicSupplierForDefectiveReturn(
+    clinicSupplierManager: any,
+    returnItem: any,
+    tenantId: string
+  ): Promise<void> {
+    try {
+      const clinic = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).clinic.findFirst({
+          where: { tenant_id: tenantId },
+          select: { name: true },
+        });
+      });
+
+      const clinicName = clinic?.name || "알 수 없음";
+
+      let clinicManagerName = returnItem.return_manager || "";
+      if (returnItem.return_manager) {
+        const member = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).member.findFirst({
+            where: {
+              member_id: returnItem.return_manager,
+              tenant_id: tenantId,
+            },
+            select: { full_name: true },
+          });
+        });
+        if (member?.full_name) {
+          clinicManagerName = member.full_name;
+        } else {
+          clinicManagerName = returnItem.return_manager;
+        }
+      }
+
+      const product = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).product.findFirst({
+          where: { id: returnItem.product_id },
+          select: { name: true, brand: true, unit: true },
+        });
+      });
+
+      const productName =
+        product?.name && product.name.trim() !== ""
+          ? product.name
+          : returnItem.product_name &&
+              returnItem.product_name.trim() !== ""
+            ? returnItem.product_name
+            : "알 수 없음";
+      const returnQty = returnItem.return_quantity || 0;
+      const totalRefund = (returnItem.unit_price || 0) * returnQty;
+      const correlationId =
+        returnItem.defective_return_no || returnItem.id;
+
+      const returnTypeText = this.defectiveReturnTypeKorean(
+        returnItem.defective_return_type
+      );
+
+      const phoneNumber =
+        clinicSupplierManager.phone_number ||
+        clinicSupplierManager.email1 ||
+        null;
+
+      if (phoneNumber) {
+        try {
+          const smsMessage = `[반품/교환 알림]
+${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.unit}` : ""} ${returnTypeText} 요청이 있습니다.
+반품번호: ${correlationId}
+확인 후 처리해주세요.`;
+
+          await this.messageService.sendSMS(phoneNumber, smsMessage);
+        } catch (smsError: any) {
+          this.logger.error(
+            `Failed to send SMS to manual supplier: ${smsError.message}`
+          );
+        }
+      }
+
+      const supplierEmail =
+        clinicSupplierManager.company_email ||
+        clinicSupplierManager.email1 ||
+        clinicSupplierManager.email2 ||
+        null;
+
+      if (supplierEmail) {
+        const products = [
+          {
+            productName: productName,
+            brand: product?.brand || returnItem.brand || "",
+            quantity: returnQty,
+            unit: product?.unit || "",
+          },
+        ];
+
+        const templateId = parseInt(
+          process.env.BREVO_PRODUCT_RETURN_TEMPLATE_ID ||
+            process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID ||
+            "0",
+          10
+        );
+
+        if (templateId > 0) {
+          await this.emailService.sendReturnNotificationEmailWithTemplate(
+            supplierEmail,
+            templateId,
+            clinicName,
+            correlationId,
+            totalRefund,
+            returnQty,
+            clinicManagerName,
+            products,
+            returnTypeText
+          );
+        } else {
+          await this.emailService.sendReturnNotificationEmail(
+            supplierEmail,
+            clinicName,
+            correlationId,
+            totalRefund,
+            returnQty,
+            clinicManagerName,
+            products,
+            returnTypeText
+          );
+        }
+      } else {
+        this.logger.warn(
+          `No email found for manual supplier, skipping email notification for return ${correlationId}`
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error sending notification to manual supplier: ${error.message}`
+      );
+    }
+  }
+
   /**
    * Send return request to supplier-backend
    */
@@ -668,6 +675,46 @@ export class OrderReturnService {
     // Get supplierManagerId from return item or fetch via product_id
     let supplierManagerId = returnItem.supplierManagerId;
     let supplierTenantId: string | null = null;
+
+    if (!supplierManagerId && returnItem.supplier_manager_id) {
+      try {
+        const csm = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).clinicSupplierManager.findFirst({
+            where: {
+              id: returnItem.supplier_manager_id,
+              tenant_id: tenantId,
+            },
+            include: {
+              linkedManager: {
+                select: {
+                  id: true,
+                  supplier_tenant_id: true,
+                  supplier: { select: { tenant_id: true } },
+                },
+              },
+            },
+          });
+        });
+        if (csm?.linkedManager) {
+          supplierManagerId = csm.linkedManager.id;
+          supplierTenantId =
+            csm.linkedManager.supplier_tenant_id ||
+            csm.linkedManager.supplier?.tenant_id ||
+            null;
+        } else if (csm) {
+          await this.notifyManualClinicSupplierForDefectiveReturn(
+            csm,
+            returnItem,
+            tenantId
+          );
+          return;
+        }
+      } catch (error: any) {
+        this.logger.error(
+          `Error resolving supplier_manager_id for return: ${error.message}`
+        );
+      }
+    }
 
     // If supplierManagerId not in return item, fetch it via product_id
     if (!supplierManagerId && returnItem.product_id) {
@@ -706,383 +753,15 @@ export class OrderReturnService {
             linkedManager.supplier?.tenant_id ||
             null;
         } else if (productSupplier?.clinicSupplierManager) {
-          // Manual supplier - send email/SMS notification directly (no platform API call)
-          const clinicSupplierManager = productSupplier.clinicSupplierManager;
-
-          try {
-            // Get clinic details
-            const clinic = await this.prisma.executeWithRetry(async () => {
-              return (this.prisma as any).clinic.findFirst({
-                where: { tenant_id: tenantId },
-                select: { name: true },
-              });
-            });
-
-            const clinicName = clinic?.name || "알 수 없음";
-
-            // Get clinic manager name
-            let clinicManagerName = returnItem.return_manager || "";
-            if (returnItem.return_manager) {
-              const member = await this.prisma.executeWithRetry(async () => {
-                return (this.prisma as any).member.findFirst({
-                  where: {
-                    member_id: returnItem.return_manager,
-                    tenant_id: tenantId,
-                  },
-                  select: { full_name: true },
-                });
-              });
-              if (member?.full_name) {
-                clinicManagerName = member.full_name;
-              } else {
-                clinicManagerName = returnItem.return_manager;
-              }
-            }
-
-            // Get product details
-            const product = await this.prisma.executeWithRetry(async () => {
-              return (this.prisma as any).product.findFirst({
-                where: { id: returnItem.product_id },
-                select: { name: true, brand: true, unit: true },
-              });
-            });
-
-            // ✅ Product name'ni to'g'ri olish - avval product.name, keyin returnItem.product_name
-            const productName =
-              product?.name && product.name.trim() !== ""
-                ? product.name
-                : returnItem.product_name &&
-                    returnItem.product_name.trim() !== ""
-                  ? returnItem.product_name
-                  : "알 수 없음";
-            const returnQty = returnItem.return_quantity || 0;
-            const totalRefund = (returnItem.unit_price || 0) * returnQty;
-            const returnNo = returnItem.return_no;
-
-            // Determine return type (반품 or 교환)
-            const returnTypeText = returnItem.return_type?.includes("교환")
-              ? "교환"
-              : "반품";
-
-            // Send SMS notification
-            const phoneNumber =
-              clinicSupplierManager.phone_number ||
-              clinicSupplierManager.email1 ||
-              null;
-
-            if (phoneNumber) {
-              try {
-                const smsMessage = `[반품/교환 알림]
-${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.unit}` : ""} ${returnTypeText} 요청이 있습니다.
-반품번호: ${returnNo}
-확인 후 처리해주세요.`;
-
-                await this.messageService.sendSMS(phoneNumber, smsMessage);
-              } catch (smsError: any) {
-                this.logger.error(
-                  `Failed to send SMS to manual supplier: ${smsError.message}`
-                );
-              }
-            }
-
-            // Send Email notification
-            const supplierEmail =
-              clinicSupplierManager.company_email ||
-              clinicSupplierManager.email1 ||
-              clinicSupplierManager.email2 ||
-              null;
-
-            if (supplierEmail) {
-              const products = [
-                {
-                  productName: productName,
-                  brand: product?.brand || returnItem.brand || "",
-                  quantity: returnQty,
-                  unit: product?.unit || "",
-                },
-              ];
-
-              // Template ID'ni environment variable'dan olish
-              const templateId = parseInt(
-                process.env.BREVO_PRODUCT_RETURN_TEMPLATE_ID ||
-                  process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID ||
-                  "0",
-                10
-              );
-
-              if (templateId > 0) {
-                await this.emailService.sendReturnNotificationEmailWithTemplate(
-                  supplierEmail,
-                  templateId,
-                  clinicName,
-                  returnNo,
-                  totalRefund,
-                  returnQty,
-                  clinicManagerName,
-                  products,
-                  returnTypeText
-                );
-              } else {
-                await this.emailService.sendReturnNotificationEmail(
-                  supplierEmail,
-                  clinicName,
-                  returnNo,
-                  totalRefund,
-                  returnQty,
-                  clinicManagerName,
-                  products,
-                  returnTypeText
-                );
-              }
-            } else {
-              this.logger.warn(
-                `No email found for manual supplier, skipping email notification for return ${returnNo}`
-              );
-            }
-          } catch (error: any) {
-            this.logger.error(
-              `Error sending notification to manual supplier: ${error.message}`
-            );
-            // Don't throw - notification failure shouldn't break return process
-          }
-
-          return; // Manual supplier - no platform API call needed
+          await this.notifyManualClinicSupplierForDefectiveReturn(
+            productSupplier.clinicSupplierManager,
+            returnItem,
+            tenantId
+          );
+          return;
         }
       } catch (error: any) {
         this.logger.error(`Error fetching supplierManagerId: ${error.message}`);
-      }
-    }
-
-    // Fallback 1: Try via supplier_id (old method)
-    if (!supplierManagerId && returnItem.supplier_id) {
-      try {
-        const supplier = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplier.findUnique({
-            where: { id: returnItem.supplier_id },
-            include: {
-              managers: {
-                where: { status: "ACTIVE" },
-                take: 1,
-                orderBy: { created_at: "asc" },
-              },
-            },
-          });
-        });
-
-        if (supplier?.managers?.[0]) {
-          supplierManagerId = supplier.managers[0].id;
-          supplierTenantId = supplier.tenant_id;
-        }
-      } catch (error: any) {
-        this.logger.error(
-          `Error fetching supplier via supplier_id: ${error.message}`
-        );
-      }
-    }
-
-    // Fallback 2: For defective products (불량), try via outbound_id -> product -> ProductSupplier
-    if (!supplierManagerId && returnItem.outbound_id) {
-      try {
-        const outbound = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).outbound.findFirst({
-            where: { id: returnItem.outbound_id, tenant_id: tenantId },
-            include: {
-              product: {
-                include: {
-                  productSupplier: {
-                    include: {
-                      clinicSupplierManager: {
-                        include: {
-                          linkedManager: {
-                            select: {
-                              id: true,
-                              supplier_tenant_id: true, // This is the correct field for supplier tenant_id
-                              supplier: {
-                                select: { tenant_id: true },
-                              },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          });
-        });
-
-        if (
-          outbound?.product?.productSupplier?.clinicSupplierManager
-            ?.linkedManager
-        ) {
-          const linkedManager =
-            outbound.product.productSupplier.clinicSupplierManager
-              .linkedManager;
-          supplierManagerId = linkedManager.id;
-          // Use supplier_tenant_id first (most reliable), fallback to supplier.tenant_id
-          supplierTenantId =
-            linkedManager.supplier_tenant_id ||
-            linkedManager.supplier?.tenant_id ||
-            null;
-        } else if (outbound?.product?.productSupplier?.clinicSupplierManager) {
-          // Manual supplier - send email/SMS notification directly (no platform API call)
-          const clinicSupplierManager =
-            outbound.product.productSupplier.clinicSupplierManager;
-
-          try {
-            // Get clinic details
-            const clinic = await this.prisma.executeWithRetry(async () => {
-              return (this.prisma as any).clinic.findFirst({
-                where: { tenant_id: tenantId },
-                select: { name: true },
-              });
-            });
-
-            const clinicName = clinic?.name || "알 수 없음";
-
-            // Get clinic manager name
-            let clinicManagerName = returnItem.return_manager || "";
-            if (returnItem.return_manager) {
-              const member = await this.prisma.executeWithRetry(async () => {
-                return (this.prisma as any).member.findFirst({
-                  where: {
-                    member_id: returnItem.return_manager,
-                    tenant_id: tenantId,
-                  },
-                  select: { full_name: true },
-                });
-              });
-              if (member?.full_name) {
-                clinicManagerName = member.full_name;
-              } else {
-                clinicManagerName = returnItem.return_manager;
-              }
-            }
-
-            // Get product details
-            let product = null;
-            if (outbound?.product?.id) {
-              // Agar outbound.product include qilingan bo'lsa, lekin name bo'lmasligi mumkin
-              // Shuning uchun yana fetch qilish kerak
-              product = await this.prisma.executeWithRetry(async () => {
-                return (this.prisma as any).product.findFirst({
-                  where: { id: returnItem.product_id || outbound.product.id },
-                  select: { name: true, brand: true, unit: true },
-                });
-              });
-            } else {
-              product = await this.prisma.executeWithRetry(async () => {
-                return (this.prisma as any).product.findFirst({
-                  where: { id: returnItem.product_id },
-                  select: { name: true, brand: true, unit: true },
-                });
-              });
-            }
-
-            // ✅ Product name'ni to'g'ri olish
-            const productName =
-              product?.name && product.name.trim() !== ""
-                ? product.name
-                : returnItem.product_name &&
-                    returnItem.product_name.trim() !== ""
-                  ? returnItem.product_name
-                  : "알 수 없음";
-            const returnQty = returnItem.return_quantity || 0;
-            const totalRefund = (returnItem.unit_price || 0) * returnQty;
-            const returnNo = returnItem.return_no;
-
-            // Determine return type (반품 or 교환)
-            const returnTypeText = returnItem.return_type?.includes("교환")
-              ? "교환"
-              : "반품";
-
-            // Send SMS notification
-            const phoneNumber =
-              clinicSupplierManager.phone_number ||
-              clinicSupplierManager.email1 ||
-              null;
-
-            if (phoneNumber) {
-              try {
-                const smsMessage = `[반품/교환 알림]
-${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.unit}` : ""} ${returnTypeText} 요청이 있습니다.
-반품번호: ${returnNo}
-확인 후 처리해주세요.`;
-
-                await this.messageService.sendSMS(phoneNumber, smsMessage);
-              } catch (smsError: any) {
-                this.logger.error(
-                  `Failed to send SMS to manual supplier: ${smsError.message}`
-                );
-              }
-            }
-
-            // Send Email notification
-            const supplierEmail =
-              clinicSupplierManager.company_email ||
-              clinicSupplierManager.email1 ||
-              clinicSupplierManager.email2 ||
-              null;
-
-            if (supplierEmail) {
-              const products = [
-                {
-                  productName: productName,
-                  brand: product?.brand || returnItem.brand || "",
-                  quantity: returnQty,
-                  unit: product?.unit || "",
-                },
-              ];
-
-              // Template ID'ni environment variable'dan olish
-              const templateId = parseInt(
-                process.env.BREVO_RETURN_NOTIFICATION_TEMPLATE_ID || "0",
-                10
-              );
-
-              if (templateId > 0) {
-                await this.emailService.sendReturnNotificationEmailWithTemplate(
-                  supplierEmail,
-                  templateId,
-                  clinicName,
-                  returnNo,
-                  totalRefund,
-                  returnQty,
-                  clinicManagerName,
-                  products,
-                  returnTypeText
-                );
-              } else {
-                await this.emailService.sendReturnNotificationEmail(
-                  supplierEmail,
-                  clinicName,
-                  returnNo,
-                  totalRefund,
-                  returnQty,
-                  clinicManagerName,
-                  products,
-                  returnTypeText
-                );
-              }
-            } else {
-              this.logger.warn(
-                `No email found for manual supplier, skipping email notification for return ${returnNo}`
-              );
-            }
-          } catch (error: any) {
-            this.logger.error(
-              `Error sending notification to manual supplier: ${error.message}`
-            );
-            // Don't throw - notification failure shouldn't break return process
-          }
-
-          return; // Manual supplier - no platform API call needed
-        }
-      } catch (error: any) {
-        this.logger.error(
-          `Error fetching supplier via outbound_id: ${error.message}`
-        );
       }
     }
 
@@ -1128,9 +807,9 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
       // Debug log for images
 
       const returnData = {
-        returnNo: returnItem.return_no,
+        returnNo: returnItem.defective_return_no || returnItem.id,
         supplierTenantId: supplierTenantId,
-        supplierManagerId: supplierManagerId, // Add supplierManagerId for supplier-backend
+        supplierManagerId: supplierManagerId,
         clinicTenantId: tenantId,
         clinicName: clinicName,
         clinicManagerName: clinicManagerName,
@@ -1139,15 +818,15 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
             productName: returnItem.product_name,
             brand: returnItem.brand || "",
             quantity: returnItem.return_quantity,
-            returnType: returnItem.return_type, // Should be "주문|교환" or "불량|교환" etc.
+            returnType: returnItem.defective_return_type,
             memo: returnItem.memo || "",
             images: imagesArray,
             inboundDate: returnItem.inbound_date
               ? new Date(returnItem.inbound_date).toISOString().split("T")[0]
               : new Date().toISOString().split("T")[0],
             totalPrice: returnItem.unit_price * returnItem.return_quantity,
-            orderNo: returnItem.order_no || null,
-            batchNo: returnItem.batch_no || null,
+            orderNo: null,
+            batchNo: null,
           },
         ],
         createdAt: returnItem.created_at.toISOString(),
@@ -1221,17 +900,15 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
         // Send SMS notification to supplier
         if (supplierPhoneNumber) {
           try {
-            const returnTypeText = returnData.items[0].returnType.includes(
-              "교환"
-            )
-              ? "교환"
-              : "반품";
+            const returnTypeText = this.defectiveReturnTypeKorean(
+              returnData.items[0].returnType
+            );
             const productName = returnData.items[0].productName;
             const quantity = returnData.items[0].quantity;
 
             const smsMessage = `[반품/교환 알림]
 ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 있습니다.
-반품번호: ${returnItem.return_no}
+반품번호: ${returnItem.defective_return_no || returnItem.id}
 확인 후 처리해주세요.`;
 
             const smsSent = await this.messageService.sendSMS(
@@ -1300,11 +977,9 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
           }
 
           if (supplierEmail) {
-            const returnTypeText = returnData.items[0].returnType.includes(
-              "교환"
-            )
-              ? "교환"
-              : "반품";
+            const returnTypeText = this.defectiveReturnTypeKorean(
+              returnData.items[0].returnType
+            );
 
             // Fetch product name va unit from product table
             let productUnit = "";
@@ -1350,7 +1025,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
                 supplierEmail,
                 templateId,
                 clinicName,
-                returnItem.return_no,
+                returnItem.defective_return_no || returnItem.id,
                 returnData.items[0].totalPrice,
                 returnData.items[0].quantity,
                 clinicManagerName,
@@ -1362,7 +1037,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
               await this.emailService.sendReturnNotificationEmail(
                 supplierEmail,
                 clinicName,
-                returnItem.return_no,
+                returnItem.defective_return_no || returnItem.id,
                 returnData.items[0].totalPrice,
                 returnData.items[0].quantity,
                 clinicManagerName,
@@ -1388,21 +1063,19 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     }
   }
 
-  async updateReturnType(tenantId: string, id: string, returnType: string) {
-    // Invalidate cache
+  async updateReturnType(tenantId: string, id: string, defectiveReturnType: string) {
     this.invalidateCache(tenantId);
-    const validTypes = ["주문|교환", "주문|반품", "불량|교환", "불량|반품"];
-    if (!validTypes.includes(returnType)) {
+    if (!this.isDefectiveReturnTypeValue(defectiveReturnType)) {
       throw new BadRequestException(
-        `Invalid return type. Must be one of: ${validTypes.join(", ")}`
+        `Invalid defective_return_type. Must be one of: ${DEFECTIVE_RETURN_TYPE_VALUES.join(", ")}`
       );
     }
 
     return this.prisma.executeWithRetry(async () => {
-      return (this.prisma as any).orderReturn.update({
+      return (this.prisma as any).defectiveProductReturn.update({
         where: { id, tenant_id: tenantId },
         data: {
-          return_type: returnType,
+          defective_return_type: defectiveReturnType,
           updated_at: new Date(),
         },
       });
@@ -1454,20 +1127,13 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         throw new BadRequestException("Outbound not found");
       }
 
-      // ✅ Determine return type based on outbound flags
-      let returnType = "불량|반품"; // Default to defective
-      if (outbound.is_damaged) {
-        returnType = "파손|반품";
-      } else if (outbound.is_defective) {
-        returnType = "불량|반품";
-      }
+      const defectiveReturnType: DefectiveReturnTypeValue = "defective_return";
 
       this.logger.log(
-        `📦 [createFromOutbound] Creating return for outbound ${outboundId}: is_damaged=${outbound.is_damaged}, is_defective=${outbound.is_defective}, returnType=${returnType}`
+        `📦 [createFromOutbound] Creating return for outbound ${outboundId}: is_damaged=${outbound.is_damaged}, is_defective=${outbound.is_defective}, defective_return_type=${defectiveReturnType}`
       );
 
-      // OrderReturn.supplier_id = ClinicSupplierManager.id (Order bilan bir xil)
-      const supplierId =
+      const supplierManagerId =
         outbound.product?.productSupplier?.clinic_supplier_manager_id ??
         outbound.product?.productSupplier?.clinicSupplierManager?.id ??
         null;
@@ -1514,65 +1180,60 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
       };
 
       const returns = await this.prisma.executeWithRetry(async () => {
-        return Promise.all(
-          items.map(async (item: any) => {
-            const itemBatchNo =
-              item.batchNo || outbound.batch_no || outbound.batch?.batch_no;
-            const pid = item.productId || outbound.product_id;
+        const created: any[] = [];
+        for (const item of items) {
+          const pid = item.productId || outbound.product_id;
 
-            const pRow = await (this.prisma as any).product.findFirst({
-              where: { id: pid, tenant_id: tenantId },
-              select: {
-                name: true,
-                sale_price: true,
-                purchase_price: true,
-                brand: true,
-              },
-            });
+          const pRow = await (this.prisma as any).product.findFirst({
+            where: { id: pid, tenant_id: tenantId },
+            select: {
+              name: true,
+              sale_price: true,
+              purchase_price: true,
+              brand: true,
+            },
+          });
 
-            const nameCandidates = [
-              item.productName,
-              outbound.product?.name,
-              pRow?.name,
-            ];
-            const productName =
-              nameCandidates.find((n) => !isPlaceholderProductName(n)) ??
-              "알 수 없음";
+          const nameCandidates = [
+            item.productName,
+            outbound.product?.name,
+            pRow?.name,
+          ];
+          const productName =
+            nameCandidates.find((n) => !isPlaceholderProductName(n)) ??
+            "알 수 없음";
 
-            const unitPrice = this.resolveOrderReturnUnitPrice(item.unitPrice, {
-              sale_price: pRow?.sale_price ?? outbound.product?.sale_price,
-              purchase_price:
-                pRow?.purchase_price ?? outbound.product?.purchase_price,
-            });
+          const unitPrice = this.resolveOrderReturnUnitPrice(item.unitPrice, {
+            sale_price: pRow?.sale_price ?? outbound.product?.sale_price,
+            purchase_price:
+              pRow?.purchase_price ?? outbound.product?.purchase_price,
+          });
 
-            const brand =
-              item.brand ||
-              outbound.product?.brand ||
-              pRow?.brand ||
-              null;
+          const brand =
+            item.brand || outbound.product?.brand || pRow?.brand || null;
 
-            return (this.prisma as any).orderReturn.create({
-              data: {
-                tenant_id: tenantId,
-                order_id: null,
-                order_no: null,
-                outbound_id: outboundId,
-                batch_no: itemBatchNo,
-                product_id: pid,
-                product_name: productName,
-                brand,
-                return_quantity: item.returnQuantity || outbound.outbound_qty,
-                total_quantity: item.totalQuantity || outbound.outbound_qty,
-                unit_price: unitPrice,
-                return_type: returnType,
-                status: "pending",
-                supplier_id: supplierId,
-                return_manager: returnManager,
-                inbound_date: batchCreatedAt || new Date(),
-              },
-            });
-          })
-        );
+          const defective_return_no = await this.generateDefectiveReturnNumber();
+
+          const row = await (this.prisma as any).defectiveProductReturn.create({
+            data: {
+              tenant_id: tenantId,
+              supplier_manager_id: supplierManagerId,
+              defective_return_no,
+              defective_return_type: defectiveReturnType,
+              product_id: pid,
+              product_name: productName,
+              brand,
+              return_quantity: item.returnQuantity || outbound.outbound_qty,
+              total_quantity: item.totalQuantity || outbound.outbound_qty,
+              unit_price: unitPrice,
+              status: "pending",
+              return_manager: returnManager,
+              inbound_date: batchCreatedAt || new Date(),
+            },
+          });
+          created.push(row);
+        }
+        return created;
       });
 
       return { created: returns.length, returns };
@@ -1593,16 +1254,12 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     status: string;
   }) {
     try {
-      // Find return by return_no
-      const returnItem = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
-          where: { return_no: dto.return_no },
-        });
-      });
+      const returnItem = await this.findDefectiveReturnByWebhookReturnNo(
+        dto.return_no
+      );
 
       if (!returnItem) {
         this.logger.warn(`Return not found for return_no: ${dto.return_no}`);
-        // Don't throw error, just log - webhook might be called multiple times
         return {
           success: false,
           message: `Return not found for return_no: ${dto.return_no}`,
@@ -1611,7 +1268,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
 
       // Update status to completed
       const updated = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.update({
+        return (this.prisma as any).defectiveProductReturn.update({
           where: { id: returnItem.id },
           data: {
             status: "completed",
@@ -1655,17 +1312,13 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
    */
   async handleOrderReturnAcceptWebhook(dto: { return_no: string }) {
     try {
-      const row = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
-          where: { return_no: dto.return_no },
-        });
-      });
+      const row = await this.findDefectiveReturnByWebhookReturnNo(dto.return_no);
       if (!row) {
-        return { success: false, message: "Order return not found" };
+        return { success: false, message: "Defective product return not found" };
       }
 
       const updated = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.update({
+        return (this.prisma as any).defectiveProductReturn.update({
           where: { id: row.id },
           data: { status: "processing", updated_at: new Date() },
         });
@@ -1687,7 +1340,10 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         }
       }
 
-      return { success: true, message: "Order return accept webhook processed" };
+      return {
+        success: true,
+        message: "Order return accept webhook processed",
+      };
     } catch (error: any) {
       this.logger.error(
         `handleOrderReturnAcceptWebhook: ${error.message}`,
@@ -1705,17 +1361,13 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     reason?: string;
   }) {
     try {
-      const row = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
-          where: { return_no: dto.return_no },
-        });
-      });
+      const row = await this.findDefectiveReturnByWebhookReturnNo(dto.return_no);
       if (!row) {
-        return { success: false, message: "Order return not found" };
+        return { success: false, message: "Defective product return not found" };
       }
 
       const updated = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.update({
+        return (this.prisma as any).defectiveProductReturn.update({
           where: { id: row.id },
           data: { status: "rejected", updated_at: new Date() },
         });
@@ -1738,7 +1390,10 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         }
       }
 
-      return { success: true, message: "Order return reject webhook processed" };
+      return {
+        success: true,
+        message: "Order return reject webhook processed",
+      };
     } catch (error: any) {
       this.logger.error(
         `handleOrderReturnRejectWebhook: ${error.message}`,
@@ -1755,15 +1410,14 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
   ): Promise<OrderReturnSupplierNotifiedPayload | null> {
     if (!row?.tenant_id || !row?.id) return null;
 
-    const category: "exchange" | "refund" = row.return_type?.includes("교환")
-      ? "exchange"
-      : "refund";
+    const category: "exchange" | "refund" =
+      row.defective_return_type === "defective_exchange"
+        ? "exchange"
+        : "refund";
     const qty = row.return_quantity ?? 0;
 
     const isUnknownProductName = (name: string | null | undefined) =>
-      !name ||
-      !String(name).trim() ||
-      String(name).trim() === "알 수 없음";
+      !name || !String(name).trim() || String(name).trim() === "알 수 없음";
 
     let displayProductName: string | null = null;
     if (!isUnknownProductName(row.product_name)) {
@@ -1773,10 +1427,10 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     let supplierCompanyName: string | null = null;
     let supplierManagerName: string | null = null;
 
-    if (row.supplier_id) {
+    if (row.supplier_manager_id) {
       const csm = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).clinicSupplierManager.findFirst({
-          where: { id: row.supplier_id, tenant_id: row.tenant_id },
+          where: { id: row.supplier_manager_id, tenant_id: row.tenant_id },
           select: { company_name: true, name: true },
         });
       });
@@ -1820,14 +1474,14 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     let productSummary: string | null = null;
     if (displayProductName) {
       productSummary = `${displayProductName} ${qty}개`;
-    } else if (row.batch_no) {
-      productSummary = `배치 ${row.batch_no} ${qty}개`;
+    } else if (row.product_id) {
+      productSummary = `제품 ${row.product_id} ${qty}개`;
     }
 
     return {
       tenantId: row.tenant_id,
       orderReturnId: row.id,
-      returnNo: row.return_no ?? null,
+      returnNo: row.defective_return_no ?? row.id,
       action,
       productSummary,
       supplierCompanyName,
@@ -1846,7 +1500,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     this.invalidateCache(tenantId);
     try {
       const returnItem = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.findFirst({
+        return (this.prisma as any).defectiveProductReturn.findFirst({
           where: { id, tenant_id: tenantId },
         });
       });
@@ -1856,7 +1510,8 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
       }
 
       // Check if it's an exchange type
-      const isExchange = returnItem.return_type?.includes("교환");
+      const isExchange =
+        returnItem.defective_return_type === "defective_exchange";
       if (!isExchange) {
         throw new BadRequestException("This is not an exchange item");
       }
@@ -1868,7 +1523,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
 
       // Update status to completed
       const updatedReturn = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).orderReturn.update({
+        return (this.prisma as any).defectiveProductReturn.update({
           where: { id, tenant_id: tenantId },
           data: {
             status: "completed",
