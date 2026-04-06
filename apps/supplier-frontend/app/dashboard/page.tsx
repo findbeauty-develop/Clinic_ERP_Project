@@ -275,7 +275,7 @@ export default function DashboardPage() {
 
         // Fetch product returns/exchanges (반품 및 교환)
         const exchangesResponse = await fetch(
-          `${supplierApiUrl}/supplier/returns?status=ALL&returnCategory=product&limit=3`,
+          `${supplierApiUrl}/supplier/defective-returns?status=ALL&limit=3`,
           {
             headers: {
               "Content-Type": "application/json",

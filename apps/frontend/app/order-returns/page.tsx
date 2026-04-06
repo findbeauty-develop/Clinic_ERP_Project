@@ -67,10 +67,7 @@ export default function OrderReturnsPage() {
 
   const getStatusBadge = (returnType: string, status: string) => {
     if (status === "completed") {
-      if (
-        returnType === "defective_exchange" ||
-        returnType?.includes("교환")
-      ) {
+      if (returnType === "defective_exchange" || returnType?.includes("교환")) {
         return {
           text: "교환완료",
           className:
@@ -277,8 +274,7 @@ const ReturnCard = memo(function ReturnCard({
       const { apiPost } = await import("../../lib/api");
 
       const finalDefectiveReturnType =
-        returnType === "defective_exchange" ||
-        returnType === "defective_return"
+        returnType === "defective_exchange" || returnType === "defective_return"
           ? returnType
           : "defective_exchange";
 
@@ -450,8 +446,8 @@ const ReturnCard = memo(function ReturnCard({
                     사유 선택*
                   </option>
                   <>
-                    <option value="defective_exchange">교환</option>
-                    <option value="defective_return">반품</option>
+                    <option value="defective_exchange">불량 | 교환</option>
+                    <option value="defective_return">불량 | 반품</option>
                   </>
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
@@ -477,9 +473,7 @@ const ReturnCard = memo(function ReturnCard({
                 disabled
               >
                 <option>
-                  {formatReturnType(
-                    returnItem.defective_return_type || ""
-                  )}
+                  {formatReturnType(returnItem.defective_return_type || "")}
                 </option>
               </select>
             )}

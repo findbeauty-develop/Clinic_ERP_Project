@@ -71,10 +71,6 @@ export default function ExchangesPage() {
         params.append("status", "ALL");
       }
 
-      // Filter by return category: only product returns/exchanges (제품 반품/교환)
-      // Product returns/exchanges have "|" (e.g., "주문|반품", "불량|교환", "주문|교환", "불량|반품")
-      params.append("returnCategory", "product");
-
       params.append("page", page.toString());
       params.append("limit", limit.toString());
 
@@ -85,7 +81,7 @@ export default function ExchangesPage() {
         page: number;
         limit: number;
         totalPages: number;
-      }>(`/supplier/returns?${params.toString()}`);
+      }>(`/supplier/defective-returns?${params.toString()}`);
 
       // Map response to our format
       const mappedRequests: ReturnRequest[] = response.notifications.map(
@@ -214,7 +210,7 @@ export default function ExchangesPage() {
         selectedRequest.items.length === 1
           ? selectedRequest.items[0].id
           : undefined;
-      await apiPut(`/supplier/returns/${selectedRequest.id}/accept`, {
+      await apiPut(`/supplier/defective-returns/${selectedRequest.id}/accept`, {
         itemId,
       });
       setShowConfirmModal(false);
@@ -239,7 +235,7 @@ export default function ExchangesPage() {
 
     try {
       setProcessing(true);
-      await apiPut(`/supplier/returns/${selectedRequest.id}/reject`, {
+      await apiPut(`/supplier/defective-returns/${selectedRequest.id}/reject`, {
         reason: rejectionReason,
       });
       setShowRejectModal(false);
@@ -262,7 +258,7 @@ export default function ExchangesPage() {
 
     try {
       setProcessing(true);
-      await apiPut(`/supplier/returns/${selectedRequest.id}/complete`, {});
+      await apiPut(`/supplier/defective-returns/${selectedRequest.id}/complete`, {});
       alert("제품 받았음으로 처리되었습니다.");
       setShowCompleteModal(false);
       setSelectedRequest(null);
@@ -298,25 +294,36 @@ export default function ExchangesPage() {
     return items.reduce((sum, item) => sum + item.totalPrice, 0);
   };
 
+  const isDefectiveExchangeType = (returnType?: string) =>
+    returnType === "defective_exchange";
+
   const renderStatusBadge = (status: string, items?: ReturnItem[]) => {
+    const rt = items?.[0]?.returnType;
+    const exchangeAwaitingClinic =
+      status === "PROCESSING" && isDefectiveExchangeType(rt);
+
     const label =
       status === "PENDING"
         ? "요청 확인 대기"
-        : status === "PROCESSING"
-          ? "요청 진행"
-          : status === "COMPLETED"
-            ? items?.[0]?.returnType?.includes("교환")
-              ? "교환 완료"
-              : "반품 완료"
-            : "요청 거절";
+        : exchangeAwaitingClinic
+          ? "병의원 확인중"
+          : status === "PROCESSING"
+            ? "요청 진행"
+            : status === "COMPLETED"
+              ? rt?.includes("교환") || rt === "defective_exchange"
+                ? "교환 완료"
+                : "반품 완료"
+              : "요청 거절";
     const color =
       status === "PENDING"
         ? "bg-amber-100 text-amber-700"
-        : status === "PROCESSING"
-          ? "bg-blue-100 text-blue-700"
-          : status === "COMPLETED"
-            ? "bg-emerald-100 text-emerald-700"
-            : "bg-red-100 text-red-700";
+        : exchangeAwaitingClinic
+          ? "bg-violet-100 text-violet-800"
+          : status === "PROCESSING"
+            ? "bg-blue-100 text-blue-700"
+            : status === "COMPLETED"
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-red-100 text-red-700";
     return (
       <span className={`rounded-full px-2 py-1 text-xs font-semibold ${color}`}>
         {label}
@@ -455,8 +462,10 @@ export default function ExchangesPage() {
               )}:${String(date.getMinutes()).padStart(2, "0")}`;
 
               return request.items.map((item, itemIndex) => {
-                // Get item status (default to pending if not set)
-                const itemStatus = item.status || "pending";
+                // DB uses request-progress; list UI expects processing
+                const raw = item.status || "pending";
+                const itemStatus =
+                  raw === "request-progress" ? "processing" : raw;
 
                 // Filter items based on active tab
                 if (activeTab === "pending" && itemStatus !== "pending")
@@ -611,7 +620,8 @@ export default function ExchangesPage() {
                       </div>
                     )}
                     {itemStatus === "processing" &&
-                      activeTab === "processing" && (
+                      activeTab === "processing" &&
+                      !isDefectiveExchangeType(item.returnType) && (
                         <div className="flex items-center justify-end gap-2 px-0.9 py-3 mt-4">
                           <button
                             onClick={() => {

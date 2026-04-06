@@ -526,6 +526,8 @@ model DefectiveProductReturn {
   total_quantity          Int
   unit_price              Int
   status                  String              @default("pending") // pending, processing, completed, rejected
+  product_received        Boolean             @default(false) // clinic confirmed receipt (교환 확인 등)
+  received_at             DateTime?
   memo                    String?
   images                  String[]            @default([])
   return_manager          String?

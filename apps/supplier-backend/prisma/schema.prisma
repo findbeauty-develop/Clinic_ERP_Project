@@ -242,8 +242,7 @@ model SupplierReturnItem {
 }
 
 // ---------------------------------------------------------------------------
-// Split return storage (Phase 1): tip/반납 vs order-return — additive only.
-// Legacy SupplierReturnRequest / SupplierReturnItem remain until backfill + API switch.
+// SupplierReturnRequest = 반납/empty-box (unchanged). SupplierDefectiveReturn = clinic defective flat row.
 // ---------------------------------------------------------------------------
 
 // Clinic tip-product return (반납 / empty-box) → supplier — one row = one product return (no line-item table)
@@ -274,55 +273,39 @@ model SupplierTipReturnRequest {
   @@index([created_at])
 }
 
-// Clinic order / outbound product return or exchange → supplier
-model SupplierOrderReturnRequest {
-  id                  String    @id @default(uuid())
-  supplier_tenant_id  String
+// Clinic defective product return/exchange (flat row; clinic defective_return_no) — separate from SupplierReturnRequest
+model SupplierDefectiveReturn {
+  id                    String    @id @default(uuid())
+  supplier_tenant_id    String
   supplier_manager_id String?
-  clinic_tenant_id    String
-  clinic_name         String
-  clinic_manager_name String
-  return_no           String    @unique
-  status              String    @default("pending")
-  memo                String?
-  created_at          DateTime  @default(now())
-  updated_at          DateTime?
-  confirmed_at        DateTime?
-  completed_at        DateTime?
-  rejected_at         DateTime?
-  rejected_reason     String?
-
-  items SupplierOrderReturnItem[]
+  clinic_tenant_id      String
+  clinic_name           String
+  clinic_manager_name   String
+  defective_return_no   String    @unique
+  defective_return_type String // defective_exchange | defective_return
+  status                String    @default("pending") // pending | request-progress | completed | rejected
+  product_received      Boolean   @default(false)
+  received_at           DateTime?
+  product_name          String
+  brand                 String?
+  total_qty             Int
+  total_price           Int
+  memo                  String?
+  images                String[]  @default([])
+  inbound_date          String
+  created_at            DateTime  @default(now())
+  updated_at            DateTime?
+  confirmed_at          DateTime?
+  completed_at          DateTime?
+  rejected_at           DateTime?
+  rejected_reason       String?
 
   @@index([supplier_tenant_id])
   @@index([supplier_manager_id])
   @@index([clinic_tenant_id])
-  @@index([return_no])
+  @@index([defective_return_no])
   @@index([status])
   @@index([created_at])
-}
-
-model SupplierOrderReturnItem {
-  id                String   @id @default(uuid())
-  return_request_id String
-  product_name      String
-  brand             String?
-  quantity          Int
-  status            String   @default("pending")
-  return_type       String
-  memo              String?
-  images            String[] @default([])
-  inbound_date      String
-  total_price       Int
-  order_no          String?
-  batch_no          String?
-
-  created_at DateTime  @default(now())
-  updated_at DateTime?
-
-  returnRequest SupplierOrderReturnRequest @relation(fields: [return_request_id], references: [id], onDelete: Cascade)
-
-  @@index([return_request_id])
 }
 
 // Supplier in-app notifications

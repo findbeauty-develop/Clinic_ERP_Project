@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./modules/auth/auth.module";
 import { ManagerModule } from "./modules/manager/manager.module";
 import { ReturnModule } from "./modules/return/return.module";
+import { DefectiveReturnModule } from "./modules/defective-return/defective-return.module";
 import { OrderModule } from "./modules/order/order.module";
 import { NotificationModule } from "./modules/notifications/notification.module";
 import { PrismaService } from "./core/prisma.service";
@@ -36,6 +37,7 @@ import { PrismaService } from "./core/prisma.service";
     AuthModule,
     ManagerModule,
     ReturnModule,
+    DefectiveReturnModule,
     OrderModule,
     NotificationModule,
   ],

@@ -50,31 +50,33 @@ export class OrderReturnService {
     }
 
     const data = await this.prisma.executeWithRetry(async () => {
-      const returns = await (this.prisma as any).defectiveProductReturn.findMany(
-        {
-          where,
-          orderBy: { created_at: "desc" },
-          select: {
-            id: true,
-            defective_return_no: true,
-            defective_return_type: true,
-            return_quantity: true,
-            status: true,
-            memo: true,
-            images: true,
-            return_manager: true,
-            supplier_manager_id: true,
-            product_id: true,
-            inbound_date: true,
-            created_at: true,
-            unit_price: true,
-            total_quantity: true,
-            product_name: true,
-            brand: true,
-            updated_at: true,
-          },
-        }
-      );
+      const returns = await (
+        this.prisma as any
+      ).defectiveProductReturn.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+        select: {
+          id: true,
+          defective_return_no: true,
+          defective_return_type: true,
+          return_quantity: true,
+          status: true,
+          product_received: true,
+          received_at: true,
+          memo: true,
+          images: true,
+          return_manager: true,
+          supplier_manager_id: true,
+          product_id: true,
+          inbound_date: true,
+          created_at: true,
+          unit_price: true,
+          total_quantity: true,
+          product_name: true,
+          brand: true,
+          updated_at: true,
+        },
+      });
 
       if (returns.length === 0) {
         return [];
@@ -414,6 +416,55 @@ export class OrderReturnService {
     });
   }
 
+  /** 교환 확인: supplier SupplierDefectiveReturn → completed (defective_exchange). */
+  private async syncSupplierDefectiveExchangeCompleted(returnNo: string) {
+    const supplierApiUrl = (
+      process.env.SUPPLIER_BACKEND_URL || "https://api-supplier.jaclit.com"
+    ).replace(/\/$/, "");
+    const apiKey = process.env.SUPPLIER_BACKEND_API_KEY;
+    if (!apiKey) {
+      throw new BadRequestException(
+        "SUPPLIER_BACKEND_API_KEY is not configured; cannot sync exchange confirmation to supplier"
+      );
+    }
+    const url = `${supplierApiUrl}/supplier/defective-returns/webhook/clinic-exchange-confirmed`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({ return_no: returnNo }),
+      });
+    } catch (e: any) {
+      this.logger.error(
+        `syncSupplierDefectiveExchangeCompleted network: ${e?.message}`
+      );
+      throw new BadRequestException(
+        `Could not reach supplier backend: ${e?.message || "network error"}`
+      );
+    }
+    const text = await res.text();
+    let body: { success?: boolean; message?: string } = {};
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      /* ignore */
+    }
+    if (!res.ok) {
+      throw new BadRequestException(
+        text || `Supplier webhook failed: HTTP ${res.status}`
+      );
+    }
+    if (body.success === false) {
+      throw new BadRequestException(
+        body.message || "Supplier did not mark defective return completed"
+      );
+    }
+  }
+
   /** OrderReturn.unit_price = 제품 단가 (판매가 우선, 없으면 매입가, 마지막으로 DTO) */
   private resolveOrderReturnUnitPrice(
     itemUnit: unknown,
@@ -576,14 +627,12 @@ export class OrderReturnService {
       const productName =
         product?.name && product.name.trim() !== ""
           ? product.name
-          : returnItem.product_name &&
-              returnItem.product_name.trim() !== ""
+          : returnItem.product_name && returnItem.product_name.trim() !== ""
             ? returnItem.product_name
             : "알 수 없음";
       const returnQty = returnItem.return_quantity || 0;
       const totalRefund = (returnItem.unit_price || 0) * returnQty;
-      const correlationId =
-        returnItem.defective_return_no || returnItem.id;
+      const correlationId = returnItem.defective_return_no || returnItem.id;
 
       const returnTypeText = this.defectiveReturnTypeKorean(
         returnItem.defective_return_type
@@ -880,14 +929,17 @@ ${clinicName}에서 ${productName} ${returnQty}${product?.unit ? ` ${product.uni
         return;
       }
 
-      const response = await fetch(`${supplierApiUrl}/supplier/returns`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify(returnData),
-      });
+      const response = await fetch(
+        `${supplierApiUrl}/supplier/defective-returns`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+          },
+          body: JSON.stringify(returnData),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -1063,7 +1115,11 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     }
   }
 
-  async updateReturnType(tenantId: string, id: string, defectiveReturnType: string) {
+  async updateReturnType(
+    tenantId: string,
+    id: string,
+    defectiveReturnType: string
+  ) {
     this.invalidateCache(tenantId);
     if (!this.isDefectiveReturnTypeValue(defectiveReturnType)) {
       throw new BadRequestException(
@@ -1212,7 +1268,8 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
           const brand =
             item.brand || outbound.product?.brand || pRow?.brand || null;
 
-          const defective_return_no = await this.generateDefectiveReturnNumber();
+          const defective_return_no =
+            await this.generateDefectiveReturnNumber();
 
           const row = await (this.prisma as any).defectiveProductReturn.create({
             data: {
@@ -1312,9 +1369,14 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
    */
   async handleOrderReturnAcceptWebhook(dto: { return_no: string }) {
     try {
-      const row = await this.findDefectiveReturnByWebhookReturnNo(dto.return_no);
+      const row = await this.findDefectiveReturnByWebhookReturnNo(
+        dto.return_no
+      );
       if (!row) {
-        return { success: false, message: "Defective product return not found" };
+        return {
+          success: false,
+          message: "Defective product return not found",
+        };
       }
 
       const updated = await this.prisma.executeWithRetry(async () => {
@@ -1361,9 +1423,14 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
     reason?: string;
   }) {
     try {
-      const row = await this.findDefectiveReturnByWebhookReturnNo(dto.return_no);
+      const row = await this.findDefectiveReturnByWebhookReturnNo(
+        dto.return_no
+      );
       if (!row) {
-        return { success: false, message: "Defective product return not found" };
+        return {
+          success: false,
+          message: "Defective product return not found",
+        };
       }
 
       const updated = await this.prisma.executeWithRetry(async () => {
@@ -1521,13 +1588,20 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
         throw new BadRequestException("Return is not in processing status");
       }
 
-      // Update status to completed
+      await this.syncSupplierDefectiveExchangeCompleted(
+        returnItem.defective_return_no
+      );
+
+      const now = new Date();
+      // Update status to completed + clinic receipt (반품 진행중 tab 확인)
       const updatedReturn = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).defectiveProductReturn.update({
           where: { id, tenant_id: tenantId },
           data: {
             status: "completed",
-            updated_at: new Date(),
+            product_received: true,
+            received_at: now,
+            updated_at: now,
           },
         });
       });
