@@ -23,7 +23,7 @@ export class OrderReturnController {
   @Get()
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
-  @Header("Cache-Control", "public, max-age=30")
+  @Header("Cache-Control", "private, no-store, must-revalidate")
   @ApiOperation({ summary: "Get order returns by status" })
   async getReturns(
     @Tenant() tenantId: string,

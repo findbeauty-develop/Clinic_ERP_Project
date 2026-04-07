@@ -45,7 +45,9 @@ export class OrderReturnService {
     }
 
     const where: any = { tenant_id: tenantId };
-    if (status) {
+    if (status === "history") {
+      where.status = { in: ["completed", "rejected"] };
+    } else if (status) {
       where.status = status;
     }
 
@@ -60,9 +62,10 @@ export class OrderReturnService {
           defective_return_no: true,
           defective_return_type: true,
           return_quantity: true,
-          status: true,
-          product_received: true,
-          received_at: true,
+            status: true,
+            supplier_accepted_at: true,
+            product_received: true,
+            received_at: true,
           memo: true,
           images: true,
           return_manager: true,
@@ -566,6 +569,7 @@ export class OrderReturnService {
           where: { id, tenant_id: tenantId },
           data: {
             status: "processing",
+            supplier_accepted_at: null,
             updated_at: new Date(),
           },
         });
@@ -1284,6 +1288,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
               total_quantity: item.totalQuantity || outbound.outbound_qty,
               unit_price: unitPrice,
               status: "pending",
+              memo: outbound.memo ?? item.memo ?? null,
               return_manager: returnManager,
               inbound_date: batchCreatedAt || new Date(),
             },
@@ -1382,7 +1387,11 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
       const updated = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).defectiveProductReturn.update({
           where: { id: row.id },
-          data: { status: "processing", updated_at: new Date() },
+          data: {
+            status: "processing",
+            supplier_accepted_at: new Date(),
+            updated_at: new Date(),
+          },
         });
       });
 
@@ -1586,6 +1595,12 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
       // Check if status is "processing"
       if (returnItem.status !== "processing") {
         throw new BadRequestException("Return is not in processing status");
+      }
+
+      if (!returnItem.supplier_accepted_at) {
+        throw new BadRequestException(
+          "공급처에서 요청 확인 후 진행할 수 있습니다."
+        );
       }
 
       await this.syncSupplierDefectiveExchangeCompleted(

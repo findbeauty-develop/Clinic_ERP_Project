@@ -3,8 +3,10 @@ import { DefectiveReturnController } from "./defective-return.controller";
 import { DefectiveReturnService } from "./defective-return.service";
 import { PrismaService } from "../../core/prisma.service";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { NotificationModule } from "../notifications/notification.module";
 
 @Module({
+  imports: [NotificationModule],
   controllers: [DefectiveReturnController],
   providers: [DefectiveReturnService, PrismaService, JwtAuthGuard],
   exports: [DefectiveReturnService],

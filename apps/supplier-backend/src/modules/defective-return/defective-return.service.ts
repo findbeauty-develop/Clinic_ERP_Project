@@ -1,11 +1,15 @@
 import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma.service";
+import { NotificationService } from "../notifications/notification.service";
 
 @Injectable()
 export class DefectiveReturnService {
   private readonly logger = new Logger(DefectiveReturnService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService
+  ) {}
 
   private formatRow(row: any) {
     const qty = row.total_qty || 0;
@@ -82,7 +86,18 @@ export class DefectiveReturnService {
     const brand = first.brand ?? null;
     const quantity = Number(first.quantity) || 0;
     const totalPrice = Number(first.totalPrice) || 0;
-    const defectiveReturnType = String(first.returnType || "").trim();
+    const rawReturnType =
+      first.returnType ??
+      first.return_type ??
+      first.defective_return_type ??
+      "";
+    const defectiveReturnTypeLower = String(rawReturnType).trim().toLowerCase();
+    const defectiveReturnType =
+      defectiveReturnTypeLower === "defective_exchange"
+        ? "defective_exchange"
+        : defectiveReturnTypeLower === "defective_return"
+          ? "defective_return"
+          : String(rawReturnType).trim();
     if (
       defectiveReturnType !== "defective_exchange" &&
       defectiveReturnType !== "defective_return"
@@ -133,7 +148,123 @@ export class DefectiveReturnService {
       });
     });
 
+    this.notifyDefectiveReturnCreated({
+      row: {
+        id: row.id,
+        defective_return_type: row.defective_return_type,
+        total_qty: row.total_qty,
+      },
+      supplierManagerId: supplierManagerId || null,
+      supplierTenantId,
+      clinicName: clinicName || "",
+      clinicManagerName: clinicManagerName || "",
+      productName,
+      returnNo,
+    }).catch(() => undefined);
+
     return this.formatRow(row);
+  }
+
+  private isDefectiveExchangeKind(t: string | null | undefined): boolean {
+    const s = String(t ?? "").trim().toLowerCase();
+    if (s === "defective_exchange") return true;
+    const ko = String(t ?? "");
+    if (ko.includes("교환") && !ko.includes("반품")) return true;
+    return false;
+  }
+
+  /** Header bell / 알림 panel (same pattern as order + return modules). */
+  private async notifyDefectiveReturnCreated(params: {
+    row: {
+      id: string;
+      defective_return_type: string;
+      total_qty: number | null;
+    };
+    supplierManagerId: string | null;
+    supplierTenantId: string;
+    clinicName: string;
+    clinicManagerName: string;
+    productName: string;
+    returnNo: string;
+  }) {
+    const {
+      row,
+      supplierManagerId,
+      supplierTenantId,
+      clinicName,
+      clinicManagerName,
+      productName,
+      returnNo,
+    } = params;
+
+    const isExchange = this.isDefectiveExchangeKind(row.defective_return_type);
+    const kindNoun = isExchange ? "교환" : "반품";
+    const requestLine = isExchange
+      ? "교환 요청이 들어왔습니다."
+      : "반품 요청이 들어왔습니다.";
+
+    const notifTitle = clinicName
+      ? `${clinicName}${clinicManagerName ? ` ${clinicManagerName}` : ""}`
+      : "클리닉";
+    const productSummary =
+      productName && productName !== "알 수 없음"
+        ? `${productName}`
+        : "제품";
+    const qty = Math.max(0, Number(row.total_qty) || 0);
+    const firstLine =
+      qty > 0
+        ? `${productSummary} ${qty}개의 ${kindNoun}`
+        : `${productSummary}의 ${kindNoun}`;
+    const notifBody = `${firstLine}\n${requestLine}`;
+
+    const payload = {
+      returnCategory: "product" as const,
+      defective_return_no: returnNo,
+      kind: kindNoun,
+      quantity: qty,
+    };
+
+    const dedupeKey = `new_defective_return:${row.id}`;
+
+    try {
+      if (supplierManagerId) {
+        await this.notificationService.create({
+          supplierManagerId,
+          type: "new_defective_return",
+          title: notifTitle,
+          body: notifBody,
+          entityType: "return",
+          entityId: row.id,
+          payload,
+          dedupeKey,
+        });
+      } else {
+        const managers = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierManager.findMany({
+            where: { supplier_tenant_id: supplierTenantId },
+            select: { id: true },
+          });
+        });
+        if (managers.length > 0) {
+          await this.notificationService.createMany(
+            managers.map((m: { id: string }) => ({
+              supplierManagerId: m.id,
+              type: "new_defective_return",
+              title: notifTitle,
+              body: notifBody,
+              entityType: "return",
+              entityId: row.id,
+              payload,
+              dedupeKey: `${dedupeKey}:${m.id}`,
+            }))
+          );
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `Defective return in-app notification failed: ${e?.message}`
+      );
+    }
   }
 
   async getList(

@@ -30,7 +30,7 @@ export default function OrderReturnsPage() {
     const statusMap = {
       processing: "pending",
       "in-progress": "processing",
-      history: "completed",
+      history: "history",
     };
     const status = statusMap[activeTab];
 
@@ -88,7 +88,10 @@ export default function OrderReturnsPage() {
     } else if (status === "rejected") {
       return {
         text: "요청 거절",
-        className: "bg-slate-100 text-slate-700 border border-slate-300",
+        className:
+          "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800",
+        textClassName: "text-sm font-medium text-red-800 dark:text-red-200",
+        iconClassName: "w-4 h-4 text-red-600 dark:text-red-400",
       };
     }
     return null;
@@ -185,31 +188,38 @@ const ReturnCard = memo(function ReturnCard({
 }: any) {
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [memo, setMemo] = useState(returnItem.memo || "");
   const [images, setImages] = useState<string[]>(returnItem.images || []);
+  const memoFromOutbound = (returnItem.memo || "").trim();
+  /** 빈 값 = 페이지 진입 시 기본 "사유 선택" (서버 동기화 없음) */
   const [returnType, setReturnType] = useState("");
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
 
   useEffect(() => {
-    if (returnItem.defective_return_type) {
-      setReturnType(returnItem.defective_return_type);
-    }
-  }, [returnItem.id, returnItem.defective_return_type]);
+    setReturnType("");
+  }, [returnItem.id]);
 
   // Get return manager name from backend response (for display in non-editable tabs)
   const managerName = returnItem.returnManagerName || "";
 
   const showReturnTypeDropdown = true;
 
-  const isExchange =
-    returnType === "defective_exchange" || returnType?.includes("교환");
-  const isReturn =
-    returnType === "defective_return" ||
-    (returnType?.includes("반품") && !returnType?.includes("교환"));
   const isProcessingTab = activeTab === "in-progress";
   const isHistoryTab = activeTab === "history";
   const isProcessingTabWithInputs = activeTab === "processing";
+
+  // 반품 처리: 사유 선택 전엔 returnType만 사용. 반품 진행중/내역: 서버 defective_return_type으로 확인 버튼 등 표시
+  const typeForRules = isProcessingTabWithInputs
+    ? returnType
+    : returnType === "defective_exchange" || returnType === "defective_return"
+      ? returnType
+      : returnItem.defective_return_type || "";
+
+  const isExchange =
+    typeForRules === "defective_exchange" || typeForRules?.includes("교환");
+  const isReturn =
+    typeForRules === "defective_return" ||
+    (typeForRules?.includes("반품") && !typeForRules?.includes("교환"));
 
   const handleImageUpload = (
     index: number,
@@ -247,6 +257,14 @@ const ReturnCard = memo(function ReturnCard({
   };
 
   const handleReturnTypeChange = async (newType: string) => {
+    // "사유 선택" — 로컬만 초기화, API 호출 없음
+    if (newType === "") {
+      setReturnType("");
+      return;
+    }
+    if (newType !== "defective_exchange" && newType !== "defective_return") {
+      return;
+    }
     const oldType = returnType;
     setReturnType(newType);
 
@@ -269,22 +287,24 @@ const ReturnCard = memo(function ReturnCard({
   };
 
   const processReturn = async () => {
+    if (
+      returnType !== "defective_exchange" &&
+      returnType !== "defective_return"
+    ) {
+      alert("반품 유형(사유)을 선택해주세요.");
+      return;
+    }
     setProcessing(true);
     try {
       const { apiPost } = await import("../../lib/api");
 
-      const finalDefectiveReturnType =
-        returnType === "defective_exchange" || returnType === "defective_return"
-          ? returnType
-          : "defective_exchange";
-
       const response = await apiPost(
         `${apiUrl}/order-returns/${returnItem.id}/process`,
         {
-          memo: memo || null,
+          memo: memoFromOutbound || null,
           returnManager: returnManagerName || null,
           images: images,
-          defective_return_type: finalDefectiveReturnType,
+          defective_return_type: returnType,
         }
       );
 
@@ -384,7 +404,9 @@ const ReturnCard = memo(function ReturnCard({
         <div className="mb-2 flex items-center gap-2">
           <div className={statusBadge.className}>
             <svg
-              className="w-4 h-4 text-green-700"
+              className={
+                statusBadge.iconClassName || "w-4 h-4 text-green-700"
+              }
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -426,7 +448,7 @@ const ReturnCard = memo(function ReturnCard({
             </div>
             {returnItem.defective_return_no && (
               <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
-                불량반품번호: {returnItem.defective_return_no}
+                반품번호: {returnItem.defective_return_no}
               </div>
             )}
           </div>
@@ -442,13 +464,9 @@ const ReturnCard = memo(function ReturnCard({
                     minWidth: "140px",
                   }}
                 >
-                  <option value="" disabled>
-                    사유 선택*
-                  </option>
-                  <>
-                    <option value="defective_exchange">불량 | 교환</option>
-                    <option value="defective_return">불량 | 반품</option>
-                  </>
+                  <option value="">사유 선택</option>
+                  <option value="defective_exchange">불량 | 교환</option>
+                  <option value="defective_return">불량 | 반품</option>
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                   <svg
@@ -545,14 +563,17 @@ const ReturnCard = memo(function ReturnCard({
         {isProcessingTabWithInputs && (
           <>
             <div className="mb-4 flex items-center gap-3">
-              {/* Memo Input */}
-              <div className="flex-1">
-                <input
-                  type="text"
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  placeholder={showReturnTypeDropdown ? "출고의 메모" : "메모"}
-                  className="w-full h-12 rounded-lg border-2 border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 hover:border-sky-400 focus:border-sky-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+              {/* Memo: 출고 시 입력, 읽기 전용 */}
+              <div className="flex-1 min-w-0">
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                  메모 (출고)
+                </label>
+                <textarea
+                  readOnly
+                  value={returnItem.memo || ""}
+                  placeholder="출고 시 입력한 메모가 여기에 표시됩니다"
+                  rows={2}
+                  className="w-full resize-none rounded-lg border-2 border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 cursor-default dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200"
                 />
               </div>
 
@@ -642,7 +663,11 @@ const ReturnCard = memo(function ReturnCard({
                   <button
                     onClick={handleProcessReturn}
                     disabled={
-                      processing || !returnManagerName.trim() || !memo.trim()
+                      processing ||
+                      !returnManagerName.trim() ||
+                      !memoFromOutbound ||
+                      (returnType !== "defective_exchange" &&
+                        returnType !== "defective_return")
                     }
                     className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-rose-500 dark:hover:bg-rose-600"
                   >
@@ -651,7 +676,9 @@ const ReturnCard = memo(function ReturnCard({
                       : returnType === "defective_exchange" ||
                           returnType?.includes("교환")
                         ? "교환하기"
-                        : "반품하기"}
+                        : returnType === "defective_return"
+                          ? "반품하기"
+                          : "유형 선택"}
                   </button>
                 </div>
               </div>
@@ -659,7 +686,7 @@ const ReturnCard = memo(function ReturnCard({
           </>
         )}
 
-        {/* Confirm Exchange Button (only for in-progress tab with exchange type) */}
+        {/* Exchange: supplier «요청 확인» 전에는 요청 중(회색), 이후에만 확인 */}
         {isProcessingTab && isExchange && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-300 dark:border-slate-600">
             <div className="flex items-center gap-2">
@@ -677,16 +704,28 @@ const ReturnCard = memo(function ReturnCard({
               >
                 상세보기
               </button>
-              <span className="text-sm text-slate-700 dark:text-slate-300">
-                교환 제품 받아셨어요?
-              </span>
-              <button
-                onClick={handleConfirmExchange}
-                disabled={confirming}
-                className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-              >
-                {confirming ? "확인 중..." : "확인"}
-              </button>
+              {returnItem.supplier_accepted_at ? (
+                <>
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                    교환 제품 받아셨어요?
+                  </span>
+                  <button
+                    onClick={handleConfirmExchange}
+                    disabled={confirming}
+                    className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                  >
+                    {confirming ? "확인 중..." : "확인"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-lg border border-slate-200 bg-slate-200 px-6 py-2 text-sm font-semibold text-slate-500 cursor-not-allowed dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                >
+                  요청 중
+                </button>
+              )}
             </div>
           </div>
         )}

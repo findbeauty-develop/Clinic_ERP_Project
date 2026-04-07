@@ -526,6 +526,7 @@ model DefectiveProductReturn {
   total_quantity          Int
   unit_price              Int
   status                  String              @default("pending") // pending, processing, completed, rejected
+  supplier_accepted_at    DateTime? // supplier exchanges «요청 확인» webhook (교환 확인 버튼 허용)
   product_received        Boolean             @default(false) // clinic confirmed receipt (교환 확인 등)
   received_at             DateTime?
   memo                    String?
