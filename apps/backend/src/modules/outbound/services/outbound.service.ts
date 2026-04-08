@@ -262,6 +262,19 @@ export class OutboundService {
     // Validation
     this.validateOutbound(batch, dto.outboundQty);
 
+    if (dto.isDefective && (batch.qty ?? 0) < dto.outboundQty) {
+      throw new BadRequestException(
+        "불량 출고를 위한 박스 재고가 없습니다."
+      );
+    }
+
+    const defectiveDocumentQtyPerBox = dto.isDefective
+      ? this.getDefectiveOutboundDocumentQty(batch.product)
+      : null;
+    const defectiveUsedCountIncPerBox = dto.isDefective
+      ? this.getDefectiveUsedCountIncrementPerBox(batch.product)
+      : 0;
+
     return this.prisma
       .$transaction(
         async (tx: any) => {
@@ -272,7 +285,11 @@ export class OutboundService {
               product_id: dto.productId,
               batch_id: dto.batchId,
               batch_no: batch.batch_no,
-              outbound_qty: dto.outboundQty,
+              outbound_qty: dto.isDefective
+                ? this.toIntOutboundQty(
+                    defectiveDocumentQtyPerBox! * dto.outboundQty
+                  )
+                : this.toIntOutboundQty(dto.outboundQty),
               manager_name: dto.managerName,
               patient_name: dto.patientName ?? null,
               chart_number: dto.chartNumber ?? null,
@@ -345,16 +362,29 @@ export class OutboundService {
 
             // Empty box'lar avtomatik Return jadvaliga yozilmaydi
             // Ular faqat Return page'da ko'rsatiladi va user xohlagan paytda return qiladi
-          } else if (isDamagedOrDefective) {
+          } else if (dto.isDamaged && !dto.isDefective) {
             this.logger.warn(
-              `⚠️ [createOutbound] Skipping used_count update for damaged/defective outbound (isDamaged=${dto.isDamaged}, isDefective=${dto.isDefective})`
+              `⚠️ [createOutbound] Skipping used_count update for damaged-only outbound (isDamaged=${dto.isDamaged})`
+            );
+          } else if (dto.isDefective) {
+            this.logger.debug(
+              `📦 [createOutbound] Defective: used_count += ${defectiveUsedCountIncPerBox * dto.outboundQty} (${dto.outboundQty} box), qty -= ${dto.outboundQty}`
             );
           }
 
-          // Batch qty ni kamaytirish (faqat to'liq ishlatilgan box'lar yoki default)
+          // 불량: batch.qty -= outboundQty + used_count += (capacity/usage)×박스수
+          const batchQtyData: Record<string, unknown> = {
+            qty: { decrement: batchQtyDecrement },
+          };
+          if (dto.isDefective && defectiveUsedCountIncPerBox > 0) {
+            (batchQtyData as any).used_count = {
+              increment: defectiveUsedCountIncPerBox * dto.outboundQty,
+            };
+          }
+
           await tx.batch.update({
             where: { id: dto.batchId },
-            data: { qty: { decrement: batchQtyDecrement } },
+            data: batchQtyData as any,
           });
 
           // Product'ning current_stock'ini yangilash (barcha batch'larning qty yig'indisi)
@@ -378,6 +408,9 @@ export class OutboundService {
         // If damaged or defective, create order return after transaction
         if (dto.isDamaged || dto.isDefective) {
           try {
+            const returnQty = dto.isDefective
+              ? defectiveDocumentQtyPerBox! * dto.outboundQty
+              : dto.outboundQty;
             await this.orderReturnService.createFromOutbound(tenantId, {
               outboundId: outbound.id,
               items: [
@@ -386,8 +419,8 @@ export class OutboundService {
                   productId: dto.productId,
                   productName: batch.product?.name || "알 수 없음",
                   brand: batch.product?.brand || null,
-                  returnQuantity: dto.outboundQty,
-                  totalQuantity: dto.outboundQty,
+                  returnQuantity: returnQty,
+                  totalQuantity: returnQty,
                   unitPrice: batch.product?.sale_price || 0,
                 },
               ],
@@ -465,6 +498,11 @@ export class OutboundService {
         );
       }
       this.validateOutbound(batch, item.outboundQty);
+      if (item.isDefective && (batch.qty ?? 0) < item.outboundQty) {
+        throw new BadRequestException(
+          "불량 출고를 위한 박스 재고가 없습니다."
+        );
+      }
     }
 
     return this.prisma
@@ -481,6 +519,11 @@ export class OutboundService {
                 b.id === item.batchId && b.product_id === item.productId
             );
 
+            const outboundQtyStored = item.isDefective
+              ? this.getDefectiveOutboundDocumentQty(batch!.product) *
+                item.outboundQty
+              : item.outboundQty;
+
             // Outbound record yaratish
             const outbound = await (tx as any).outbound.create({
               data: {
@@ -488,7 +531,7 @@ export class OutboundService {
                 product_id: item.productId,
                 batch_id: item.batchId,
                 batch_no: batch!.batch_no,
-                outbound_qty: item.outboundQty,
+                outbound_qty: this.toIntOutboundQty(outboundQtyStored),
                 outbound_type: "제품",
                 manager_name: item.managerName,
                 patient_name: item.patientName ?? null,
@@ -508,6 +551,8 @@ export class OutboundService {
             let batchQtyDecrement = item.outboundQty; // Default: to'g'ridan-to'g'ri kamaytirish
 
             if (
+              !item.isDamaged &&
+              !item.isDefective &&
               product &&
               product.usage_capacity &&
               product.usage_capacity > 0 &&
@@ -556,9 +601,25 @@ export class OutboundService {
               select: { qty: true, used_count: true },
             });
 
+            const defectiveUsedIncBulk =
+              item.isDefective && batch
+                ? this.getDefectiveUsedCountIncrementPerBox(
+                    (batch as any).product ?? product
+                  )
+                : 0;
+
+            const bulkBatchData: Record<string, unknown> = {
+              qty: { decrement: batchQtyDecrement },
+            };
+            if (item.isDefective && defectiveUsedIncBulk > 0) {
+              (bulkBatchData as any).used_count = {
+                increment: defectiveUsedIncBulk * item.outboundQty,
+              };
+            }
+
             await tx.batch.update({
               where: { id: item.batchId },
-              data: { qty: { decrement: batchQtyDecrement } },
+              data: bulkBatchData as any,
             });
 
             const batchAfterUpdate = await tx.batch.findUnique({
@@ -585,8 +646,8 @@ export class OutboundService {
                 productId: item.productId,
                 productName: batch!.product?.name || "알 수 없음",
                 brand: batch!.product?.brand || null,
-                returnQuantity: item.outboundQty,
-                totalQuantity: item.outboundQty,
+                returnQuantity: outboundQtyStored,
+                totalQuantity: outboundQtyStored,
                 unitPrice: batch!.product?.sale_price || 0,
               });
             }
@@ -1210,6 +1271,49 @@ export class OutboundService {
   }
 
   /**
+   * 불량(isDefective) 1BOX 출고: 문서/반품용 수량 = 박스당 사용 횟수 (capacity ÷ usage).
+   * 용량 필드가 없으면 1.
+   */
+  private getDefectiveOutboundDocumentQty(product: any): number {
+    const cap = Number(product?.capacity_per_product);
+    const use = Number(product?.usage_capacity);
+    if (
+      Number.isFinite(cap) &&
+      cap > 0 &&
+      Number.isFinite(use) &&
+      use > 0
+    ) {
+      const n = Math.round(cap / use);
+      return n >= 1 ? n : 1;
+    }
+    return 1;
+  }
+
+  /**
+   * 불량 1박스당 used_count 증가 (float). DB 트리거: available_quantity -= capacity_per_product
+   * (used_count * usage_capacity === 정확히 1박스 분량)
+   */
+  private getDefectiveUsedCountIncrementPerBox(product: any): number {
+    const cap = Number(product?.capacity_per_product);
+    const use = Number(product?.usage_capacity);
+    if (!Number.isFinite(cap) || cap <= 0 || !Number.isFinite(use) || use <= 0) {
+      return 0;
+    }
+    return cap / use;
+  }
+
+  /** Outbound.outbound_qty DB maydoni Int — float yuborilmasin */
+  private toIntOutboundQty(q: number): number {
+    const n = Math.round(Number(q));
+    if (!Number.isFinite(n) || n < 1) {
+      throw new BadRequestException(
+        "출고 수량이 올바르지 않습니다 (정수 1 이상 필요)"
+      );
+    }
+    return n;
+  }
+
+  /**
    * 패키지 출고 처리
    * 각 구성품의 출고 수량은 재고 DB에 개별 반영됨
    */
@@ -1303,7 +1407,7 @@ export class OutboundService {
                 product_id: item.productId,
                 batch_id: item.batchId,
                 batch_no: batch!.batch_no,
-                outbound_qty: item.outboundQty,
+                outbound_qty: this.toIntOutboundQty(item.outboundQty),
                 outbound_type: "패키지",
                 manager_name: dto.managerName,
                 patient_name: dto.patientName ?? null,
@@ -1465,6 +1569,9 @@ export class OutboundService {
       },
       select: {
         id: true,
+        name: true,
+        brand: true,
+        sale_price: true,
         capacity_per_product: true,
         usage_capacity: true,
         returnPolicy: {
@@ -1496,6 +1603,30 @@ export class OutboundService {
         validItems.push(item);
       } catch (error) {
         failedItems.push(item);
+      }
+    }
+
+    // 불량 통합 출고: batch당 필요 박스 수(라인 수) ≤ 현재 batch.qty
+    if (dto.isDefective && validItems.length > 0) {
+      const boxSumPerBatch = new Map<string, number>();
+      for (const item of validItems) {
+        const k = `${item.productId}|${item.batchId}`;
+        boxSumPerBatch.set(
+          k,
+          (boxSumPerBatch.get(k) || 0) + item.outboundQty
+        );
+      }
+      for (const [k, needBoxes] of boxSumPerBatch) {
+        const [pid, bid] = k.split("|");
+        const b = batches.find(
+          (x: any) => x.id === bid && x.product_id === pid
+        ) as any;
+        const q = b?.qty ?? 0;
+        if (!b || q < needBoxes) {
+          throw new BadRequestException(
+            `불량 출고: 박스 재고 부족 (필요 ${needBoxes}개, 현재 ${q}개)`
+          );
+        }
       }
     }
 
@@ -1607,6 +1738,45 @@ export class OutboundService {
             }
 
             const product = productMap.get(productId);
+
+            // 불량 통합: outboundQty jami = 박스 차감; used_count += (capacity/usage)×박스수
+            if (dto.isDefective) {
+              const boxSum = batchData.items.reduce(
+                (s, it) => s + it.outboundQty,
+                0
+              );
+              let volIncSum = 0;
+              for (const it of batchData.items) {
+                const p = productMap.get(it.productId);
+                volIncSum +=
+                  this.getDefectiveUsedCountIncrementPerBox(p) *
+                  it.outboundQty;
+              }
+              const ocIncInt = Math.max(0, Math.round(volIncSum));
+
+              const data: Record<string, unknown> = {
+                outbound_count: { increment: ocIncInt },
+                qty: { decrement: boxSum },
+              };
+              if (volIncSum > 0) {
+                (data as any).used_count = { increment: volIncSum };
+              }
+
+              await tx.batch.update({
+                where: { id: batchId },
+                data: data as any,
+              });
+
+              if (boxSum > 0) {
+                const prev = productStockUpdates.get(productId) || 0;
+                productStockUpdates.set(productId, prev + boxSum);
+              }
+              this.logger.debug(
+                `[createUnifiedOutbound][DEFECTIVE] batch ${batchId}: -${boxSum} box, used_count +${volIncSum}, outbound_count +${ocIncInt}`
+              );
+              continue;
+            }
+
             const isDamagedOrDefective = dto.isDamaged || dto.isDefective;
 
             let batchQtyDecrement = 0; // Default
@@ -1814,13 +1984,19 @@ export class OutboundService {
               ) as any;
 
               if (batch) {
+                const pRow = productMap.get(item.productId);
+                const qtyForRow = dto.isDefective
+                  ? this.getDefectiveOutboundDocumentQty(pRow) *
+                    item.outboundQty
+                  : item.outboundQty;
+
                 const outbound = await (tx as any).outbound.create({
                   data: {
                     tenant_id: tenantId,
                     product_id: item.productId,
                     batch_id: item.batchId,
                     batch_no: batch.batch_no,
-                    outbound_qty: item.outboundQty,
+                    outbound_qty: this.toIntOutboundQty(qtyForRow),
                     outbound_type: dto.outboundType,
                     manager_name: dto.managerName,
                     patient_name: dto.patientName ?? null,
@@ -1842,11 +2018,11 @@ export class OutboundService {
                     outboundId: outbound.id,
                     batchNo: batch.batch_no,
                     productId: item.productId,
-                    productName: batch.product?.name || "알 수 없음",
-                    brand: batch.product?.brand || null,
-                    returnQuantity: item.outboundQty,
-                    totalQuantity: item.outboundQty,
-                    unitPrice: batch.product?.sale_price || 0,
+                    productName: pRow?.name || "알 수 없음",
+                    brand: pRow?.brand ?? null,
+                    returnQuantity: qtyForRow,
+                    totalQuantity: qtyForRow,
+                    unitPrice: pRow?.sale_price ?? 0,
                   });
                 }
               }

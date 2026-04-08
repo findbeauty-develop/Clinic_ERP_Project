@@ -1231,6 +1231,10 @@ function OutboundPageContent() {
         if (!product) return false;
         const batch = product.batches?.find((b) => b.id === item.batchId);
         if (!batch) return false;
+        // 불량: 백엔드는 항상 batch.qty에서 1박스만 차감 → 박스 재고만 보면 됨 (용량 기준 검사는 오탐)
+        if (statusType === "defective") {
+          return (batch.qty ?? 0) >= 1;
+        }
         // Calculate available quantity: (inbound_qty * capacity_per_product) - used_count or fallback to batch.qty
         let availableQuantity = batch.qty; // Default fallback
         if (
@@ -1295,6 +1299,10 @@ function OutboundPageContent() {
 
         if (!batch) {
           return false;
+        }
+
+        if (statusType === "defective") {
+          return (batch.qty ?? 0) >= 1;
         }
 
         // Get product from products list to get capacity_per_product and usage_capacity
@@ -3739,10 +3747,6 @@ const ProductCard = memo(function ProductCard({
                     >
                       +
                     </button>
-                    <span className="ml-2 flex-shrink-0 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {Number(product.usageCapacity ?? 0).toFixed(2)}{" "}
-                      {displayUnit}
-                    </span>
                   </div>
                 </div>
               );
