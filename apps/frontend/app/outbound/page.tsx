@@ -190,7 +190,7 @@ function OutboundPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 20;
 
   // ✅ Ref to track pending scroll target after page change (for barcode scanner)
   const pendingScrollTargetRef = useRef<string | null>(null);
@@ -242,10 +242,7 @@ function OutboundPageContent() {
               Math.max(0, Math.ceil(item.quantity / cap))
             );
           } else {
-            boxes = Math.min(
-              batch.qty,
-              Math.max(0, Math.round(item.quantity))
-            );
+            boxes = Math.min(batch.qty, Math.max(0, Math.round(item.quantity)));
           }
           changed = true;
           return {
@@ -763,14 +760,7 @@ function OutboundPageContent() {
         alert("바코드 스캔 오류가 발생했습니다.");
       }
     },
-    [
-      products,
-      scheduledItems,
-      currentPage,
-      itemsPerPage,
-      statusType,
-      apiUrl,
-    ]
+    [products, scheduledItems, currentPage, itemsPerPage, statusType, apiUrl]
   );
 
   // ✅ Global USB Barcode Scanner - Auto add to cart
@@ -2563,9 +2553,7 @@ function OutboundPageContent() {
                               onToggleExpand={() =>
                                 toggleProductExpand(product.id)
                               }
-                              isDefectiveOutbound={
-                                statusType === "defective"
-                              }
+                              isDefectiveOutbound={statusType === "defective"}
                             />
                           </div>
                         ))}
@@ -3608,9 +3596,7 @@ const ProductCard = memo(function ProductCard({
       .reduce(
         (sum, batch) =>
           sum +
-          (isDefectiveOutbound
-            ? batch.qty
-            : calculateAvailableQuantity(batch)),
+          (isDefectiveOutbound ? batch.qty : calculateAvailableQuantity(batch)),
         0
       ) ?? 0;
 

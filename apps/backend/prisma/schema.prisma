@@ -530,6 +530,8 @@ model DefectiveProductReturn {
   brand                   String?
   return_quantity         Int
   total_quantity          Int
+  /// 출고 스냅샷 단위 (불량: Outbound.product_unit, 예: box)
+  quantity_unit           String?
   unit_price              Int
   status                  String              @default("pending") // pending, processing, completed, rejected
   supplier_accepted_at    DateTime? // supplier exchanges «요청 확인» webhook (교환 확인 버튼 허용)

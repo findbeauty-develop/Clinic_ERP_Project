@@ -2292,7 +2292,7 @@ export default function OrderPage() {
                                 </svg>
                               </button>
                             )}
-                            <button
+                            {/* <button
                               onClick={() => {
                                 // Redirect to 주문 처리 tab
                                 setActiveTab("processing");
@@ -2300,7 +2300,7 @@ export default function OrderPage() {
                               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                             >
                               재주문
-                            </button>
+                            </button> */}
                             <button
                               onClick={async () => {
                                 // Ensure clinic data is loaded before opening modal
@@ -2623,7 +2623,7 @@ export default function OrderPage() {
                               />
                             </svg>
                           </button>
-                          <button
+                          {/* <button
                             onClick={() => {
                               // Redirect to 주문 처리 tab
                               setActiveTab("processing");
@@ -2631,7 +2631,7 @@ export default function OrderPage() {
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
                           >
                             재주문
-                          </button>
+                          </button> */}
                           {/* Rejected order uchun 주문서 보기 ochilmasin — rejected ma'lumotlari ko'rinmasligi kerak */}
                         </div>
                       </div>

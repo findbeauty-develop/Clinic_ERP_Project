@@ -2,12 +2,136 @@
 
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
 
+const ORDER_RETURNS_PAGE_SIZE = 10;
+
+/** 1 … 4 5 6 … 20 — 스크린샷 스타일과 호환 */
+function getVisiblePages(
+  current: number,
+  total: number
+): (number | "ellipsis")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const set = new Set<number>([1, total, current, current - 1, current + 1]);
+  const nums = [...set]
+    .filter((n) => n >= 1 && n <= total)
+    .sort((a, b) => a - b);
+  const out: (number | "ellipsis")[] = [];
+  for (let i = 0; i < nums.length; i++) {
+    if (i > 0 && nums[i]! - nums[i - 1]! > 1) {
+      out.push("ellipsis");
+    }
+    out.push(nums[i]!);
+  }
+  return out;
+}
+
+function OrderReturnsPaginationBar({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (p: number) => void;
+}) {
+  const safe = Math.min(Math.max(1, currentPage), totalPages);
+  const pages = useMemo(
+    () => getVisiblePages(safe, totalPages),
+    [safe, totalPages]
+  );
+
+  const btnBase =
+    "flex h-9 w-9 shrink-0  items-center justify-center rounded-lg border text-sm font-medium transition";
+  const btnIdle =
+    "border-slate-200 bg-white text-slate-700 rounded-lg hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700";
+  const btnActive =
+    "border-sky-500 bg-sky-500 text-white rounded-lg hover:bg-sky-600 dark:border-sky-500 dark:bg-sky-500";
+  const btnDisabled =
+    "cursor-not-allowed border-slate-200 bg-white text-slate-300 rounded-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-600";
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg  bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:bg-slate-800/40">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        <span className="font-semibold text-slate-900 dark:text-slate-100">
+          {safe}
+        </span>
+        <span className="font-normal"> / {totalPages} 페이지</span>
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-label="이전 페이지"
+          disabled={safe <= 1}
+          onClick={() => onPageChange(safe - 1)}
+          className={`${btnBase} ${safe <= 1 ? btnDisabled : btnIdle}`}
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+        </button>
+        {pages.map((entry, idx) =>
+          entry === "ellipsis" ? (
+            <span
+              key={`e-${idx}`}
+              className="flex h-9 w-9 items-center justify-center text-slate-400"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={entry}
+              type="button"
+              onClick={() => onPageChange(entry)}
+              className={`${btnBase} ${entry === safe ? btnActive : btnIdle}`}
+            >
+              {entry}
+            </button>
+          )
+        )}
+        <button
+          type="button"
+          aria-label="다음 페이지"
+          disabled={safe >= totalPages}
+          onClick={() => onPageChange(safe + 1)}
+          className={`${btnBase} ${safe >= totalPages ? btnDisabled : btnIdle}`}
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function OrderReturnsPage() {
   const [activeTab, setActiveTab] = useState<
     "processing" | "in-progress" | "history"
   >("processing");
   const [returns, setReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   // ✅ REMOVED: members state - not used and requires "owner" role
 
   const apiUrl = useMemo(
@@ -54,6 +178,26 @@ export default function OrderReturnsPage() {
       // Silent error handling
     });
   }, [fetchReturns]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(returns.length / ORDER_RETURNS_PAGE_SIZE)
+  );
+  const effectivePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedReturns = useMemo(() => {
+    const start = (effectivePage - 1) * ORDER_RETURNS_PAGE_SIZE;
+    return returns.slice(start, start + ORDER_RETURNS_PAGE_SIZE);
+  }, [returns, effectivePage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const formatReturnType = (returnType: string) => {
     if (returnType === "defective_exchange") return "교환";
@@ -154,22 +298,33 @@ export default function OrderReturnsPage() {
               반품 항목이 없습니다.
             </div>
           ) : (
-            returns.map((returnItem) => (
-              <ReturnCard
-                key={returnItem.id}
-                returnItem={returnItem}
-                onRefresh={() => {
-                  fetchReturns();
-                }}
-                onRemove={(id: string) => {
-                  setReturns((prev) => prev.filter((item) => item.id !== id));
-                }}
-                apiUrl={apiUrl}
-                formatReturnType={formatReturnType}
-                activeTab={activeTab}
-                getStatusBadge={getStatusBadge}
+            <>
+              <div className="space-y-4">
+                {paginatedReturns.map((returnItem) => (
+                  <ReturnCard
+                    key={returnItem.id}
+                    returnItem={returnItem}
+                    onRefresh={() => {
+                      fetchReturns();
+                    }}
+                    onRemove={(id: string) => {
+                      setReturns((prev) =>
+                        prev.filter((item) => item.id !== id)
+                      );
+                    }}
+                    apiUrl={apiUrl}
+                    formatReturnType={formatReturnType}
+                    activeTab={activeTab}
+                    getStatusBadge={getStatusBadge}
+                  />
+                ))}
+              </div>
+              <OrderReturnsPaginationBar
+                currentPage={effectivePage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
               />
-            ))
+            </>
           )}
         </section>
       </section>
@@ -497,7 +652,7 @@ const ReturnCard = memo(function ReturnCard({
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {formatDateTime(
-                    returnItem.inbound_date || returnItem.created_at
+                    returnItem.outbound_date || returnItem.created_at
                   )}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -508,7 +663,7 @@ const ReturnCard = memo(function ReturnCard({
             {!isHistoryTab && (
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {formatDateTime(
-                  returnItem.inbound_date || returnItem.created_at
+                  returnItem.outbound_date || returnItem.created_at
                 )}
               </span>
             )}
@@ -538,13 +693,20 @@ const ReturnCard = memo(function ReturnCard({
                   : "반품수량:"}
             </span>
             <span className="font-semibold text-rose-600 dark:text-rose-400">
-              {returnItem.return_quantity}개
+              {returnItem.return_quantity}
+              {returnItem.quantity_unit?.trim()
+                ? ` ${returnItem.quantity_unit.trim()}`
+                : "개"}
             </span>
-            {returnItem.total_quantity && (
-              <span className="text-slate-500 dark:text-slate-400">
-                / {returnItem.total_quantity}개
-              </span>
-            )}
+            {returnItem.total_quantity != null &&
+              returnItem.total_quantity !== returnItem.return_quantity && (
+                <span className="text-slate-500 dark:text-slate-400">
+                  / {returnItem.total_quantity}
+                  {returnItem.quantity_unit?.trim()
+                    ? ` ${returnItem.quantity_unit.trim()}`
+                    : "개"}
+                </span>
+              )}
           </div>
           <div className="flex items-center gap-1">
             <span className="font-medium">단가:</span>

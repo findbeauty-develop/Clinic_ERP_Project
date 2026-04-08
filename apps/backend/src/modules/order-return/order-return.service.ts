@@ -62,6 +62,7 @@ export class OrderReturnService {
           defective_return_no: true,
           defective_return_type: true,
           return_quantity: true,
+          quantity_unit: true,
             status: true,
             supplier_accepted_at: true,
             product_received: true,
@@ -1256,6 +1257,7 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
 
           const nameCandidates = [
             item.productName,
+            outbound.product_name,
             outbound.product?.name,
             pRow?.name,
           ];
@@ -1272,6 +1274,38 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
           const brand =
             item.brand || outbound.product?.brand || pRow?.brand || null;
 
+          const useDefectiveBoxQty =
+            outbound.is_defective &&
+            outbound.defective_box_count != null &&
+            Number(outbound.defective_box_count) > 0;
+
+          const resolvedReturnQty = useDefectiveBoxQty
+            ? Number(outbound.defective_box_count)
+            : item.returnQuantity ?? outbound.outbound_qty;
+
+          const resolvedTotalQty = useDefectiveBoxQty
+            ? Number(outbound.defective_box_count)
+            : item.totalQuantity ?? item.returnQuantity ?? outbound.outbound_qty;
+
+          let quantity_unit: string | null = null;
+          if (
+            outbound.is_defective &&
+            outbound.product_unit != null &&
+            String(outbound.product_unit).trim() !== ""
+          ) {
+            quantity_unit = String(outbound.product_unit).trim();
+          } else if (
+            outbound.product?.capacity_unit != null &&
+            String(outbound.product.capacity_unit).trim() !== ""
+          ) {
+            quantity_unit = String(outbound.product.capacity_unit).trim();
+          } else if (
+            outbound.product?.unit != null &&
+            String(outbound.product.unit).trim() !== ""
+          ) {
+            quantity_unit = String(outbound.product.unit).trim();
+          }
+
           const defective_return_no =
             await this.generateDefectiveReturnNumber();
 
@@ -1284,8 +1318,9 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
               product_id: pid,
               product_name: productName,
               brand,
-              return_quantity: item.returnQuantity || outbound.outbound_qty,
-              total_quantity: item.totalQuantity || outbound.outbound_qty,
+              return_quantity: resolvedReturnQty,
+              total_quantity: resolvedTotalQty,
+              quantity_unit,
               unit_price: unitPrice,
               status: "pending",
               memo: outbound.memo ?? item.memo ?? null,

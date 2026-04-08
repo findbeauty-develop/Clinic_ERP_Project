@@ -9,6 +9,7 @@ export type ReturnItemRow = {
   defective_return_no: string;
   defective_return_type: DefectiveReturnTypeApi;
   return_quantity: number;
+  quantity_unit?: string | null;
   status: string;
   memo: string | null;
   images: string[] | null;
