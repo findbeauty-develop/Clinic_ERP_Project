@@ -11,6 +11,15 @@ export class ReturnService {
     private readonly notificationService: NotificationService
   ) {}
 
+  private managerScopeOrUnassigned(supplierManagerId: string) {
+    return {
+      OR: [
+        { supplier_manager_id: supplierManagerId },
+        { supplier_manager_id: null },
+      ],
+    };
+  }
+
   /** Clinic defective flow: defective_exchange | defective_return, or legacy "…|…" strings */
   private isProductCategoryReturnType(rt: string | null | undefined): boolean {
     if (!rt) return false;
@@ -40,16 +49,120 @@ export class ReturnService {
     );
   }
 
-  /**
-   * SupplierManager uchun return request'larni olish
-   */
+  private aggregateGroupStatus(
+    rows: { status: string }[]
+  ): "pending" | "processing" | "completed" | "rejected" {
+    if (rows.length === 0) return "pending";
+    if (rows.some((r) => r.status === "rejected")) return "rejected";
+    if (rows.every((r) => r.status === "completed")) return "completed";
+    if (rows.some((r) => r.status === "pending")) return "pending";
+    if (
+      rows.every(
+        (r) => r.status === "processing" || r.status === "completed"
+      )
+    ) {
+      return rows.every((r) => r.status === "completed")
+        ? "completed"
+        : "processing";
+    }
+    return "processing";
+  }
+
+  private repGroupId(rows: { id: string }[]): string {
+    return [...rows].sort((a, b) => a.id.localeCompare(b.id))[0].id;
+  }
+
+  private maxDate(
+    rows: { [k: string]: Date | null | undefined }[],
+    key: string
+  ): Date | undefined {
+    let t = 0;
+    let best: Date | undefined;
+    for (const r of rows) {
+      const d = r[key] as Date | null | undefined;
+      if (d && d.getTime() > t) {
+        t = d.getTime();
+        best = d;
+      }
+    }
+    return best;
+  }
+
+  private minDate(rows: { created_at: Date }[]): Date {
+    return new Date(Math.min(...rows.map((r) => r.created_at.getTime())));
+  }
+
+  private formatVirtualReturn(rows: any[]) {
+    const sorted = [...rows].sort(
+      (a, b) => a.created_at.getTime() - b.created_at.getTime()
+    );
+    const head = sorted[0];
+    const agg = this.aggregateGroupStatus(sorted);
+    return {
+      id: this.repGroupId(sorted),
+      return_no: head.return_no,
+      clinic_tenant_id: head.clinic_tenant_id,
+      clinic_name: head.clinic_name,
+      clinic_manager_name: head.clinic_manager_name,
+      status: agg,
+      created_at: head.created_at,
+      updated_at: head.updated_at,
+      confirmed_at: this.maxDate(sorted, "confirmed_at"),
+      completed_at: this.maxDate(sorted, "completed_at"),
+      rejected_at: this.maxDate(sorted, "rejected_at"),
+      items: sorted.map((row: any) => ({
+        id: row.id,
+        product_name: row.product_name,
+        brand: row.brand,
+        quantity: row.quantity,
+        return_type: row.return_type,
+        memo: row.memo,
+        images: row.images,
+        inbound_date: row.inbound_date,
+        total_price: row.tip_return_price,
+        order_no: row.order_no,
+        batch_no: row.batch_no,
+        status: row.status,
+        product_id: row.product_id,
+      })),
+    };
+  }
+
+  private formatReturnRequestPayload(request: any) {
+    return {
+      id: request.id,
+      returnNo: request.return_no,
+      clinicTenantId: request.clinic_tenant_id,
+      clinicName: request.clinic_name,
+      clinicManagerName: request.clinic_manager_name,
+      status: request.status,
+      items:
+        request.items?.map((item: any) => ({
+          id: item.id,
+          productName: item.product_name,
+          brand: item.brand,
+          quantity: item.quantity,
+          returnType: item.return_type,
+          memo: item.memo,
+          images: item.images,
+          inboundDate: item.inbound_date,
+          totalPrice: item.total_price,
+          orderNo: item.order_no,
+          batchNo: item.batch_no,
+          productId: item.product_id,
+        })) || [],
+      createdAt: request.created_at,
+      updatedAt: request.updated_at,
+    };
+  }
+
   async getReturnNotifications(
     supplierManagerId: string,
     filters?: {
       status?: "PENDING" | "ACCEPTED" | "REJECTED" | "ALL";
       isRead?: boolean | null;
-      returnType?: "반품" | "교환"; // DEPRECATED: For backward compatibility
-      returnCategory?: "empty_box" | "product"; // NEW: Filter by category
+      returnType?: "반품" | "교환";
+      returnCategory?: "empty_box" | "product";
       page?: number;
       limit?: number;
     }
@@ -58,7 +171,6 @@ export class ReturnService {
       throw new BadRequestException("Supplier Manager ID is required");
     }
 
-    // Get supplier tenant_id from manager
     const manager = await this.prisma.executeWithRetry(async () => {
       return (this.prisma as any).supplierManager.findFirst({
         where: { id: supplierManagerId },
@@ -76,154 +188,139 @@ export class ReturnService {
 
     const where: any = {
       supplier_tenant_id: manager.supplier_tenant_id,
-      // Faqat shu manager'ga tegishli return request'larni ko'rsatish
-      // OR condition: supplier_manager_id = supplierManagerId YOKI supplier_manager_id = null
-      // (null bo'lsa, bu manual supplier degani va barcha manager'lar ko'ra oladi)
-      OR: [
-        { supplier_manager_id: supplierManagerId },
-        { supplier_manager_id: null },
-      ],
+      ...this.managerScopeOrUnassigned(supplierManagerId),
     };
 
-    // Status filter - map old statuses to new ones
-    if (filters?.status && filters.status !== "ALL") {
-      const statusMap: Record<string, string> = {
-        PENDING: "pending",
-        ACCEPTED: "processing",
-        REJECTED: "rejected",
-      };
-      where.status = statusMap[filters.status] || filters.status.toLowerCase();
-    }
-
     try {
-      // Return requests (we need to fetch all to filter by return_type)
-      const returnRequests = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.findMany({
+      const tipRows = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findMany({
           where,
-          include: {
-            items: true,
-          },
-          orderBy: {
-            created_at: "desc",
-          },
+          orderBy: { created_at: "desc" },
         });
       });
 
-      // Filter by return_type or return_category
-      let filteredRequests = returnRequests;
+      const byReturnNo = new Map<string, any[]>();
+      for (const row of tipRows) {
+        const k = row.return_no;
+        if (!byReturnNo.has(k)) byReturnNo.set(k, []);
+        byReturnNo.get(k)!.push(row);
+      }
 
-      // NEW: Filter by returnCategory (empty_box or product)
-      if (filters?.returnCategory) {
-        filteredRequests = returnRequests.filter((request: any) => {
-          const hasMatchingItem = request.items?.some((item: any) => {
+      let groups: any[][] = [...byReturnNo.values()];
+
+      const filterRowsInGroup = (rows: any[]) => {
+        let filtered = rows;
+        if (filters?.returnCategory) {
+          filtered = filtered.filter((item: any) => {
             if (filters.returnCategory === "empty_box") {
               return this.isEmptyBoxCategoryReturnType(item.return_type);
-            } else if (filters.returnCategory === "product") {
+            }
+            if (filters.returnCategory === "product") {
               return this.isProductCategoryReturnType(item.return_type);
             }
             return false;
           });
-          return hasMatchingItem;
-        });
-      }
-      // DEPRECATED: Filter by returnType (for backward compatibility)
-      else if (filters?.returnType) {
-        filteredRequests = returnRequests.filter((request: any) => {
-          // Check if any item in the request matches the return_type filter
-          const hasMatchingItem = request.items?.some((item: any) => {
-            return this.matchesDeprecatedReturnTypeFilter(
+        } else if (filters?.returnType) {
+          filtered = filtered.filter((item: any) =>
+            this.matchesDeprecatedReturnTypeFilter(
               item.return_type,
               filters.returnType!
-            );
-          });
-          return hasMatchingItem;
-        });
+            )
+          );
+        }
+        return filtered;
+      };
+
+      groups = groups
+        .map((g) => filterRowsInGroup(g))
+        .filter((g) => g.length > 0);
+
+      const statusFilter = filters?.status;
+      if (statusFilter && statusFilter !== "ALL") {
+        const want =
+          statusFilter === "PENDING"
+            ? "pending"
+            : statusFilter === "ACCEPTED"
+              ? "processing"
+              : statusFilter === "REJECTED"
+                ? "rejected"
+                : null;
+        if (want) {
+          groups = groups.filter(
+            (g) => this.aggregateGroupStatus(g) === want
+          );
+        }
       }
 
-      // Calculate total count after filtering
-      const total = filteredRequests.length;
+      if (filters?.isRead === true) {
+        groups = groups.filter(
+          (g) => this.aggregateGroupStatus(g) !== "pending"
+        );
+      } else if (filters?.isRead === false) {
+        groups = groups.filter(
+          (g) => this.aggregateGroupStatus(g) === "pending"
+        );
+      }
 
-      // Unread count (pending requests after filtering)
-      const unreadCount = filteredRequests.filter(
-        (request: any) => request.status === "pending"
+      groups.sort(
+        (a, b) =>
+          this.minDate(b).getTime() - this.minDate(a).getTime()
+      );
+
+      const total = groups.length;
+      const unreadCount = groups.filter(
+        (g) => this.aggregateGroupStatus(g) === "pending"
       ).length;
 
-      // Apply pagination after filtering
-      const paginatedRequests = filteredRequests.slice(skip, skip + limit);
+      const pageGroups = groups.slice(skip, skip + limit);
 
-      // Format response with return_type/return_category filtering
-      const formattedNotifications = paginatedRequests
-        .map((request: any) => {
-          // Filter items by return_category or return_type if specified
-          let filteredItems = request.items || [];
-
-          if (filters?.returnCategory) {
-            filteredItems = filteredItems.filter((item: any) => {
-              if (filters.returnCategory === "empty_box") {
-                return this.isEmptyBoxCategoryReturnType(item.return_type);
-              } else if (filters.returnCategory === "product") {
-                return this.isProductCategoryReturnType(item.return_type);
-              }
-              return false;
-            });
-          }
-          // DEPRECATED: Filter by returnType (for backward compatibility)
-          else if (filters?.returnType) {
-            filteredItems = filteredItems.filter((item: any) => {
-              return this.matchesDeprecatedReturnTypeFilter(
-                item.return_type,
-                filters.returnType!
-              );
-            });
-          }
-
-          // If no items match the filter, skip this request
-          if (filteredItems.length === 0) {
-            return null;
-          }
-
-          const totalRefund = filteredItems.reduce(
-            (sum: number, item: any) => sum + (item.total_price || 0),
-            0
-          );
-
-          return {
-            id: request.id,
-            returnId: request.id,
-            returnNo: request.return_no,
-            clinicName: request.clinic_name,
-            returnManagerName: request.clinic_manager_name,
-            returnDate: request.created_at,
-            totalRefund: totalRefund,
-            items: filteredItems.map((item: any) => ({
-              id: item.id,
-              productCode: item.batch_no || item.order_no || "",
-              productName: item.product_name,
-              productBrand: item.brand || "",
-              qty: item.quantity,
-              unitPrice: item.total_price / item.quantity || 0,
-              totalPrice: item.total_price,
-              returnType: item.return_type,
-              memo: item.memo,
-              images: Array.isArray(item.images)
-                ? item.images
-                : item.images
+      const formattedNotifications = pageGroups.map((groupRows) => {
+        const totalRefund = groupRows.reduce(
+          (sum: number, row: any) => sum + (row.tip_return_price || 0),
+          0
+        );
+        const agg = this.aggregateGroupStatus(groupRows);
+        const repId = this.repGroupId(groupRows);
+        return {
+          id: repId,
+          returnId: repId,
+          returnNo: groupRows[0].return_no,
+          clinicName: groupRows[0].clinic_name,
+          returnManagerName: groupRows[0].clinic_manager_name,
+          returnDate: this.minDate(groupRows),
+          totalRefund,
+          items: groupRows.map((item: any) => ({
+            id: item.id,
+            productCode: item.batch_no || item.order_no || "",
+            productName: item.product_name,
+            productBrand: item.brand || "",
+            qty: item.quantity,
+            unitPrice:
+              item.quantity > 0
+                ? item.tip_return_price / item.quantity
+                : 0,
+            totalPrice: item.tip_return_price,
+            returnType: item.return_type,
+            memo: item.memo,
+            images: Array.isArray(item.images)
+              ? item.images
+              : item.images
                 ? [item.images]
                 : [],
-              inboundDate: item.inbound_date,
-              orderNo: item.order_no,
-              batchNo: item.batch_no,
-              status: item.status || "pending",
-            })),
-            status: request.status.toUpperCase(),
-            isRead: request.status !== "pending", // Consider non-pending as read
-            createdAt: request.created_at,
-            confirmedAt: request.confirmed_at,
-            completedAt: request.completed_at,
-            rejectedAt: request.rejected_at,
-          };
-        })
-        .filter((notif: any) => notif !== null); // Remove null entries
+            inboundDate: item.inbound_date,
+            orderNo: item.order_no,
+            batchNo: item.batch_no,
+            status: item.status || "pending",
+          })),
+          status: agg.toUpperCase(),
+          isRead: agg !== "pending",
+          createdAt: groupRows[0].created_at,
+          confirmedAt: this.maxDate(groupRows, "confirmed_at"),
+          completedAt: this.maxDate(groupRows, "completed_at"),
+          rejectedAt: this.maxDate(groupRows, "rejected_at"),
+          acceptedAt: this.maxDate(groupRows, "completed_at"),
+        };
+      });
 
       return {
         notifications: formattedNotifications,
@@ -244,9 +341,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Notification'ni o'qilgan deb belgilash (status-based, no-op for now)
-   */
   async markAsRead(notificationId: string, supplierManagerId: string) {
     if (!notificationId || !supplierManagerId) {
       throw new BadRequestException(
@@ -254,7 +348,6 @@ export class ReturnService {
       );
     }
 
-    // For now, just verify the request exists and belongs to the supplier
     try {
       const manager = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).supplierManager.findFirst({
@@ -267,24 +360,35 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      const request = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.findFirst({
+      const row = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
           where: {
             id: notificationId,
             supplier_tenant_id: manager.supplier_tenant_id,
+            ...this.managerScopeOrUnassigned(supplierManagerId),
           },
         });
       });
 
-      if (!request) {
+      if (!row) {
         throw new BadRequestException("Return request not found");
       }
+
+      const group = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findMany({
+          where: {
+            return_no: row.return_no,
+            supplier_tenant_id: manager.supplier_tenant_id,
+          },
+        });
+      });
+      const agg = this.aggregateGroupStatus(group);
 
       return {
         success: true,
         notification: {
-          id: request.id,
-          isRead: request.status !== "pending",
+          id: row.id,
+          isRead: agg !== "pending",
         },
       };
     } catch (error: any) {
@@ -298,9 +402,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Barcha notification'larni o'qilgan deb belgilash (status-based, no-op for now)
-   */
   async markAllAsRead(supplierManagerId: string) {
     if (!supplierManagerId) {
       throw new BadRequestException("Supplier Manager ID is required");
@@ -318,19 +419,24 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      // Count pending requests (considered unread)
-      const unreadCount = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.count({
+      const pendingRows = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findMany({
           where: {
             supplier_tenant_id: manager.supplier_tenant_id,
             status: "pending",
+            ...this.managerScopeOrUnassigned(supplierManagerId),
           },
+          select: { return_no: true },
         });
       });
 
+      const uniqueReturnNos = new Set(
+        pendingRows.map((r: any) => r.return_no)
+      );
+
       return {
         success: true,
-        updatedCount: unreadCount,
+        updatedCount: uniqueReturnNos.size,
       };
     } catch (error: any) {
       this.logger.error(
@@ -343,11 +449,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Return'ni qabul qilish (요청 확인) - status: pending → processing
-   * If itemId is provided, only that item is accepted. Otherwise, entire request is accepted.
-   * Adjustments: Array of { itemId, actualQuantity, quantityChangeReason }
-   */
   async acceptReturn(
     notificationId: string,
     supplierManagerId: string,
@@ -376,50 +477,67 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      // If itemId is provided, accept only that specific item
+      const anchor = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
+          where: {
+            id: notificationId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+            ...this.managerScopeOrUnassigned(supplierManagerId),
+          },
+        });
+      });
+
+      if (!anchor) {
+        throw new BadRequestException("Return request not found");
+      }
+
+      const returnNo = anchor.return_no as string;
+
       if (itemId) {
-        // Update the specific item status
-        const item = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnItem.update({
+        const line = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierTipReturnRequest.findFirst({
             where: {
               id: itemId,
-              returnRequest: {
-                id: notificationId,
-                supplier_tenant_id: manager.supplier_tenant_id,
-                status: "pending",
-              },
+              return_no: returnNo,
+              supplier_tenant_id: manager.supplier_tenant_id,
+              status: "pending",
             },
+          });
+        });
+        if (!line) {
+          throw new BadRequestException("Return line not found or not pending");
+        }
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierTipReturnRequest.update({
+            where: { id: itemId },
             data: {
               status: "processing",
               updated_at: new Date(),
             },
-            include: {
-              returnRequest: true,
-            },
           });
         });
 
-        // Check if all items in the request are now processing or completed
-        const allItems = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnItem.findMany({
+        const allRows = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierTipReturnRequest.findMany({
             where: {
-              return_request_id: notificationId,
+              return_no: returnNo,
+              supplier_tenant_id: manager.supplier_tenant_id,
             },
           });
         });
 
-        const allAccepted = allItems.every(
-          (item: any) =>
-            item.status === "processing" || item.status === "completed"
+        const allAccepted = allRows.every(
+          (r: any) => r.status === "processing" || r.status === "completed"
         );
 
-        // If all items are accepted, update the request status
         if (allAccepted) {
           await this.prisma.executeWithRetry(async () => {
-            return (this.prisma as any).supplierReturnRequest.update({
-              where: { id: notificationId },
+            return (this.prisma as any).supplierTipReturnRequest.updateMany({
+              where: {
+                return_no: returnNo,
+                supplier_tenant_id: manager.supplier_tenant_id,
+              },
               data: {
-                status: "processing",
                 supplier_manager_id: manager.id,
                 confirmed_at: new Date(),
                 updated_at: new Date(),
@@ -427,7 +545,6 @@ export class ReturnService {
             });
           });
 
-          // 단일 품목 요청 시 프론트가 itemId를 넣음 — 이 분기에서는 기존에 웹훅이 빠져 클리닉 알림이 안 갔음
           this.sendAcceptWebhookToClinic({ id: notificationId }).catch(
             (error) => {
               this.logger.error(
@@ -445,135 +562,114 @@ export class ReturnService {
             status: "PROCESSING",
           },
         };
-      } else {
-        // Accept entire request (backward compatibility)
-        const returnRequest = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnRequest.update({
+      }
+
+      const pendingCheck = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.count({
+          where: {
+            return_no: returnNo,
+            supplier_tenant_id: manager.supplier_tenant_id,
+            status: "pending",
+          },
+        });
+      });
+
+      if (pendingCheck === 0) {
+        throw new BadRequestException(
+          "Return is not pending or already processed"
+        );
+      }
+
+      if (adjustments && adjustments.length > 0) {
+        const allRows = await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierTipReturnRequest.findMany({
             where: {
-              id: notificationId,
+              return_no: returnNo,
               supplier_tenant_id: manager.supplier_tenant_id,
-              status: "pending", // Only accept pending returns
-            },
-            data: {
-              status: "processing",
-              supplier_manager_id: manager.id, // Assign to this manager
-              confirmed_at: new Date(),
-              updated_at: new Date(),
             },
           });
         });
 
-        // Update all items in the request to processing
-        // If adjustments provided, apply them to each item
-        if (adjustments && adjustments.length > 0) {
-          // Get all items first to preserve existing memos
-          const allItems = await this.prisma.executeWithRetry(async () => {
-            return (this.prisma as any).supplierReturnItem.findMany({
-              where: {
-                return_request_id: notificationId,
-              },
-            });
-          });
+        const webhookPayload: {
+          returnId: string;
+          clinicTenantId: string;
+          unreturnedItems: Array<{
+            productId: string;
+            batchNo: string;
+            unreturnedQty: number;
+            reason: string;
+          }>;
+        } = {
+          returnId: anchor.id,
+          clinicTenantId: anchor.clinic_tenant_id,
+          unreturnedItems: [],
+        };
 
-          // Prepare webhook payload for unreturned items (추후반납)
-          const webhookPayload: {
-            returnId: string;
-            clinicTenantId: string;
-            unreturnedItems: Array<{
-              productId: string;
-              batchNo: string;
-              unreturnedQty: number;
-              reason: string;
-            }>;
-          } = {
-            returnId: returnRequest.id,
-            clinicTenantId: returnRequest.clinic_tenant_id,
-            unreturnedItems: [],
+        for (const adj of adjustments) {
+          const existingItem = allRows.find((r: any) => r.id === adj.itemId);
+          if (!existingItem) continue;
+
+          const originalQty = existingItem.quantity;
+          const acceptedQty = adj.actualQuantity;
+          const unreturnedQty = originalQty - acceptedQty;
+
+          const updateData: any = {
+            status: "processing",
+            quantity: adj.actualQuantity,
+            tip_return_price: Math.round(
+              (existingItem.tip_return_price / Math.max(originalQty, 1)) *
+                adj.actualQuantity
+            ),
+            updated_at: new Date(),
           };
 
-          // Update each item with its adjustment
-          for (const adj of adjustments) {
-            const existingItem = allItems.find(
-              (item: any) => item.id === adj.itemId
-            );
-            
-            if (!existingItem) continue;
+          if (adj.quantityChangeReason) {
+            const existingMemo = existingItem.memo || "";
+            updateData.memo = existingMemo
+              ? `${adj.quantityChangeReason} - ${existingMemo}`
+              : adj.quantityChangeReason;
+            updateData.quantity_change_reason = adj.quantityChangeReason;
+          }
 
-            const originalQty = existingItem.quantity;
-            const acceptedQty = adj.actualQuantity;
-            const unreturnedQty = originalQty - acceptedQty;
-
-            const updateData: any = {
-              status: "processing",
-              quantity: adj.actualQuantity, // Update quantity to actual
-              updated_at: new Date(),
-            };
-
-            // If quantity changed and reason provided, update memo
-            if (adj.quantityChangeReason && existingItem) {
-              const existingMemo = existingItem.memo || "";
-              updateData.memo = existingMemo
-                ? `${adj.quantityChangeReason} - ${existingMemo}`
-                : adj.quantityChangeReason;
-            }
-
-            // Track unreturned quantity for webhook
-            // Only send back to clinic if reason is "추후반납" (Later Return)
-            if (unreturnedQty > 0 && adj.quantityChangeReason === "추후반납") {
-              webhookPayload.unreturnedItems.push({
-                productId: existingItem.product_id,
-                batchNo: existingItem.batch_no || "",
-                unreturnedQty: unreturnedQty,
-                reason: "추후반납",
-              });
-            }
-
-            await this.prisma.executeWithRetry(async () => {
-              return (this.prisma as any).supplierReturnItem.updateMany({
-                where: {
-                  return_request_id: notificationId,
-                  id: adj.itemId,
-                  status: "pending",
-                },
-                data: updateData,
-              });
+          if (
+            unreturnedQty > 0 &&
+            adj.quantityChangeReason === "추후반납" &&
+            existingItem.product_id
+          ) {
+            webhookPayload.unreturnedItems.push({
+              productId: existingItem.product_id,
+              batchNo: existingItem.batch_no || "",
+              unreturnedQty,
+              reason: "추후반납",
             });
           }
 
-          // Update items that are not in adjustments (keep original quantity)
-          const adjustmentItemIds = adjustments.map((adj) => adj.itemId);
           await this.prisma.executeWithRetry(async () => {
-            return (this.prisma as any).supplierReturnItem.updateMany({
+            return (this.prisma as any).supplierTipReturnRequest.updateMany({
               where: {
-                return_request_id: notificationId,
+                id: adj.itemId,
+                return_no: returnNo,
+                supplier_tenant_id: manager.supplier_tenant_id,
                 status: "pending",
-                NOT: {
-                  id: { in: adjustmentItemIds },
-                },
               },
-              data: {
-                status: "processing",
-                updated_at: new Date(),
-              },
+              data: updateData,
             });
           });
+        }
 
-          // Send partial return webhook to clinic if there are unreturned items
-          if (webhookPayload.unreturnedItems.length > 0) {
-            this.sendPartialReturnWebhookToClinic(webhookPayload).catch(
-              (error) => {
-                this.logger.error(
-                  `Failed to send partial return webhook to clinic: ${error.message}`
-                );
-              }
-            );
-          }
-        } else {
-          // No adjustments, update all items normally
+        const adjustmentIds = new Set(adjustments.map((a) => a.itemId));
+        const otherPendingIds = allRows
+          .filter(
+            (r: any) => r.status === "pending" && !adjustmentIds.has(r.id)
+          )
+          .map((r: any) => r.id);
+        if (otherPendingIds.length > 0) {
           await this.prisma.executeWithRetry(async () => {
-            return (this.prisma as any).supplierReturnItem.updateMany({
+            return (this.prisma as any).supplierTipReturnRequest.updateMany({
               where: {
-                return_request_id: notificationId,
+                id: { in: otherPendingIds },
+                return_no: returnNo,
+                supplier_tenant_id: manager.supplier_tenant_id,
                 status: "pending",
               },
               data: {
@@ -584,22 +680,59 @@ export class ReturnService {
           });
         }
 
-        // Send webhook to clinic-backend for /returns page
-        this.sendAcceptWebhookToClinic(returnRequest).catch((error) => {
-          this.logger.error(
-            `Failed to send accept webhook to clinic: ${error.message}`
+        if (webhookPayload.unreturnedItems.length > 0) {
+          this.sendPartialReturnWebhookToClinic(webhookPayload).catch(
+            (error) => {
+              this.logger.error(
+                `Failed to send partial return webhook to clinic: ${error.message}`
+              );
+            }
           );
+        }
+      } else {
+        await this.prisma.executeWithRetry(async () => {
+          return (this.prisma as any).supplierTipReturnRequest.updateMany({
+            where: {
+              return_no: returnNo,
+              supplier_tenant_id: manager.supplier_tenant_id,
+              status: "pending",
+            },
+            data: {
+              status: "processing",
+              updated_at: new Date(),
+            },
+          });
         });
-
-        return {
-          success: true,
-          notification: {
-            id: returnRequest.id,
-            status: returnRequest.status.toUpperCase(),
-            confirmedAt: returnRequest.confirmed_at,
-          },
-        };
       }
+
+      await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.updateMany({
+          where: {
+            return_no: returnNo,
+            supplier_tenant_id: manager.supplier_tenant_id,
+          },
+          data: {
+            supplier_manager_id: manager.id,
+            confirmed_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
+      });
+
+      this.sendAcceptWebhookToClinic({ id: anchor.id }).catch((error) => {
+        this.logger.error(
+          `Failed to send accept webhook to clinic: ${error.message}`
+        );
+      });
+
+      return {
+        success: true,
+        notification: {
+          id: notificationId,
+          status: "PROCESSING",
+          confirmedAt: new Date(),
+        },
+      };
     } catch (error: any) {
       this.logger.error(
         `Error accepting return: ${error.message}`,
@@ -611,9 +744,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Return'ni rad etish (요청 거절)
-   */
   async rejectReturn(
     notificationId: string,
     supplierManagerId: string,
@@ -637,10 +767,25 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      const returnRequest = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.update({
+      const anchor = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
           where: {
             id: notificationId,
+            supplier_tenant_id: manager.supplier_tenant_id,
+            ...this.managerScopeOrUnassigned(supplierManagerId),
+          },
+        });
+      });
+
+      if (!anchor) {
+        throw new BadRequestException("Return request not found");
+      }
+
+      const now = new Date();
+      const res = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.updateMany({
+          where: {
+            return_no: anchor.return_no,
             supplier_tenant_id: manager.supplier_tenant_id,
             status: "pending",
           },
@@ -648,14 +793,20 @@ export class ReturnService {
             status: "rejected",
             supplier_manager_id: manager.id,
             rejected_reason: reason || null,
-            rejected_at: new Date(),
-            updated_at: new Date(),
+            rejected_at: now,
+            updated_at: now,
           },
         });
       });
 
+      if (res.count === 0) {
+        throw new BadRequestException(
+          "Return is not pending or already processed"
+        );
+      }
+
       this.sendOrderReturnRejectWebhookToClinic(
-        returnRequest.return_no,
+        anchor.return_no,
         reason
       ).catch((err) =>
         this.logger.warn(
@@ -666,9 +817,9 @@ export class ReturnService {
       return {
         success: true,
         notification: {
-          id: returnRequest.id,
-          status: returnRequest.status.toUpperCase(),
-          rejectedAt: returnRequest.rejected_at,
+          id: notificationId,
+          status: "REJECTED",
+          rejectedAt: now,
         },
       };
     } catch (error: any) {
@@ -682,17 +833,12 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Mark return as completed (제품 받았음)
-   * Updates item status and sends webhook to clinic-backend
-   */
   async completeReturn(
     returnRequestId: string,
     supplierManagerId: string,
     itemId?: string
   ) {
     try {
-      // Get supplier manager to find tenant_id
       const manager = await this.prisma.executeWithRetry(async () => {
         return (this.prisma as any).supplierManager.findFirst({
           where: { id: supplierManagerId },
@@ -704,69 +850,44 @@ export class ReturnService {
         throw new BadRequestException("Supplier Manager not found");
       }
 
-      // Get return request
-      const request = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.findFirst({
+      const anchor = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
           where: {
             id: returnRequestId,
             supplier_tenant_id: manager.supplier_tenant_id,
-          },
-          include: {
-            items: true,
+            ...this.managerScopeOrUnassigned(supplierManagerId),
           },
         });
       });
 
-      if (!request) {
+      if (!anchor) {
         throw new BadRequestException("Return request not found");
       }
 
-      // Update item status if itemId provided, otherwise update all items
+      const returnNo = anchor.return_no as string;
+
       if (itemId) {
         await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnItem.updateMany({
+          return (this.prisma as any).supplierTipReturnRequest.updateMany({
             where: {
               id: itemId,
-              return_request_id: returnRequestId,
+              return_no: returnNo,
+              supplier_tenant_id: manager.supplier_tenant_id,
             },
             data: {
               status: "completed",
+              completed_at: new Date(),
               updated_at: new Date(),
             },
           });
         });
       } else {
-        // Update all items
         await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnItem.updateMany({
+          return (this.prisma as any).supplierTipReturnRequest.updateMany({
             where: {
-              return_request_id: returnRequestId,
+              return_no: returnNo,
+              supplier_tenant_id: manager.supplier_tenant_id,
             },
-            data: {
-              status: "completed",
-              updated_at: new Date(),
-            },
-          });
-        });
-      }
-
-      // Get updated items
-      const allItems = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnItem.findMany({
-          where: { return_request_id: returnRequestId },
-        });
-      });
-
-      // Check if all items are completed
-      const allCompleted = allItems.every(
-        (item: any) => item.status === "completed"
-      );
-
-      if (allCompleted) {
-        // Update request status
-        await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnRequest.update({
-            where: { id: returnRequestId },
             data: {
               status: "completed",
               completed_at: new Date(),
@@ -776,79 +897,73 @@ export class ReturnService {
         });
       }
 
-      // Send webhook to clinic-backend
-      try {
-        const clinicBackendUrl =
-          process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
-        // Supplier sends its own API key to clinic-backend for authentication
-        const supplierApiKey =
-          process.env.SUPPLIER_BACKEND_API_KEY ||
-          process.env.API_KEY_SECRET ||
-          "";
+      const allRows = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findMany({
+          where: {
+            return_no: returnNo,
+            supplier_tenant_id: manager.supplier_tenant_id,
+          },
+        });
+      });
 
-        if (!supplierApiKey) {
-          this.logger.error(
-            `SUPPLIER_BACKEND_API_KEY not configured! Check environment variables.`
-          );
-        } 
+      const returnItems = itemId
+        ? allRows.filter((r: any) => r.id === itemId)
+        : allRows;
 
-        // Get return items to send to clinic
-        const returnItems = itemId
-          ? allItems.filter((item: any) => item.id === itemId)
-          : allItems;
+      const clinicBackendUrl =
+        process.env.CLINIC_BACKEND_URL || "http://localhost:3000";
+      const supplierApiKey =
+        process.env.SUPPLIER_BACKEND_API_KEY ||
+        process.env.API_KEY_SECRET ||
+        "";
 
-        for (const item of returnItems) {
-          try {
-            if (!supplierApiKey) {
-              this.logger.warn(
-                `SUPPLIER_BACKEND_API_KEY not configured, skipping webhook for return_no: ${request.return_no}`
-              );
-              continue;
-            }
+      if (!supplierApiKey) {
+        this.logger.error(
+          `SUPPLIER_BACKEND_API_KEY not configured! Check environment variables.`
+        );
+      }
 
-           
-
-            const webhookResponse = await fetch(
-              `${clinicBackendUrl}/order-returns/webhook/complete`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-api-key": supplierApiKey,
-                },
-                body: JSON.stringify({
-                  return_no: request.return_no,
-                  item_id: item.id,
-                  status: "completed",
-                }),
-              }
+      for (const item of returnItems) {
+        try {
+          if (!supplierApiKey) {
+            this.logger.warn(
+              `SUPPLIER_BACKEND_API_KEY not configured, skipping webhook for return_no: ${returnNo}`
             );
+            continue;
+          }
 
-            if (!webhookResponse.ok) {
-              const errorText = await webhookResponse.text();
-              this.logger.error(
-                `Webhook failed: ${webhookResponse.status} - ${errorText} for return_no: ${request.return_no}`
-              );
-            } else {
-              const responseData = await webhookResponse.json();
-              this.logger.log(
-                `Webhook sent successfully for return_no: ${
-                  request.return_no
-                }, response: ${JSON.stringify(responseData)}`
-              );
+          const webhookResponse = await fetch(
+            `${clinicBackendUrl}/order-returns/webhook/complete`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": supplierApiKey,
+              },
+              body: JSON.stringify({
+                return_no: returnNo,
+                item_id: item.id,
+                status: "completed",
+              }),
             }
-          } catch (fetchError: any) {
+          );
+
+          if (!webhookResponse.ok) {
+            const errorText = await webhookResponse.text();
             this.logger.error(
-              `Webhook fetch error for return_no ${request.return_no}: ${fetchError.message}`
+              `Webhook failed: ${webhookResponse.status} - ${errorText} for return_no: ${returnNo}`
+            );
+          } else {
+            const responseData = await webhookResponse.json();
+            this.logger.log(
+              `Webhook sent successfully for return_no: ${returnNo}, response: ${JSON.stringify(responseData)}`
             );
           }
+        } catch (fetchError: any) {
+          this.logger.error(
+            `Webhook fetch error for return_no ${returnNo}: ${fetchError.message}`
+          );
         }
-      } catch (error: any) {
-        this.logger.error(
-          `Failed to send webhook to clinic: ${error.message}`,
-          error.stack
-        );
-        // Don't throw - completion is already processed
       }
 
       return { success: true, message: "Return marked as completed" };
@@ -863,9 +978,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Send webhook to clinic-backend when return is accepted (for /returns page)
-   */
   private async sendAcceptWebhookToClinic(request: any): Promise<void> {
     try {
       const clinicBackendUrl =
@@ -882,31 +994,26 @@ export class ReturnService {
         return;
       }
 
-      // Get return request to find return_no
-      const requestWithReturnNo = await this.prisma.executeWithRetry(
-        async () => {
-          return (this.prisma as any).supplierReturnRequest.findFirst({
-            where: { id: request.id },
-            select: { return_no: true },
-          });
-        }
-      );
+      const row = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
+          where: { id: request.id },
+          select: { return_no: true },
+        });
+      });
 
-      if (!requestWithReturnNo || !requestWithReturnNo.return_no) {
+      if (!row || !row.return_no) {
         this.logger.warn(
-          `Return request ${request.id} has no return_no, skipping webhook`
+          `Return row ${request.id} has no return_no, skipping webhook`
         );
         return;
       }
 
-      const returnNo = requestWithReturnNo.return_no as string;
-      // 빈 박스 반납 등 구형: 숫자-only 반납번호 → clinic /returns/webhook/accept
+      const returnNo = row.return_no as string;
       const isLegacyNumericReturn =
         returnNo &&
         typeof returnNo === "string" &&
         returnNo.length >= 10 &&
         /^\d+$/.test(returnNo);
-      // 클리닉 제품 반품/교환: 반품번호 B + YYYYMMDD + … → /order-returns/webhook/accept
       const isClinicOrderReturnNo =
         typeof returnNo === "string" &&
         returnNo.length >= 10 &&
@@ -916,8 +1023,12 @@ export class ReturnService {
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
           returnNo
         );
+      const isClinicTipReturnNo =
+        typeof returnNo === "string" &&
+        returnNo.length >= 10 &&
+        returnNo.startsWith("R");
 
-      if (isLegacyNumericReturn) {
+      if (isLegacyNumericReturn || isClinicTipReturnNo) {
         try {
           const webhookResponse = await fetch(
             `${clinicBackendUrl}/returns/webhook/accept`,
@@ -977,7 +1088,8 @@ export class ReturnService {
       } else if (
         !isLegacyNumericReturn &&
         !isClinicOrderReturnNo &&
-        !isClinicDefectiveReturnId
+        !isClinicDefectiveReturnId &&
+        !isClinicTipReturnNo
       ) {
         this.logger.warn(
           `Unknown return_no format, skipping webhooks: ${returnNo} (length: ${returnNo?.length})`
@@ -988,7 +1100,6 @@ export class ReturnService {
         `Failed to send accept webhook to clinic: ${error.message}`,
         error.stack
       );
-      // Don't throw - webhook failure shouldn't break return acceptance
     }
   }
 
@@ -1025,9 +1136,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * Send partial return webhook to clinic for unreturned items (추후반납)
-   */
   private async sendPartialReturnWebhookToClinic(payload: {
     returnId: string;
     clinicTenantId: string;
@@ -1084,19 +1192,14 @@ export class ReturnService {
         `Failed to send partial return webhook to clinic: ${error.message}`,
         error.stack
       );
-      // Don't throw - webhook failure shouldn't break return acceptance
     }
   }
 
-  /**
-   * Clinic → Supplier return request yaratish
-   * Groups multiple items from same clinic into one request if they arrive within 5 minutes
-   */
   async createReturnRequest(dto: any) {
     const {
       returnNo,
       supplierTenantId,
-      supplierManagerId, // Faqat shu manager'ga SMS yuboriladi
+      supplierManagerId,
       clinicTenantId,
       clinicName,
       clinicManagerName,
@@ -1116,247 +1219,99 @@ export class ReturnService {
       );
     }
 
-    // For grouping: Check if there's a recent return request from the same clinic to the same supplier
-    // within 5 minutes that hasn't been confirmed yet
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
+    const mapItemToRow = (targetReturnNo: string) => (item: any) => {
+      const imagesArray = Array.isArray(item.images)
+        ? item.images
+        : item.images
+          ? [item.images]
+          : [];
+      return {
+        return_no: targetReturnNo,
+        supplier_tenant_id: supplierTenantId,
+        supplier_manager_id: supplierManagerId || null,
+        clinic_tenant_id: clinicTenantId,
+        clinic_name: clinicName,
+        clinic_manager_name: clinicManagerName,
+        status: "pending",
+        product_name: item.productName,
+        brand: item.brand || null,
+        quantity: item.quantity,
+        return_type: item.returnType,
+        tip_return_price: item.totalPrice ?? 0,
+        quantity_change_reason: null as string | null,
+        memo: item.memo || null,
+        images: imagesArray,
+        inbound_date: item.inboundDate || null,
+        order_no: item.orderNo || null,
+        batch_no: item.batchNo || null,
+        product_id: item.productId || null,
+        created_at: createdAt ? new Date(createdAt) : new Date(),
+      };
+    };
+
     try {
-      // Find existing pending request from same clinic to same supplier AND same supplier manager within time window
-      // Har bir product o'z supplier manager'iga tegishli bo'lishi kerak
-      const existingRequest = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).supplierReturnRequest.findFirst({
+      const existingRecent = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findFirst({
           where: {
             supplier_tenant_id: supplierTenantId,
             clinic_tenant_id: clinicTenantId,
-            supplier_manager_id: supplierManagerId || null, // supplier_manager_id ham mos kelishi kerak
+            supplier_manager_id: supplierManagerId || null,
             status: "pending",
-            created_at: {
-              gte: fiveMinutesAgo,
-            },
+            created_at: { gte: fiveMinutesAgo },
           },
-          include: {
-            items: true,
-          },
-          orderBy: {
-            created_at: "desc",
-          },
+          orderBy: { created_at: "desc" },
         });
       });
 
-      // Agar existingRequest topilsa, supplier_manager_id ham mos kelishi kerak
-      // Agar mos kelmasa, yangi request yaratish kerak (har bir product o'z manager'iga tegishli)
+      let targetReturnNo = returnNo as string;
       if (
-        existingRequest &&
-        existingRequest.supplier_manager_id === (supplierManagerId || null)
+        existingRecent &&
+        existingRecent.supplier_manager_id === (supplierManagerId || null)
       ) {
-        // Add items to existing request (faqat bir xil supplier_manager_id bo'lsa)
-        const newItems = items.map((item: any) => {
-          // Ensure images is always an array
-          const imagesArray = Array.isArray(item.images)
-            ? item.images
-            : item.images
-            ? [item.images]
-            : [];
-
-          return {
-            product_name: item.productName,
-            brand: item.brand || null,
-            quantity: item.quantity,
-            return_type: item.returnType,
-            memo: item.memo || null,
-            images: imagesArray,
-            inbound_date: item.inboundDate,
-            total_price: item.totalPrice,
-            order_no: item.orderNo || null,
-            batch_no: item.batchNo || null,
-          };
-        });
-
-        const updatedRequest = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnRequest.update({
-            where: { id: existingRequest.id },
-            data: {
-              items: {
-                create: newItems,
-              },
-            },
-            include: {
-              items: true,
-            },
-          });
-        });
-
-        // supplierManagerId'ni updatedRequest'ga qo'shish
-        updatedRequest.supplier_manager_id =
-          supplierManagerId || updatedRequest.supplier_manager_id || null;
-
-        // SMS notification clinic-backend'da yuboriladi
-        this.logger.log(
-          `[Return Create] Items added to existing return request. ReturnNo: ${
-            updatedRequest.return_no
-          }, SupplierTenantId: ${supplierTenantId}, SupplierManagerId: ${
-            supplierManagerId || "not specified"
-          }. SMS notification is sent from clinic-backend.`
-        );
-
-        await this.notifyReturnRequestCreated({
-          items,
-          clinicName,
-          clinicManagerName,
-          supplierManagerId,
-          supplierTenantId,
-          returnRequestId: updatedRequest.id,
-          returnNo: updatedRequest.return_no,
-          dedupeSuffix: `append-${Date.now()}`,
-        });
-
-        return this.formatReturnRequest(updatedRequest);
-      } else {
-        // Check if return_no already exists (to avoid unique constraint error)
-        const existingByReturnNo = await this.prisma.executeWithRetry(
-          async () => {
-            return (this.prisma as any).supplierReturnRequest.findFirst({
-              where: {
-                return_no: returnNo,
-              },
-              include: {
-                items: true,
-              },
-            });
-          }
-        );
-
-        if (existingByReturnNo) {
-          // If return_no exists, add items to existing request
-          const newItems = items.map((item: any) => {
-            // Ensure images is always an array
-            const imagesArray = Array.isArray(item.images)
-              ? item.images
-              : item.images
-              ? [item.images]
-              : [];
-
-            return {
-              product_name: item.productName,
-              brand: item.brand || null,
-              quantity: item.quantity,
-              return_type: item.returnType,
-              memo: item.memo || null,
-              images: imagesArray,
-              inbound_date: item.inboundDate,
-              total_price: item.totalPrice,
-              order_no: item.orderNo || null,
-              batch_no: item.batchNo || null,
-            };
-          });
-
-          const updatedRequest = await this.prisma.executeWithRetry(
-            async () => {
-              return (this.prisma as any).supplierReturnRequest.update({
-                where: { id: existingByReturnNo.id },
-                data: {
-                  items: {
-                    create: newItems,
-                  },
-                },
-                include: {
-                  items: true,
-                },
-              });
-            }
-          );
-
-          // supplierManagerId'ni updatedRequest'ga qo'shish
-          updatedRequest.supplier_manager_id =
-            supplierManagerId || updatedRequest.supplier_manager_id || null;
-
-          // SMS notification clinic-backend'da yuboriladi
-          this.logger.log(
-            `[Return Create] Items added to existing return request (by return_no). ReturnNo: ${
-              updatedRequest.return_no
-            }, SupplierTenantId: ${supplierTenantId}, SupplierManagerId: ${
-              supplierManagerId || "not specified"
-            }. SMS notification is sent from clinic-backend.`
-          );
-
-          await this.notifyReturnRequestCreated({
-            items,
-            clinicName,
-            clinicManagerName,
-            supplierManagerId,
-            supplierTenantId,
-            returnRequestId: updatedRequest.id,
-            returnNo: updatedRequest.return_no,
-            dedupeSuffix: `append-${Date.now()}`,
-          });
-
-          return this.formatReturnRequest(updatedRequest);
-        }
-
-        // Create new return request
-        const newItems = items.map((item: any) => {
-          // Ensure images is always an array
-          const imagesArray = Array.isArray(item.images)
-            ? item.images
-            : item.images
-            ? [item.images]
-            : [];
-
-          return {
-            product_name: item.productName,
-            brand: item.brand || null,
-            quantity: item.quantity,
-            return_type: item.returnType, // Should be "주문|교환", "불량|교환", etc.
-            memo: item.memo || null,
-            images: imagesArray,
-            inbound_date: item.inboundDate,
-            total_price: item.totalPrice,
-            order_no: item.orderNo || null,
-            batch_no: item.batchNo || null,
-          };
-        });
-
-        const returnRequest = await this.prisma.executeWithRetry(async () => {
-          return (this.prisma as any).supplierReturnRequest.create({
-            data: {
-              return_no: returnNo,
-              supplier_tenant_id: supplierTenantId,
-              clinic_tenant_id: clinicTenantId,
-              clinic_name: clinicName,
-              clinic_manager_name: clinicManagerName,
-              supplier_manager_id: supplierManagerId || null, // Product bilan bog'langan SupplierManager ID
-              memo: null,
-              status: "pending",
-              items: {
-                create: newItems,
-              },
-            },
-            include: {
-              items: true,
-            },
-          });
-        });
-        
-
-        // SMS notification clinic-backend'da yuboriladi
-        this.logger.log(
-          `[Return Create] Return request created successfully. ReturnNo: ${returnNo}, SupplierTenantId: ${supplierTenantId}, SupplierManagerId: ${
-            supplierManagerId || "not specified"
-          }. SMS notification is sent from clinic-backend.`
-        );
-
-        await this.notifyReturnRequestCreated({
-          items,
-          clinicName,
-          clinicManagerName,
-          supplierManagerId,
-          supplierTenantId,
-          returnRequestId: returnRequest.id,
-          returnNo,
-        });
-
-        return this.formatReturnRequest(returnRequest);
+        targetReturnNo = existingRecent.return_no;
       }
+
+      const rows = items.map(mapItemToRow(targetReturnNo));
+      await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.createMany({
+          data: rows,
+        });
+      });
+
+      const all = await this.prisma.executeWithRetry(async () => {
+        return (this.prisma as any).supplierTipReturnRequest.findMany({
+          where: {
+            return_no: targetReturnNo,
+            supplier_tenant_id: supplierTenantId,
+          },
+        });
+      });
+      const virtual = this.formatVirtualReturn(all);
+
+      const dedupe =
+        existingRecent &&
+        existingRecent.supplier_manager_id === (supplierManagerId || null)
+          ? `append-${Date.now()}`
+          : undefined;
+
+      this.logger.log(
+        `[Return Create] Tip return rows created. return_no=${targetReturnNo}, supplierTenantId=${supplierTenantId}`
+      );
+
+      await this.notifyReturnRequestCreated({
+        items,
+        clinicName,
+        clinicManagerName,
+        supplierManagerId,
+        supplierTenantId,
+        returnRequestId: virtual.id,
+        returnNo: targetReturnNo,
+        dedupeSuffix: dedupe,
+      });
+
+      return this.formatReturnRequestPayload(virtual);
     } catch (error: any) {
       this.logger.error(
         `Return request create failed: ${error.message}`,
@@ -1368,10 +1323,6 @@ export class ReturnService {
     }
   }
 
-  /**
-   * 클리닉에서 온 제품 반품/교환 요청 알림 문구.
-   * 「반납」은 대여 반납 뉘앙스라 제품 거래에는 「반품」「교환」을 씀.
-   */
   private phrasesForClinicReturnRequest(items: any[]): {
     kindNoun: "반품" | "교환";
     requestLine: string;
@@ -1394,9 +1345,6 @@ export class ReturnService {
     };
   }
 
-  /**
-   * In-app notification for supplier header (polling). Mirrors order notification pattern.
-   */
   private async notifyReturnRequestCreated(params: {
     items: any[];
     clinicName: string;
@@ -1484,35 +1432,5 @@ export class ReturnService {
         `Return notification failed (non-critical): ${notifErr?.message}`
       );
     }
-  }
-
-  /**
-   * Format return request for response
-   */
-  private formatReturnRequest(request: any) {
-    return {
-      id: request.id,
-      returnNo: request.return_no,
-      clinicTenantId: request.clinic_tenant_id,
-      clinicName: request.clinic_name,
-      clinicManagerName: request.clinic_manager_name,
-      status: request.status,
-      items:
-        request.items?.map((item: any) => ({
-          id: item.id,
-          productName: item.product_name,
-          brand: item.brand,
-          quantity: item.quantity,
-          returnType: item.return_type,
-          memo: item.memo,
-          images: item.images,
-          inboundDate: item.inbound_date,
-          totalPrice: item.total_price,
-          orderNo: item.order_no,
-          batchNo: item.batch_no,
-        })) || [],
-      createdAt: request.created_at,
-      updatedAt: request.updated_at,
-    };
   }
 }

@@ -1682,6 +1682,67 @@ const ProductCard = memo(function ProductCard({
     []
   );
 
+  /**
+   * 별도 구매 입고 카드 필수값: Lot 배치번호*, 입고 수량(1+), 유효 기간*, 구매가*(1원+), 보관 위치*(카드 입력란), 입고 직원*
+   */
+  const {
+    canSubmitSeparatePurchaseInbound,
+    separatePurchaseInboundDisabledTitle,
+  } = useMemo(() => {
+    if (!batchForm.batchNumber.trim()) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle: "Lot 배치번호를 입력해주세요.",
+      };
+    }
+    if (batchQuantity < 1) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle:
+          "입고 수량은 1개 이상이어야 합니다.",
+      };
+    }
+    if (!String(batchForm.expiryDate ?? "").trim()) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle: "유효 기간을 입력해주세요.",
+      };
+    }
+    const raw = String(batchForm.purchasePrice ?? "")
+      .replace(/,/g, "")
+      .trim();
+    const n = parseInt(raw, 10);
+    if (!raw || Number.isNaN(n) || n <= 0) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle: "구매가를 입력해주세요.",
+      };
+    }
+    if (!batchForm.storageLocation.trim()) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle: "보관 위치를 입력해주세요.",
+      };
+    }
+    if (!batchForm.inboundManager.trim()) {
+      return {
+        canSubmitSeparatePurchaseInbound: false,
+        separatePurchaseInboundDisabledTitle: "입고 직원을 입력해주세요.",
+      };
+    }
+    return {
+      canSubmitSeparatePurchaseInbound: true,
+      separatePurchaseInboundDisabledTitle: undefined,
+    };
+  }, [
+    batchForm.batchNumber,
+    batchForm.expiryDate,
+    batchForm.purchasePrice,
+    batchForm.storageLocation,
+    batchForm.inboundManager,
+    batchQuantity,
+  ]);
+
   // ✅ Update cache whenever batches state changes
   useEffect(() => {
     if (batches.length > 0) {
@@ -2032,6 +2093,20 @@ const ProductCard = memo(function ProductCard({
       return;
     }
 
+    const purchaseRaw = String(batchForm.purchasePrice ?? "")
+      .replace(/,/g, "")
+      .trim();
+    const purchaseParsed = parseInt(purchaseRaw, 10);
+    if (!purchaseRaw || Number.isNaN(purchaseParsed) || purchaseParsed <= 0) {
+      alert("구매가를 입력해주세요.");
+      return;
+    }
+
+    if (!batchForm.storageLocation.trim()) {
+      alert("보관 위치를 입력해주세요.");
+      return;
+    }
+
     setSubmittingBatch(true);
     try {
       // ✅ getAccessToken() ishlatish (localStorage emas)
@@ -2053,9 +2128,7 @@ const ProductCard = memo(function ProductCard({
       if (batchForm.manufactureDate) {
         payload.manufacture_date = batchForm.manufactureDate;
       }
-      if (batchForm.purchasePrice) {
-        payload.purchase_price = parseInt(batchForm.purchasePrice);
-      }
+      payload.purchase_price = purchaseParsed;
 
       // ✅ Required: Batch Number (LOT)
       payload.batch_no = batchForm.batchNumber.trim();
@@ -2080,14 +2153,7 @@ const ProductCard = memo(function ProductCard({
         payload.alert_days = product.alertDays;
       }
 
-      // 보관 위치: User input yoki Product level storage (fallback)
-      const storageLocation = batchForm.storageLocation.trim()
-        ? batchForm.storageLocation
-        : product.productStorage || product.storageLocation || null;
-
-      if (storageLocation) {
-        payload.storage = storageLocation;
-      }
+      payload.storage = batchForm.storageLocation.trim();
 
       const response = await fetch(`${apiUrl}/products/${product.id}/batches`, {
         method: "POST",
@@ -2671,8 +2737,16 @@ const ProductCard = memo(function ProductCard({
                 </div>
                 <div className="space-y-2 ml-auto mt-8">
                   <button
+                    type="button"
                     onClick={handleCreateBatch}
-                    disabled={submittingBatch}
+                    disabled={
+                      submittingBatch || !canSubmitSeparatePurchaseInbound
+                    }
+                    title={
+                      !submittingBatch && !canSubmitSeparatePurchaseInbound
+                        ? separatePurchaseInboundDisabledTitle
+                        : undefined
+                    }
                     className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <svg

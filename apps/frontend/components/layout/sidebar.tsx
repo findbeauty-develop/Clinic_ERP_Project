@@ -466,12 +466,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       <button
         type="button"
         onClick={openNotifPanel}
-        className="absolute right-3 top-4 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+        className="absolute right-3 top-4 flex h-12 w-12 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-200 hover:text-slate-800"
         aria-label="알림"
       >
-        <Bell className="h-6 w-6" />
+        <Bell className="h-8 w-8" />
         {unreadCount > 0 && (
-          <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
+          <span className="absolute right-0 top-0 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-[12px] font-bold text-white leading-none">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}

@@ -1215,6 +1215,7 @@ ${footer}`;
         clinicManagerName: clinicManagerName,
         items: [
           {
+            productId: returnRecord.product_id,
             productName:
               product?.name && product.name.trim() !== ""
                 ? product.name
