@@ -278,6 +278,10 @@ export class OutboundService {
     return this.prisma
       .$transaction(
         async (tx: any) => {
+          const snap = this.buildOutboundSnapshotFields(batch.product, {
+            isDefective: !!dto.isDefective,
+            defectiveBoxCount: dto.isDefective ? dto.outboundQty : undefined,
+          });
           // Outbound record yaratish
           const outbound = await tx.outbound.create({
             data: {
@@ -290,6 +294,7 @@ export class OutboundService {
                     defectiveDocumentQtyPerBox! * dto.outboundQty
                   )
                 : this.toIntOutboundQty(dto.outboundQty),
+              ...snap,
               manager_name: dto.managerName,
               patient_name: dto.patientName ?? null,
               chart_number: dto.chartNumber ?? null,
@@ -524,6 +529,11 @@ export class OutboundService {
                 item.outboundQty
               : item.outboundQty;
 
+            const snapBulk = this.buildOutboundSnapshotFields(batch!.product, {
+              isDefective: !!item.isDefective,
+              defectiveBoxCount: item.isDefective ? item.outboundQty : undefined,
+            });
+
             // Outbound record yaratish
             const outbound = await (tx as any).outbound.create({
               data: {
@@ -532,6 +542,7 @@ export class OutboundService {
                 batch_id: item.batchId,
                 batch_no: batch!.batch_no,
                 outbound_qty: this.toIntOutboundQty(outboundQtyStored),
+                ...snapBulk,
                 outbound_type: "제품",
                 manager_name: item.managerName,
                 patient_name: item.patientName ?? null,
@@ -941,6 +952,9 @@ export class OutboundService {
               batch_id: true,
               batch_no: true,
               outbound_qty: true,
+              defective_box_count: true,
+              product_name: true,
+              product_unit: true,
               outbound_date: true,
               manager_name: true,
               patient_name: true,
@@ -1144,6 +1158,9 @@ export class OutboundService {
             outboundType: item.outbound_type || "제품", // 단품 출고
             outboundDate: item.outbound_date,
             outboundQty: item.outbound_qty,
+            defectiveBoxCount: item.defective_box_count ?? null,
+            outboundProductName: item.product_name ?? null,
+            outboundProductUnit: item.product_unit ?? null,
             outboundVolume, // 실제 출고된 양 (cc 등) — 프론트에서 이 값 표시
             managerName: item.manager_name,
             patientName: item.patient_name,
@@ -1224,6 +1241,9 @@ export class OutboundService {
       outboundType: outbound.outbound_type || "제품", // 패키지 출고와 단품 출고 구분
       outboundDate: outbound.outbound_date,
       outboundQty: outbound.outbound_qty,
+      defectiveBoxCount: outbound.defective_box_count ?? null,
+      outboundProductName: outbound.product_name ?? null,
+      outboundProductUnit: outbound.product_unit ?? null,
       managerName: outbound.manager_name,
       patientName: outbound.patient_name,
       chartNumber: outbound.chart_number,
@@ -1311,6 +1331,44 @@ export class OutboundService {
       );
     }
     return n;
+  }
+
+  /**
+   * Outbound qatorida: 출고 시점 제품명·단위 스냅샷, 불량 시 박스 수
+   */
+  private buildOutboundSnapshotFields(
+    product: any,
+    opts: { isDefective: boolean; defectiveBoxCount?: number }
+  ): {
+    product_name: string | null;
+    product_unit: string | null;
+    defective_box_count: number | null;
+  } {
+    const product_name =
+      product?.name != null && String(product.name).trim() !== ""
+        ? String(product.name).trim()
+        : null;
+
+    let product_unit: string | null = null;
+    if (opts.isDefective) {
+      product_unit = "box";
+    } else {
+      if (
+        product?.capacity_unit != null &&
+        String(product.capacity_unit).trim() !== ""
+      ) {
+        product_unit = String(product.capacity_unit).trim();
+      } else if (product?.unit != null && String(product.unit).trim() !== "") {
+        product_unit = String(product.unit).trim();
+      }
+    }
+
+    const defective_box_count =
+      opts.isDefective && opts.defectiveBoxCount != null
+        ? Math.round(Number(opts.defectiveBoxCount))
+        : null;
+
+    return { product_name, product_unit, defective_box_count };
   }
 
   /**
@@ -1571,6 +1629,8 @@ export class OutboundService {
         id: true,
         name: true,
         brand: true,
+        unit: true,
+        capacity_unit: true,
         sale_price: true,
         capacity_per_product: true,
         usage_capacity: true,
@@ -1990,6 +2050,13 @@ export class OutboundService {
                     item.outboundQty
                   : item.outboundQty;
 
+                const snapUnified = this.buildOutboundSnapshotFields(pRow, {
+                  isDefective: !!dto.isDefective,
+                  defectiveBoxCount: dto.isDefective
+                    ? item.outboundQty
+                    : undefined,
+                });
+
                 const outbound = await (tx as any).outbound.create({
                   data: {
                     tenant_id: tenantId,
@@ -1997,6 +2064,7 @@ export class OutboundService {
                     batch_id: item.batchId,
                     batch_no: batch.batch_no,
                     outbound_qty: this.toIntOutboundQty(qtyForRow),
+                    ...snapUnified,
                     outbound_type: dto.outboundType,
                     manager_name: dto.managerName,
                     patient_name: dto.patientName ?? null,

@@ -26,6 +26,11 @@ type OutboundHistoryItem = {
   // For regular outbounds — outboundQty = uses, outboundVolume = actual amount (cc etc.) for display
   outboundQty?: number;
   outboundVolume?: number;
+  /** 불량 출고 시 실제 박스 수 (outbound_qty는 문서/반품용 합계일 수 있음) */
+  defectiveBoxCount?: number | null;
+  /** 출고 시점 스냅샷 */
+  outboundProductName?: string | null;
+  outboundProductUnit?: string | null;
   isDamaged?: boolean;
   isDefective?: boolean;
   wasteProduct?: boolean; // 폐기
@@ -632,7 +637,18 @@ export default function OutboundHistoryPage() {
                     {hasRegularOutbound && (
                       <div className="space-y-3">
                         {regularOutbounds.map((item, idx) => {
-                          if (!item.product || !item.outboundQty) return null;
+                          if (
+                            (!item.product && !item.outboundProductName) ||
+                            (item.outboundQty == null &&
+                              item.defectiveBoxCount == null)
+                          ) {
+                            return null;
+                          }
+
+                          const displayProductName =
+                            item.product?.name ??
+                            item.outboundProductName ??
+                            "—";
 
                           return (
                             <div
@@ -641,11 +657,11 @@ export default function OutboundHistoryPage() {
                             >
                               <div className="flex items-center gap-2 flex-1">
                                 <span className="font-bold text-base text-slate-900 dark:text-white">
-                                  {item.product.name}
+                                  {displayProductName}
                                 </span>
                                 {/* ✅ Batch No ko'rsatish */}
 
-                                {item.product.brand && (
+                                {item.product?.brand && (
                                   <span className="text-xs text-slate-500 dark:text-slate-400">
                                     {item.product.brand}
                                   </span>
@@ -656,17 +672,43 @@ export default function OutboundHistoryPage() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="font-bold text-base text-slate-900 dark:text-white">
-                                  -
-                                  {Number(
-                                    item.outboundVolume ?? item.outboundQty
-                                  ).toFixed(2)}
-                                </span>
-                                {item.product.capacity_unit && (
-                                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                                    {item.product.capacity_unit}
-                                  </span>
+                              <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                {item.isDefective &&
+                                item.defectiveBoxCount != null ? (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-base text-slate-900 dark:text-white">
+                                        -{item.defectiveBoxCount}
+                                      </span>
+                                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                                        {item.outboundProductUnit || "box"}
+                                      </span>
+                                    </div>
+                                    {item.outboundQty != null && (
+                                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                                        문서수량 {item.outboundQty}
+                                        {item.product?.capacity_unit
+                                          ? ` ${item.product.capacity_unit}`
+                                          : ""}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-base text-slate-900 dark:text-white">
+                                      -
+                                      {Number(
+                                        item.outboundVolume ?? item.outboundQty
+                                      ).toFixed(2)}
+                                    </span>
+                                    {(item.outboundProductUnit ||
+                                      item.product?.capacity_unit) && (
+                                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                                        {item.outboundProductUnit ||
+                                          item.product?.capacity_unit}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>

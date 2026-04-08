@@ -101,6 +101,40 @@ type PackageItemForOutbound = {
   }[];
 };
 
+/** Batch uchun mavjud hajm (cc) — ProductCard calculateAvailableQuantity bilan mos */
+function getAvailableVolumeForBatch(
+  batch: Batch,
+  product: ProductForOutbound
+): number {
+  if (
+    batch.available_quantity !== null &&
+    batch.available_quantity !== undefined
+  ) {
+    return Number(batch.available_quantity);
+  }
+  if (
+    batch.inbound_qty !== null &&
+    batch.inbound_qty !== undefined &&
+    product.capacityPerProduct != null &&
+    product.capacityPerProduct !== undefined &&
+    product.capacityPerProduct > 0
+  ) {
+    const totalQuantity = batch.inbound_qty * product.capacityPerProduct;
+    if (
+      product.usageCapacity != null &&
+      product.usageCapacity !== undefined &&
+      product.usageCapacity > 0
+    ) {
+      const usedCount = batch.used_count ?? 0;
+      const volumeUsed = usedCount * product.usageCapacity;
+      return Math.max(0, totalQuantity - volumeUsed);
+    }
+    const outboundCount = batch.outbound_count ?? 0;
+    return Math.max(0, totalQuantity - outboundCount);
+  }
+  return batch.qty;
+}
+
 function OutboundPageContent() {
   const pathname = usePathname();
   const router = useRouter();
@@ -120,14 +154,21 @@ function OutboundPageContent() {
     []
   );
 
-  // Backend expects outboundQty = "number of uses" when usage_capacity is set (volume / usage_capacity)
+  // Oddiy: outboundQty = foydalanishlar soni (hajm / usage_capacity). 불량: quti soni (o‘zgartirilmasin).
   const getOutboundQty = (
     quantity: number,
-    product: ProductForOutbound | undefined
-  ) =>
-    product?.usageCapacity != null && product.usageCapacity > 0
-      ? quantity / product.usageCapacity
-      : quantity;
+    product: ProductForOutbound | undefined,
+    options?: { isDefective?: boolean }
+  ) => {
+    if (options?.isDefective) {
+      const n = Math.round(Number(quantity));
+      return Math.max(0, n);
+    }
+    if (product?.usageCapacity != null && product.usageCapacity > 0) {
+      return quantity / product.usageCapacity;
+    }
+    return quantity;
+  };
 
   // Product outbound state
   const [products, setProducts] = useState<ProductForOutbound[]>([]);
@@ -173,6 +214,72 @@ function OutboundPageContent() {
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [failedItems, setFailedItems] = useState<ScheduledItem[]>([]); // 출고 실패 항목
+
+  // 불량: birlik/quti; oddiy: hajm (cc). Radio o‘zgarganda product qatorlarini moslashtirish
+  useEffect(() => {
+    setScheduledItems((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((item) => {
+        if (item.isPackageItem) return item;
+        const product = products.find((p) => p.id === item.productId);
+        const batch = product?.batches?.find((b) => b.id === item.batchId);
+        if (!product || !batch) return item;
+
+        if (statusType === "defective") {
+          if (item.unit === "box" && item.capacity_unit === "box") {
+            if (item.quantity > batch.qty) {
+              changed = true;
+              return { ...item, quantity: batch.qty };
+            }
+            return item;
+          }
+          const cap = product.capacityPerProduct;
+          let boxes: number;
+          if (cap != null && cap > 0) {
+            boxes = Math.min(
+              batch.qty,
+              Math.max(0, Math.ceil(item.quantity / cap))
+            );
+          } else {
+            boxes = Math.min(
+              batch.qty,
+              Math.max(0, Math.round(item.quantity))
+            );
+          }
+          changed = true;
+          return {
+            ...item,
+            quantity: boxes,
+            unit: "box",
+            capacity_unit: "box",
+          };
+        }
+
+        if (item.unit === "box" && item.capacity_unit === "box") {
+          const cap = product.capacityPerProduct;
+          const maxCc = getAvailableVolumeForBatch(batch, product);
+          let newQty: number;
+          if (cap != null && cap > 0) {
+            newQty = Math.min(maxCc, item.quantity * cap);
+          } else {
+            newQty = Math.min(maxCc, item.quantity);
+          }
+          const newUnit = product.usageCapacityUnit || product.unit || "개";
+          changed = true;
+          return {
+            ...item,
+            quantity: newQty,
+            unit: newUnit,
+            capacity_unit: product.capacityUnit || undefined,
+          };
+        }
+        return item;
+      });
+      if (!changed) return prev;
+      return next;
+    });
+  }, [statusType, products]);
 
   // ✅ Barcode scan success modal state
   const [scanSuccessModal, setScanSuccessModal] = useState<{
@@ -515,48 +622,6 @@ function OutboundPageContent() {
     };
   }, [apiUrl, isPackageMode, fetchProducts]);
 
-  // ✅ Global USB Barcode Scanner - Auto add to cart
-  useEffect(() => {
-    // Only active on product mode (not package mode)
-    if (isPackageMode) return;
-
-    let buffer = "";
-    let lastTime = 0;
-    let timeout: NodeJS.Timeout;
-
-    const handleGlobalKeyPress = (e: KeyboardEvent) => {
-      // Skip if user is typing in an input field
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
-        return;
-      }
-
-      const now = Date.now();
-
-      // USB scanner types very fast (< 100ms between chars)
-      if (now - lastTime > 100) buffer = "";
-
-      if (e.key === "Enter" && buffer.length >= 8) {
-        handleBarcodeScanned(buffer);
-        buffer = "";
-      } else if (e.key.length === 1) {
-        buffer += e.key;
-        lastTime = now;
-
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-          buffer = "";
-        }, 500);
-      }
-    };
-
-    window.addEventListener("keypress", handleGlobalKeyPress);
-    return () => {
-      window.removeEventListener("keypress", handleGlobalKeyPress);
-      clearTimeout(timeout);
-    };
-  }, [isPackageMode, products, scheduledItems]);
-
   const handleBarcodeScanned = useCallback(
     async (scannedBarcode: string) => {
       try {
@@ -643,34 +708,45 @@ function OutboundPageContent() {
             item.batchId === availableBatch.id
         );
 
-        // usage_capacity qancha bo'lsa shuncha qo'shamiz (yo'q bo'lsa 1)
-        const qtyStep =
-          matchedProduct.usageCapacity != null &&
-          matchedProduct.usageCapacity > 0
+        const isDefectiveMode = statusType === "defective";
+        const qtyStep = isDefectiveMode
+          ? 1
+          : matchedProduct.usageCapacity != null &&
+              matchedProduct.usageCapacity > 0
             ? matchedProduct.usageCapacity
             : 1;
         let newQuantity = qtyStep;
 
         if (existingItem) {
-          // Increment quantity
           newQuantity = existingItem.quantity + qtyStep;
+          if (isDefectiveMode && newQuantity > availableBatch.qty) {
+            alert(
+              `⚠️ ${matchedProduct.productName}\n불량 출고: 최대 ${availableBatch.qty}box까지 가능합니다.`
+            );
+            return;
+          }
           setScheduledItems((prev) =>
             prev.map((item) =>
               item.productId === matchedProduct.id &&
               item.batchId === availableBatch.id
-                ? { ...item, quantity: newQuantity }
+                ? {
+                    ...item,
+                    quantity: isDefectiveMode
+                      ? Math.min(newQuantity, availableBatch.qty)
+                      : newQuantity,
+                  }
                 : item
             )
           );
         } else {
-          // Add new item (0.5 when usage_capacity 0.1, else 1)
           const newItem: ScheduledItem = {
             productId: matchedProduct.id,
             productName: matchedProduct.productName,
             batchId: availableBatch.id,
             batchNo: availableBatch.batch_no,
             quantity: qtyStep,
-            unit: matchedProduct.unit || "EA",
+            unit: isDefectiveMode ? "box" : matchedProduct.unit || "EA",
+            capacity_unit: isDefectiveMode ? "box" : undefined,
           };
           setScheduledItems((prev) => [...prev, newItem]);
         }
@@ -687,8 +763,54 @@ function OutboundPageContent() {
         alert("바코드 스캔 오류가 발생했습니다.");
       }
     },
-    [products, scheduledItems, currentPage, itemsPerPage]
+    [
+      products,
+      scheduledItems,
+      currentPage,
+      itemsPerPage,
+      statusType,
+      apiUrl,
+    ]
   );
+
+  // ✅ Global USB Barcode Scanner - Auto add to cart
+  useEffect(() => {
+    if (isPackageMode) return;
+
+    let buffer = "";
+    let lastTime = 0;
+    let timeout: NodeJS.Timeout;
+
+    const handleGlobalKeyPress = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastTime > 100) buffer = "";
+
+      if (e.key === "Enter" && buffer.length >= 8) {
+        handleBarcodeScanned(buffer);
+        buffer = "";
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+        lastTime = now;
+
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          buffer = "";
+        }, 500);
+      }
+    };
+
+    window.addEventListener("keypress", handleGlobalKeyPress);
+    return () => {
+      window.removeEventListener("keypress", handleGlobalKeyPress);
+      clearTimeout(timeout);
+    };
+  }, [isPackageMode, handleBarcodeScanned]);
 
   // ✅ Scroll to product after page change (for barcode scanner pagination navigation)
   useEffect(() => {
@@ -1143,6 +1265,7 @@ function OutboundPageContent() {
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQuantity,
+          unit,
           capacity_unit: capacity_unit || updated[existingIndex].capacity_unit,
         };
         return updated;
@@ -1231,9 +1354,9 @@ function OutboundPageContent() {
         if (!product) return false;
         const batch = product.batches?.find((b) => b.id === item.batchId);
         if (!batch) return false;
-        // 불량: 백엔드는 항상 batch.qty에서 1박스만 차감 → 박스 재고만 보면 됨 (용량 기준 검사는 오탐)
+        // 불량: miqdor = quti soni, batch.qty bilan solishtiramiz
         if (statusType === "defective") {
-          return (batch.qty ?? 0) >= 1;
+          return (batch.qty ?? 0) >= item.quantity && item.quantity > 0;
         }
         // Calculate available quantity: (inbound_qty * capacity_per_product) - used_count or fallback to batch.qty
         let availableQuantity = batch.qty; // Default fallback
@@ -1396,7 +1519,9 @@ function OutboundPageContent() {
           return {
             productId: item.productId,
             batchId: item.batchId,
-            outboundQty: getOutboundQty(item.quantity, product),
+            outboundQty: getOutboundQty(item.quantity, product, {
+              isDefective: statusType === "defective",
+            }),
             packageId: undefined, // Product item
             packageQty: undefined,
           };
@@ -1702,7 +1827,9 @@ function OutboundPageContent() {
             {
               productId: item.productId,
               batchId: item.batchId,
-              outboundQty: getOutboundQty(item.quantity, product),
+              outboundQty: getOutboundQty(item.quantity, product, {
+                isDefective: statusType === "defective",
+              }),
               managerName: managerName.trim(),
               chartNumber: chartNumber.trim() || undefined,
               memo: memo.trim() || undefined,
@@ -1771,7 +1898,9 @@ function OutboundPageContent() {
             return {
               productId: item.productId,
               batchId: item.batchId,
-              outboundQty: getOutboundQty(item.quantity, product),
+              outboundQty: getOutboundQty(item.quantity, product, {
+                isDefective: statusType === "defective",
+              }),
               managerName: managerName.trim(),
               chartNumber: chartNumber.trim() || undefined,
               memo: memo.trim() || undefined,
@@ -2433,6 +2562,9 @@ function OutboundPageContent() {
                               isExpanded={expandedProducts.has(product.id)}
                               onToggleExpand={() =>
                                 toggleProductExpand(product.id)
+                              }
+                              isDefectiveOutbound={
+                                statusType === "defective"
                               }
                             />
                           </div>
@@ -3159,8 +3291,13 @@ function OutboundPageContent() {
                           (b) => b.id === item.batchId
                         );
                         if (!batch) return true;
-                        // Calculate available quantity: (inbound_qty * capacity_per_product) - used_count or fallback to batch.qty
-                        let availableQuantity = batch.qty; // Default fallback
+                        if (statusType === "defective") {
+                          return (
+                            item.quantity > (batch.qty ?? 0) ||
+                            item.quantity <= 0
+                          );
+                        }
+                        let availableQuantity = batch.qty;
                         if (
                           batch.inbound_qty !== null &&
                           batch.inbound_qty !== undefined &&
@@ -3411,6 +3548,7 @@ const ProductCard = memo(function ProductCard({
   onQuantityChange,
   isExpanded,
   onToggleExpand,
+  isDefectiveOutbound = false,
 }: {
   product: ProductForOutbound;
   scheduledItems: ScheduledItem[];
@@ -3426,6 +3564,8 @@ const ProductCard = memo(function ProductCard({
   ) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  /** 불량 출고: 수량·단위를 박스 기준으로 표시 */
+  isDefectiveOutbound?: boolean;
 }) {
   // Helper function to calculate available quantity for a batch
   const calculateAvailableQuantity = (batch: Batch): number => {
@@ -3462,11 +3602,17 @@ const ProductCard = memo(function ProductCard({
     return batch.qty;
   };
 
-  // Calculate total stock (sum of all batches' available quantities)
   const totalStock =
     product.batches
       ?.filter((batch) => batch.qty > 0)
-      .reduce((sum, batch) => sum + calculateAvailableQuantity(batch), 0) ?? 0;
+      .reduce(
+        (sum, batch) =>
+          sum +
+          (isDefectiveOutbound
+            ? batch.qty
+            : calculateAvailableQuantity(batch)),
+        0
+      ) ?? 0;
 
   const displayTotalQty =
     product.currentStock != null && product.currentStock !== undefined
@@ -3492,11 +3638,11 @@ const ProductCard = memo(function ProductCard({
         return (a.batch_no || "").localeCompare(b.batch_no || "");
       }) ?? [];
 
-  // Unit logic: if usageCapacity exists, use usageCapacityUnit, otherwise use unit
-  const displayUnit =
+  const volumeDisplayUnit =
     product.usageCapacity && product.usageCapacityUnit
       ? product.usageCapacityUnit
       : product.unit || "단위";
+  const lineDisplayUnit = isDefectiveOutbound ? "box" : volumeDisplayUnit;
 
   if (availableBatches.length === 0) {
     return null; // Don't show product if no available batches
@@ -3525,8 +3671,18 @@ const ProductCard = memo(function ProductCard({
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
             <span className="font-semibold text-slate-900 dark:text-white">
-              총 재고: {displayTotalQty.toLocaleString()} box [
-              {totalStock.toLocaleString()} {displayUnit}]
+              총 재고: {displayTotalQty.toLocaleString()} box
+              {!isDefectiveOutbound && (
+                <>
+                  {" "}
+                  [{totalStock.toLocaleString()} {volumeDisplayUnit}]
+                </>
+              )}
+              {isDefectiveOutbound && (
+                <span className="ml-1 text-sky-600 dark:text-sky-400">
+                  (불량 · box)
+                </span>
+              )}
             </span>
             {product.supplierName && (
               <span>공급처: {product.supplierName}</span>
@@ -3591,14 +3747,15 @@ const ProductCard = memo(function ProductCard({
               );
               const quantity = scheduledItem?.quantity || 0;
 
-              // usage_capacity qancha bo'lsa step shuncha (yo'q bo'lsa 1)
-              const qtyStep =
-                product.usageCapacity != null && product.usageCapacity > 0
+              const qtyStep = isDefectiveOutbound
+                ? 1
+                : product.usageCapacity != null && product.usageCapacity > 0
                   ? product.usageCapacity
                   : 1;
 
-              // Calculate available quantity for this batch (float)
-              const availableQuantity = calculateAvailableQuantity(batch);
+              const availableQuantity = isDefectiveOutbound
+                ? batch.qty
+                : calculateAvailableQuantity(batch);
 
               // Format expiry date
               const expiryDateStr = batch.expiry_date
@@ -3659,23 +3816,24 @@ const ProductCard = memo(function ProductCard({
                         }
                       >
                         재고:{" "}
-                        {batch.inbound_qty !== null &&
-                        batch.inbound_qty !== undefined &&
-                        product.capacityPerProduct !== null &&
-                        product.capacityPerProduct !== undefined &&
-                        product.capacityPerProduct > 0 &&
-                        product.usageCapacity !== null &&
-                        product.usageCapacity !== undefined &&
-                        product.usageCapacity > 0
-                          ? `${batch.qty.toLocaleString()} box [${Number(availableQuantity).toFixed(2)} ${displayUnit}]`
+                        {isDefectiveOutbound
+                          ? `${batch.qty.toLocaleString()} box`
                           : batch.inbound_qty !== null &&
                               batch.inbound_qty !== undefined &&
                               product.capacityPerProduct !== null &&
                               product.capacityPerProduct !== undefined &&
-                              product.capacityPerProduct > 0
-                            ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
-                            : `${batch.qty.toString().padStart(2, "0")}`}{" "}
-                        {/* {displayUnit} */}
+                              product.capacityPerProduct > 0 &&
+                              product.usageCapacity !== null &&
+                              product.usageCapacity !== undefined &&
+                              product.usageCapacity > 0
+                            ? `${batch.qty.toLocaleString()} box [${Number(availableQuantity).toFixed(2)} ${volumeDisplayUnit}]`
+                            : batch.inbound_qty !== null &&
+                                batch.inbound_qty !== undefined &&
+                                product.capacityPerProduct !== null &&
+                                product.capacityPerProduct !== undefined &&
+                                product.capacityPerProduct > 0
+                              ? `${batch.qty.toLocaleString()} [${Number(availableQuantity).toFixed(2)}]`
+                              : `${batch.qty.toString().padStart(2, "0")}`}{" "}
                       </span>
                       <span
                         className={
@@ -3699,10 +3857,12 @@ const ProductCard = memo(function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          displayUnit,
+                          lineDisplayUnit,
                           Math.max(0, quantity - qtyStep),
                           availableQuantity,
-                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
+                          isDefectiveOutbound
+                            ? "box"
+                            : product.capacityUnit || undefined
                         )
                       }
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -3714,7 +3874,11 @@ const ProductCard = memo(function ProductCard({
                       min="0"
                       step={qtyStep}
                       max={availableQuantity}
-                      value={Number(quantity).toFixed(2)}
+                      value={
+                        Number.isFinite(Number(quantity))
+                          ? Math.round(Number(quantity))
+                          : 0
+                      }
                       onChange={(e) => {
                         const newQty = parseFloat(e.target.value) || 0;
                         onQuantityChange(
@@ -3722,10 +3886,12 @@ const ProductCard = memo(function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          displayUnit,
+                          lineDisplayUnit,
                           Math.min(newQty, availableQuantity),
                           availableQuantity,
-                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
+                          isDefectiveOutbound
+                            ? "box"
+                            : product.capacityUnit || undefined
                         );
                       }}
                       className="h-10 w-20 flex-shrink-0 rounded-lg border border-slate-200 bg-white text-center text-base font-semibold text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -3737,10 +3903,12 @@ const ProductCard = memo(function ProductCard({
                           batch.id,
                           batch.batch_no,
                           product.productName,
-                          displayUnit,
+                          lineDisplayUnit,
                           Math.min(quantity + qtyStep, availableQuantity),
                           availableQuantity,
-                          product.capacityUnit || undefined // ✅ capacity_unit yuborilmoqda
+                          isDefectiveOutbound
+                            ? "box"
+                            : product.capacityUnit || undefined
                         )
                       }
                       className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-base font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"

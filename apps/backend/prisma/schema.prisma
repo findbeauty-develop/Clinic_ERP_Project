@@ -287,6 +287,12 @@ model Outbound {
   batch_id      String
   batch_no      String
   outbound_qty  Int
+  /// 불량 출고 시 실제 차감한 박스 수 (문서용 outbound_qty와 별도)
+  defective_box_count Int?
+  /// 출고 시점 제품명 스냅샷 (이력/조회용)
+  product_name   String?
+  /// 출고 시점 단위 스냅샷 (예: cc, box)
+  product_unit   String?
   outbound_date DateTime  @default(now())
   manager_name  String
   patient_name  String?
