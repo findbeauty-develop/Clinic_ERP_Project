@@ -78,6 +78,10 @@ export default function InboundPage() {
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingInboundLoading, setPendingInboundLoading] = useState(true);
+  const [pendingInboundError, setPendingInboundError] = useState<string | null>(
+    null
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const itemsPerPage = 10;
@@ -146,8 +150,8 @@ export default function InboundPage() {
 
   // Fetch pending orders function
   const fetchPendingOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setPendingInboundLoading(true);
+    setPendingInboundError(null);
     try {
       const { apiGet } = await import("../../../lib/api");
       const groupedData = await apiGet<any[]>(
@@ -158,10 +162,14 @@ export default function InboundPage() {
       const flatOrders: any[] = [];
       groupedData.forEach((supplierGroup: any) => {
         supplierGroup.orders?.forEach((order: any) => {
+          const oid = order.id ?? order.orderId;
           flatOrders.push({
             ...order,
+            id: oid,
+            orderId: oid,
             supplierName: supplierGroup.supplierName,
             managerName: supplierGroup.managerName,
+            isPlatformSupplier: supplierGroup.isPlatformSupplier,
           });
         });
       });
@@ -169,9 +177,9 @@ export default function InboundPage() {
       setPendingOrders(flatOrders);
     } catch (err) {
       console.error("Failed to load pending orders", err);
-      setError("입고 대기 주문을 불러오지 못했습니다.");
+      setPendingInboundError("입고 대기 주문을 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      setPendingInboundLoading(false);
     }
   }, [apiUrl]);
 
@@ -380,8 +388,8 @@ export default function InboundPage() {
 
           <PendingOrdersList
             orders={pendingOrders}
-            loading={loading}
-            error={error}
+            loading={pendingInboundLoading}
+            error={pendingInboundError}
             apiUrl={apiUrl}
             onRefresh={fetchPendingOrders}
           />
@@ -1351,15 +1359,29 @@ function PendingOrdersList({
     const initialEdits: Record<string, any> = {};
     orders.forEach((order) => {
       order.items?.forEach((item: any) => {
-        // Use original ordered quantity from clinic (not supplier's confirmed qty)
-        const originalQty = item.orderedQuantity;
-        const finalPrice = item.confirmedPrice || item.orderedPrice;
+        const pending =
+          item.pendingQuantity ??
+          Math.max(
+            0,
+            (item.confirmedQuantity || item.orderedQuantity || 0) -
+              (item.inboundQuantity || 0)
+          );
+        const defaultQty =
+          order.isDefectiveExchangeInbound && pending > 0
+            ? String(pending)
+            : "";
+        const defaultPrice =
+          item.confirmedPrice != null && item.confirmedPrice !== ""
+            ? String(item.confirmedPrice)
+            : item.orderedPrice != null && item.orderedPrice !== ""
+              ? String(item.orderedPrice)
+              : "";
 
         initialEdits[item.id] = {
-          quantity: "",
+          quantity: defaultQty,
           expiryDate: "",
           storageLocation: "",
-          purchasePrice: "",
+          purchasePrice: defaultPrice,
         };
       });
     });
@@ -1381,7 +1403,10 @@ function PendingOrdersList({
       return;
     }
 
-    setProcessing(order.orderId);
+    const procKey = String(
+      order.orderId ?? order.id ?? order.orderNo ?? ""
+    );
+    setProcessing(procKey);
     try {
       // ✅ getAccessToken() ishlatish (localStorage emas)
       const token = await getAccessToken();
@@ -1393,7 +1418,7 @@ function PendingOrdersList({
       }
 
       // Process each item in the order
-      const { apiPost, apiGet } = await import("../../../lib/api");
+      const { apiPost } = await import("../../../lib/api");
 
       // Get current member info for inbound_manager
       const memberData = localStorage.getItem("erp_member_data");
@@ -1416,11 +1441,11 @@ function PendingOrdersList({
           alert(`${item.productName}의 유통기한을 입력해주세요.`);
           return;
         }
-        if (!edited?.quantity || edited.quantity <= 0) {
+        if (!edited?.quantity || Number(edited.quantity) <= 0) {
           alert(`${item.productName}의 수량을 입력해주세요.`);
           return;
         }
-        if (!edited?.purchasePrice || edited.purchasePrice <= 0) {
+        if (!edited?.purchasePrice || Number(edited.purchasePrice) <= 0) {
           alert(`${item.productName}의 구매가를 입력해주세요.`);
           return;
         }
@@ -1433,7 +1458,7 @@ function PendingOrdersList({
         // Use edited quantity from form
         const inboundQty = items.reduce((sum: number, item: any) => {
           const edited = editedItems[item.id];
-          return sum + (edited?.quantity || 0);
+          return sum + (Number(edited?.quantity) || 0);
         }, 0);
 
         // Use edited values from first item
@@ -1466,10 +1491,18 @@ function PendingOrdersList({
 
         const batchPayload: any = {
           qty: inboundQty,
-          purchase_price: editedFirstItem?.purchasePrice || 0,
+          purchase_price: Number(editedFirstItem?.purchasePrice) || 0,
           expiry_date: editedFirstItem?.expiryDate,
           inbound_manager: inboundManager,
         };
+
+        if (
+          order.isDefectiveExchangeInbound &&
+          order.exchangeExpectationId
+        ) {
+          batchPayload.defective_exchange_inbound_expectation_id =
+            order.exchangeExpectationId;
+        }
 
         if (manufactureDate) batchPayload.manufacture_date = manufactureDate;
         if (expiryMonths) batchPayload.expiry_months = expiryMonths;
@@ -1488,8 +1521,8 @@ function PendingOrdersList({
         // Backend returns batch object directly with batch_no
         const batchNo = createdBatch.batch_no || "";
 
-        // If excess, prepare return item
-        if (excessQty > 0) {
+        // If excess, prepare return item (교환 입고 — Order yo'q, ortiqcha return yo'q)
+        if (!order.isDefectiveExchangeInbound && excessQty > 0) {
           returnItems.push({
             productId: firstItem.productId,
             productName: firstItem.productName,
@@ -1497,13 +1530,13 @@ function PendingOrdersList({
             batchNo: batchNo,
             returnQuantity: excessQty,
             totalQuantity: confirmedQty,
-            unitPrice: editedFirstItem?.purchasePrice || 0,
+            unitPrice: Number(editedFirstItem?.purchasePrice) || 0,
           });
         }
       }
 
       // Create returns if any excess
-      if (returnItems.length > 0) {
+      if (!order.isDefectiveExchangeInbound && returnItems.length > 0) {
         try {
           await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
             orderId: order.orderId,
@@ -1520,18 +1553,20 @@ function PendingOrdersList({
         }
       }
 
-      // Update order status to completed
-      try {
-        await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
-      } catch (completeError: any) {
-        console.error(`Failed to complete order:`, completeError);
-        throw new Error(
-          `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
-        );
+      // Update order status to completed (교환 입고 — Order yo'q)
+      if (!order.isDefectiveExchangeInbound) {
+        try {
+          await apiPost(`${apiUrl}/order/${order.orderId}/complete`, {});
+        } catch (completeError: any) {
+          console.error(`Failed to complete order:`, completeError);
+          throw new Error(
+            `주문 완료 처리 중 오류가 발생했습니다: ${completeError.message || "알 수 없는 오류"}`
+          );
+        }
       }
 
       // Show success message and optionally redirect to order-returns if returns were created
-      if (returnItems.length > 0) {
+      if (!order.isDefectiveExchangeInbound && returnItems.length > 0) {
         if (
           confirm(
             `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`
@@ -1541,7 +1576,11 @@ function PendingOrdersList({
           return; // Exit early to prevent onRefresh() call
         }
       } else {
-        alert("입고 처리가 완료되었습니다.");
+        alert(
+          order.isDefectiveExchangeInbound
+            ? "교환 입고 처리가 완료되었습니다."
+            : "입고 처리가 완료되었습니다."
+        );
       }
 
       onRefresh();
@@ -1580,4 +1619,134 @@ function PendingOrdersList({
       </div>
     );
   }
+
+  return (
+    <section className="mt-10 space-y-4 border-t border-slate-200 pt-8 dark:border-slate-700">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          입고 대기
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onRefresh()}
+            className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+          >
+            새로고침
+          </button>
+          <Link
+            href="/inbound"
+            className="text-sm font-medium text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
+          >
+            입고 관리 전체 화면
+          </Link>
+        </div>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+          대기 중인 입고 주문이 없습니다.
+        </div>
+      ) : (
+        <ul className="space-y-6">
+          {orders.map((order) => {
+            const rowKey = String(order.orderId ?? order.id ?? order.orderNo);
+            return (
+              <li
+                key={rowKey}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"
+              >
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-700">
+                  <div>
+                    <p className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+                      {order.orderNo}
+                      {order.isDefectiveExchangeInbound ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+                          교환 입고
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      {order.supplierName ?? "공급업체"}
+                      {order.managerName ? ` · ${order.managerName}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={processing === rowKey}
+                    onClick={() => handleProcessOrder(order)}
+                    className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {processing === rowKey ? "처리 중…" : "입고 처리"}
+                  </button>
+                </div>
+
+                <div className="space-y-5">
+                  {order.items?.map((item: any) => {
+                    const qRaw = Number(editedItems[item.id]?.quantity);
+                    const qVal =
+                      Number.isFinite(qRaw) && qRaw > 0 ? qRaw : 1;
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/40"
+                      >
+                        <p className="mb-3 text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {item.productName}
+                          <span className="ml-2 text-xs font-normal text-slate-500">
+                            대기{" "}
+                            {item.pendingQuantity ??
+                              Math.max(
+                                0,
+                                (item.confirmedQuantity ||
+                                  item.orderedQuantity ||
+                                  0) - (item.inboundQuantity || 0)
+                              )}
+                            {item.unit ? ` ${item.unit}` : ""}
+                          </span>
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <QuantityField
+                            value={qVal}
+                            onChange={(v) =>
+                              updateItemField(item.id, "quantity", String(v))
+                            }
+                          />
+                          <InlineField
+                            label="유통기한 *"
+                            type="date"
+                            value={editedItems[item.id]?.expiryDate}
+                            onChange={(v) =>
+                              updateItemField(item.id, "expiryDate", v)
+                            }
+                          />
+                          <InlineField
+                            label="구매가 *"
+                            type="number"
+                            placeholder="0"
+                            value={editedItems[item.id]?.purchasePrice}
+                            onChange={(v) =>
+                              updateItemField(item.id, "purchasePrice", v)
+                            }
+                          />
+                          <InlineField
+                            label="보관 위치"
+                            placeholder="선택"
+                            value={editedItems[item.id]?.storageLocation}
+                            onChange={(v) =>
+                              updateItemField(item.id, "storageLocation", v)
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
 }

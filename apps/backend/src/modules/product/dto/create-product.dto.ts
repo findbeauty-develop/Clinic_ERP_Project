@@ -107,6 +107,11 @@ export class CreateBatchDto {
   @IsOptional()
   @IsString()
   alert_days?: string;
+
+  /** 교환 입고 대기 qatorini Batch bilan yopish (clinic order-return oqimi) */
+  @IsOptional()
+  @IsString()
+  defective_exchange_inbound_expectation_id?: string;
 }
 
 export class UpdateBatchDto {

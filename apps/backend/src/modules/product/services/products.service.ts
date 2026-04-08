@@ -1873,6 +1873,49 @@ export class ProductsService {
           } as any,
         });
 
+        const expId = (dto as any).defective_exchange_inbound_expectation_id;
+        if (expId) {
+          const exp = await (
+            tx as any
+          ).defectiveExchangeInboundExpectation.findFirst({
+            where: {
+              id: expId,
+              tenant_id: tenantId,
+              status: "pending",
+            },
+          });
+          if (!exp) {
+            throw new BadRequestException(
+              "교환 입고 대기 항목을 찾을 수 없거나 이미 완료되었습니다."
+            );
+          }
+          if (exp.product_id !== productId) {
+            throw new BadRequestException(
+              "제품이 교환 입고 항목과 일치하지 않습니다."
+            );
+          }
+          const prevReceived = exp.received_qty ?? 0;
+          const nextReceived = prevReceived + dto.qty;
+          if (nextReceived > exp.expected_qty) {
+            throw new BadRequestException(
+              `입고 수량이 교환 예정 수량(${exp.expected_qty})을 초과합니다.`
+            );
+          }
+          const fulfilled = nextReceived === exp.expected_qty;
+          await (tx as any).defectiveExchangeInboundExpectation.update({
+            where: { id: expId },
+            data: {
+              received_qty: nextReceived,
+              ...(fulfilled
+                ? {
+                    status: "fulfilled",
+                    fulfilled_batch_id: batch.id,
+                  }
+                : {}),
+            },
+          });
+        }
+
         // Return the created batch directly (with batch_no)
         return batch;
       },

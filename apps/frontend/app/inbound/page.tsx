@@ -4672,7 +4672,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
       ordersToUse.forEach((order) => {
         if (
           order.status === "supplier_confirmed" ||
-          order.status === "pending_inbound"
+          order.status === "pending_inbound" ||
+          order.isDefectiveExchangeInbound === true
         ) {
           order.items?.forEach((item: any) => {
             const itemStatus = item.itemStatus ?? item.item_status ?? "pending";
@@ -6056,18 +6057,25 @@ const PendingOrdersList = memo(function PendingOrdersList({
     const insufficientItems = [];
     for (const item of order.items) {
       const edited = editedItems[item.id];
-      const confirmedQty = item.confirmedQuantity || item.orderedQuantity;
+      const targetInboundQty = order.isDefectiveExchangeInbound
+        ? (item.pendingQuantity ??
+          Math.max(
+            0,
+            (item.confirmedQuantity || item.orderedQuantity) -
+              (item.inboundQuantity || 0)
+          ))
+        : item.confirmedQuantity || item.orderedQuantity;
       const inboundQty = resolveInboundQty(edited);
 
-      if (inboundQty !== confirmedQty) {
+      if (inboundQty !== targetInboundQty) {
         insufficientItems.push({
           id: item.id,
           productId: item.productId,
           productName: item.productName,
           brand: item.brand,
-          ordered: confirmedQty,
+          ordered: targetInboundQty,
           inbound: inboundQty,
-          shortage: confirmedQty - inboundQty,
+          shortage: targetInboundQty - inboundQty,
           expiryMonths: item.expiryMonths,
           expiryUnit: item.expiryUnit,
           alertDays: item.alertDays,
@@ -6086,7 +6094,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
     }
 
     // If no discrepancies, proceed with confirmation
-    if (!confirm(`주문번호 ${order.orderNo}를 입고 처리하시겠습니까?`)) {
+    const noLabel = order.isDefectiveExchangeInbound
+      ? "클레임번호"
+      : "주문번호";
+    const noVal = order.isDefectiveExchangeInbound
+      ? (order.exchangeDefectiveReturnNo ?? order.orderNo)
+      : order.orderNo;
+    if (!confirm(`${noLabel} ${noVal}를 입고 처리하시겠습니까?`)) {
       return;
     }
 
@@ -6173,9 +6187,15 @@ const PendingOrdersList = memo(function PendingOrdersList({
           );
         })();
 
-        const confirmedQty =
-          firstItem.confirmedQuantity || firstItem.orderedQuantity;
-        const excessQty = confirmedQty - inboundQty;
+        const lineTargetQty = order.isDefectiveExchangeInbound
+          ? (firstItem.pendingQuantity ??
+            Math.max(
+              0,
+              (firstItem.confirmedQuantity || firstItem.orderedQuantity) -
+                (firstItem.inboundQuantity || 0)
+            ))
+          : firstItem.confirmedQuantity || firstItem.orderedQuantity;
+        const excessQty = lineTargetQty - inboundQty;
 
         const expiryMonths = firstItem.expiryMonths;
         const expiryUnit = firstItem.expiryUnit || "months";
@@ -6242,6 +6262,13 @@ const PendingOrdersList = memo(function PendingOrdersList({
               expiry_date: perLotExpiry,
               inbound_manager: inboundManager,
             };
+            if (
+              order.isDefectiveExchangeInbound &&
+              order.exchangeExpectationId
+            ) {
+              payload.defective_exchange_inbound_expectation_id =
+                order.exchangeExpectationId;
+            }
             if (batchNoFromBarcode) payload.batch_no = batchNoFromBarcode;
             if (lotManufactureDate)
               payload.manufacture_date = lotManufactureDate;
@@ -6267,6 +6294,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
             expiry_date: editedFirstItem?.expiryDate,
             inbound_manager: inboundManager,
           };
+          if (order.isDefectiveExchangeInbound && order.exchangeExpectationId) {
+            batchPayload.defective_exchange_inbound_expectation_id =
+              order.exchangeExpectationId;
+          }
           if (
             editedFirstItem?.lotNumber &&
             editedFirstItem.lotNumber.trim() !== ""
@@ -6291,21 +6322,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
         const batchNoForReturn = createdBatchNos[0]?.split(" ")[0] || "";
 
-        if (excessQty > 0) {
+        if (!order.isDefectiveExchangeInbound && excessQty > 0) {
           returnItems.push({
             productId: firstItem.productId,
             productName: firstItem.productName,
             brand: firstItem.brand || "",
             batchNo: batchNoForReturn,
             returnQuantity: excessQty,
-            totalQuantity: confirmedQty,
+            totalQuantity: lineTargetQty,
             unitPrice: purchasePrice,
           });
         }
       }
 
       // Create returns if any excess
-      if (returnItems.length > 0) {
+      if (!order.isDefectiveExchangeInbound && returnItems.length > 0) {
         try {
           await apiPost(`${apiUrl}/order-returns/create-from-inbound`, {
             orderId: orderIdToUse, // ✅ FIXED: Use orderIdToUse
@@ -6396,8 +6427,8 @@ const PendingOrdersList = memo(function PendingOrdersList({
         return;
       }
 
-      // Update order status to completed only if not partial
-      if (!isPartial) {
+      // Update order status to completed only if not partial (교환 입고 — Order yo'q)
+      if (!isPartial && !order.isDefectiveExchangeInbound) {
         try {
           await apiPost(`${apiUrl}/order/${orderIdToUse}/complete`, {}); // ✅ FIXED: Use orderIdToUse
         } catch (completeError: any) {
@@ -6409,7 +6440,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
       }
 
       // Show success message and optionally redirect to order-returns if returns were created
-      if (!isPartial && returnItems.length > 0) {
+      if (
+        !isPartial &&
+        !order.isDefectiveExchangeInbound &&
+        returnItems.length > 0
+      ) {
         if (
           confirm(
             `입고 처리가 완료되었습니다.\n${returnItems.length}개의 반품이 생성되었습니다.\n반품 관리 페이지로 이동하시겠습니까?`
@@ -6897,12 +6932,23 @@ const PendingOrdersList = memo(function PendingOrdersList({
         {(() => {
           type CardItem = {
             order: any;
-            sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절";
+            sectionLabel?:
+              | "주문 요청"
+              | "주문 진행"
+              | "주문 거절"
+              | "교환 진행";
             hasRejectedItemsInSameOrder?: boolean;
             hasPendingItemsInSameOrder?: boolean;
           };
           const cards: CardItem[] = [];
           currentOrders.forEach((order) => {
+            if (order.isDefectiveExchangeInbound === true) {
+              cards.push({
+                order,
+                sectionLabel: "교환 진행",
+              });
+              return;
+            }
             const isRejected = order.status === "rejected";
             const pendingItems = (order.items || []).filter(
               (item: any) =>
@@ -7241,7 +7287,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       (o) => (o.id || o.orderId) === scanModalOrderId
                     );
                     return scanOrder?.orderNo
-                      ? ` (주문번호 ${scanOrder.orderNo})`
+                      ? ` (${
+                          scanOrder.isDefectiveExchangeInbound
+                            ? "클레임번호"
+                            : "주문번호"
+                        } ${scanOrder.exchangeDefectiveReturnNo ?? scanOrder.orderNo})`
                       : "";
                   })()}
               </h2>
@@ -7310,7 +7360,10 @@ const PendingOrdersList = memo(function PendingOrdersList({
                         )}
                       </div>
                       <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
-                        주문번호 {orderNo}
+                        {order?.isDefectiveExchangeInbound
+                          ? "클레임번호"
+                          : "주문번호"}{" "}
+                        {orderNo}
                       </span>
                       <span className="text-slate-600 dark:text-slate-400 shrink-0">
                         {dateStr}
@@ -8070,7 +8123,7 @@ const OrderCard = memo(function OrderCard({
   onOpenBarcodeScan,
 }: {
   order: any;
-  sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절";
+  sectionLabel?: "주문 요청" | "주문 진행" | "주문 거절" | "교환 진행";
   editedItems: Record<string, any>;
   updateItemField: (itemId: string, field: string, value: any) => void;
   handleProcessOrder: (order: any) => void;
@@ -8090,6 +8143,11 @@ const OrderCard = memo(function OrderCard({
   const isSupplierConfirmed = order.status === "supplier_confirmed";
   const isRejected = order.status === "rejected";
   const isPendingInbound = order.status === "pending_inbound";
+  const isExchangeInbound = order.isDefectiveExchangeInbound === true;
+  const isInboundProgressSection =
+    sectionLabel === "주문 진행" || sectionLabel === "교환 진행";
+  const canShowInboundFields =
+    isSupplierConfirmed || isPendingInbound || isExchangeInbound;
 
   const rejectionReasons =
     order.items
@@ -8139,6 +8197,23 @@ const OrderCard = memo(function OrderCard({
               />
             </svg>
             주문 요청
+          </span>
+        ) : sectionLabel === "교환 진행" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            교환 진행
           </span>
         ) : sectionLabel === "주문 진행" ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
@@ -8199,28 +8274,31 @@ const OrderCard = memo(function OrderCard({
             </div>
           </div>
 
-          {/* Center: 주문번호 */}
+          {/* Center: 주문번호 / 클레임번호 */}
           <div className="flex items-center justify-center">
             <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-4 py-2 dark:bg-sky-500/10">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                주문번호
+                {isExchangeInbound ? "클레임번호" : "주문번호"}
               </span>
               <span className="text-base font-bold text-sky-600 dark:text-sky-400">
-                {order.orderNo}
+                {isExchangeInbound
+                  ? (order.exchangeDefectiveReturnNo ?? order.orderNo)
+                  : order.orderNo}
               </span>
             </div>
           </div>
 
           {/* Right: 확인일/거절일 + 주문자 */}
           <div className="space-y-2 lg:text-right">
-            {isSupplierConfirmed && order.confirmedAt && (
-              <div className="flex items-center gap-2 lg:justify-end">
-                <CalendarIcon className="h-4 w-4 text-emerald-400" />
-                <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                  확인일: {new Date(order.confirmedAt).toLocaleDateString()}
-                </span>
-              </div>
-            )}
+            {(isSupplierConfirmed || isExchangeInbound) &&
+              order.confirmedAt && (
+                <div className="flex items-center gap-2 lg:justify-end">
+                  <CalendarIcon className="h-4 w-4 text-emerald-400" />
+                  <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                    확인일: {new Date(order.confirmedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
             {isRejected && order.confirmedAt && (
               <div className="flex items-center gap-2 lg:justify-end">
                 <CalendarIcon className="h-4 w-4 text-red-400" />
@@ -8239,7 +8317,13 @@ const OrderCard = memo(function OrderCard({
             )}
             <div className="flex items-center gap-2 lg:justify-end">
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                주문자: {order.createdByName || "알 수 없음"}님
+                {isExchangeInbound ? "클레임 담당자" : "주문자"}:{" "}
+                {isExchangeInbound
+                  ? order.exchangeReturnManagerName ||
+                    order.createdByName ||
+                    "알 수 없음"
+                  : order.createdByName || "알 수 없음"}
+                님
               </span>
             </div>
           </div>
@@ -8265,7 +8349,7 @@ const OrderCard = memo(function OrderCard({
                   className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30"
                 >
                   {sectionLabel !== "주문 요청" &&
-                    sectionLabel !== "주문 진행" && (
+                    !isInboundProgressSection && (
                       <div className="mb-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-base font-semibold text-slate-900 dark:text-white">
@@ -8293,7 +8377,7 @@ const OrderCard = memo(function OrderCard({
                         )}
                       </div>
                     )}
-                  {sectionLabel === "주문 진행" && isPendingInbound && (
+                  {isInboundProgressSection && isPendingInbound && (
                     <div className="mb-2">
                       <span className="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
                         재입고 대기
@@ -8380,8 +8464,7 @@ const OrderCard = memo(function OrderCard({
                             : "-"}
                       </span>
                     </div>
-                  ) : sectionLabel === "주문 진행" &&
-                    (isSupplierConfirmed || isPendingInbound) ? (
+                  ) : isInboundProgressSection && canShowInboundFields ? (
                     /* 주문 진행: read-only design — header (총 입고수량, 보관위치, 구매가) + Lot table */
                     <>
                       <div className="flex flex-nowrap items-center justify-between gap-4 border-b border-slate-200 pb-3 dark:border-slate-600 overflow-x-auto">
@@ -8550,7 +8633,7 @@ const OrderCard = memo(function OrderCard({
                         <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                           입고수량:
                         </label>
-                        {isSupplierConfirmed || isPendingInbound ? (
+                        {canShowInboundFields ? (
                           <div className="flex items-center gap-2">
                             <div className="rounded-lg w-24 sm:w-40 border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                               {edited.quantity !== "" &&
@@ -8602,7 +8685,7 @@ const OrderCard = memo(function OrderCard({
                         <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                           유통기간:
                         </label>
-                        {isSupplierConfirmed || isPendingInbound ? (
+                        {canShowInboundFields ? (
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                             {edited.expiryDate || "0000-00-00"}
                           </div>
@@ -8628,7 +8711,7 @@ const OrderCard = memo(function OrderCard({
                         <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
                           보관위치
                         </label>
-                        {isSupplierConfirmed || isPendingInbound ? (
+                        {canShowInboundFields ? (
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-100">
                             {edited.storageLocation || "보관위치"}
                           </div>
@@ -8715,7 +8798,7 @@ const OrderCard = memo(function OrderCard({
 
                   {/* Read-only Lot card — boshqa sectionlarda (주문 진행 da yangi Lot jadvali bor) */}
                   {isSupplierConfirmed &&
-                    sectionLabel !== "주문 진행" &&
+                    !isInboundProgressSection &&
                     (item.inboundQuantity ?? 0) > 0 && (
                       <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -8814,7 +8897,7 @@ const OrderCard = memo(function OrderCard({
             </div>
           )}
           {/* 주문 진행/재입고: 입고 담당자 */}
-          {(isSupplierConfirmed || isPendingInbound) &&
+          {canShowInboundFields &&
             sectionLabel !== "주문 요청" &&
             sectionLabel !== "주문 거절" && (
               <div className="flex items-center gap-2 flex-1 mr-4 relative">
@@ -8952,10 +9035,12 @@ const OrderCard = memo(function OrderCard({
               )}
               <button
                 onClick={() => handleProcessOrder(order)}
-                disabled={processing === order.orderId}
+                disabled={processing === (order.orderId || order.id)}
                 className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {processing === order.orderId ? "처리 중..." : "입고하기"}
+                {processing === (order.orderId || order.id)
+                  ? "처리 중..."
+                  : "입고하기"}
               </button>
             </>
           )}

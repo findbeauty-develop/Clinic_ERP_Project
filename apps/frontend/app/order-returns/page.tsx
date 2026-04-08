@@ -404,9 +404,7 @@ const ReturnCard = memo(function ReturnCard({
         <div className="mb-2 flex items-center gap-2">
           <div className={statusBadge.className}>
             <svg
-              className={
-                statusBadge.iconClassName || "w-4 h-4 text-green-700"
-              }
+              className={statusBadge.iconClassName || "w-4 h-4 text-green-700"}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -706,15 +704,15 @@ const ReturnCard = memo(function ReturnCard({
               </button>
               {returnItem.supplier_accepted_at ? (
                 <>
-                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                  {/* <span className="text-sm text-slate-700 dark:text-slate-300">
                     교환 제품 받아셨어요?
-                  </span>
+                  </span> */}
                   <button
                     onClick={handleConfirmExchange}
                     disabled={confirming}
                     className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
                   >
-                    {confirming ? "확인 중..." : "확인"}
+                    {confirming ? "교환품 입고 중..." : "교환품 입고"}
                   </button>
                 </>
               ) : (

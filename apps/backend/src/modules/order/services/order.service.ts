@@ -21,6 +21,16 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 import { ORDER_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
 import type { OrderSupplierNotifiedPayload } from "../../notifications/types/order-supplier-notified.payload";
 
+/** Prisma select shape for 교환 입고 pending-inbound merge */
+type ExchangeInboundProductRow = {
+  id: string;
+  name: string;
+  brand: string;
+  unit: string | null;
+  alert_days: string | null;
+  barcode: string | null;
+};
+
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
@@ -3580,6 +3590,70 @@ export class OrderService {
       });
     });
 
+    // Include o‘rniga alohida so‘rov — ba’zi muhitlarda relation/include xatosi butun endpointni sindirmasligi uchun
+    let exchangeExpectations: any[] = [];
+    try {
+      exchangeExpectations = await this.prisma.executeWithRetry(async () => {
+        return await (
+          this.prisma as any
+        ).defectiveExchangeInboundExpectation.findMany({
+          where: { tenant_id: tenantId, status: "pending" },
+        });
+      });
+    } catch (e: any) {
+      this.logger.error(
+        `[getPendingInboundOrders] defectiveExchangeInboundExpectation query failed: ${e?.message || e}`,
+        e?.stack
+      );
+      exchangeExpectations = [];
+    }
+
+    const exchangeReturnIds = [
+      ...new Set(
+        exchangeExpectations.map((e: any) => e.defective_product_return_id)
+      ),
+    ].filter(Boolean);
+    const exchangeReturnsById = new Map<
+      string,
+      {
+        defective_return_no: string;
+        product_name: string;
+        brand: string | null;
+        return_manager: string | null;
+      }
+    >();
+    if (exchangeReturnIds.length > 0) {
+      try {
+        const retRows = await this.prisma.executeWithRetry(async () => {
+          return await (this.prisma as any).defectiveProductReturn.findMany({
+            where: {
+              id: { in: exchangeReturnIds },
+              tenant_id: tenantId,
+            },
+            select: {
+              id: true,
+              defective_return_no: true,
+              product_name: true,
+              brand: true,
+              return_manager: true,
+            },
+          });
+        });
+        for (const r of retRows) {
+          exchangeReturnsById.set(r.id, {
+            defective_return_no: r.defective_return_no,
+            product_name: r.product_name,
+            brand: r.brand,
+            return_manager: r.return_manager,
+          });
+        }
+      } catch (e: any) {
+        this.logger.error(
+          `[getPendingInboundOrders] defectiveProductReturn batch for exchange failed: ${e?.message || e}`
+        );
+      }
+    }
+
     // No filtering - show all orders including rejected ones
 
     // Collect all unique supplier IDs and member IDs for batch fetching
@@ -3592,6 +3666,12 @@ export class OrderService {
       }
       if (order.created_by && !order.clinic_manager_name) {
         memberIds.add(order.created_by);
+      }
+    });
+
+    exchangeExpectations.forEach((exp: any) => {
+      if (exp.supplier_manager_id) {
+        supplierIds.add(exp.supplier_manager_id);
       }
     });
 
@@ -3797,6 +3877,142 @@ export class OrderService {
         totalAmount: order.total_amount,
       });
     }
+
+    const exchangeProductIds = [
+      ...new Set(exchangeExpectations.map((e: any) => e.product_id)),
+    ];
+    let exchangeProducts: ExchangeInboundProductRow[] = [];
+    if (exchangeProductIds.length > 0) {
+      exchangeProducts = await this.prisma.executeWithRetry(async () => {
+        return (await (this.prisma as any).product.findMany({
+          where: { tenant_id: tenantId, id: { in: exchangeProductIds } },
+          select: {
+            id: true,
+            name: true,
+            brand: true,
+            unit: true,
+            alert_days: true,
+            barcode: true,
+          },
+        })) as ExchangeInboundProductRow[];
+      });
+    }
+    const exchangeProductMap = new Map<string, ExchangeInboundProductRow>(
+      exchangeProducts.map((p) => [p.id, p])
+    );
+
+    let exchangeMergedOrderCount = 0;
+    for (const exp of exchangeExpectations) {
+      const receivedQty = exp.received_qty ?? 0;
+      const pendingQty = Math.max(0, exp.expected_qty - receivedQty);
+      if (pendingQty <= 0) {
+        continue;
+      }
+
+      const supplierId = exp.supplier_manager_id || "unknown";
+      if (!grouped[supplierId]) {
+        let supplierInfo = {
+          companyName: "알 수 없음",
+          managerName: "",
+          managerPosition: "",
+          isPlatformSupplier: false,
+        };
+        if (exp.supplier_manager_id) {
+          const clinicSupplierManager = supplierManagersMap.get(
+            exp.supplier_manager_id
+          );
+          if (clinicSupplierManager) {
+            if (clinicSupplierManager.linkedManager?.supplier) {
+              supplierInfo.companyName =
+                clinicSupplierManager.linkedManager.supplier.company_name;
+              supplierInfo.managerName =
+                clinicSupplierManager.linkedManager.name ||
+                clinicSupplierManager.name ||
+                "";
+              supplierInfo.managerPosition =
+                clinicSupplierManager.linkedManager.position ||
+                clinicSupplierManager.position ||
+                "";
+              supplierInfo.isPlatformSupplier = true;
+            } else {
+              supplierInfo.companyName =
+                clinicSupplierManager.company_name || "알 수 없음";
+              supplierInfo.managerName = clinicSupplierManager.name || "";
+              supplierInfo.managerPosition =
+                clinicSupplierManager.position || "";
+              supplierInfo.isPlatformSupplier = false;
+            }
+          }
+        }
+        grouped[supplierId] = {
+          supplierId,
+          supplierName: supplierInfo.companyName,
+          managerName: supplierInfo.managerName,
+          managerPosition: supplierInfo.managerPosition,
+          isPlatformSupplier: supplierInfo.isPlatformSupplier,
+          orders: [],
+        };
+      }
+
+      const product = exchangeProductMap.get(exp.product_id);
+      const ret = exchangeReturnsById.get(exp.defective_product_return_id);
+      const snapName = exp.product_name || ret?.product_name;
+      const snapBrand = exp.brand ?? ret?.brand;
+      const formattedExchangeItem = {
+        id: exp.id,
+        productId: exp.product_id,
+        productName: snapName || product?.name || "제품",
+        brand: (snapBrand ?? product?.brand ?? "") || "",
+        unit: product?.unit || "EA",
+        orderedQuantity: exp.expected_qty,
+        confirmedQuantity: exp.expected_qty,
+        inboundQuantity: receivedQty,
+        pendingQuantity: pendingQty,
+        orderedPrice: exp.unit_price,
+        confirmedPrice: exp.unit_price,
+        quantityReason: null,
+        priceReason: null,
+        memo: null,
+        itemStatus: "confirmed",
+        expiryMonths: null,
+        expiryUnit: null,
+        alertDays: product?.alert_days ?? null,
+        product: {
+          id: product?.id,
+          name: product?.name,
+          brand: product?.brand,
+          unit: product?.unit,
+          alert_days: product?.alert_days,
+          barcode: product?.barcode,
+        },
+      };
+
+      const oid = `exchange-inbound-${exp.id}`;
+      const returnNo = ret?.defective_return_no || exp.id.slice(0, 8);
+      const returnManager =
+        (ret?.return_manager && String(ret.return_manager).trim()) || "";
+      grouped[supplierId].orders.push({
+        orderId: oid,
+        id: oid,
+        orderNo: returnNo,
+        exchangeDefectiveReturnNo: returnNo,
+        orderDate: exp.created_at,
+        confirmedAt: exp.created_at,
+        // supplier_confirmed — 입고 UI 주문 진행 / 바코드 oqimi bilan mos (pending_inbound emas)
+        status: "supplier_confirmed",
+        createdByName: returnManager || "알 수 없음",
+        exchangeReturnManagerName: returnManager || null,
+        items: [formattedExchangeItem],
+        totalAmount: 0,
+        isDefectiveExchangeInbound: true,
+        exchangeExpectationId: exp.id,
+      });
+      exchangeMergedOrderCount += 1;
+    }
+
+    this.logger.log(
+      `📊 [getPendingInboundOrders] defective exchange: expectations=${exchangeExpectations.length}, merged_orders=${exchangeMergedOrderCount}, return_rows=${exchangeReturnsById.size}`
+    );
 
     const result = Object.values(grouped);
 

@@ -538,11 +538,38 @@ model DefectiveProductReturn {
 
   clinicSupplierManager ClinicSupplierManager? @relation(fields: [supplier_manager_id], references: [id], onDelete: SetNull)
 
+  exchangeInboundExpectation DefectiveExchangeInboundExpectation?
+
   @@index([tenant_id])
   @@index([supplier_manager_id])
   @@index([status])
   @@index([tenant_id, status])
   @@index([defective_return_type])
+}
+
+/// 교환 replacement — 입고 대기 (Order/OrderItem ishlatilmaydi; Batch bilan yopiladi)
+model DefectiveExchangeInboundExpectation {
+  id                          String   @id @default(uuid())
+  tenant_id                   String
+  defective_product_return_id String   @unique
+  product_id                  String
+  /// 반품 시점 제품명 스냅샷 (카탈로그 변경과 무관하게 입고 카드 표시)
+  product_name                String?
+  brand                       String?
+  expected_qty                Int
+  received_qty                Int      @default(0)
+  supplier_manager_id         String?
+  unit_price                  Int      @default(0)
+  status                      String   @default("pending") // pending | fulfilled | cancelled
+  fulfilled_batch_id          String?
+  created_at                  DateTime @default(now())
+  updated_at                  DateTime @updatedAt
+
+  defectiveProductReturn DefectiveProductReturn @relation(fields: [defective_product_return_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([product_id])
 }
 
 model Supplier {

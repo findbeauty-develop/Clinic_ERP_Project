@@ -1608,16 +1608,36 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
       );
 
       const now = new Date();
-      // Update status to completed + clinic receipt (반품 진행중 tab 확인)
       const updatedReturn = await this.prisma.executeWithRetry(async () => {
-        return (this.prisma as any).defectiveProductReturn.update({
-          where: { id, tenant_id: tenantId },
-          data: {
-            status: "completed",
-            product_received: true,
-            received_at: now,
-            updated_at: now,
-          },
+        return this.prisma.$transaction(async (tx: any) => {
+          const updated = await tx.defectiveProductReturn.update({
+            where: { id, tenant_id: tenantId },
+            data: {
+              status: "completed",
+              product_received: true,
+              received_at: now,
+              updated_at: now,
+            },
+          });
+          const expectedQty = Math.max(
+            1,
+            returnItem.return_quantity ||
+              returnItem.total_quantity ||
+              0
+          );
+          await tx.defectiveExchangeInboundExpectation.create({
+            data: {
+              tenant_id: tenantId,
+              defective_product_return_id: id,
+              product_id: returnItem.product_id,
+              product_name: returnItem.product_name,
+              brand: returnItem.brand ?? null,
+              expected_qty: expectedQty,
+              supplier_manager_id: returnItem.supplier_manager_id ?? null,
+              unit_price: returnItem.unit_price ?? 0,
+            },
+          });
+          return updated;
         });
       });
 
