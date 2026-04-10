@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
 
 const ORDER_RETURNS_PAGE_SIZE = 10;
+const INBOUND_RECENT_STAFF_LS_KEY = "inbound_recent_inbound_staff";
 
 /** 1 … 4 5 6 … 20 — 스크린샷 스타일과 호환 */
 function getVisiblePages(
@@ -138,6 +139,35 @@ export default function OrderReturnsPage() {
     () => process.env.NEXT_PUBLIC_API_URL || "https://api.jaclit.com",
     []
   );
+
+  const [recentInboundStaff, setRecentInboundStaff] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(INBOUND_RECENT_STAFF_LS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const addRecentInboundStaff = useCallback((name: string) => {
+    const v = name.trim();
+    if (!v) return;
+    setRecentInboundStaff((prev) => {
+      const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            INBOUND_RECENT_STAFF_LS_KEY,
+            JSON.stringify(next)
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  }, []);
 
   // ✅ REMOVED: fetchMembers - not used and requires "owner" role
   // const fetchMembers = useCallback(async () => {
@@ -316,6 +346,8 @@ export default function OrderReturnsPage() {
                     formatReturnType={formatReturnType}
                     activeTab={activeTab}
                     getStatusBadge={getStatusBadge}
+                    recentInboundStaff={recentInboundStaff}
+                    onAddRecentInboundStaff={addRecentInboundStaff}
                   />
                 ))}
               </div>
@@ -340,6 +372,8 @@ const ReturnCard = memo(function ReturnCard({
   formatReturnType,
   activeTab,
   getStatusBadge,
+  recentInboundStaff = [],
+  onAddRecentInboundStaff,
 }: any) {
   const [processing, setProcessing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -349,6 +383,8 @@ const ReturnCard = memo(function ReturnCard({
   const [returnType, setReturnType] = useState("");
   const [showDetailModal, setShowDetailModal] = useState(false); // Add this state
   const [returnManagerName, setReturnManagerName] = useState("");
+  const [showReturnManagerSuggestions, setShowReturnManagerSuggestions] =
+    useState(false);
 
   useEffect(() => {
     setReturnType("");
@@ -462,6 +498,10 @@ const ReturnCard = memo(function ReturnCard({
           defective_return_type: returnType,
         }
       );
+
+      if (returnManagerName.trim() && onAddRecentInboundStaff) {
+        onAddRecentInboundStaff(returnManagerName.trim());
+      }
 
       // Remove the item from the list immediately
       if (onRemove) {
@@ -800,18 +840,48 @@ const ReturnCard = memo(function ReturnCard({
 
             {/* Return Manager & Process Button (defective / damaged returns) */}
             {showReturnTypeDropdown && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <label className="shrink-0 text-sm font-medium text-slate-700 dark:text-slate-300">
                     반품 담당자:
                   </label>
-                  <input
-                    type="text"
-                    value={returnManagerName}
-                    onChange={(e) => setReturnManagerName(e.target.value)}
-                    placeholder="담당자 이름 입력"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                  />
+                  <div className="relative min-w-0 max-w-md flex-1">
+                    <input
+                      type="text"
+                      value={returnManagerName}
+                      onChange={(e) => setReturnManagerName(e.target.value)}
+                      onFocus={() => setShowReturnManagerSuggestions(true)}
+                      onBlur={() =>
+                        setTimeout(
+                          () => setShowReturnManagerSuggestions(false),
+                          200
+                        )
+                      }
+                      placeholder="담당자 이름 입력"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                    />
+                    {showReturnManagerSuggestions &&
+                      recentInboundStaff.length > 0 && (
+                        <ul
+                          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                          onMouseDown={(e) => e.preventDefault()}
+                        >
+                          {recentInboundStaff.map((name: string) => (
+                            <li
+                              key={name}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setReturnManagerName(name);
+                                setShowReturnManagerSuggestions(false);
+                              }}
+                              className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {/* <button
