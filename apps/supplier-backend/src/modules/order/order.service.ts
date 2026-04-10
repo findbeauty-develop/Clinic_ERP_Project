@@ -174,7 +174,7 @@ export class OrderService {
    */
   async listOrdersForManager(
     supplierManagerId: string,
-    query?: { status?: string; page?: number; limit?: number }
+    query?: { status?: string; page?: number; limit?: number; search?: string }
   ) {
     if (!supplierManagerId) {
       throw new BadRequestException("Supplier manager ID talab qilinadi");
@@ -182,23 +182,60 @@ export class OrderService {
 
     const status = query?.status;
     const page = query?.page && query.page > 0 ? query.page : 1;
-    const limit = query?.limit && query.limit > 0 ? query.limit : 20;
+    const searchTrim = query?.search?.trim() || "";
+    const limit =
+      query?.limit && query.limit > 0
+        ? query.limit
+        : searchTrim
+          ? 100
+          : 20;
     const skip = (page - 1) * limit;
 
     // ✅ Tab mantiqi SupplierOrderItem.item_status dan (SupplierOrder.status ustuni yo'q)
+    let itemsFilter: { some: any } | null = null;
+    if (status === "pending") {
+      itemsFilter = { some: { item_status: "pending" } };
+    } else if (status === "confirmed") {
+      itemsFilter = { some: { item_status: "confirmed" } };
+    } else if (status === "all") {
+      itemsFilter = {
+        some: {
+          item_status: {
+            in: ["clinic_inbounded", "rejected", "cancelled"],
+          },
+        },
+      };
+    }
+
     const where: any = {
       supplier_manager_id: supplierManagerId,
     };
 
-    if (status === "pending") {
-      // 주문 목록: kamida bitta pending item bo'lgan orderlar
-      where.items = { some: { item_status: "pending" } };
-    } else if (status === "confirmed") {
-      // 클리닉 확인중: kamida bitta confirmed item bo'lgan orderlar
-      where.items = { some: { item_status: "confirmed" } };
-    } else if (status === "all") {
-      // 주문 내역: clinic_inbounded yoki rejected itemlar bo'lgan orderlar
-      where.items = { some: { item_status: { in: ["clinic_inbounded", "rejected", "cancelled"] } } };
+    if (searchTrim) {
+      const andParts: any[] = [
+        {
+          OR: [
+            {
+              clinic_name: {
+                contains: searchTrim,
+                mode: "insensitive",
+              },
+            },
+            {
+              order_no: {
+                contains: searchTrim,
+                mode: "insensitive",
+              },
+            },
+          ],
+        },
+      ];
+      if (itemsFilter) {
+        andParts.unshift({ items: itemsFilter });
+      }
+      where.AND = andParts;
+    } else if (itemsFilter) {
+      where.items = itemsFilter;
     }
 
     const [total, orders] = await Promise.all([

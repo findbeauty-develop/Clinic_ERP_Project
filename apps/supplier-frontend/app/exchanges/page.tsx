@@ -199,7 +199,7 @@ export default function ExchangesPage() {
     }
   };
 
-  // Accept return (요청 확인)
+  // Accept return (요청 수락)
   const handleAcceptReturn = async () => {
     if (!selectedRequest) return;
 
@@ -220,13 +220,13 @@ export default function ExchangesPage() {
       alert("요청이 확인되었습니다.");
     } catch (error: any) {
       console.error("Error accepting return:", error);
-      alert("요청 확인에 실패했습니다: " + error.message);
+      alert("요청 수락에 실패했습니다: " + error.message);
     } finally {
       setProcessing(false);
     }
   };
 
-  // Reject return (요청 거절)
+  // Reject return (요청 반려)
   const handleRejectReturn = async () => {
     if (!selectedRequest || !rejectionReason.trim()) {
       alert("거절 사유를 입력해주세요.");
@@ -246,7 +246,7 @@ export default function ExchangesPage() {
       alert("요청이 거절되었습니다.");
     } catch (error: any) {
       console.error("Error rejecting return:", error);
-      alert("요청 거절에 실패했습니다: " + error.message);
+      alert("요청 반려가 실패했습니다: " + error.message);
     } finally {
       setProcessing(false);
     }
@@ -258,7 +258,10 @@ export default function ExchangesPage() {
 
     try {
       setProcessing(true);
-      await apiPut(`/supplier/defective-returns/${selectedRequest.id}/complete`, {});
+      await apiPut(
+        `/supplier/defective-returns/${selectedRequest.id}/complete`,
+        {},
+      );
       alert("제품 받았음으로 처리되었습니다.");
       setShowCompleteModal(false);
       setSelectedRequest(null);
@@ -304,16 +307,16 @@ export default function ExchangesPage() {
 
     const label =
       status === "PENDING"
-        ? "요청 확인 대기"
+        ? "클레임 요청"
         : exchangeAwaitingClinic
           ? "병의원 확인중"
           : status === "PROCESSING"
-            ? "요청 진행"
+            ? "클레임 진행중"
             : status === "COMPLETED"
               ? rt?.includes("교환") || rt === "defective_exchange"
                 ? "교환 완료"
                 : "반품 완료"
-              : "요청 거절";
+              : "요청 반려";
     const color =
       status === "PENDING"
         ? "bg-amber-100 text-amber-700"
@@ -399,7 +402,7 @@ export default function ExchangesPage() {
               : "bg-white text-slate-700 border border-slate-200"
           }`}
         >
-          요청 확인 대기
+          클레임 요청
         </button>
         <button
           onClick={() => setActiveTab("processing")}
@@ -409,7 +412,7 @@ export default function ExchangesPage() {
               : "bg-white text-slate-700 border border-slate-200"
           }`}
         >
-          요청 진행
+          클레임 진행중
         </button>
         <button
           onClick={() => setActiveTab("history")}
@@ -419,7 +422,7 @@ export default function ExchangesPage() {
               : "bg-white text-slate-700 border border-slate-200"
           }`}
         >
-          반품 내역
+          클레임 내역
         </button>
       </div>
       {/* Content */}
@@ -439,7 +442,7 @@ export default function ExchangesPage() {
                 ? "대기 중인 요청이 없습니다."
                 : activeTab === "processing"
                   ? "진행 중인 요청이 없습니다."
-                  : "반품 내역이 없습니다."}
+                  : "클레임 내역 없습니다."}
             </p>
           </div>
         )}
@@ -601,7 +604,7 @@ export default function ExchangesPage() {
                           }}
                           className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
                         >
-                          요청 거절
+                          요청 반려
                         </button>
                         <button
                           onClick={() => {
@@ -615,7 +618,7 @@ export default function ExchangesPage() {
                           }}
                           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                         >
-                          요청 확인
+                          요청 수락
                         </button>
                       </div>
                     )}
@@ -717,12 +720,12 @@ export default function ExchangesPage() {
         )}
       </div>
 
-      {/* Confirm Modal (요청 확인) */}
+      {/* Confirm Modal (요청 수락) */}
       {showConfirmModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
             <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">
-              요청 확인
+              요청 수락
             </h3>
             <p className="text-sm sm:text-base text-slate-700 mb-3 sm:mb-4">
               {selectedRequest.clinicName}의 반품/교환 요청을 확인하시겠습니까?
@@ -750,12 +753,12 @@ export default function ExchangesPage() {
         </div>
       )}
 
-      {/* Reject Modal (요청 거절) */}
+      {/* Reject Modal (요청 반려) */}
       {showRejectModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6">
             <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4">
-              요청 거절
+              요청 반려
             </h3>
             <p className="text-sm sm:text-base text-slate-700 mb-2">
               {selectedRequest.clinicName}의 반품/교환 요청을 거절하시겠습니까?

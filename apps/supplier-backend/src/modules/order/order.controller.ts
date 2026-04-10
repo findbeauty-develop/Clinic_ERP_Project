@@ -46,13 +46,15 @@ export class OrderController {
     @Req() req: any,
     @Query("status") status?: string,
     @Query("page") page?: string,
-    @Query("limit") limit?: string
+    @Query("limit") limit?: string,
+    @Query("search") search?: string
   ) {
     const supplierManagerId = req.user?.supplierManagerId;
     return this.orderService.listOrdersForManager(supplierManagerId, {
       status,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
+      search: search?.trim() || undefined,
     });
   }
 

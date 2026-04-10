@@ -1396,6 +1396,7 @@ export class OrderService {
         memo: item.memo || null,
         itemStatus: item.item_status || null,
         taxRate: item.tax_rate ?? 0,
+        lineCreatedAt: item.created_at ?? null,
       }));
 
       // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
@@ -4173,12 +4174,13 @@ export class OrderService {
           supplier_id: true,
           memo: true,
           updated_at: true,
-          items: {
+            items: {
             where: {
               item_status: {
                 in: ["rejected", "rejection_acknowledged"],
               },
             },
+            orderBy: { created_at: "asc" },
             select: {
               id: true,
               product_id: true,
@@ -4192,6 +4194,7 @@ export class OrderService {
               item_status: true,
               rejection_member_name: true,
               updated_at: true,
+              created_at: true,
               product: {
                 select: {
                   name: true,
@@ -4273,6 +4276,7 @@ export class OrderService {
           memo: item.memo || null,
           itemStatus: item.item_status || null,
           rejectionMemberName: item.rejection_member_name || null,
+          lineCreatedAt: item.created_at ?? null,
         })),
         memo: order.memo || null,
       };

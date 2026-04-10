@@ -38,6 +38,21 @@ const getStatuses = (products: ProductListItem[]): string[] => {
   return ["전체 상태", ...Array.from(stats).sort()];
 };
 
+/** Order inbound card / handleProcessOrder — lotQuantities yoki quantity */
+function resolveEditedInboundQty(edited: any): number {
+  if (
+    edited?.lotQuantities &&
+    typeof edited.lotQuantities === "object" &&
+    Object.keys(edited.lotQuantities).length > 0
+  ) {
+    return (Object.values(edited.lotQuantities) as number[]).reduce(
+      (a, b) => a + Number(b),
+      0
+    );
+  }
+  return Number(edited?.quantity) || 0;
+}
+
 const getSuppliers = (products: ProductListItem[]): string[] => {
   const supps = new Set<string>();
   products.forEach((p) => {
@@ -2074,7 +2089,7 @@ const ProductCard = memo(function ProductCard({
 
     // Validation
     if (!batchForm.inboundManager.trim()) {
-      alert("입고 담당자 이름을 입력해주세요.");
+      alert("입고 직원 이름을 입력해주세요.");
       return;
     }
 
@@ -2405,7 +2420,7 @@ const ProductCard = memo(function ProductCard({
                               storage: batch.보관위치 ?? batch.storage ?? "",
                               reasonForModification:
                                 batch.reason_for_modification ?? "",
-                              inboundManager: batch.inbound_manager ?? "",
+                              inboundManager: "",
                             });
                           }}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -4688,6 +4703,9 @@ const PendingOrdersList = memo(function PendingOrdersList({
     null
   ); // Track active product by itemId
   const [scanModalInboundStaff, setScanModalInboundStaff] = useState("");
+  /** 바코드 입고: 제품별 「입고」 직전 최종 확인 모달 */
+  const [scanInboundFinalConfirmItemId, setScanInboundFinalConfirmItemId] =
+    useState<number | string | null>(null);
   // Manual lot panel (스캐너 없이): which product's form is open
   const [expandedManualLotItemId, setExpandedManualLotItemId] = useState<
     number | null
@@ -4889,6 +4907,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
       expiryDate: "",
       quantity: 0,
     });
+    setScanInboundFinalConfirmItemId(null);
   };
 
   // Initialize edited items when orders change - optimized with useMemo
@@ -6088,6 +6107,11 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
     if (!token || !tenantId) {
       alert("로그인이 필요합니다.");
+      return;
+    }
+
+    if (!inboundManagers[orderIdToUse]?.trim()) {
+      alert("입고 직원를 입력해주세요.");
       return;
     }
 
@@ -7342,230 +7366,237 @@ const PendingOrdersList = memo(function PendingOrdersList({
 
       {/* ✅ NEW: Barcode Scanner Modal - Design per reference image */}
       {scanModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeScanModal();
-            }
-          }}
-        >
-          <div className="bg-white ml-80 dark:bg-slate-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                바코드 입고
-                {scanModalOrderId &&
-                  (() => {
-                    const scanOrder = orders.find(
-                      (o) => (o.id || o.orderId) === scanModalOrderId
-                    );
-                    return scanOrder?.orderNo
-                      ? ` (${
-                          scanOrder.isDefectiveExchangeInbound
-                            ? "클레임번호"
-                            : "주문번호"
-                        } ${scanOrder.exchangeDefectiveReturnNo ?? scanOrder.orderNo})`
-                      : "";
-                  })()}
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  closeScanModal();
-                }}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                aria-label="닫기"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* Info bar: company name, supplier manager, order no, date */}
-            {scannedItems.length > 0 &&
-              (() => {
-                const first = scannedItems[0];
-                const order = first?.order;
-                const companyName =
-                  order?.supplierName ??
-                  order?.supplier?.name ??
-                  order?.companyName ??
-                  "(유) 공급처";
-                const managerName =
-                  order?.managerName ?? order?.supplier?.managerName ?? "";
-                const managerPosition =
-                  order?.managerPosition ??
-                  order?.supplier?.managerPosition ??
-                  "";
-                const managerText = [managerName, managerPosition]
-                  .filter(Boolean)
-                  .join(" ");
-                const orderNo = first?.orderNo ?? "000000-000000";
-                const dateStr = new Date().toLocaleDateString("ko-KR", {
-                  year: "numeric",
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                });
-                return (
-                  <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                      <div className="flex flex-row gap-2 min-w-0">
-                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
-                          {companyName}
-                        </span>
-                        {managerText && (
-                          <span className="text-slate-600 dark:text-slate-400 truncate">
-                            {managerText}
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
-                        {order?.isDefectiveExchangeInbound
-                          ? "클레임번호"
-                          : "주문번호"}{" "}
-                        {orderNo}
-                      </span>
-                      <span className="text-slate-600 dark:text-slate-400 shrink-0">
-                        {dateStr}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-            {/* Body - Scrollable product list */}
-            <div className="flex-1 overflow-y-auto p-5">
-              {scannedItems.length > 0 ? (
-                <div className="space-y-3">
-                  {scannedItems
-                    .slice()
-                    .sort((a, b) => {
-                      const statusOrder: { [key: string]: number } = {
-                        active: 0,
-                        pending: 1,
-                        completed: 2,
-                      };
-                      return (
-                        (statusOrder[a.status] ?? 1) -
-                        (statusOrder[b.status] ?? 1)
+        <>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={(e) => {
+              if (
+                e.target === e.currentTarget &&
+                !scanInboundFinalConfirmItemId
+              ) {
+                closeScanModal();
+              }
+            }}
+          >
+            <div className="bg-white ml-80 dark:bg-slate-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  입고 진행
+                  {scanModalOrderId &&
+                    (() => {
+                      const scanOrder = orders.find(
+                        (o) => (o.id || o.orderId) === scanModalOrderId
                       );
-                    })
-                    .map((item) => {
-                      const isActive = item.status === "active";
-                      const isCompleted = item.status === "completed";
-                      const isPending = item.status === "pending";
-                      const purchasePrice =
-                        item.item?.unit_price ?? item.item?.confirmedPrice ?? 0;
-                      // 재입고: qolgan miqdorni ko'rsatish (remainingQty); catalog uchun order quantity
-                      const capacity = item.fromCatalog
-                        ? (item.item?.quantity ??
-                          item.item?.confirmedQuantity ??
-                          0)
-                        : (item.remainingQty ??
-                          item.item?.confirmedQuantity ??
-                          0);
-                      const hasLots =
-                        item.lotQuantities &&
-                        Object.keys(item.lotQuantities).length > 0 &&
-                        (Object.values(item.lotQuantities) as number[]).some(
-                          (n) => Number(n) > 0
-                        );
-                      const sumFromLots = hasLots
-                        ? (
-                            Object.values(item.lotQuantities) as number[]
-                          ).reduce((a, b) => a + Number(b), 0)
-                        : Number(item.quantity ?? 0) || 0;
-                      const pendingManualQty =
-                        expandedManualLotItemId === item.itemId
-                          ? Number(manualLotForm.quantity) || 0
-                          : 0;
-                      const totalQty = sumFromLots + pendingManualQty;
+                      return scanOrder?.orderNo
+                        ? ` (${
+                            scanOrder.isDefectiveExchangeInbound
+                              ? "클레임번호"
+                              : "주문번호"
+                          } ${scanOrder.exchangeDefectiveReturnNo ?? scanOrder.orderNo})`
+                        : "";
+                    })()}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeScanModal();
+                  }}
+                  className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                  aria-label="닫기"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
 
-                      return (
-                        <div
-                          key={item.id}
-                          className={`rounded-xl border overflow-hidden transition-all ${
-                            isActive
-                              ? "border-2 border-dashed border-violet-400 dark:border-violet-500 shadow-md"
-                              : isCompleted
-                                ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10"
-                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                          }`}
-                        >
-                          {/* Card row: status circle + image placeholder + name/brand + details */}
+              {/* Info bar: company name, supplier manager, order no, date */}
+              {scannedItems.length > 0 &&
+                (() => {
+                  const first = scannedItems[0];
+                  const order = first?.order;
+                  const companyName =
+                    order?.supplierName ??
+                    order?.supplier?.name ??
+                    order?.companyName ??
+                    "(유) 공급처";
+                  const managerName =
+                    order?.managerName ?? order?.supplier?.managerName ?? "";
+                  const managerPosition =
+                    order?.managerPosition ??
+                    order?.supplier?.managerPosition ??
+                    "";
+                  const managerText = [managerName, managerPosition]
+                    .filter(Boolean)
+                    .join(" ");
+                  const orderNo = first?.orderNo ?? "000000-000000";
+                  const dateStr = new Date().toLocaleDateString("ko-KR", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  return (
+                    <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                        <div className="flex flex-row gap-2 min-w-0">
+                          <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                            {companyName}
+                          </span>
+                          {managerText && (
+                            <span className="text-slate-600 dark:text-slate-400 truncate">
+                              {managerText}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
+                          {order?.isDefectiveExchangeInbound
+                            ? "클레임번호"
+                            : "주문번호"}{" "}
+                          {orderNo}
+                        </span>
+                        <span className="text-slate-600 dark:text-slate-400 shrink-0">
+                          {dateStr}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              {/* Body - Scrollable product list */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {scannedItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {scannedItems
+                      .slice()
+                      .sort((a, b) => {
+                        const statusOrder: { [key: string]: number } = {
+                          active: 0,
+                          pending: 1,
+                          completed: 2,
+                        };
+                        return (
+                          (statusOrder[a.status] ?? 1) -
+                          (statusOrder[b.status] ?? 1)
+                        );
+                      })
+                      .map((item) => {
+                        const isActive = item.status === "active";
+                        const isCompleted = item.status === "completed";
+                        const isPending = item.status === "pending";
+                        const purchasePrice =
+                          item.item?.unit_price ??
+                          item.item?.confirmedPrice ??
+                          0;
+                        // 재입고: qolgan miqdorni ko'rsatish (remainingQty); catalog uchun order quantity
+                        const capacity = item.fromCatalog
+                          ? (item.item?.quantity ??
+                            item.item?.confirmedQuantity ??
+                            0)
+                          : (item.remainingQty ??
+                            item.item?.confirmedQuantity ??
+                            0);
+                        const hasLots =
+                          item.lotQuantities &&
+                          Object.keys(item.lotQuantities).length > 0 &&
+                          (Object.values(item.lotQuantities) as number[]).some(
+                            (n) => Number(n) > 0
+                          );
+                        const sumFromLots = hasLots
+                          ? (
+                              Object.values(item.lotQuantities) as number[]
+                            ).reduce((a, b) => a + Number(b), 0)
+                          : Number(item.quantity ?? 0) || 0;
+                        const pendingManualQty =
+                          expandedManualLotItemId === item.itemId
+                            ? Number(manualLotForm.quantity) || 0
+                            : 0;
+                        const totalQty = sumFromLots + pendingManualQty;
+
+                        return (
                           <div
-                            className={`flex items-center gap-4 p-4 cursor-pointer ${
+                            key={item.id}
+                            className={`rounded-xl border overflow-hidden transition-all ${
                               isActive
-                                ? "bg-violet-50/50 dark:bg-violet-900/10"
+                                ? "border-2 border-dashed border-violet-400 dark:border-violet-500 shadow-md"
                                 : isCompleted
-                                  ? "bg-emerald-50/30 dark:bg-emerald-900/20"
-                                  : "bg-white dark:bg-slate-800"
+                                  ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10"
+                                  : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                             }`}
-                            onClick={() => {
-                              if (!isCompleted) {
-                                setScannedItems((prev) => {
-                                  const target = prev.find(
-                                    (p) =>
-                                      String(p?.itemId) === String(item.itemId)
-                                  );
-                                  const refTarget =
-                                    scannedItemsRef.current.find(
+                          >
+                            {/* Card row: status circle + image placeholder + name/brand + details */}
+                            <div
+                              className={`flex items-center gap-4 p-4 cursor-pointer ${
+                                isActive
+                                  ? "bg-violet-50/50 dark:bg-violet-900/10"
+                                  : isCompleted
+                                    ? "bg-emerald-50/30 dark:bg-emerald-900/20"
+                                    : "bg-white dark:bg-slate-800"
+                              }`}
+                              onClick={() => {
+                                if (!isCompleted) {
+                                  setScannedItems((prev) => {
+                                    const target = prev.find(
                                       (p) =>
                                         String(p?.itemId) ===
                                         String(item.itemId)
                                     );
-                                  const acc =
-                                    productLotsAccumulatorRef.current.get(
-                                      String(item.itemId)
-                                    ) || {};
+                                    const refTarget =
+                                      scannedItemsRef.current.find(
+                                        (p) =>
+                                          String(p?.itemId) ===
+                                          String(item.itemId)
+                                      );
+                                    const acc =
+                                      productLotsAccumulatorRef.current.get(
+                                        String(item.itemId)
+                                      ) || {};
 
-                                  return prev.map((p) => ({
-                                    ...p,
-                                    status:
-                                      p.itemId === item.itemId &&
-                                      p.status !== "completed"
-                                        ? "active"
-                                        : p.status === "active"
-                                          ? "pending"
-                                          : p.status,
-                                  }));
-                                });
-                                setActiveItemId(item.itemId);
-                              }
-                            }}
-                          >
-                            {/* Status circle */}
-                            <span
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                                isActive
-                                  ? "bg-blue-500 text-white"
-                                  : isCompleted
-                                    ? "bg-emerald-500 text-white"
-                                    : "bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300"
-                              }`}
+                                    return prev.map((p) => ({
+                                      ...p,
+                                      status:
+                                        p.itemId === item.itemId &&
+                                        p.status !== "completed"
+                                          ? "active"
+                                          : p.status === "active"
+                                            ? "pending"
+                                            : p.status,
+                                    }));
+                                  });
+                                  setActiveItemId(item.itemId);
+                                }
+                              }}
                             >
-                              {isActive
-                                ? "진행"
-                                : isCompleted
-                                  ? "완료"
-                                  : "대기"}
-                            </span>
-                            {/* Image placeholder */}
-                            {/* <div className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
+                              {/* Status circle */}
+                              <span
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                                  isActive
+                                    ? "bg-blue-500 text-white"
+                                    : isCompleted
+                                      ? "bg-emerald-500 text-white"
+                                      : "bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300"
+                                }`}
+                              >
+                                {isActive
+                                  ? "진행"
+                                  : isCompleted
+                                    ? "완료"
+                                    : "대기"}
+                              </span>
+                              {/* Image placeholder */}
+                              {/* <div className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                               {item.product?.image_url ? (
                                 <img
                                   src={item.product.image_url}
@@ -7578,22 +7609,22 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 </span>
                               )}
                             </div> */}
-                            {/* Name + brand + quantity (always visible on all screens) */}
-                            <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                                  {item.productName}
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                                {item.brand ?? ""}
-                              </div>
-                              {/* 총 입고수량 + 재입고 qolgan miqdor (mobile ham ko'rinsin) */}
-                              <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
-                                <span className="sm:hidden">
-                                  {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
-                                </span>
-                                {/* {item.lotQuantities &&
+                              {/* Name + brand + quantity (always visible on all screens) */}
+                              <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                    {item.productName}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                  {item.brand ?? ""}
+                                </div>
+                                {/* 총 입고수량 + 재입고 qolgan miqdor (mobile ham ko'rinsin) */}
+                                <div className="flex flex-col text-xs text-slate-600 dark:text-slate-400 gap-0.5 mt-0.5">
+                                  <span className="sm:hidden">
+                                    {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
+                                  </span>
+                                  {/* {item.lotQuantities &&
                                   Object.keys(item.lotQuantities).length >
                                     0 && (
                                     <span className="text-violet-600 dark:text-violet-400">
@@ -7607,18 +7638,19 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                         .join(", ")}
                                     </span>
                                   )} */}
+                                </div>
                               </div>
-                            </div>
-                            {/* Right: 구매가 (desktop) */}
-                            <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
-                              <span>
-                                {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
-                              </span>
-                              <span>
-                                구매가 {Number(purchasePrice).toLocaleString()}
-                              </span>
-                            </div>
-                            {/* {!isCompleted && (
+                              {/* Right: 구매가 (desktop) */}
+                              <div className="hidden sm:flex flex-row justify-between gap-72 items-center text-xs text-slate-600 dark:text-slate-400 shrink-0">
+                                <span>
+                                  {`총 입고수량 ${Math.min(totalQty, capacity)} / ${capacity} Box`}
+                                </span>
+                                <span>
+                                  구매가{" "}
+                                  {Number(purchasePrice).toLocaleString()}
+                                </span>
+                              </div>
+                              {/* {!isCompleted && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -7630,500 +7662,536 @@ const PendingOrdersList = memo(function PendingOrdersList({
                                 삭제
                               </button>
                             )} */}
-                            {isCompleted && (
-                              <span className="text-emerald-600 dark:text-emerald-400 text-lg shrink-0">
-                                ✓
-                              </span>
-                            )}
-                          </div>
+                              {isCompleted && (
+                                <span className="text-emerald-600 dark:text-emerald-400 text-lg shrink-0">
+                                  ✓
+                                </span>
+                              )}
+                            </div>
 
-                          {/* Expanded: Lot ozgarganda — har bir lot uchun sub-card (2-rasma dizayni) */}
-                          {isActive && !isCompleted && (
-                            <div className="p-4 bg-white  dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                              {/* 보관위치 — always visible at top when card is expanded */}
-                              <div className="mb-3">
-                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                  보관위치
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.storageLocation || ""}
-                                  onChange={(e) =>
-                                    updateScannedProduct(item.itemId, {
-                                      storageLocation: e.target.value,
-                                    })
-                                  }
-                                  placeholder="예: 창고 A-3, 냉장고"
-                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                />
-                              </div>
-                              {/* Lot sub-cards: when multiple lots, show one card per lot below main card */}
-                              {item.lotQuantities &&
-                              Object.entries(item.lotQuantities).filter(
-                                ([, q]) => Number(q) > 0
-                              ).length > 0 ? (
-                                <div className="space-y-3">
-                                  {Object.entries(item.lotQuantities)
-                                    .filter(([, q]) => Number(q) > 0)
-                                    .map(([lotKey]) => {
-                                      const qty = Number(
-                                        item.lotQuantities[lotKey] ?? 0
-                                      );
-                                      const details =
-                                        item.lotDetails?.[lotKey] || {};
-                                      const batchLabel =
-                                        lotKey === "__default"
-                                          ? "스캔"
-                                          : lotKey.startsWith("__manual_")
-                                            ? "수동"
-                                            : lotKey;
-                                      return (
-                                        <div
-                                          key={lotKey}
-                                          className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 p-3"
-                                        >
-                                          <div className="w-full">
-                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                              Lot 배치번호
-                                            </label>
-                                            <div className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm">
-                                              {batchLabel}
+                            {/* Expanded: Lot ozgarganda — har bir lot uchun sub-card (2-rasma dizayni) */}
+                            {isActive && !isCompleted && (
+                              <div className="p-4 bg-white  dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                                {/* 보관위치 — always visible at top when card is expanded */}
+                                <div className="mb-3">
+                                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                    보관위치
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={item.storageLocation || ""}
+                                    onChange={(e) =>
+                                      updateScannedProduct(item.itemId, {
+                                        storageLocation: e.target.value,
+                                      })
+                                    }
+                                    placeholder="예: 창고 A-3, 냉장고"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                  />
+                                </div>
+                                {/* Lot sub-cards: when multiple lots, show one card per lot below main card */}
+                                {item.lotQuantities &&
+                                Object.entries(item.lotQuantities).filter(
+                                  ([, q]) => Number(q) > 0
+                                ).length > 0 ? (
+                                  <div className="space-y-3">
+                                    {Object.entries(item.lotQuantities)
+                                      .filter(([, q]) => Number(q) > 0)
+                                      .map(([lotKey]) => {
+                                        const qty = Number(
+                                          item.lotQuantities[lotKey] ?? 0
+                                        );
+                                        const details =
+                                          item.lotDetails?.[lotKey] || {};
+                                        const batchLabel =
+                                          lotKey === "__default"
+                                            ? "스캔"
+                                            : lotKey.startsWith("__manual_")
+                                              ? "수동"
+                                              : lotKey;
+                                        return (
+                                          <div
+                                            key={lotKey}
+                                            className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 p-3"
+                                          >
+                                            <div className="w-full">
+                                              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                                Lot 배치번호
+                                              </label>
+                                              <div className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm">
+                                                {batchLabel}
+                                              </div>
                                             </div>
-                                          </div>
-                                          <div className="w-full">
-                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                              제조일
-                                            </label>
-                                            <input
-                                              type="date"
-                                              value={
-                                                details.manufactureDate ??
-                                                item.productionDate ??
-                                                ""
-                                              }
-                                              onChange={(e) =>
-                                                updateScannedProductLotDetails(
-                                                  item.itemId,
-                                                  lotKey,
-                                                  {
-                                                    manufactureDate:
+                                            <div className="w-full">
+                                              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                                제조일
+                                              </label>
+                                              <input
+                                                type="date"
+                                                value={
+                                                  details.manufactureDate ??
+                                                  item.productionDate ??
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  updateScannedProductLotDetails(
+                                                    item.itemId,
+                                                    lotKey,
+                                                    {
+                                                      manufactureDate:
+                                                        e.target.value,
+                                                    }
+                                                  )
+                                                }
+                                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                              />
+                                            </div>
+                                            <div className="w-full">
+                                              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                                유효기간
+                                              </label>
+                                              <input
+                                                type="date"
+                                                value={
+                                                  details.expiryDate ??
+                                                  item.expiryDate ??
+                                                  ""
+                                                }
+                                                onChange={(e) =>
+                                                  updateScannedProductLotDetails(
+                                                    item.itemId,
+                                                    lotKey,
+                                                    {
+                                                      expiryDate:
+                                                        e.target.value,
+                                                    }
+                                                  )
+                                                }
+                                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                              />
+                                            </div>
+                                            <div className="w-full">
+                                              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                                입고수량
+                                              </label>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={capacity}
+                                                value={qty}
+                                                onChange={(e) => {
+                                                  const v =
+                                                    parseInt(
                                                       e.target.value,
-                                                  }
-                                                )
-                                              }
-                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                            />
-                                          </div>
-                                          <div className="w-full">
-                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                              유효기간
-                                            </label>
-                                            <input
-                                              type="date"
-                                              value={
-                                                details.expiryDate ??
-                                                item.expiryDate ??
-                                                ""
-                                              }
-                                              onChange={(e) =>
-                                                updateScannedProductLotDetails(
+                                                      10
+                                                    ) || 0;
+                                                  updateScannedProductLotQty(
+                                                    item.itemId,
+                                                    lotKey,
+                                                    Math.min(
+                                                      Math.max(0, v),
+                                                      capacity
+                                                    )
+                                                  );
+                                                }}
+                                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm text-blue-600 dark:text-blue-400 border-b-2 border-blue-200 dark:border-blue-800"
+                                              />
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                removeScannedProductLot(
                                                   item.itemId,
-                                                  lotKey,
-                                                  {
-                                                    expiryDate: e.target.value,
-                                                  }
+                                                  lotKey
                                                 )
                                               }
-                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                            />
+                                              className="p-2 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300 shrink-0"
+                                              aria-label="이 Lot 삭제"
+                                            >
+                                              <svg
+                                                className="w-5 h-5"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M6 18L18 6M6 6l12 12"
+                                                />
+                                              </svg>
+                                            </button>
                                           </div>
-                                          <div className="w-full">
-                                            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                              입고수량
-                                            </label>
+                                        );
+                                      })}
+                                  </div>
+                                ) : (
+                                  /* Single lot / no lots: original single form */
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                        Lot 번호
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={item.lotNumber || ""}
+                                        onChange={(e) =>
+                                          updateScannedProduct(item.itemId, {
+                                            lotNumber: e.target.value,
+                                          })
+                                        }
+                                        placeholder="0000000000001"
+                                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                        제조일
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={item.productionDate || ""}
+                                        onChange={(e) =>
+                                          updateScannedProduct(item.itemId, {
+                                            productionDate: e.target.value,
+                                          })
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                        유효기간
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={item.expiryDate || ""}
+                                        onChange={(e) =>
+                                          updateScannedProduct(item.itemId, {
+                                            expiryDate: e.target.value,
+                                          })
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+                                        입고수량
+                                      </label>
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={capacity}
+                                          value={item.quantity}
+                                          onChange={(e) => {
+                                            const v = parseInt(
+                                              e.target.value,
+                                              10
+                                            );
+                                            const val = Number.isNaN(v)
+                                              ? 0
+                                              : Math.min(
+                                                  Math.max(0, v),
+                                                  capacity
+                                                );
+                                            updateScannedProduct(item.itemId, {
+                                              quantity: val,
+                                            });
+                                          }}
+                                          className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            updateScannedProduct(item.itemId, {
+                                              quantity: 0,
+                                            })
+                                          }
+                                          className="p-2 text-slate-400 hover:text-slate-600 rounded"
+                                          aria-label="지우기"
+                                        >
+                                          <svg
+                                            className="w-4 h-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M6 18L18 6M6 6l12 12"
+                                            />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Lot 배치번호 추가 + 입고 — faqat product ustiga bosilganda (expanded) chiqadi */}
+                            {isActive && !isCompleted && (
+                              <>
+                                <div
+                                  className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {expandedManualLotItemId !== item.itemId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedManualLotItemId(item.itemId);
+                                        setManualLotForm({
+                                          lotNumber: "",
+                                          productionDate: "",
+                                          expiryDate: "",
+                                          quantity: 0,
+                                        });
+                                      }}
+                                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                                    >
+                                      <span className="text-lg leading-none">
+                                        +
+                                      </span>
+                                      Lot 배치번호 추가
+                                    </button>
+                                  ) : (
+                                    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                        <div>
+                                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                            Lot 번호
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={manualLotForm.lotNumber}
+                                            onChange={(e) =>
+                                              setManualLotForm((f) => ({
+                                                ...f,
+                                                lotNumber: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="0000000000001"
+                                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                            제조일
+                                          </label>
+                                          <input
+                                            type="date"
+                                            value={manualLotForm.productionDate}
+                                            onChange={(e) =>
+                                              setManualLotForm((f) => ({
+                                                ...f,
+                                                productionDate: e.target.value,
+                                              }))
+                                            }
+                                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                            유효기간
+                                          </label>
+                                          <input
+                                            type="date"
+                                            value={manualLotForm.expiryDate}
+                                            onChange={(e) =>
+                                              setManualLotForm((f) => ({
+                                                ...f,
+                                                expiryDate: e.target.value,
+                                              }))
+                                            }
+                                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                            입고수량
+                                          </label>
+                                          <div className="flex items-center gap-1">
                                             <input
                                               type="number"
                                               min={0}
-                                              max={capacity}
-                                              value={qty}
+                                              max={Math.max(
+                                                0,
+                                                capacity - (item.quantity ?? 0)
+                                              )}
+                                              value={
+                                                manualLotForm.quantity || ""
+                                              }
                                               onChange={(e) => {
                                                 const v =
                                                   parseInt(
                                                     e.target.value,
                                                     10
                                                   ) || 0;
-                                                updateScannedProductLotQty(
-                                                  item.itemId,
-                                                  lotKey,
-                                                  Math.min(
-                                                    Math.max(0, v),
-                                                    capacity
-                                                  )
+                                                const maxNew = Math.max(
+                                                  0,
+                                                  capacity -
+                                                    (item.quantity ?? 0)
                                                 );
+                                                setManualLotForm((f) => ({
+                                                  ...f,
+                                                  quantity: Math.min(v, maxNew),
+                                                }));
                                               }}
-                                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm text-blue-600 dark:text-blue-400 border-b-2 border-blue-200 dark:border-blue-800"
+                                              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                             />
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setExpandedManualLotItemId(
+                                                  null
+                                                );
+                                                setManualLotForm({
+                                                  lotNumber: "",
+                                                  productionDate: "",
+                                                  expiryDate: "",
+                                                  quantity: 0,
+                                                });
+                                              }}
+                                              className="rounded p-2 text-slate-400 hover:text-slate-600"
+                                              aria-label="Lot 패널 닫기"
+                                            >
+                                              <svg
+                                                className="h-4 w-4"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M6 18L18 6M6 6l12 12"
+                                                />
+                                              </svg>
+                                            </button>
                                           </div>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              removeScannedProductLot(
+                                        </div>
+                                      </div>
+                                      <div className="mt-3 flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (manualLotForm.quantity > 0) {
+                                              addManualLotToScannedItem(
                                                 item.itemId,
-                                                lotKey
-                                              )
-                                            }
-                                            className="p-2 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300 shrink-0"
-                                            aria-label="이 Lot 삭제"
-                                          >
-                                            <svg
-                                              className="w-5 h-5"
-                                              fill="none"
-                                              viewBox="0 0 24 24"
-                                              stroke="currentColor"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M6 18L18 6M6 6l12 12"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      );
-                                    })}
-                                </div>
-                              ) : (
-                                /* Single lot / no lots: original single form */
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                      Lot 번호
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={item.lotNumber || ""}
-                                      onChange={(e) =>
-                                        updateScannedProduct(item.itemId, {
-                                          lotNumber: e.target.value,
-                                        })
-                                      }
-                                      placeholder="0000000000001"
-                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                      제조일
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={item.productionDate || ""}
-                                      onChange={(e) =>
-                                        updateScannedProduct(item.itemId, {
-                                          productionDate: e.target.value,
-                                        })
-                                      }
-                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                      유효기간
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={item.expiryDate || ""}
-                                      onChange={(e) =>
-                                        updateScannedProduct(item.itemId, {
-                                          expiryDate: e.target.value,
-                                        })
-                                      }
-                                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                                      입고수량
-                                    </label>
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={capacity}
-                                        value={item.quantity}
-                                        onChange={(e) => {
-                                          const v = parseInt(
-                                            e.target.value,
-                                            10
-                                          );
-                                          const val = Number.isNaN(v)
-                                            ? 0
-                                            : Math.min(
-                                                Math.max(0, v),
-                                                capacity
+                                                {
+                                                  lotNumber:
+                                                    manualLotForm.lotNumber,
+                                                  productionDate:
+                                                    manualLotForm.productionDate,
+                                                  expiryDate:
+                                                    manualLotForm.expiryDate,
+                                                  quantity:
+                                                    manualLotForm.quantity,
+                                                }
                                               );
-                                          updateScannedProduct(item.itemId, {
-                                            quantity: val,
-                                          });
-                                        }}
-                                        className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-sm"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          updateScannedProduct(item.itemId, {
-                                            quantity: 0,
-                                          })
-                                        }
-                                        className="p-2 text-slate-400 hover:text-slate-600 rounded"
-                                        aria-label="지우기"
-                                      >
-                                        <svg
-                                          className="w-4 h-4"
-                                          fill="none"
-                                          viewBox="0 0 24 24"
-                                          stroke="currentColor"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M6 18L18 6M6 6l12 12"
-                                          />
-                                        </svg>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Lot 배치번호 추가 + 입고 — faqat product ustiga bosilganda (expanded) chiqadi */}
-                          {isActive && !isCompleted && (
-                            <>
-                              <div
-                                className="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {expandedManualLotItemId !== item.itemId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExpandedManualLotItemId(item.itemId);
-                                      setManualLotForm({
-                                        lotNumber: "",
-                                        productionDate: "",
-                                        expiryDate: "",
-                                        quantity: 0,
-                                      });
-                                    }}
-                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] focus:outline-none focus:ring-2 focus:ring-[#426bff] focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                                  >
-                                    <span className="text-lg leading-none">
-                                      +
-                                    </span>
-                                    Lot 배치번호 추가
-                                  </button>
-                                ) : (
-                                  <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                      <div>
-                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                          Lot 번호
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={manualLotForm.lotNumber}
-                                          onChange={(e) =>
-                                            setManualLotForm((f) => ({
-                                              ...f,
-                                              lotNumber: e.target.value,
-                                            }))
-                                          }
-                                          placeholder="0000000000001"
-                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                          제조일
-                                        </label>
-                                        <input
-                                          type="date"
-                                          value={manualLotForm.productionDate}
-                                          onChange={(e) =>
-                                            setManualLotForm((f) => ({
-                                              ...f,
-                                              productionDate: e.target.value,
-                                            }))
-                                          }
-                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                          유효기간
-                                        </label>
-                                        <input
-                                          type="date"
-                                          value={manualLotForm.expiryDate}
-                                          onChange={(e) =>
-                                            setManualLotForm((f) => ({
-                                              ...f,
-                                              expiryDate: e.target.value,
-                                            }))
-                                          }
-                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                                          입고수량
-                                        </label>
-                                        <div className="flex items-center gap-1">
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            max={Math.max(
-                                              0,
-                                              capacity - (item.quantity ?? 0)
-                                            )}
-                                            value={manualLotForm.quantity || ""}
-                                            onChange={(e) => {
-                                              const v =
-                                                parseInt(e.target.value, 10) ||
-                                                0;
-                                              const maxNew = Math.max(
-                                                0,
-                                                capacity - (item.quantity ?? 0)
-                                              );
-                                              setManualLotForm((f) => ({
-                                                ...f,
-                                                quantity: Math.min(v, maxNew),
-                                              }));
-                                            }}
-                                            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setManualLotForm((f) => ({
-                                                ...f,
+                                              setManualLotForm({
+                                                lotNumber: "",
+                                                productionDate: "",
+                                                expiryDate: "",
                                                 quantity: 0,
-                                              }))
+                                              });
                                             }
-                                            className="rounded p-2 text-slate-400 hover:text-slate-600"
-                                            aria-label="지우기"
-                                          >
-                                            <svg
-                                              className="h-4 w-4"
-                                              fill="none"
-                                              viewBox="0 0 24 24"
-                                              stroke="currentColor"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M6 18L18 6M6 6l12 12"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="mt-3 flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (manualLotForm.quantity > 0) {
-                                            addManualLotToScannedItem(
-                                              item.itemId,
-                                              {
-                                                lotNumber:
-                                                  manualLotForm.lotNumber,
-                                                productionDate:
-                                                  manualLotForm.productionDate,
-                                                expiryDate:
-                                                  manualLotForm.expiryDate,
-                                                quantity:
-                                                  manualLotForm.quantity,
-                                              }
-                                            );
+                                          }}
+                                          disabled={manualLotForm.quantity <= 0}
+                                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          <span className="text-lg leading-none">
+                                            +
+                                          </span>
+                                          Lot 배치번호 추가
+                                        </button>
+                                        {/* <button
+                                          type="button"
+                                          onClick={() => {
+                                            setExpandedManualLotItemId(null);
                                             setManualLotForm({
                                               lotNumber: "",
                                               productionDate: "",
                                               expiryDate: "",
                                               quantity: 0,
                                             });
-                                          }
-                                        }}
-                                        disabled={manualLotForm.quantity <= 0}
-                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#426bff] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#3658e0] disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        <span className="text-lg leading-none">
-                                          +
-                                        </span>
-                                        Lot 배치번호 추가
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setExpandedManualLotItemId(null);
-                                          setManualLotForm({
-                                            lotNumber: "",
-                                            productionDate: "",
-                                            expiryDate: "",
-                                            quantity: 0,
-                                          });
-                                        }}
-                                        className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-                                      >
-                                        닫기
-                                      </button>
+                                          }}
+                                          className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                        >
+                                          닫기
+                                        </button> */}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                              {/* 입고 — card yopiladi, border green */}
-                              <div
-                                className="border-t border-slate-200 dark:border-slate-700 p-4"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  type="button"
-                                  disabled={!item.storageLocation?.trim()}
-                                  onClick={() =>
-                                    completeProductById(item.itemId)
-                                  }
-                                  title={
-                                    !item.storageLocation?.trim()
-                                      ? "보관위치를 입력해야 입고할 수 있습니다."
-                                      : ""
-                                  }
-                                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-50 dark:disabled:hover:bg-emerald-900/30"
+                                  )}
+                                </div>
+                                {/* 입고 — card yopiladi, border green */}
+                                <div
+                                  className="border-t border-slate-200 dark:border-slate-700 p-4"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  입고
-                                </button>
-                                {!item.storageLocation?.trim() && (
-                                  <p className="mt-1.5 text-center text-xs text-amber-600 dark:text-amber-400">
-                                    보관위치를 입력해야 입고할 수 있습니다.
-                                  </p>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              ) : (
-                <div className="text-center py-16 text-slate-500 dark:text-slate-400">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    disabled={!item.storageLocation?.trim()}
+                                    onClick={() =>
+                                      setScanInboundFinalConfirmItemId(
+                                        item.itemId
+                                      )
+                                    }
+                                    title={
+                                      !item.storageLocation?.trim()
+                                        ? "보관위치를 입력해야 입고할 수 있습니다."
+                                        : ""
+                                    }
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-50 dark:disabled:hover:bg-emerald-900/30"
+                                  >
+                                    입고
+                                  </button>
+                                  {!item.storageLocation?.trim() && (
+                                    <p className="mt-1.5 text-center text-xs text-amber-600 dark:text-amber-400">
+                                      보관위치를 입력해야 입고할 수 있습니다.
+                                    </p>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 text-slate-500 dark:text-slate-400">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center">
+                      <svg
+                        className="w-8 h-8 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-medium">
+                      스캔된 제품이 없습니다
+                    </p>
+                    <p className="text-xs mt-2">바코드를 스캔하세요</p>
+                  </div>
+                )}
+
+                {scannedItems.length > 0 && (
+                  <div className="mt-4 flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-sm">
                     <svg
-                      className="w-8 h-8 text-slate-400"
+                      className="w-4 h-4 animate-pulse"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -8131,49 +8199,108 @@ const PendingOrdersList = memo(function PendingOrdersList({
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
                       />
                     </svg>
+                    추가 제품을 스캔하세요
                   </div>
-                  <p className="text-sm font-medium">스캔된 제품이 없습니다</p>
-                  <p className="text-xs mt-2">바코드를 스캔하세요</p>
-                </div>
-              )}
+                )}
+              </div>
 
-              {scannedItems.length > 0 && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-sm">
-                  <svg
-                    className="w-4 h-4 animate-pulse"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  추가 제품을 스캔하세요
-                </div>
-              )}
-            </div>
-
-            {/* Footer: 입고 하기 */}
-            <div className="border-t border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center justify-end gap-4 bg-slate-50 dark:bg-slate-900/50">
-              <button
-                type="button"
-                onClick={submitAllScannedItems}
-                disabled={scannedItems.length === 0}
-                className="shrink-0 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
-              >
-                입고 하기
-              </button>
+              {/* Footer: 입고 하기 */}
+              <div className="border-t border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center justify-end gap-4 bg-slate-50 dark:bg-slate-900/50">
+                <button
+                  type="button"
+                  onClick={submitAllScannedItems}
+                  disabled={scannedItems.length === 0}
+                  className="shrink-0 px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
+                >
+                  입고 하기
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+
+          {scanInboundFinalConfirmItemId != null && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setScanInboundFinalConfirmItemId(null);
+                }
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="scan-inbound-final-confirm-title"
+                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-600 dark:bg-slate-900"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                  <h2
+                    id="scan-inbound-final-confirm-title"
+                    className="text-lg font-bold text-slate-900 dark:text-slate-100"
+                  >
+                    입고 정보 최종 확정
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setScanInboundFinalConfirmItemId(null)}
+                    className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label="닫기"
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="py-5 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                  <p>해당 제품 입고 확정 후</p>
+                  <p className="mt-2">
+                    LOT, 수량, 유효기간{" "}
+                    <span className="font-semibold text-red-600 dark:text-red-400">
+                      수정이 불가
+                    </span>
+                    합니다.
+                  </p>
+                  <p className="mt-2">계속 진행하시겠습니까?</p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-4 border-t border-slate-100 pt-4 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setScanInboundFinalConfirmItemId(null)}
+                    className="text-sm font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    입고 정보 수정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = scanInboundFinalConfirmItemId;
+                      setScanInboundFinalConfirmItemId(null);
+                      if (id != null) completeProductById(id);
+                    }}
+                    className="rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:from-blue-600 hover:to-teal-600"
+                  >
+                    입고 확정
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -8222,6 +8349,54 @@ const OrderCard = memo(function OrderCard({
     sectionLabel === "주문 진행" || sectionLabel === "교환 진행";
   const canShowInboundFields =
     isSupplierConfirmed || isPendingInbound || isExchangeInbound;
+
+  /** 입고하기 / 바코드 스캔 입고: handleProcessOrder bilan mos — barcha majburiy maydonlar + 입고 담당자 */
+  const orderInboundDisabledReason = useMemo(() => {
+    const showInboundSubmitFooter =
+      !isPending &&
+      sectionLabel !== "주문 요청" &&
+      !isRejected &&
+      sectionLabel !== "주문 거절";
+    if (!showInboundSubmitFooter) return null;
+
+    if (!inboundManagerName?.trim()) {
+      return "입고 직원를 입력해주세요.";
+    }
+    const items = order.items || [];
+    if (items.length === 0) {
+      return "입고할 제품이 없습니다.";
+    }
+    for (const item of items) {
+      const edited = editedItems[String(item.id)] ?? editedItems[item.id] ?? {};
+      if (!String(edited?.expiryDate ?? "").trim()) {
+        return "유통기한을 입력해주세요.";
+      }
+      if (resolveEditedInboundQty(edited) <= 0) {
+        return "입고 수량을 입력해주세요.";
+      }
+      const effectivePrice =
+        edited?.purchasePrice != null && edited.purchasePrice !== ""
+          ? Number(edited.purchasePrice)
+          : item.confirmedPrice != null
+            ? Number(item.confirmedPrice)
+            : 0;
+      if (!effectivePrice || effectivePrice <= 0) {
+        return "구매가를 입력해주세요.";
+      }
+    }
+    return null;
+  }, [
+    isPending,
+    isRejected,
+    sectionLabel,
+    inboundManagerName,
+    order.items,
+    editedItems,
+  ]);
+
+  const canSubmitOrderInbound = orderInboundDisabledReason === null;
+  const orderActionKey = order.id || order.orderId;
+  const isProcessingThisOrder = processing === orderActionKey;
 
   const rejectionReasons =
     order.items
@@ -8970,13 +9145,13 @@ const OrderCard = memo(function OrderCard({
               />
             </div>
           )}
-          {/* 주문 진행/재입고: 입고 담당자 */}
+          {/* 주문 진행/재입고: 입고 직원 */}
           {canShowInboundFields &&
             sectionLabel !== "주문 요청" &&
             sectionLabel !== "주문 거절" && (
               <div className="flex items-center gap-2 flex-1 mr-4 relative">
                 <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                  입고 담당자:
+                  입고 직원:
                 </label>
                 <input
                   type="text"
@@ -8986,7 +9161,7 @@ const OrderCard = memo(function OrderCard({
                   onBlur={() =>
                     setTimeout(() => setShowStaffSuggestions(false), 200)
                   }
-                  placeholder="입고 담당자 이름을 입력하세요"
+                  placeholder="입고 직원 이름을 입력하세요"
                   className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 
                            focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200
                            dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
@@ -9088,8 +9263,13 @@ const OrderCard = memo(function OrderCard({
                 <button
                   type="button"
                   onClick={() => onOpenBarcodeScan(order.id || order.orderId)}
-                  className="inline-flex items-center mr-4 gap-2 rounded-xl border border-emerald-500 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-600 shadow-sm transition hover:bg-emerald-50 dark:border-emerald-500 dark:bg-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
-                  title="바코드 스캔 입고"
+                  disabled={canSubmitOrderInbound || isProcessingThisOrder}
+                  title={
+                    canSubmitOrderInbound
+                      ? "입고 정보가 준비되었습니다. 「입고하기」를 눌러주세요."
+                      : "바코드 스캔 입고"
+                  }
+                  className="inline-flex items-center mr-4 gap-2 rounded-xl border border-emerald-500 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-600 shadow-sm transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500 dark:bg-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:disabled:opacity-50"
                 >
                   <svg
                     className="h-4 w-4"
@@ -9104,17 +9284,20 @@ const OrderCard = memo(function OrderCard({
                       d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
                     />
                   </svg>
-                  바코드 스캔 입고
+                  입고하기
                 </button>
               )}
               <button
                 onClick={() => handleProcessOrder(order)}
-                disabled={processing === (order.orderId || order.id)}
+                disabled={isProcessingThisOrder || !canSubmitOrderInbound}
+                title={
+                  !isProcessingThisOrder && !canSubmitOrderInbound
+                    ? (orderInboundDisabledReason ?? undefined)
+                    : undefined
+                }
                 className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {processing === (order.orderId || order.id)
-                  ? "처리 중..."
-                  : "입고하기"}
+                {isProcessingThisOrder ? "처리 중..." : "입고화정"}
               </button>
             </>
           )}

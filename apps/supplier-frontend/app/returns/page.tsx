@@ -48,7 +48,7 @@ type ItemAdjustment = {
 };
 
 const tabs = [
-  { key: "pending", label: "반납 목록" },
+  { key: "pending", label: "반납 요청" },
   { key: "all", label: "반납 내역" },
 ];
 
@@ -109,7 +109,7 @@ export default function ReturnsPage() {
       setCurrentPage(response.page || page);
     } catch (error: any) {
       console.error("Error fetching notifications:", error);
-      alert("반납 목록을 불러오는데 실패했습니다: " + error.message);
+      alert("반납 요청을 불러오는데 실패했습니다: " + error.message);
     } finally {
       setLoading(false);
     }

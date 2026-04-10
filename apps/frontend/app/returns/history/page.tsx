@@ -91,18 +91,20 @@ export default function ReturnHistoryPage() {
       const searchParam = debouncedSearchQuery
         ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
         : "";
-      
+
       // ✅ Universal cache busting for all browsers
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      
+
       const response = await apiGet<{
         items: any[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
-      }>(`${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}&_t=${timestamp}&_r=${random}`);
+      }>(
+        `${apiUrl}/returns/history?page=${page}&limit=${limit}${searchParam}&_t=${timestamp}&_r=${random}`
+      );
 
       // Format history items
       const formattedItems: ReturnHistoryItem[] = response.items.map(
@@ -161,7 +163,7 @@ export default function ReturnHistoryPage() {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         // Page loaded from bfcache (Safari back button)
-        console.log('[Returns History] Loaded from bfcache - forcing refresh');
+        console.log("[Returns History] Loaded from bfcache - forcing refresh");
         invalidateCache();
         fetchHistory();
       }
@@ -169,35 +171,37 @@ export default function ReturnHistoryPage() {
 
     const handlePageHide = () => {
       // Mark page as potentially cached
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('returns_history_was_cached', 'true');
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("returns_history_was_cached", "true");
       }
     };
 
-    window.addEventListener('pageshow', handlePageShow as EventListener);
-    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
+    window.addEventListener("pagehide", handlePageHide);
 
     // Check if returning from cache or force refresh flag
-    if (typeof window !== 'undefined') {
-      const wasCached = sessionStorage.getItem('returns_history_was_cached');
-      const forceRefresh = sessionStorage.getItem('returns_history_force_refresh');
-      
-      if (wasCached === 'true') {
-        sessionStorage.removeItem('returns_history_was_cached');
+    if (typeof window !== "undefined") {
+      const wasCached = sessionStorage.getItem("returns_history_was_cached");
+      const forceRefresh = sessionStorage.getItem(
+        "returns_history_force_refresh"
+      );
+
+      if (wasCached === "true") {
+        sessionStorage.removeItem("returns_history_was_cached");
         invalidateCache();
         fetchHistory();
       }
-      
-      if (forceRefresh === 'true') {
-        sessionStorage.removeItem('returns_history_force_refresh');
+
+      if (forceRefresh === "true") {
+        sessionStorage.removeItem("returns_history_force_refresh");
         invalidateCache();
         fetchHistory();
       }
     }
 
     return () => {
-      window.removeEventListener('pageshow', handlePageShow as EventListener);
-      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
+      window.removeEventListener("pagehide", handlePageHide);
     };
   }, [fetchHistory, invalidateCache]);
 
@@ -416,7 +420,7 @@ export default function ReturnHistoryPage() {
                           </span>
                         ) : group.supplierStatus === "PENDING" ? (
                           <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium dark:bg-yellow-900/30 dark:text-yellow-400">
-                            반품 진행중
+                            클레임 진행중
                           </span>
                         ) : null}
                       </div>

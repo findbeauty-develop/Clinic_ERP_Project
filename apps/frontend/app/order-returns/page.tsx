@@ -263,7 +263,7 @@ export default function OrderReturnsPage() {
                 : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
             }`}
           >
-            반품 처리
+            클레임 요청
           </button>
           <button
             onClick={() => setActiveTab("in-progress")}
@@ -273,7 +273,7 @@ export default function OrderReturnsPage() {
                 : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
             }`}
           >
-            반품 진행중
+            클레임 진행중
           </button>
           <button
             onClick={() => setActiveTab("history")}
@@ -283,7 +283,7 @@ export default function OrderReturnsPage() {
                 : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
             }`}
           >
-            반품 내역
+            클레임 내역
           </button>
         </div>
 
@@ -363,7 +363,7 @@ const ReturnCard = memo(function ReturnCard({
   const isHistoryTab = activeTab === "history";
   const isProcessingTabWithInputs = activeTab === "processing";
 
-  // 반품 처리: 사유 선택 전엔 returnType만 사용. 반품 진행중/내역: 서버 defective_return_type으로 확인 버튼 등 표시
+  // 클레임 요청: 사유 선택 전엔 returnType만 사용. 클레임 진행중/내역: 서버 defective_return_type으로 확인 버튼 등 표시
   const typeForRules = isProcessingTabWithInputs
     ? returnType
     : returnType === "defective_exchange" || returnType === "defective_return"
@@ -467,7 +467,7 @@ const ReturnCard = memo(function ReturnCard({
       if (onRemove) {
         onRemove(returnItem.id);
       }
-      alert("반품 처리가 완료되었습니다.");
+      alert("클레임 요청이 완료되었습니다.");
     } catch (err: any) {
       alert(err?.message || "오류가 발생했습니다.");
       // Only refresh on error to reload data

@@ -338,12 +338,12 @@ export default function ReturnsPage() {
         await fetchAvailableProducts();
       } else {
         alert(
-          `반납 처리 중 오류가 발생했습니다: ${response.message || "Unknown error"}`
+          `반납 요청 중 오류가 발생했습니다: ${response.message || "Unknown error"}`
         );
       }
     } catch (err: any) {
       alert(
-        `반납 처리 중 오류가 발생했습니다: ${err.message || "Unknown error"}`
+        `반납 요청 중 오류가 발생했습니다: ${err.message || "Unknown error"}`
       );
     } finally {
       setSubmitting(false);
@@ -381,7 +381,7 @@ export default function ReturnsPage() {
         {/* Tabs */}
         <div className="mb-6 flex gap-2 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
           <div className="px-4 py-2 text-sm font-semibold border-b-2 border-sky-500 text-sky-600 dark:text-sky-400">
-            반납 처리
+            반납 요청
           </div>
           <Link
             href="/returns/history"
@@ -660,7 +660,7 @@ export default function ReturnsPage() {
                     />
                   </svg>
                   <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    반납 처리
+                    반납 요청
                   </h2>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { apiGet, apiPut } from "../../lib/api";
 
 type SupplierOrderItem = {
@@ -56,7 +56,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const tabs = [
-  { key: "pending", label: "주문 목록" },
+  { key: "pending", label: "주문 요청" },
   { key: "confirmed", label: "클리닉 확인중" },
   { key: "all", label: "주문 내역" },
 ];
@@ -93,22 +93,45 @@ export default function OrdersPage() {
     Record<string, string>
   >({});
   const [notificationCount, setNotificationCount] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [orderSearchInput, setOrderSearchInput] = useState("");
+  const [debouncedOrderSearch, setDebouncedOrderSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const statusParam = useMemo(() => {
     if (activeTab === "all") return "all";
     return activeTab;
   }, [activeTab]);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedOrderSearch(orderSearchInput.trim());
+    }, 400);
+    return () => clearTimeout(t);
+  }, [orderSearchInput]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, [searchOpen]);
+
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const params = new URLSearchParams();
+      params.set("status", statusParam);
+      if (debouncedOrderSearch) {
+        params.set("search", debouncedOrderSearch);
+        params.set("limit", "100");
+      }
       const data = await apiGet<OrdersResponse>(
-        `/supplier/orders?status=${statusParam}`,
+        `/supplier/orders?${params.toString()}`,
       );
       const orderList = data.orders || [];
       setOrders(orderList);
-      // 주문 목록 tabida: barcha itemlar default tanlangan
+      // 주문 요청 tabida: barcha itemlar default tanlangan
       if (statusParam === "pending") {
         const allItemIds = orderList.flatMap((o) => o.items.map((i) => i.id));
         setSelectedItems(new Set(allItemIds));
@@ -120,7 +143,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusParam]);
+  }, [statusParam, debouncedOrderSearch]);
 
   // Initial fetch
   useEffect(() => {
@@ -495,7 +518,7 @@ export default function OrdersPage() {
                 }}
                 className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
-                주문 거절
+                요청 반려
               </button>
               <button
                 disabled={
@@ -521,7 +544,7 @@ export default function OrdersPage() {
                 }}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
-                주문 접수
+                주문 수락
               </button>
             </div>
           )}
@@ -589,25 +612,86 @@ export default function OrdersPage() {
           </div>
         </div>
       </div> */}
-      <div className="ml-4 flex gap-2">
-        {tabs.map((tab) => (
+      <div className="px-4 pt-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() =>
+                setActiveTab(tab.key as "pending" | "confirmed" | "all")
+              }
+              className={`rounded-md px-4 py-2 text-sm font-semibold ${
+                activeTab === tab.key
+                  ? "bg-slate-800 text-white"
+                  : "bg-white text-slate-700 border border-slate-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
           <button
-            key={tab.key}
-            onClick={() =>
-              setActiveTab(tab.key as "pending" | "confirmed" | "all")
-            }
-            className={`rounded-md mt-4 px-4 py-2 text-sm font-semibold ${
-              activeTab === tab.key
-                ? "bg-slate-800 text-white"
-                : "bg-white text-slate-700 border border-slate-200"
+            type="button"
+            onClick={() => {
+              setSearchOpen((open) => {
+                if (open) {
+                  setOrderSearchInput("");
+                  setDebouncedOrderSearch("");
+                }
+                return !open;
+              });
+            }}
+            aria-expanded={searchOpen}
+            aria-label="주문 검색"
+            title="주문 검색"
+            className={`ml-auto inline-flex shrink-0 items-center justify-center rounded-md border p-2 ${
+              searchOpen || debouncedOrderSearch
+                ? "border-sky-500 bg-sky-50 text-sky-800"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
-            {tab.label}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="h-5 w-5 shrink-0"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
           </button>
-        ))}
-      </div>
-
-      <div className="px-4 pt-4">
+        </div>
+        {searchOpen && (
+          <div className="mb-4 flex w-full max-w-full items-center gap-2">
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={orderSearchInput}
+              onChange={(e) => setOrderSearchInput(e.target.value)}
+              placeholder="클리닉명, 주문번호 검색"
+              className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+              autoComplete="off"
+            />
+            {orderSearchInput.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderSearchInput("");
+                  setDebouncedOrderSearch("");
+                }}
+                className="shrink-0 rounded-md px-2 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="검색어 지우기"
+              >
+                지우기
+              </button>
+            ) : null}
+          </div>
+        )}
         {loading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm">
             불러오는 중...
@@ -618,7 +702,9 @@ export default function OrdersPage() {
           </div>
         ) : orders.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-slate-500 shadow-sm">
-            주문이 없습니다.
+            {debouncedOrderSearch
+              ? "검색 결과가 없습니다. 클리닉명 또는 주문번호를 확인해 주세요."
+              : "주문이 없습니다."}
           </div>
         ) : (
           <div className="space-y-3">
@@ -815,7 +901,7 @@ export default function OrdersPage() {
                   }
                   className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
                 >
-                  주문 거절
+                  요청 반려
                 </button>
                 <button
                   disabled={updating}
@@ -826,7 +912,7 @@ export default function OrdersPage() {
                   }
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
-                  주문 접수
+                  주문 수락
                 </button>
               </div>
             )}
@@ -1080,7 +1166,7 @@ export default function OrdersPage() {
                   취소
                 </button>
 
-                {/* Right: 판매가 확인 후 접수 */}
+                {/* Right: 확인 후 수락 */}
                 <button
                   disabled={updating}
                   onClick={async () => {
@@ -1136,14 +1222,14 @@ export default function OrdersPage() {
                       await fetchOrders();
                       setSelectedItems(new Set());
                     } catch (err: any) {
-                      alert(err?.message || "주문 접수에 실패했습니다.");
+                      alert(err?.message || "주문 수락에 실패했습니다.");
                     } finally {
                       setUpdating(false);
                     }
                   }}
                   className="rounded-lg bg-emerald-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
-                  판매가 확인 후 접수
+                  확인 후 수락
                 </button>
               </div>
             </div>
@@ -1320,14 +1406,14 @@ export default function OrdersPage() {
                       await fetchOrders();
                       setSelectedItems(new Set());
                     } catch (err: any) {
-                      alert(err?.message || "주문 거절에 실패했습니다.");
+                      alert(err?.message || "요청 반려가 실패했습니다.");
                     } finally {
                       setUpdating(false);
                     }
                   }}
                   className="rounded-lg bg-rose-600 px-4 sm:px-6 py-2 text-sm sm:text-base font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
                 >
-                  주문 거절
+                  요청 반려
                 </button>
               </div>
             </div>

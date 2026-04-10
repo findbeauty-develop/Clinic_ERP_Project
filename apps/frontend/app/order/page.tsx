@@ -103,6 +103,25 @@ type DraftResponse = {
 
 type FilterTab = "low" | "expiring" | "all";
 
+/** 주문 내역: 라인 추가 순서(created_at) — 거절 등 상태와 무관 */
+function sortOrderLineItems<T extends { lineCreatedAt?: string | null; id?: string }>(
+  items: T[] | undefined
+): T[] {
+  if (!items?.length) return [];
+  return [...items].sort((a, b) => {
+    const ta = a.lineCreatedAt
+      ? new Date(a.lineCreatedAt).getTime()
+      : 0;
+    const tb = b.lineCreatedAt
+      ? new Date(b.lineCreatedAt).getTime()
+      : 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    if (ta !== tb) return ta - tb;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+  });
+}
+
 export default function OrderPage() {
   const router = useRouter();
   const apiUrl = useMemo(
@@ -1606,12 +1625,13 @@ export default function OrderPage() {
                         order.status !== "confirmed_rejected"
                     )
                     .forEach((order) => {
-                      const pendingItems = (order.items || []).filter(
+                      const itemsSorted = sortOrderLineItems(order.items);
+                      const pendingItems = itemsSorted.filter(
                         (item: any) =>
                           (item.itemStatus ?? item.item_status ?? "pending") ===
                           "pending"
                       );
-                      const confirmedItems = (order.items || []).filter(
+                      const confirmedItems = itemsSorted.filter(
                         (item: any) =>
                           (item.itemStatus ?? item.item_status ?? "pending") ===
                           "confirmed"
@@ -1619,7 +1639,7 @@ export default function OrderPage() {
                       const isOrderCompleted =
                         order.status === "completed" ||
                         order.status === "inbound_completed";
-                      const inboundedItems = (order.items || []).filter(
+                      const inboundedItems = itemsSorted.filter(
                         (item: any) =>
                           (item.itemStatus ?? item.item_status) === "inbounded"
                       );
@@ -1657,7 +1677,7 @@ export default function OrderPage() {
                           order.status === "pending_inbound") &&
                         inboundedItems.length > 0
                       ) {
-                        const hasRejectedItems = (order.items || []).some(
+                        const hasRejectedItems = itemsSorted.some(
                           (item: any) => {
                             const status = item.itemStatus ?? item.item_status;
                             // Only genuinely rejected items — pending items are NOT rejected
@@ -2414,13 +2434,13 @@ export default function OrderPage() {
                           {rejectedOrder.items &&
                           Array.isArray(rejectedOrder.items) &&
                           rejectedOrder.items.length > 0 ? (
-                            rejectedOrder.items.map(
+                            sortOrderLineItems(rejectedOrder.items).map(
                               (item: any, index: number) => {
                                 const itemStatus =
                                   item.itemStatus ?? item.item_status;
                                 return (
                                   <div
-                                    key={index}
+                                    key={item.id ?? index}
                                     className="rounded-lg bg-white shadow-sm dark:bg-slate-800"
                                   >
                                     <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -3308,7 +3328,7 @@ export default function OrderPage() {
                       <tbody>
                         {selectedOrder.items &&
                         selectedOrder.items.length > 0 ? (
-                          selectedOrder.items.map(
+                          sortOrderLineItems(selectedOrder.items).map(
                             (item: any, index: number) => (
                               <tr key={item.id || index} className="bg-white">
                                 <td className="border border-slate-300 px-3 py-2 text-sm text-slate-900">
@@ -3376,7 +3396,9 @@ export default function OrderPage() {
                     {/* Total Section */}
                     <div className="p-4 flex flex-col justify-end">
                       {(() => {
-                        const items = selectedOrder.items || [];
+                        const items = sortOrderLineItems(
+                          selectedOrder.items || []
+                        );
                         const supplyTotal = items.reduce(
                           (sum: number, item: any) =>
                             sum +
