@@ -8339,6 +8339,8 @@ const OrderCard = memo(function OrderCard({
   onOpenBarcodeScan?: (orderId: string) => void;
 }) {
   const [showStaffSuggestions, setShowStaffSuggestions] = useState(false);
+  const [showRejectionStaffSuggestions, setShowRejectionStaffSuggestions] =
+    useState(false);
 
   const isPending = order.status === "pending";
   const isSupplierConfirmed = order.status === "supplier_confirmed";
@@ -9127,7 +9129,7 @@ const OrderCard = memo(function OrderCard({
         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
           {/* 주문 거절 카드: 확인 담당자 (member_name에 저장됨) */}
           {(isRejected || sectionLabel === "주문 거절") && (
-            <div className="flex items-center gap-2 flex-1 mr-4">
+            <div className="relative flex flex-1 items-center gap-2 mr-4">
               <label className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
                 확인 담당자:
               </label>
@@ -9137,12 +9139,38 @@ const OrderCard = memo(function OrderCard({
                 onChange={(e) =>
                   onRejectionConfirmManagerChange?.(e.target.value)
                 }
+                onFocus={() => setShowRejectionStaffSuggestions(true)}
+                onBlur={() =>
+                  setTimeout(() => setShowRejectionStaffSuggestions(false), 200)
+                }
                 placeholder="확인 담당자 이름을 입력하세요"
                 className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 
                          focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200
                          dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
                          dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
               />
+              {showRejectionStaffSuggestions &&
+                recentInboundStaff.length > 0 && (
+                  <ul
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                    style={{ minWidth: "12rem" }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {recentInboundStaff.map((name) => (
+                      <li
+                        key={name}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          onRejectionConfirmManagerChange?.(name);
+                          setShowRejectionStaffSuggestions(false);
+                        }}
+                        className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
             </div>
           )}
           {/* 주문 진행/재입고: 입고 직원 */}
