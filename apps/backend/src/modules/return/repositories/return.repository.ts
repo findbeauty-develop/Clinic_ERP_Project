@@ -66,6 +66,7 @@ export class ReturnRepository {
       where: {
         product_id: productId,
         tenant_id: tenantId,
+        cancelled_at: null,
       },
       _sum: {
         return_qty: true,
@@ -87,6 +88,7 @@ export class ReturnRepository {
       where: {
         batch_id: batchId,
         tenant_id: tenantId,
+        cancelled_at: null,
       },
       _sum: {
         return_qty: true,
@@ -108,6 +110,7 @@ export class ReturnRepository {
       where: {
         outbound_id: outboundId,
         tenant_id: tenantId,
+        cancelled_at: null,
       },
       _sum: {
         return_qty: true,
@@ -169,6 +172,8 @@ export class ReturnRepository {
           return_date: true,
           memo: true,
           return_no: true,
+          clinic_confirmed_at: true,
+          cancelled_at: true,
           product: {
             select: {
               id: true,
@@ -305,12 +310,16 @@ export class ReturnRepository {
         }
       }
 
+      const csm = returnItem.product?.productSupplier?.clinicSupplierManager;
+      const supplierUsesPlatform = !!csm?.linkedManager?.supplier?.id;
+
       return {
         ...returnItem,
         manager_name: returnItem.manager_name || null, // Return qilgan manager nomi
         supplier_name: supplierName,
         supplier_manager_name: supplierManagerName,
         supplier_manager_position: supplierManagerPosition,
+        supplier_uses_platform: supplierUsesPlatform,
         supplierReturnNotifications: notificationsByReturnId[returnItem.id]
           ? [notificationsByReturnId[returnItem.id]]
           : [],

@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Query,
+  Param,
   UseGuards,
   ParseIntPipe,
   Header,
@@ -128,6 +129,28 @@ export class ReturnController {
     }
 
     return await this.returnService.getReturnHistory(tenantId, filters);
+  }
+
+  @Post(":returnId/manual-complete")
+  @ApiOperation({
+    summary: "비플랫폼 공급사 반납 — 클리닉 수동 완료",
+  })
+  async manualCompleteReturn(
+    @Tenant() tenantId: string,
+    @Param("returnId") returnId: string
+  ) {
+    return await this.returnService.manualCompleteReturn(returnId, tenantId);
+  }
+
+  @Post(":returnId/manual-cancel")
+  @ApiOperation({
+    summary: "비플랫폼 공급사 반납 — 클리닉 수동 취소 (미반납 수량 복구)",
+  })
+  async manualCancelReturn(
+    @Tenant() tenantId: string,
+    @Param("returnId") returnId: string
+  ) {
+    return await this.returnService.manualCancelReturn(returnId, tenantId);
   }
 
   @Post("webhook/accept")

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { apiGet, apiPost } from "../../lib/api";
 import { useDebounce } from "../../hooks/useDebounce";
 
+const INBOUND_RECENT_STAFF_LS_KEY = "inbound_recent_inbound_staff";
+
 type BatchDetail = {
   batchId: string;
   batchNo: string;
@@ -73,6 +75,36 @@ export default function ReturnsPage() {
   const [managerName, setManagerName] = useState("");
   const [selectedItems, setSelectedItems] = useState<SelectedReturnItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [showManagerSuggestions, setShowManagerSuggestions] = useState(false);
+
+  const [recentInboundStaff, setRecentInboundStaff] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(INBOUND_RECENT_STAFF_LS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const addRecentInboundStaff = useCallback((name: string) => {
+    const v = name.trim();
+    if (!v) return;
+    setRecentInboundStaff((prev) => {
+      const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            INBOUND_RECENT_STAFF_LS_KEY,
+            JSON.stringify(next)
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  }, []);
 
   // useEffect(() => {
   //   const memberData = localStorage.getItem("erp_member_data");
@@ -324,6 +356,8 @@ export default function ReturnsPage() {
       });
 
       if (response.success) {
+        addRecentInboundStaff(managerName.trim());
+
         alert("반납이 성공적으로 처리되었습니다.");
 
         // ✅ Set force refresh flag for history page
@@ -672,13 +706,39 @@ export default function ReturnsPage() {
                     반납 담당자
                   </label>
                 </div>
-                <input
-                  type="text"
-                  value={managerName}
-                  onChange={(e) => setManagerName(e.target.value)}
-                  placeholder="담당자 이름 입력"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={managerName}
+                    onChange={(e) => setManagerName(e.target.value)}
+                    onFocus={() => setShowManagerSuggestions(true)}
+                    onBlur={() =>
+                      setTimeout(() => setShowManagerSuggestions(false), 200)
+                    }
+                    placeholder="담당자 이름 입력"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                  {showManagerSuggestions && recentInboundStaff.length > 0 && (
+                    <ul
+                      className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      {recentInboundStaff.map((name) => (
+                        <li
+                          key={name}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setManagerName(name);
+                            setShowManagerSuggestions(false);
+                          }}
+                          className="cursor-pointer px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
 
               {/* Selected Items - Order Processing */}

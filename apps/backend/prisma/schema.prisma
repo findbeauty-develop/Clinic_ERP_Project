@@ -415,6 +415,10 @@ model Return {
   total_refund  Float     @default(0)
   manager_name  String
   memo          String?
+  /// 플랫폼 미사용 공급사 반납 — 클리닉 [반납 완료] 시각 (SupplierReturnNotification 없음)
+  clinic_confirmed_at DateTime?
+  /// 클리닉 [반납 취소] 시각 — 미반납 수량 집계에서 제외
+  cancelled_at  DateTime?
   created_at    DateTime  @default(now())
   updated_at    DateTime?
   created_by    String?

@@ -296,6 +296,8 @@ function OutboundPageContent() {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null
   );
+  /** 나가기 직후 push: scheduledItems state는 아직 비동기 반영 전이라 가드가 다시 막지 않도록 */
+  const skipOutboundNavGuardRef = useRef(false);
 
   // ✅ 수동 출고 배치 확인 modal (출고 하기 bosilganda)
   const [showOutboundConfirmModal, setShowOutboundConfirmModal] =
@@ -1704,6 +1706,11 @@ function OutboundPageContent() {
     router.push = ((url: string | { pathname: string }, options?: any) => {
       // Don't show warning if we're submitting
       if (submitting) {
+        return originalPush.call(router, url as any, options);
+      }
+
+      if (skipOutboundNavGuardRef.current) {
+        skipOutboundNavGuardRef.current = false;
         return originalPush.call(router, url as any, options);
       }
 
@@ -3423,12 +3430,13 @@ function OutboundPageContent() {
             <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
               <button
                 onClick={() => {
-                  // 나가기 - cart'ni tozalash va navigation'ni davom ettirish
+                  const dest = pendingNavigation;
                   setScheduledItems([]);
                   setShowNavigationWarning(false);
-                  if (pendingNavigation) {
-                    router.push(pendingNavigation);
-                    setPendingNavigation(null);
+                  setPendingNavigation(null);
+                  if (dest) {
+                    skipOutboundNavGuardRef.current = true;
+                    router.push(dest);
                   }
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"

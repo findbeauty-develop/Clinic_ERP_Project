@@ -76,7 +76,7 @@ export class ReturnService {
     // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
     const allReturns = await this.prisma.executeWithRetry(async () => {
       return await (this.prisma as any).return.findMany({
-        where: { tenant_id: tenantId },
+        where: { tenant_id: tenantId, cancelled_at: null },
         select: {
           product_id: true,
           outbound_id: true,
@@ -513,6 +513,7 @@ export class ReturnService {
                 where: {
                   product_id: item.productId,
                   tenant_id: tenantId,
+                  cancelled_at: null,
                   memo: { contains: "자동 반납: 빈 박스" },
                 },
                 select: { return_qty: true },
@@ -1521,6 +1522,7 @@ ${footer}`;
               tenant_id: dto.clinicTenantId,
               product_id: item.productId,
               batch_no: item.batchNo,
+              cancelled_at: null,
             },
             orderBy: {
               return_date: "desc", // Most recent first
@@ -1588,6 +1590,129 @@ ${footer}`;
       );
       throw new BadRequestException(
         `Failed to handle partial return acceptance: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * 플랫폼 미사용 공급사 반납 — 클리닉 [반납 완료]
+   */
+  async manualCompleteReturn(returnId: string, tenantId: string) {
+    await this.assertManualOnlyReturn(returnId, tenantId);
+
+    const row = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).return.findFirst({
+        where: { id: returnId, tenant_id: tenantId },
+        select: { id: true, clinic_confirmed_at: true, cancelled_at: true },
+      });
+    });
+
+    if (!row) {
+      throw new NotFoundException("반납 내역을 찾을 수 없습니다.");
+    }
+    if (row.cancelled_at) {
+      throw new BadRequestException("취소된 반납입니다.");
+    }
+    if (row.clinic_confirmed_at) {
+      throw new BadRequestException("이미 완료 처리된 반납입니다.");
+    }
+
+    await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).return.update({
+        where: { id: returnId },
+        data: {
+          clinic_confirmed_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.invalidateCache(tenantId);
+    return { success: true };
+  }
+
+  /**
+   * 플랫폼 미사용 공급사 반납 — 클리닉 [반납 취소] (미반납 수량 복구 = Return 행 삭제)
+   */
+  async manualCancelReturn(returnId: string, tenantId: string) {
+    await this.assertManualOnlyReturn(returnId, tenantId);
+
+    const row = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).return.findFirst({
+        where: { id: returnId, tenant_id: tenantId },
+        select: { id: true, clinic_confirmed_at: true, cancelled_at: true },
+      });
+    });
+
+    if (!row) {
+      throw new NotFoundException("반납 내역을 찾을 수 없습니다.");
+    }
+    if (row.cancelled_at) {
+      throw new BadRequestException("이미 취소된 반납입니다.");
+    }
+    if (row.clinic_confirmed_at) {
+      throw new BadRequestException("완료된 반납은 취소할 수 없습니다.");
+    }
+
+    await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).return.update({
+        where: { id: returnId },
+        data: {
+          cancelled_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    this.invalidateCache(tenantId);
+    return { success: true };
+  }
+
+  private async assertManualOnlyReturn(returnId: string, tenantId: string) {
+    const notifCount = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).supplierReturnNotification.count({
+        where: { return_id: returnId },
+      });
+    });
+
+    if (notifCount > 0) {
+      throw new BadRequestException(
+        "플랫폼 공급사와 연결된 반납은 수동 완료·취소를 사용할 수 없습니다."
+      );
+    }
+
+    const ret = await this.prisma.executeWithRetry(async () => {
+      return (this.prisma as any).return.findFirst({
+        where: { id: returnId, tenant_id: tenantId },
+        include: {
+          product: {
+            include: {
+              productSupplier: {
+                include: {
+                  clinicSupplierManager: {
+                    include: {
+                      linkedManager: { include: { supplier: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    if (!ret) {
+      throw new NotFoundException("반납 내역을 찾을 수 없습니다.");
+    }
+
+    const platformLinked =
+      !!ret.product?.productSupplier?.clinicSupplierManager?.linkedManager
+        ?.supplier;
+
+    if (platformLinked) {
+      throw new BadRequestException(
+        "플랫폼 연동 공급사 제품은 수동 완료·취소를 사용할 수 없습니다."
       );
     }
   }

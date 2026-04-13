@@ -311,6 +311,7 @@ export class ReturnService {
             orderNo: item.order_no,
             batchNo: item.batch_no,
             status: item.status || "pending",
+            confirmedAt: item.confirmed_at ?? null,
           })),
           status: agg.toUpperCase(),
           isRead: agg !== "pending",

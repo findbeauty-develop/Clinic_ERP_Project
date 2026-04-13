@@ -1,0 +1,1 @@
+ALTER TABLE "Return" ADD COLUMN IF NOT EXISTS "cancelled_at" TIMESTAMP(3);

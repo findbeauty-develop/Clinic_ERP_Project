@@ -12,6 +12,8 @@ interface ReturnNotificationItem {
   unitPrice: number;
   totalPrice: number;
   memo?: string;
+  /** SupplierTipReturnRequest.confirmed_at (JSON ISO string) */
+  confirmedAt?: string | null;
 }
 
 interface ReturnNotification {
@@ -256,6 +258,17 @@ export default function ReturnsPage() {
     return `${year}-${month}-${day} ${hours}:${minutes}`;
   };
 
+  /** confirmed_at 표시: 26-04-03 14:30 */
+  const formatShortConfirmed = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear().toString().slice(-2);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("ko-KR").format(amount);
@@ -386,14 +399,24 @@ export default function ReturnsPage() {
         {/* Notification Cards */}
         {!loading && filteredNotifications.length > 0 && (
           <div className="space-y-4">
-            {filteredNotifications.map((notification) => (
+            {filteredNotifications.map((notification) => {
+              const latestConfirmedAt = notification.items.reduce<
+                string | null
+              >((best, item) => {
+                const c = item.confirmedAt;
+                if (!c) return best;
+                if (!best || new Date(c) > new Date(best)) return c;
+                return best;
+              }, null);
+
+              return (
               <div
                 key={notification.returnId}
                 className="bg-white rounded-lg p-6 shadow-sm border border-slate-200"
               >
                 {/* Header */}
-                <div className="flex justify-between items-start mb-4">
-                  <div>
+                <div className="flex justify-between items-start gap-3 mb-4">
+                  <div className="min-w-0">
                     <p className="text-sm text-black">
                       {formatDate(notification.returnDate)}
                     </p>
@@ -402,11 +425,17 @@ export default function ReturnsPage() {
                       님
                     </p>
                   </div>
-                  {notification.status === "ACCEPTED" && (
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                      반납 완료
-                    </span>
-                  )}
+                  <div className="shrink-0 flex flex-col items-end">
+                    {latestConfirmedAt ? (
+                      <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                        완료
+                      </span>
+                    ) : notification.status === "ACCEPTED" ? (
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                        반납 완료
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 {/* Product List */}
@@ -424,23 +453,23 @@ export default function ReturnsPage() {
                     <tbody>
                       {notification.items.map((item, index) => (
                         <tr key={index} className="border-b border-slate-100">
-                          <td className="py-2 text-black">
+                          <td className="py-2 text-black align-top">
                             <span className="font-medium">
                               {item.productName}
                             </span>
                           </td>
-                          <td className="py-2 text-right text-black">
+                          <td className="py-2 text-right text-black align-top">
                             {item.qty}개
                           </td>
                           {activeTab === "all" && (
-                            <td className="py-2 text-black">
+                            <td className="py-2 text-black align-top">
                               {item.memo || "-"}
                             </td>
                           )}
-                          <td className="py-2 text-right text-black">
+                          <td className="py-2 text-right text-black align-top">
                             {formatCurrency(item.unitPrice)}
                           </td>
-                          <td className="py-2 text-right font-medium text-black">
+                          <td className="py-2 text-right font-medium text-black align-top">
                             {formatCurrency(item.totalPrice)}
                           </td>
                         </tr>
@@ -452,33 +481,54 @@ export default function ReturnsPage() {
                 {/* Total Refund and Action Button */}
                 {notification.status === "PENDING" &&
                 activeTab === "pending" ? (
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-end gap-4">
                     <p className="text-lg font-bold text-black">
                       반납금 {formatCurrency(notification.totalRefund)} 원
                     </p>
-                    <button
-                      onClick={() => {
-                        // Initialize adjustments for this notification
-                        const initialAdjustments: Record<
-                          string,
-                          ItemAdjustment
-                        > = {};
-                        notification.items.forEach((item) => {
-                          const itemId = item.id || item.productCode;
-                          initialAdjustments[itemId] = {
-                            itemId: itemId,
-                            originalQuantity: item.qty,
-                            actualQuantity: item.qty,
-                          };
-                        });
-                        setItemAdjustments(initialAdjustments);
-                        setSelectedNotification(notification);
-                        setShowConfirmModal(true);
-                      }}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
-                    >
-                      반납 접수
-                    </button>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {latestConfirmedAt ? (
+                        <p className="text-[11px] leading-tight text-slate-500 text-right">
+                          완료 {formatShortConfirmed(latestConfirmedAt)}
+                        </p>
+                      ) : null}
+                      <button
+                        onClick={() => {
+                          const initialAdjustments: Record<
+                            string,
+                            ItemAdjustment
+                          > = {};
+                          notification.items.forEach((item) => {
+                            const itemId = item.id || item.productCode;
+                            initialAdjustments[itemId] = {
+                              itemId: itemId,
+                              originalQuantity: item.qty,
+                              actualQuantity: item.qty,
+                            };
+                          });
+                          setItemAdjustments(initialAdjustments);
+                          setSelectedNotification(notification);
+                          setShowConfirmModal(true);
+                        }}
+                        className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                      >
+                        반납 접수
+                      </button>
+                    </div>
+                  </div>
+                ) : activeTab === "all" ? (
+                  <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-end gap-4">
+                    <p className="text-lg font-bold text-black">
+                      반납금 {formatCurrency(notification.totalRefund)} 원
+                    </p>
+                    <div className="text-[11px] leading-tight text-slate-500 text-right shrink-0">
+                      {latestConfirmedAt ? (
+                        <>
+                          완료 {formatShortConfirmed(latestConfirmedAt)}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </div>
                   </div>
                 ) : notification.status === "ACCEPTED" &&
                   notification.acceptedAt ? (
@@ -498,7 +548,8 @@ export default function ReturnsPage() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

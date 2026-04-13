@@ -104,17 +104,13 @@ type DraftResponse = {
 type FilterTab = "low" | "expiring" | "all";
 
 /** 주문 내역: 라인 추가 순서(created_at) — 거절 등 상태와 무관 */
-function sortOrderLineItems<T extends { lineCreatedAt?: string | null; id?: string }>(
-  items: T[] | undefined
-): T[] {
+function sortOrderLineItems<
+  T extends { lineCreatedAt?: string | null; id?: string },
+>(items: T[] | undefined): T[] {
   if (!items?.length) return [];
   return [...items].sort((a, b) => {
-    const ta = a.lineCreatedAt
-      ? new Date(a.lineCreatedAt).getTime()
-      : 0;
-    const tb = b.lineCreatedAt
-      ? new Date(b.lineCreatedAt).getTime()
-      : 0;
+    const ta = a.lineCreatedAt ? new Date(a.lineCreatedAt).getTime() : 0;
+    const tb = b.lineCreatedAt ? new Date(b.lineCreatedAt).getTime() : 0;
     if (Number.isNaN(ta)) return 1;
     if (Number.isNaN(tb)) return -1;
     if (ta !== tb) return ta - tb;
@@ -1053,7 +1049,7 @@ export default function OrderPage() {
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
-              주문 처리
+              주문 요청
             </button>
             <button
               onClick={() => setActiveTab("history")}

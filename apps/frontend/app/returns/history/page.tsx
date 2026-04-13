@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { apiGet } from "../../../lib/api";
+import { apiGet, apiPost } from "../../../lib/api";
 import { useDebounce } from "../../../hooks/useDebounce";
 
 type ReturnHistoryItem = {
@@ -22,6 +22,10 @@ type ReturnHistoryItem = {
   outboundDate?: string | null;
   outboundManager?: string | null;
   supplierStatus?: "PENDING" | "ACCEPTED" | "REJECTED" | null; // Supplier notification status
+  supplierUsesPlatform?: boolean;
+  clinicConfirmedAt?: string | null;
+  acceptedAt?: string | null; // SupplierReturnNotification.accepted_at
+  cancelledAt?: string | null;
 };
 
 type GroupedReturnHistory = {
@@ -35,6 +39,10 @@ type GroupedReturnHistory = {
   items: ReturnHistoryItem[];
   totalAmount: number;
   supplierStatus?: "PENDING" | "ACCEPTED" | "REJECTED" | null; // Group status (all items must be ACCEPTED to show 완료)
+  supplierUsesPlatform?: boolean;
+  clinicConfirmedAt?: string | null;
+  acceptedAt?: string | null;
+  cancelledAt?: string | null;
 };
 
 export default function ReturnHistoryPage() {
@@ -50,6 +58,7 @@ export default function ReturnHistoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const limit = 10;
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Debounce search query to avoid excessive API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
@@ -112,6 +121,7 @@ export default function ReturnHistoryPage() {
           // Get supplier notification status (latest notification)
           const latestNotification = item.supplierReturnNotifications?.[0];
           const supplierStatus = latestNotification?.status || null;
+          const acceptedAtRaw = latestNotification?.accepted_at;
 
           return {
             id: item.id,
@@ -132,6 +142,12 @@ export default function ReturnHistoryPage() {
             outboundManager:
               item.outbound?.manager_name || item.outboundManager || null,
             supplierStatus: supplierStatus,
+            supplierUsesPlatform: item.supplier_uses_platform === true,
+            clinicConfirmedAt: item.clinic_confirmed_at
+              ? String(item.clinic_confirmed_at)
+              : null,
+            acceptedAt: acceptedAtRaw ? String(acceptedAtRaw) : null,
+            cancelledAt: item.cancelled_at ? String(item.cancelled_at) : null,
           };
         }
       );
@@ -226,9 +242,16 @@ export default function ReturnHistoryPage() {
           items: [],
           totalAmount: 0,
           supplierStatus: null,
+          supplierUsesPlatform: item.supplierUsesPlatform ?? false,
+          clinicConfirmedAt: item.clinicConfirmedAt ?? null,
+          acceptedAt: item.acceptedAt ?? null,
+          cancelledAt: item.cancelledAt ?? null,
         };
       }
       groups[key].items.push(item);
+      if (item.cancelledAt) {
+        groups[key].cancelledAt = item.cancelledAt;
+      }
       groups[key].totalAmount += item.totalRefund;
 
       // Update group status: if ANY item is ACCEPTED, show ACCEPTED; otherwise show PENDING if any is PENDING
@@ -259,6 +282,54 @@ export default function ReturnHistoryPage() {
       return dateB - dateA;
     });
   }, [historyData]);
+
+  const formatShortDone = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear().toString().slice(-2);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const isReturnComplete = (g: GroupedReturnHistory) =>
+    g.supplierStatus === "ACCEPTED" || !!g.clinicConfirmedAt;
+
+  const showManualReturnActions = (g: GroupedReturnHistory) =>
+    g.supplierUsesPlatform === false && !isReturnComplete(g) && !g.cancelledAt;
+
+  const handleManualComplete = async (returnId: string) => {
+    if (!confirm("반납을 완료 처리할까요?")) return;
+    setActionLoadingId(returnId);
+    try {
+      await apiPost(`${apiUrl}/returns/${returnId}/manual-complete`, {});
+      invalidateCache();
+      await fetchHistory();
+    } catch (e: any) {
+      alert(e?.message || "처리에 실패했습니다.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleManualCancel = async (returnId: string) => {
+    if (
+      !confirm("반납을 취소하면 미반납 수량에 다시 반영됩니다. 취소할까요?")
+    ) {
+      return;
+    }
+    setActionLoadingId(returnId);
+    try {
+      await apiPost(`${apiUrl}/returns/${returnId}/manual-cancel`, {});
+      invalidateCache();
+      await fetchHistory();
+    } catch (e: any) {
+      alert(e?.message || "처리에 실패했습니다.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 dark:bg-slate-900">
@@ -374,102 +445,155 @@ export default function ReturnHistoryPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {groupedHistory.map((group, groupIndex) => (
-              <div
-                key={groupIndex}
-                className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800"
-              >
-                {/* Sana va 출고 담당자 - yonma-yon */}
-                <div className="mb-0.1 flex items-center gap-3">
-                  {group.returnDate && (
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {new Date(group.returnDate).toLocaleDateString("ko-KR", {
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                      })}
-                    </div>
-                  )}
-                  {group.managerName && (
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {group.managerName}님 출고
-                    </div>
-                  )}
-                </div>
+            {groupedHistory.map((group, groupIndex) => {
+              const returnRowId = group.items[0]?.id;
+              const cancelled = !!group.cancelledAt;
+              const complete = isReturnComplete(group);
+              const manualActions = showManualReturnActions(group);
+              const doneAt = group.acceptedAt || group.clinicConfirmedAt;
 
-                {/* 공급처 va 총 반납 금액 - qarama-qarshi */}
-                <div className="mb-4 flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
-                  <div>
-                    공급처: {group.supplierName || "공급처 없음"}{" "}
-                    {group.supplierManagerName && (
-                      <>
-                        {group.supplierManagerName}
-                        {group.supplierManagerPosition
-                          ? ` ${group.supplierManagerPosition}`
-                          : " 대리"}
-                      </>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-4">
-                    {/* Status Button - tepada */}
-                    {group.supplierStatus && (
-                      <div>
-                        {group.supplierStatus === "ACCEPTED" ? (
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium dark:bg-green-900/30 dark:text-green-400">
-                            완료
-                          </span>
-                        ) : group.supplierStatus === "PENDING" ? (
-                          <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium dark:bg-yellow-900/30 dark:text-yellow-400">
-                            클레임 진행중
-                          </span>
-                        ) : null}
+              return (
+                <div
+                  key={groupIndex}
+                  className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  {/* Sana va 출고 담당자 - yonma-yon */}
+                  <div className="mb-0.1 flex items-center gap-3">
+                    {group.returnDate && (
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {new Date(group.returnDate).toLocaleDateString(
+                          "ko-KR",
+                          {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                          }
+                        )}
                       </div>
                     )}
-                    {/* 총 반납 금액 - pastda */}
+                    {group.managerName && (
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {group.managerName}님 출고
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 공급처 va 총 반납 금액 - qarama-qarshi */}
+                  <div className="mb-4 flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-white">
                     <div>
-                      총 반납 금액: {group.totalAmount.toLocaleString()}원
+                      공급처: {group.supplierName || "공급처 없음"}{" "}
+                      {group.supplierManagerName && (
+                        <>
+                          {group.supplierManagerName}
+                          {group.supplierManagerPosition
+                            ? ` ${group.supplierManagerPosition}`
+                            : " 대리"}
+                        </>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div>
+                        {cancelled ? (
+                          <span className="inline-flex rounded-full bg-red-500 px-3 py-1 text-sm font-semibold text-white dark:bg-red-600">
+                            {" "}
+                            반납 취소
+                          </span>
+                        ) : complete ? (
+                          <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            반납 완료
+                          </span>
+                        ) : group.supplierStatus === "REJECTED" ? (
+                          <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium dark:bg-red-900/30 dark:text-red-400">
+                            반려
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium dark:bg-yellow-900/30 dark:text-yellow-400">
+                            반납 진행중
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right text-sm font-semibold">
+                        총 반납 금액: {group.totalAmount.toLocaleString()}원
+                      </div>
+                      {cancelled && group.cancelledAt ? (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          취소 {formatShortDone(group.cancelledAt)}
+                        </p>
+                      ) : complete && doneAt ? (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          완료 {formatShortDone(doneAt)}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
-                </div>
 
-                {/* Items List - Card ichida */}
-                <div className="space-y-2">
-                  {group.items.map((item, itemIndex) => (
-                    <div
-                      key={itemIndex}
-                      className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-600 dark:bg-slate-900/50"
-                    >
-                      <div className="flex items-center justify-between gap-x-4">
-                        {/* Maxsulot nomi */}
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {item.productName}
-                        </div>
+                  {/* Items List - Card ichida */}
+                  <div className="space-y-2">
+                    {group.items.map((item, itemIndex) => (
+                      <div
+                        key={itemIndex}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-600 dark:bg-slate-900/50"
+                      >
+                        <div className="flex items-center justify-between gap-x-4">
+                          {/* Maxsulot nomi */}
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {item.productName}
+                          </div>
 
-                        {/* Brend */}
-                        <div className="text-sm text-slate-700 dark:text-slate-300">
-                          브랜드: {item.brand}
-                        </div>
+                          {/* Brend */}
+                          <div className="text-sm text-slate-700 dark:text-slate-300">
+                            브랜드: {item.brand}
+                          </div>
 
-                        {/* Har birining narxi */}
-                        <div className="text-sm text-slate-700 dark:text-slate-300">
-                          개당 금액: {item.refundAmount.toLocaleString()}
-                        </div>
+                          {/* Har birining narxi */}
+                          <div className="text-sm text-slate-700 dark:text-slate-300">
+                            개당 금액: {item.refundAmount.toLocaleString()}
+                          </div>
 
-                        {/* Qaytarilish miqdori */}
-                        <div className="text-sm text-slate-700 dark:text-slate-300">
-                          반납 수량: {item.returnQty}개
-                        </div>
+                          {/* Qaytarilish miqdori */}
+                          <div className="text-sm text-slate-700 dark:text-slate-300">
+                            반납 수량: {item.returnQty}개
+                          </div>
 
-                        {/* Qaytarilganda hammasining narxi */}
-                        <div className="text-sm font-bold text-slate-900 dark:text-white">
-                          총 반납 금액: {item.totalRefund.toLocaleString()}
+                          {/* Qaytarilganda hammasining narxi */}
+                          <div className="text-sm font-bold text-slate-900 dark:text-white">
+                            총 반납 금액: {item.totalRefund.toLocaleString()}
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+
+                  {manualActions && returnRowId ? (
+                    <div className="mt-4 flex flex-col items-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                      {actionLoadingId === returnRowId ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          처리 중...
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === returnRowId}
+                          onClick={() => handleManualCancel(returnRowId)}
+                          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                          반납 취소
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === returnRowId}
+                          onClick={() => handleManualComplete(returnRowId)}
+                          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50 dark:bg-emerald-500 dark:hover:bg-emerald-600"
+                        >
+                          반납 완료
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
