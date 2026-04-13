@@ -5,7 +5,6 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { compare, hash } from "bcryptjs";
-import { randomBytes } from "crypto";
 import { sign, SignOptions, verify } from "jsonwebtoken";
 import { Response } from "express";
 import { MembersRepository } from "../repositories/members.repository";
@@ -19,8 +18,48 @@ type CreatedMemberResult = {
   password?: string;
 };
 
+type MemberRoleDefinition = {
+  role: string;
+  label: string;
+  password: string;
+  isOwner: boolean;
+  isTemporary: boolean;
+};
+
+/** `findByMemberId` natijasi — JWT va login javobi uchun kerakli maydonlar. */
+type MemberAuthRecord = {
+  id: string;
+  member_id: string;
+  tenant_id: string;
+  role: string;
+  clinic_name: string | null;
+  full_name: string | null;
+  must_change_password: boolean | null;
+  password_hash: string;
+};
+
+type CreateMembersPayloadEntry = {
+  memberId: string;
+  memberData: {
+    member_id: string;
+    role: string;
+    password_hash: string;
+    tenant_id: string;
+    clinic_name: string;
+    created_by: string;
+    must_change_password: boolean;
+    full_name?: string;
+    phone_number?: string;
+    id_card_number?: string;
+    address?: string;
+  };
+  result: CreatedMemberResult;
+};
+
 @Injectable()
 export class MembersService {
+  private static readonly PASSWORD_SALT_ROUNDS = 12;
+
   private readonly logger = new Logger(MembersService.name);
 
   constructor(
@@ -38,61 +77,98 @@ export class MembersService {
     tenantId: string,
     userId: string
   ): Promise<CreatedMemberResult[]> {
-    const clinicSlug = this.normalizeClinicName(dto.clinicName);
+    const clinicSlug = this.getClinicSlug(dto);
+    const clinicIdentifier = this.getClinicIdentifier(dto, clinicSlug);
+    const roleDefinitions = this.buildMemberRoleDefinitions(dto);
+    const memberIds = roleDefinitions.map((d) =>
+      this.buildMemberId(d.label, clinicIdentifier)
+    );
+    const payload = await this.buildCreateMembersPayload(
+      roleDefinitions,
+      dto,
+      clinicIdentifier,
+      clinicSlug,
+      tenantId,
+      userId
+    );
 
-    // Use English name if available, otherwise use clinic name
-    // Format: member1@EnglishName or member1@ClinicName
-    const clinicIdentifier = dto.clinicEnglishName
+    await this.saveCreatedOrUpdatedMembers(dto, payload, memberIds, tenantId);
+    await this.sendOwnerCredentialsIfNeeded(
+      dto,
+      roleDefinitions,
+      clinicIdentifier
+    );
+
+    return this.mapPayloadToCreatedResults(payload);
+  }
+
+  /** `clinic_name` maydoni uchun (member_id dagi identifier bilan farq qilishi mumkin). */
+  private getClinicSlug(dto: CreateMembersDto): string {
+    return this.normalizeClinicName(dto.clinicName);
+  }
+
+  /** `owner1@...` formatidagi suffix: ingliz nomi bo'lsa u, aks holda clinic slug. */
+  private getClinicIdentifier(
+    dto: CreateMembersDto,
+    clinicSlug: string
+  ): string {
+    return dto.clinicEnglishName
       ? this.normalizeClinicName(dto.clinicEnglishName)
       : clinicSlug;
+  }
 
-    const definitions: Array<{
-      role: string;
-      label: string;
-      password: string;
-      isOwner: boolean;
-      isTemporary: boolean;
-    }> = [
+  private buildMemberRoleDefinitions(
+    dto: CreateMembersDto
+  ): MemberRoleDefinition[] {
+    return [
       {
         role: "owner",
         label: "owner1",
         password: dto.ownerPassword,
         isOwner: true,
-        isTemporary: false, // Owner o'z password'ini tanlaydi
+        isTemporary: false,
       },
       {
         role: "manager",
         label: "manager1",
         password: this.generateTemporaryPassword(),
         isOwner: false,
-        isTemporary: true, // Temporary password
+        isTemporary: true,
       },
       {
         role: "member",
         label: "member1",
         password: this.generateTemporaryPassword(),
         isOwner: false,
-        isTemporary: true, // Temporary password
+        isTemporary: true,
       },
     ];
+  }
 
-    const memberIds = definitions.map(
-      (definition) => `${definition.label}@${clinicIdentifier}`
-    );
-
-    const payload = await Promise.all(
+  private async buildCreateMembersPayload(
+    definitions: MemberRoleDefinition[],
+    dto: CreateMembersDto,
+    clinicIdentifier: string,
+    clinicSlug: string,
+    tenantId: string,
+    userId: string
+  ): Promise<CreateMembersPayloadEntry[]> {
+    return Promise.all(
       definitions.map(async (definition) => {
-        const memberId = `${definition.label}@${clinicIdentifier}`;
-        const passwordHash = await hash(definition.password, 12);
+        const memberId = this.buildMemberId(definition.label, clinicIdentifier);
+        const passwordHash = await hash(
+          definition.password,
+          MembersService.PASSWORD_SALT_ROUNDS
+        );
 
-        const memberData = {
+        const memberData: CreateMembersPayloadEntry["memberData"] = {
           member_id: memberId,
           role: definition.role,
           password_hash: passwordHash,
           tenant_id: tenantId,
           clinic_name: clinicSlug,
           created_by: userId,
-          must_change_password: definition.isTemporary, // Temporary password bo'lsa, birinchi login'da o'zgartirish majburiy
+          must_change_password: definition.isTemporary,
           full_name: definition.isOwner ? dto.ownerName : undefined,
           phone_number: definition.isOwner ? dto.ownerPhoneNumber : undefined,
           id_card_number: definition.isOwner
@@ -107,16 +183,21 @@ export class MembersService {
           result: {
             memberId,
             role: definition.role,
-            password: definition.password, // ✅ Owner'ning password'ini ham qaytarish
+            password: definition.password,
           },
         };
       })
     );
+  }
 
+  private async saveCreatedOrUpdatedMembers(
+    dto: CreateMembersDto,
+    payload: CreateMembersPayloadEntry[],
+    memberIds: string[],
+    tenantId: string
+  ): Promise<void> {
     try {
-      // If edit mode, update existing members; otherwise create new members
       if (dto.isEditMode === true) {
-        // Edit mode: update existing members
         const existingMembers = await this.repository.findManyByMemberIds(
           memberIds,
           tenantId
@@ -146,7 +227,6 @@ export class MembersService {
           );
         }
       } else {
-        // Create mode: check if members already exist GLOBALLY (member_id is unique across all tenants)
         const existingMembers =
           await this.repository.findManyByMemberIdsGlobal(memberIds);
         if (existingMembers.length > 0) {
@@ -161,7 +241,6 @@ export class MembersService {
           );
         }
 
-        // Create new members only if they don't exist
         await this.repository.createMany(
           payload.map((item) => item.memberData),
           tenantId
@@ -176,63 +255,224 @@ export class MembersService {
       );
       throw error;
     }
-    // Ownerga barcha memberlarning (owner, manager, member) ID va passwordlari yuboriladi
-    if (!dto.isEditMode && dto.ownerPhoneNumber) {
-      // Barcha memberlarni (owner, manager, member) formatlash
-      const allMembers = definitions.map((definition) => {
-        const memberId = `${definition.label}@${clinicIdentifier}`;
-        return {
-          memberId: memberId,
-          role: definition.role,
-          temporaryPassword: definition.password, // Owner, manager, member - hammasining password'i
-        };
-      });
+  }
 
-      // SMS yuborish
-      try {
-        await this.messageService.sendMemberCredentials(
-          dto.ownerPhoneNumber,
-          dto.clinicName,
-          allMembers // Barcha memberlarni (owner, manager, member) yuborish
-        );
-      } catch (error) {
-        this.logger.warn("Failed to send SMS to owner", error);
-        // Continue even if SMS fails - don't throw error
-      }
-
-      // Email yuborish (agar email mavjud bo'lsa)
-      if (dto.ownerEmail) {
-        try {
-          // Template ID'ni environment variable'dan olish
-          const templateId = parseInt(
-            process.env.BREVO_MEMBER_CREDENTIALS_TEMPLATE_ID || "0",
-            10
-          );
-
-          if (templateId > 0) {
-            // Template ishlatish
-            await this.emailService.sendMemberCredentialsEmailWithTemplate(
-              dto.ownerEmail,
-              templateId,
-              dto.clinicName,
-              allMembers
-            );
-          } else {
-            // Oddiy HTML email (fallback)
-            await this.emailService.sendMemberCredentialsEmail(
-              dto.ownerEmail,
-              dto.clinicName,
-              allMembers
-            );
-          }
-        } catch (error) {
-          this.logger.warn("Failed to send email to owner", error);
-          // Continue even if email fails - don't throw error
-        }
-      }
+  private async sendOwnerCredentialsIfNeeded(
+    dto: CreateMembersDto,
+    definitions: MemberRoleDefinition[],
+    clinicIdentifier: string
+  ): Promise<void> {
+    if (dto.isEditMode || !dto.ownerPhoneNumber) {
+      return;
     }
 
+    const allMembers = definitions.map((definition) => {
+      const memberId = this.buildMemberId(definition.label, clinicIdentifier);
+      return {
+        memberId,
+        role: definition.role,
+        temporaryPassword: definition.password,
+      };
+    });
+
+    try {
+      await this.messageService.sendMemberCredentials(
+        dto.ownerPhoneNumber,
+        dto.clinicName,
+        allMembers
+      );
+    } catch (error) {
+      this.logger.warn("Failed to send SMS to owner", error);
+    }
+
+    if (!dto.ownerEmail) {
+      return;
+    }
+
+    try {
+      const templateId = parseInt(
+        process.env.BREVO_MEMBER_CREDENTIALS_TEMPLATE_ID || "0",
+        10
+      );
+
+      if (templateId > 0) {
+        await this.emailService.sendMemberCredentialsEmailWithTemplate(
+          dto.ownerEmail,
+          templateId,
+          dto.clinicName,
+          allMembers
+        );
+      } else {
+        await this.emailService.sendMemberCredentialsEmail(
+          dto.ownerEmail,
+          dto.clinicName,
+          allMembers
+        );
+      }
+    } catch (error) {
+      this.logger.warn("Failed to send email to owner", error);
+    }
+  }
+
+  private mapPayloadToCreatedResults(
+    payload: CreateMembersPayloadEntry[]
+  ): CreatedMemberResult[] {
     return payload.map((item) => item.result);
+  }
+
+  private buildMemberId(label: string, clinicIdentifier: string): string {
+    return `${label}@${clinicIdentifier}`;
+  }
+
+  private resolveAccessTokenSecret(): string | undefined {
+    return (
+      process.env.MEMBER_JWT_SECRET ??
+      process.env.SUPABASE_JWT_SECRET ??
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+
+  /** Login paytida refresh token imzolash — avvalgi `??` tartibi saqlangan. */
+  private resolveRefreshSecretForNewTokens(
+    accessSecret: string
+  ): string | undefined {
+    return (
+      process.env.MEMBER_JWT_REFRESH_SECRET ??
+      process.env.MEMBER_JWT_SECRET ??
+      accessSecret
+    );
+  }
+
+  /** Refresh endpoint verify — `login` dagi zanjirdan farq qiladi (to'liq fallback). */
+  private resolveRefreshSecretForVerification(): string | undefined {
+    return (
+      process.env.MEMBER_JWT_REFRESH_SECRET ??
+      process.env.MEMBER_JWT_SECRET ??
+      process.env.SUPABASE_JWT_SECRET ??
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+
+  private buildAccessTokenJwtPayload(member: MemberAuthRecord) {
+    return {
+      sub: member.id,
+      member_id: member.member_id,
+      tenant_id: member.tenant_id,
+      roles: [member.role],
+      clinic_name: member.clinic_name,
+      must_change_password: member.must_change_password || false,
+      type: "access" as const,
+    };
+  }
+
+  private buildRefreshTokenJwtPayload(member: MemberAuthRecord) {
+    return {
+      sub: member.id,
+      member_id: member.member_id,
+      tenant_id: member.tenant_id,
+      type: "refresh" as const,
+    };
+  }
+
+  private mapMemberToAuthResponse(member: MemberAuthRecord) {
+    return {
+      id: member.id,
+      member_id: member.member_id,
+      role: member.role,
+      tenant_id: member.tenant_id,
+      clinic_name: member.clinic_name,
+      full_name: member.full_name,
+      mustChangePassword: member.must_change_password || false,
+    };
+  }
+
+  private async validateMemberCredentialsForLogin(
+    memberId: string,
+    password: string,
+    tenantId?: string
+  ): Promise<MemberAuthRecord> {
+    const member = (await this.repository.findByMemberId(
+      memberId,
+      tenantId
+    )) as MemberAuthRecord | null;
+
+    if (!member) {
+      throw new UnauthorizedException("Invalid member ID or password");
+    }
+
+    const isValid = await compare(password, member.password_hash);
+    if (!isValid) {
+      throw new UnauthorizedException("Invalid member ID or password");
+    }
+
+    return member;
+  }
+
+  private signMemberAccessToken(member: MemberAuthRecord, secret: string): string {
+    const accessTokenExpiresIn = process.env.MEMBER_JWT_EXPIRES_IN || "15m";
+    return sign(
+      this.buildAccessTokenJwtPayload(member),
+      secret,
+      { expiresIn: accessTokenExpiresIn } as SignOptions
+    );
+  }
+
+  private signMemberRefreshToken(
+    member: MemberAuthRecord,
+    refreshSecret: string,
+    refreshTokenExpiresIn: string
+  ): string {
+    return sign(
+      this.buildRefreshTokenJwtPayload(member),
+      refreshSecret,
+      { expiresIn: refreshTokenExpiresIn } as SignOptions
+    );
+  }
+
+  private computeRefreshTokenExpiry(refreshTokenExpiresIn: string): Date {
+    const expiresAt = new Date();
+    if (refreshTokenExpiresIn.endsWith("d")) {
+      const days = parseInt(refreshTokenExpiresIn.replace("d", ""), 10);
+      expiresAt.setDate(expiresAt.getDate() + days);
+    } else if (refreshTokenExpiresIn.endsWith("h")) {
+      const hours = parseInt(refreshTokenExpiresIn.replace("h", ""), 10);
+      expiresAt.setHours(expiresAt.getHours() + hours);
+    } else if (refreshTokenExpiresIn.endsWith("m")) {
+      const minutes = parseInt(refreshTokenExpiresIn.replace("m", ""), 10);
+      expiresAt.setMinutes(expiresAt.getMinutes() + minutes);
+    } else {
+      expiresAt.setDate(expiresAt.getDate() + 7);
+    }
+    return expiresAt;
+  }
+
+  private setLoginRefreshTokenCookie(res: Response, refreshToken: string): void {
+    const isProduction = process.env.NODE_ENV === "production";
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+  }
+
+  private buildLoginSuccessResponse(
+    member: MemberAuthRecord,
+    accessToken: string,
+    refreshToken: string,
+    opts?: { exposeRefreshTokenInBody?: boolean }
+  ) {
+    const base = {
+      message: "You successfully login",
+      access_token: accessToken,
+      member: this.mapMemberToAuthResponse(member),
+    };
+
+    if (opts?.exposeRefreshTokenInBody) {
+      return { ...base, refresh_token: refreshToken };
+    }
+    return base;
   }
 
   private normalizeClinicName(name: string): string {
@@ -240,10 +480,6 @@ export class MembersService {
       .replace(/[^a-zA-Z0-9]+/g, " ")
       .trim()
       .replace(/\s+/g, "");
-  }
-
-  private generateRandomPassword(): string {
-    return randomBytes(8).toString("base64url");
   }
 
   /**
@@ -266,28 +502,14 @@ export class MembersService {
     opts?: { exposeRefreshTokenInBody?: boolean }
   ) {
     try {
-      // Find member by member_id (which is unique globally)
-      // If tenantId is provided, also filter by tenant_id for extra security
-      const member = await this.repository.findByMemberId(memberId, tenantId);
+      const member = await this.validateMemberCredentialsForLogin(
+        memberId,
+        password,
+        tenantId
+      );
 
-      if (!member) {
-        throw new UnauthorizedException("Invalid member ID or password");
-      }
-
-      const isValid = await compare(password, member.password_hash);
-      if (!isValid) {
-        throw new UnauthorizedException("Invalid member ID or password");
-      }
-
-      const secret =
-        process.env.MEMBER_JWT_SECRET ??
-        process.env.SUPABASE_JWT_SECRET ??
-        process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-      const refreshSecret =
-        process.env.MEMBER_JWT_REFRESH_SECRET ??
-        process.env.MEMBER_JWT_SECRET ??
-        secret;
+      const secret = this.resolveAccessTokenSecret();
+      const refreshSecret = this.resolveRefreshSecretForNewTokens(secret ?? "");
 
       if (!secret) {
         this.logger.error(
@@ -303,90 +525,28 @@ export class MembersService {
         throw new UnauthorizedException("Refresh token secret not configured");
       }
 
-      // Access token - qisqa muddat (15 minut)
-      const accessTokenExpiresIn = process.env.MEMBER_JWT_EXPIRES_IN || "15m";
-      const accessToken = sign(
-        {
-          sub: member.id,
-          member_id: member.member_id,
-          tenant_id: member.tenant_id,
-          roles: [member.role],
-          clinic_name: member.clinic_name,
-          must_change_password: member.must_change_password || false,
-          type: "access",
-        },
-        secret as string,
-        { expiresIn: accessTokenExpiresIn } as SignOptions
-      );
-
-      // Refresh token - uzoq muddat (7 kun)
+      const accessToken = this.signMemberAccessToken(member, secret);
       const refreshTokenExpiresIn =
         process.env.MEMBER_JWT_REFRESH_EXPIRES_IN || "7d";
-      const refreshToken = sign(
-        {
-          sub: member.id,
-          member_id: member.member_id,
-          tenant_id: member.tenant_id,
-          type: "refresh",
-        },
-        refreshSecret as string,
-        { expiresIn: refreshTokenExpiresIn } as SignOptions
+      const refreshToken = this.signMemberRefreshToken(
+        member,
+        refreshSecret,
+        refreshTokenExpiresIn
       );
+      const expiresAt = this.computeRefreshTokenExpiry(refreshTokenExpiresIn);
 
-      // Refresh token'ni database'ga saqlash
-      const expiresAt = new Date();
-      if (refreshTokenExpiresIn.endsWith("d")) {
-        const days = parseInt(refreshTokenExpiresIn.replace("d", ""));
-        expiresAt.setDate(expiresAt.getDate() + days);
-      } else if (refreshTokenExpiresIn.endsWith("h")) {
-        const hours = parseInt(refreshTokenExpiresIn.replace("h", ""));
-        expiresAt.setHours(expiresAt.getHours() + hours);
-      } else if (refreshTokenExpiresIn.endsWith("m")) {
-        const minutes = parseInt(refreshTokenExpiresIn.replace("m", ""));
-        expiresAt.setMinutes(expiresAt.getMinutes() + minutes);
-      } else {
-        // Default: 7 days
-        expiresAt.setDate(expiresAt.getDate() + 7);
-      }
+      await this.repository.saveRefreshToken(member.id, refreshToken, expiresAt);
 
-      await this.repository.saveRefreshToken(
-        member.id,
-        refreshToken,
-        expiresAt
-      );
-
-      // HttpOnly cookie'ga refresh token saqlash
       if (res) {
-        const isProduction = process.env.NODE_ENV === "production";
-        res.cookie("refresh_token", refreshToken, {
-          httpOnly: true, // ✅ JavaScript'dan o'qib bo'lmaydi
-          secure: isProduction, // ✅ HTTPS'da ishlaydi
-          sameSite: "strict", // ✅ CSRF himoya
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          path: "/",
-        });
+        this.setLoginRefreshTokenCookie(res, refreshToken);
       }
 
-      const mustChangePassword = member.must_change_password || false;
-
-      const base = {
-        message: "You successfully login",
-        access_token: accessToken, // ✅ Faqat access token qaytariladi
-        member: {
-          id: member.id,
-          member_id: member.member_id,
-          role: member.role,
-          tenant_id: member.tenant_id,
-          clinic_name: member.clinic_name,
-          full_name: member.full_name,
-          mustChangePassword: mustChangePassword,
-        },
-      };
-
-      if (opts?.exposeRefreshTokenInBody) {
-        return { ...base, refresh_token: refreshToken };
-      }
-      return base;
+      return this.buildLoginSuccessResponse(
+        member,
+        accessToken,
+        refreshToken,
+        opts
+      );
     } catch (error: any) {
       // Handle database connection errors
       const errorMessage = error?.message || String(error);
@@ -412,24 +572,18 @@ export class MembersService {
 
   public async refreshAccessToken(refreshToken: string) {
     try {
-      const refreshSecret =
-        process.env.MEMBER_JWT_REFRESH_SECRET ??
-        process.env.MEMBER_JWT_SECRET ??
-        process.env.SUPABASE_JWT_SECRET ??
-        process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const refreshSecret = this.resolveRefreshSecretForVerification();
 
       if (!refreshSecret) {
         throw new UnauthorizedException("Refresh token secret not configured");
       }
 
-      // Refresh token'ni verify qilish
       const payload = verify(refreshToken, refreshSecret) as any;
 
       if (payload.type !== "refresh") {
         throw new UnauthorizedException("Invalid token type");
       }
 
-      // Database'da refresh token mavjudligini tekshirish
       const isValid = await this.repository.isRefreshTokenValid(
         payload.sub,
         refreshToken
@@ -439,50 +593,25 @@ export class MembersService {
         throw new UnauthorizedException("Invalid or expired refresh token");
       }
 
-      // Member'ni topish
-      const member = await this.repository.findByMemberId(payload.member_id);
+      const member = (await this.repository.findByMemberId(
+        payload.member_id
+      )) as MemberAuthRecord | null;
 
       if (!member) {
         throw new UnauthorizedException("Member not found");
       }
 
-      // Yangi access token yaratish
-      const secret =
-        process.env.MEMBER_JWT_SECRET ??
-        process.env.SUPABASE_JWT_SECRET ??
-        process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const secret = this.resolveAccessTokenSecret();
 
       if (!secret) {
         throw new UnauthorizedException("JWT secret not configured");
       }
 
-      const accessTokenExpiresIn = process.env.MEMBER_JWT_EXPIRES_IN || "15m";
-
-      const accessToken = sign(
-        {
-          sub: member.id,
-          member_id: member.member_id,
-          tenant_id: member.tenant_id,
-          roles: [member.role],
-          clinic_name: member.clinic_name,
-          must_change_password: member.must_change_password || false,
-          type: "access",
-        },
-        secret as string,
-        { expiresIn: accessTokenExpiresIn } as SignOptions
-      );
+      const accessToken = this.signMemberAccessToken(member, secret);
 
       const result = {
         access_token: accessToken,
-        member: {
-          id: member.id,
-          member_id: member.member_id,
-          role: member.role,
-          tenant_id: member.tenant_id,
-          clinic_name: member.clinic_name,
-          full_name: member.full_name,
-          mustChangePassword: member.must_change_password || false,
-        },
+        member: this.mapMemberToAuthResponse(member),
       };
 
       return result;
@@ -496,14 +625,13 @@ export class MembersService {
   }
 
   public async logout(refreshToken: string) {
+    const successBody = { message: "Successfully logged out" };
     try {
-      // Refresh token'ni database'dan invalid qilish
       await this.repository.revokeRefreshToken(refreshToken);
-      return { message: "Successfully logged out" };
+      return successBody;
     } catch (error: any) {
       this.logger.error("Logout error:", error?.message || String(error));
-      // Logout'da xatolik bo'lsa ham success qaytarish (token allaqachon invalid bo'lishi mumkin)
-      return { message: "Successfully logged out" };
+      return successBody;
     }
   }
 
@@ -547,7 +675,10 @@ export class MembersService {
       }
 
       // Yangi password'ni hash qilish
-      const newPasswordHash = await hash(newPassword, 12);
+      const newPasswordHash = await hash(
+        newPassword,
+        MembersService.PASSWORD_SALT_ROUNDS
+      );
 
       // Password'ni yangilash va must_change_password'ni false qilish
       await this.repository.update(member.id, {

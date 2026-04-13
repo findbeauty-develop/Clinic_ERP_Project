@@ -1,8 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { IMessageProvider } from "./message-provider.interface";
-import { TwilioProvider } from "./providers/twilio.provider";
-import { CoolSMSProvider } from "./providers/coolsms.provider";
+
 import { KakaoProvider } from "./providers/kakao.provider";
 import { KTCommunisProvider } from "./providers/kt-communis.provider";
 import { SolapiProvider } from "./providers/solapi.provider";
@@ -14,10 +13,7 @@ export class MessageService {
 
   constructor(
     private configService: ConfigService,
-    private twilioProvider: TwilioProvider,
-    private coolSMSProvider: CoolSMSProvider,
-    private kakaoProvider: KakaoProvider,
-    private ktCommunisProvider: KTCommunisProvider,
+
     private solapiProvider: SolapiProvider
   ) {
     // Config'dan provider tanlash
@@ -28,9 +24,6 @@ export class MessageService {
 
   private getProvider(name: string): IMessageProvider {
     switch (name.toLowerCase()) {
-      case "kakao":
-        return this.kakaoProvider;
-
       case "solapi":
         return this.solapiProvider;
       default:

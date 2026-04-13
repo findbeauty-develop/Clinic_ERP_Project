@@ -10,16 +10,11 @@ import { MemberLoginDto } from "./dto/member-login.dto";
 import { GoogleVisionService } from "./services/google-vision.service";
 import { CertificateParserService } from "./services/certificate-parser.service";
 import { MessageService } from "./services/message.service";
-import { TwilioProvider } from "./services/providers/twilio.provider";
-import { CoolSMSProvider } from "./services/providers/coolsms.provider";
-import { KakaoProvider } from "./services/providers/kakao.provider";
-import { KTCommunisProvider } from "./services/providers/kt-communis.provider";
-import { SolapiProvider } from "./services/providers/solapi.provider";
 import { HiraModule } from "../hira/hira.module";
 import { PhoneVerificationService } from "./services/phone-verification.service";
 import { EmailService } from "./services/email.service";
-import { AmazonSESProvider } from "./services/providers/amazon-ses.provider";
 import { BrevoProvider } from "./services/providers/brevo.provider";
+import { SolapiProvider } from "./services/providers/solapi.provider";
 
 @Module({
   imports: [HiraModule],
@@ -34,15 +29,10 @@ import { BrevoProvider } from "./services/providers/brevo.provider";
     GoogleVisionService,
     CertificateParserService,
     MessageService,
-    TwilioProvider,
-    CoolSMSProvider,
-    KakaoProvider,
     BrevoProvider,
-    KTCommunisProvider,
-    SolapiProvider,
     PhoneVerificationService,
     EmailService,
-    AmazonSESProvider,
+    SolapiProvider,
   ],
   exports: [MessageService, EmailService],
 })

@@ -12,7 +12,6 @@ export class EmailService {
 
   constructor(
     private configService: ConfigService,
-    private amazonSESProvider: AmazonSESProvider,
     private brevoProvider: BrevoProvider
   ) {
     // Config'dan provider tanlash (kelajakda boshqa provider'lar qo'shilishi mumkin)
@@ -23,16 +22,12 @@ export class EmailService {
 
   private getProvider(name: string): IEmailProvider {
     switch (name.toLowerCase()) {
-      case "amazon-ses":
-      case "ses":
-        return this.amazonSESProvider;
-
       case "brevo":
       case "sendinblue":
         return this.brevoProvider;
       default:
-        this.logger.warn(`Unknown email provider: ${name}, using Amazon SES`);
-        return this.amazonSESProvider;
+        this.logger.warn(`Unknown email provider: ${name}, using Brevo`);
+        return this.brevoProvider;
     }
   }
 
@@ -802,16 +797,15 @@ export class EmailService {
       return false;
     }
 
-    const { subject, htmlBody, textBody } =
-      this.formatOrderCancellationEmail(
-        clinicName,
-        orderNo,
-        totalAmount,
-        itemCount,
-        cancelledAtLabel,
-        clinicManagerName,
-        products
-      );
+    const { subject, htmlBody, textBody } = this.formatOrderCancellationEmail(
+      clinicName,
+      orderNo,
+      totalAmount,
+      itemCount,
+      cancelledAtLabel,
+      clinicManagerName,
+      products
+    );
 
     return this.sendEmail(email, subject, htmlBody, textBody);
   }

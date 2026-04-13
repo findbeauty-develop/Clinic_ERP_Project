@@ -14,7 +14,8 @@ const nextConfig = {
    * Tauri / local dev: connect-src needs ipc:, ws:, and localhost API ports.
    */
   async headers() {
-    const devLocalConnect =
+    /** Dev: frontend boshqa portda, API/uploads — localhost:3000 va hokazo (http, https emas). */
+    const devLocalHosts =
       process.env.NODE_ENV === "development"
         ? " http://localhost:3000 http://127.0.0.1:3000 http://localhost:3001 http://127.0.0.1:3001 http://localhost:3002 http://127.0.0.1:3002"
         : "";
@@ -30,11 +31,11 @@ const nextConfig = {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
       "style-src 'self' 'unsafe-inline' https:",
-      "img-src 'self' data: https: blob:",
+      `img-src 'self' data: https: blob:${devLocalHosts}`,
       "font-src 'self' data: https:",
       "frame-src 'self' https:",
       `frame-ancestors ${frameAncestors}`,
-      `connect-src 'self' ipc: http://ipc.localhost https: wss: ws: data: blob:${devLocalConnect}`,
+      `connect-src 'self' ipc: http://ipc.localhost https: wss: ws: data: blob:${devLocalHosts}`,
     ].join("; ");
     return [{ source: "/:path*", headers: [{ key: "Content-Security-Policy", value: csp }] }];
   },

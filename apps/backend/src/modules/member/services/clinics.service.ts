@@ -6,16 +6,39 @@ import {
 } from "@nestjs/common";
 import { ClinicsRepository } from "../repositories/clinics.repository";
 import { RegisterClinicDto } from "../dto/register-clinic.dto";
-import { getUploadRoot, saveBase64Images } from "../../../common/utils/upload.utils";
+import {
+  getUploadRoot,
+  saveBase64Images,
+} from "../../../common/utils/upload.utils";
 import { GoogleVisionService } from "./google-vision.service";
 import { CertificateParserService } from "./certificate-parser.service";
 import { VerifyCertificateResponseDto } from "../dto/verify-certificate-response.dto";
-import { HiraService } from "../../hira/services/hira.service";
+import { HiraService, HiraVerificationResult } from "../../hira/services/hira.service";
 import { StorageService } from "../../../core/storage/storage.service";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { Clinic } from "../../../../node_modules/.prisma/client-backend";
+
+/** RegisterClinicDto dan tenant / audit maydonlari ajratilgandagi shakl. */
+type RecognizedClinicPayload = Omit<
+  RegisterClinicDto,
+  "tenantId" | "createdBy"
+>;
+
+const CERTIFICATE_REQUIRED_FIELD_KEYS = [
+  "clinicName",
+  "address",
+  "doctorName",
+] as const;
+
+const CERTIFICATE_OPTIONAL_WARNING_KEYS = [
+  "clinicType",
+  "department",
+  "openDate",
+  "doctorLicenseNo",
+  "licenseType",
+] as const;
 
 @Injectable()
 export class ClinicsService {
@@ -34,28 +57,22 @@ export class ClinicsService {
     tenantId: string,
     userId: string
   ) {
-    const {
-      tenantId: _ignoredTenant,
-      createdBy: _ignoredCreatedBy,
-      ...recognized
-    } = dto;
+    const recognized = this.stripRegisterDtoSystemFields(dto);
 
-    // Check for duplicate clinic (same name and document_issue_number)
-    const existingClinic =
-      await this.repository.findByDocumentIssueNumberAndName(
-        recognized.documentIssueNumber,
-        recognized.name
-      );
+    await this.assertNoDuplicateClinicByDocumentAndName(
+      recognized.documentIssueNumber,
+      recognized.name
+    );
 
-    if (existingClinic) {
-      throw new BadRequestException(`이미 등록된 클리닉입니다.`);
-    }
     if (!recognized.englishName?.trim()) {
       throw new BadRequestException("영어이름 입력부탁드립니다");
     }
 
     const documentUrls = recognized.documentImageUrls ?? [];
-    const storedUrls = await saveBase64Images("clinic", documentUrls, tenantId, this.storageService);
+    const storedUrls = await this.persistNewBase64DocumentImages(
+      documentUrls,
+      tenantId
+    );
 
     const clinic = await this.repository.create({
       tenant_id: tenantId,
@@ -71,10 +88,9 @@ export class ClinicsService {
       open_date: recognized.openDate ? new Date(recognized.openDate) : null,
       doctor_name: recognized.doctorName || null,
       created_by: userId ?? null,
-      terms_of_service_agreed: recognized.termsOfServiceAgreed ?? false, // Add terms agreement
+      terms_of_service_agreed: recognized.termsOfServiceAgreed ?? false,
     });
 
-    // Return clinic with tenant_id so frontend can use it
     return clinic;
   }
 
@@ -82,9 +98,6 @@ export class ClinicsService {
     return this.repository.findByTenant(tenantId);
   }
 
-  /**
-   * Update clinic settings (privacy and disclosure settings)
-   */
   async updateClinicSettings(
     tenantId: string,
     settings: {
@@ -92,31 +105,21 @@ export class ClinicsService {
       allow_info_disclosure?: boolean;
     }
   ) {
-    const clinics = await this.repository.findByTenant(tenantId);
-    if (clinics.length === 0) {
-      throw new BadRequestException("Clinic not found for this tenant");
-    }
+    const clinic = await this.getFirstClinicRowForSettingsOrThrow(tenantId);
 
-    // Update the first clinic (should be only one per tenant)
-    const clinic = clinics[0] as any;
-
-    // Preserve existing values - only update fields that are provided
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date(),
     };
 
-    // Only update fields that are explicitly provided (not undefined)
     if (settings.allow_company_search !== undefined) {
       updateData.allow_company_search = settings.allow_company_search;
     } else {
-      // Preserve existing value
       updateData.allow_company_search = clinic.allow_company_search ?? false;
     }
 
     if (settings.allow_info_disclosure !== undefined) {
       updateData.allow_info_disclosure = settings.allow_info_disclosure;
     } else {
-      // Preserve existing value
       updateData.allow_info_disclosure = clinic.allow_info_disclosure ?? false;
     }
 
@@ -129,43 +132,24 @@ export class ClinicsService {
     tenantId: string,
     userId: string
   ) {
-    const {
-      tenantId: _ignoredTenant,
-      createdBy: _ignoredCreatedBy,
-      ...recognized
-    } = dto;
+    const recognized = this.stripRegisterDtoSystemFields(dto);
 
-    // Check if clinic exists and belongs to tenant
     const existingClinic = await this.repository.findById(id, tenantId);
     if (!existingClinic) {
       throw new NotFoundException("Clinic not found");
     }
 
-    // Check for duplicate clinic (same name and document_issue_number) excluding current clinic
-    const duplicateClinic =
-      await this.repository.findByDocumentIssueNumberAndNameExcludingId(
-        recognized.documentIssueNumber,
-        recognized.name,
-        id
-      );
+    await this.assertNoDuplicateClinicByDocumentAndName(
+      recognized.documentIssueNumber,
+      recognized.name,
+      id
+    );
 
-    if (duplicateClinic) {
-      throw new BadRequestException(`이미 등록된 클리닉입니다.`);
-    }
-
-    // Process new images (base64) and keep existing URLs
     const documentUrls = recognized.documentImageUrls ?? [];
-    const newBase64Images = documentUrls.filter((url) =>
-      url.startsWith("data:")
+    const allUrls = await this.mergeDocumentUrlsForClinicUpdate(
+      documentUrls,
+      tenantId
     );
-    const existingUrls = documentUrls.filter((url) => !url.startsWith("data:"));
-    const storedNewUrls = await saveBase64Images(
-      "clinic",
-      newBase64Images,
-      tenantId,
-      this.storageService
-    );
-    const allUrls = [...existingUrls, ...storedNewUrls];
 
     return this.repository.update(
       id,
@@ -188,255 +172,75 @@ export class ClinicsService {
   }
 
   /**
-   * Verify clinic certificate using OCR and parse fields
-   * @param buffer Image buffer of the certificate
-   * @param tenantId Optional tenant ID for file storage
-   * @param mimetype Optional file mimetype for proper extension
-   * @returns Verification result with parsed fields and file URL
+   * Sertifikatni OCR + HIRA orqali tekshirish. Oqim: disk → OCR → parse → HIRA →
+   * ishonchlilik va ogohlantirishlar.
    */
   async verifyCertificate(
     buffer: Buffer,
     tenantId?: string,
     mimetype?: string
   ): Promise<VerifyCertificateResponseDto> {
-    // Step 1: Save file and get URL
-    let fileUrl: string | null = null;
-    if (tenantId) {
-      try {
-        const UPLOAD_ROOT = getUploadRoot();
-        const categoryDir = join(UPLOAD_ROOT, "clinic", tenantId);
-        await fs.mkdir(categoryDir, { recursive: true });
-
-        // Determine file extension from mimetype
-        let extension = ".jpg"; // default
-        if (mimetype) {
-          if (mimetype === "image/png") extension = ".png";
-          else if (mimetype === "image/jpeg" || mimetype === "image/jpg")
-            extension = ".jpg";
-          else if (mimetype === "image/webp") extension = ".webp";
-        }
-
-        const filename = `${uuidv4()}${extension}`;
-        const filePath = join(categoryDir, filename);
-        await fs.writeFile(filePath, buffer);
-        fileUrl = `/uploads/clinic/${tenantId}/${filename}`;
-      } catch (error) {
-        // Continue without saving file URL
-      }
-    }
-
-    // Step 2: Extract text using OCR
-    let rawText = "";
-    try {
-      rawText = await this.googleVisionService.extractTextFromBuffer(buffer);
-    } catch (error) {
-      // Google Vision API xatosi - graceful degradation
-      this.logger.error("OCR extraction failed:", error);
-      // Return error response instead of throwing
-      return {
-        isValid: false,
-        confidence: 0,
-        fields: {},
-        mappedData: {
-          name: "",
-          category: "",
-          location: "",
-          medicalSubjects: "",
-          licenseType: "의사면허",
-          licenseNumber: "",
-          documentIssueNumber: "",
-        },
-        rawText: "",
-        warnings: [
-          "OCR 서비스에 연결할 수 없습니다. Google Cloud Vision API 설정을 확인해주세요.",
-          error instanceof Error ? error.message : "Unknown OCR error",
-        ],
-        fileUrl: fileUrl || undefined,
-        hiraVerification: {
-          isValid: false,
-          confidence: 0,
-          matches: {
-            nameMatch: false,
-            addressMatch: false,
-            typeMatch: false,
-            dateMatch: false,
-          },
-          warnings: ["OCR failed, HIRA verification skipped"],
-        },
-      };
-    }
-
-    // Step 3: Parse fields from OCR text
-    const fields =
-      this.certificateParserService.parseKoreanClinicCertificate(rawText);
-
-    // Step 4: Validate required fields
-    const requiredFields = ["clinicName", "address", "doctorName"];
-    const missingFields = requiredFields.filter(
-      (field) =>
-        !fields[field as keyof typeof fields] ||
-        fields[field as keyof typeof fields] === ""
+    const fileUrl = await this.saveCertificateBufferToUploads(
+      buffer,
+      tenantId,
+      mimetype
     );
 
-    // Step 5: HIRA verification (MANDATORY if clinic name is available)
-    let hiraVerification = null;
-    if (fields.clinicName) {
-      try {
-        hiraVerification = await this.hiraService.verifyClinicInfo({
-          clinicName: fields.clinicName,
-          address: fields.address,
-          clinicType: fields.clinicType,
-          openDate: fields.openDate, // Now in YYYYMMDD format
-        });
-      } catch (error) {
-        // HIRA verification failed - treat as invalid
-        hiraVerification = {
-          isValid: false,
-          confidence: 0,
-          matches: {
-            nameMatch: false,
-            addressMatch: false,
-            typeMatch: false,
-            dateMatch: false,
-          },
-          warnings: [
-            `HIRA verification failed: ${typeof error === "object" && error !== null && "message" in error ? (error as any).message : "Unknown error"}`,
-          ],
-        };
-      }
-    } else {
-      // If clinic name is missing, HIRA verification cannot proceed
-      hiraVerification = {
-        isValid: false,
-        confidence: 0,
-        matches: {
-          nameMatch: false,
-          addressMatch: false,
-          typeMatch: false,
-          dateMatch: false,
-        },
-        warnings: ["Clinic name is required for HIRA verification"],
-      };
+    const ocrOutcome = await this.runCertificateOcr(buffer, fileUrl);
+    if (!ocrOutcome.ok) {
+      return ocrOutcome.response;
     }
 
-    // Step 6: Determine validity (HIRA verification is MANDATORY)
-    const ocrValid = missingFields.length === 0;
-    const hiraValid = hiraVerification?.isValid ?? false; // Changed: default to false if HIRA fails
-    const isValid = ocrValid && hiraValid; // Both must be valid
+    const fields =
+      this.certificateParserService.parseKoreanClinicCertificate(
+        ocrOutcome.rawText
+      );
 
-    // Step 7: Calculate combined confidence
-    let confidence = ocrValid ? 0.8 : 0.2;
+    const missingRequired =
+      this.getMissingCertificateRequiredFieldNames(fields);
 
-    // If HIRA verification succeeded, combine confidence scores
-    if (hiraVerification && hiraVerification.isValid) {
-      // Weighted average: 40% OCR, 60% HIRA
-      confidence = confidence * 0.4 + hiraVerification.confidence * 0.6;
-    } else if (hiraVerification && !hiraVerification.isValid) {
-      // If HIRA verification failed, set confidence to 0
-      confidence = 0;
-    }
+    const hiraVerification =
+      await this.runHiraVerificationForCertificateFields(fields);
 
-    // Step 8: Generate warnings
-    const warnings: string[] = [];
-    if (missingFields.length > 0) {
-      warnings.push(`Missing required fields: ${missingFields.join(", ")}`);
-    }
+    const ocrValid = missingRequired.length === 0;
+    const hiraValid = hiraVerification.isValid;
+    const isValid = ocrValid && hiraValid;
 
-    // Check for other optional but important fields
-    const optionalFields = [
-      "clinicType",
-      "department",
-      "openDate",
-      "doctorLicenseNo",
-      "licenseType",
-    ];
-    optionalFields.forEach((field) => {
-      if (
-        !fields[field as keyof typeof fields] ||
-        fields[field as keyof typeof fields] === ""
-      ) {
-        warnings.push(`Missing optional field: ${field}`);
-      }
-    });
+    const confidence = this.computeCertificateConfidence(
+      ocrValid,
+      hiraVerification
+    );
 
-    // Add HIRA warnings
-    if (hiraVerification && hiraVerification.warnings.length > 0) {
-      warnings.push(...hiraVerification.warnings);
-    }
+    const warnings = this.buildCertificateVerificationWarnings(
+      fields,
+      missingRequired,
+      hiraVerification
+    );
 
-    // Add specific error message if HIRA verification failed
-    if (hiraVerification && !hiraVerification.isValid) {
-      if (
-        hiraVerification.warnings.some((w) =>
-          w.includes("not found in HIRA database")
-        )
-      ) {
-        warnings.push(
-          "이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요."
-        );
-      }
-    }
-
-    // Map parsed fields to RegisterClinicDto format
-    const mappedData = {
-      name: fields.clinicName || "",
-      category: fields.clinicType || "",
-      location: fields.address || "",
-      medicalSubjects: fields.department || "", // Can be comma-separated
-      openDate: fields.openDate
-        ? `${fields.openDate.substring(0, 4)}-${fields.openDate.substring(4, 6)}-${fields.openDate.substring(6, 8)}`
-        : undefined, // Convert YYYYMMDD to YYYY-MM-DD for DTO
-      doctorName: fields.doctorName || undefined,
-      licenseType: fields.licenseType || "의사면허", // Use extracted license type or default
-      licenseNumber: fields.doctorLicenseNo || "",
-      documentIssueNumber: fields.reportNumber || "",
-    };
+    const mappedData = this.mapParsedCertificateToRegisterDtoShape(fields);
 
     return {
       isValid,
       confidence,
-      fields: {
-        clinicName: fields.clinicName,
-        clinicType: fields.clinicType,
-        address: fields.address,
-        department: fields.department,
-        openDate: fields.openDate, // Keep as YYYYMMDD in fields
-        doctorName: fields.doctorName,
-        doctorLicenseNo: fields.doctorLicenseNo,
-        licenseType: fields.licenseType, // Add license type to fields
-        reportNumber: fields.reportNumber,
-      },
+      fields: this.mapParsedCertificateToResponseFields(fields),
       mappedData,
       rawText: fields.rawText,
       warnings,
       fileUrl: fileUrl || undefined,
-      hiraVerification: hiraVerification
-        ? {
-            isValid: hiraVerification.isValid,
-            confidence: hiraVerification.confidence,
-            matches: hiraVerification.matches,
-            hiraData: hiraVerification.hiraData,
-            warnings: hiraVerification.warnings,
-          }
-        : undefined,
+      hiraVerification: this.mapHiraResultToVerifyResponse(hiraVerification),
     };
   }
 
   async updateClinicLogo(tenantId: string, logoUrl: string) {
-    const clinic = await this.repository.findByTenant(tenantId);
-    if (!clinic || clinic.length === 0) {
-      throw new NotFoundException("Clinic not found");
-    }
+    const firstClinic = await this.getFirstClinicRowForLogoOrThrow(tenantId);
 
-    // Type assertion needed because TypeScript language server may use cached Prisma types
-    // logo_url field exists in schema and Prisma generated types
     const updateData: Partial<Clinic> & { logo_url?: string } = {
       logo_url: logoUrl,
       updated_at: new Date(),
     };
 
     const updatedClinic = await this.repository.update(
-      clinic[0].id,
+      firstClinic.id,
       updateData,
       tenantId
     );
@@ -456,29 +260,22 @@ export class ClinicsService {
     }
 
     const clinic = clinics[0];
-    // ✅ Faqat name va logo_url qaytarish
     return {
       name: clinic.name,
-      logo_url: (clinic as any).logo_url ?? null,
+      logo_url: (clinic as { logo_url?: string | null }).logo_url ?? null,
     };
   }
 
-  /**
-   * Agree to terms of service for a newly registered clinic (public endpoint)
-   * Only allows agreement within 48 hours of clinic creation and only once
-   */
   async agreeTermsOfService(clinicId: string): Promise<Clinic> {
-    const clinic = await this.repository.findById(clinicId, null as any);
+    const clinic = await this.repository.findById(clinicId, null as never);
     if (!clinic) {
       throw new NotFoundException("Clinic not found");
     }
 
-    // Check if terms were already agreed
-    if ((clinic as any).terms_of_service_agreed === true) {
+    if ((clinic as { terms_of_service_agreed?: boolean }).terms_of_service_agreed === true) {
       throw new BadRequestException("Terms of service already agreed");
     }
 
-    // Check if clinic was created within the last 48 hours
     const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
     if (clinic.created_at < fortyEightHoursAgo) {
       throw new BadRequestException(
@@ -486,7 +283,6 @@ export class ClinicsService {
       );
     }
 
-    // Update terms agreement - use the clinic's tenant_id
     return this.repository.update(
       clinicId,
       {
@@ -497,9 +293,6 @@ export class ClinicsService {
     );
   }
 
-  /**
-   * Check if clinic already exists by document_issue_number or license_number
-   */
   async checkDuplicateClinic(
     documentIssueNumber?: string,
     licenseNumber?: string
@@ -529,9 +322,6 @@ export class ClinicsService {
     return { isDuplicate: false };
   }
 
-  /**
-   * Upload file to Supabase Storage (used for logos, certificates, etc.)
-   */
   async uploadToStorage(
     file: Express.Multer.File,
     storagePath: string,
@@ -543,5 +333,362 @@ export class ClinicsService {
     }
   ): Promise<string> {
     return this.storageService.uploadFile(file, storagePath, options);
+  }
+
+  // --- Register / update helpers ---
+
+  private stripRegisterDtoSystemFields(
+    dto: RegisterClinicDto
+  ): RecognizedClinicPayload {
+    const { tenantId: _ignoredTenant, createdBy: _ignoredCreatedBy, ...rest } =
+      dto;
+    return rest;
+  }
+
+  private async assertNoDuplicateClinicByDocumentAndName(
+    documentIssueNumber: string,
+    name: string,
+    excludeClinicId?: string
+  ): Promise<void> {
+    const duplicate = excludeClinicId
+      ? await this.repository.findByDocumentIssueNumberAndNameExcludingId(
+          documentIssueNumber,
+          name,
+          excludeClinicId
+        )
+      : await this.repository.findByDocumentIssueNumberAndName(
+          documentIssueNumber,
+          name
+        );
+
+    if (duplicate) {
+      throw new BadRequestException(`이미 등록된 클리닉입니다.`);
+    }
+  }
+
+  private persistNewBase64DocumentImages(
+    documentUrls: string[],
+    tenantId: string
+  ): Promise<string[]> {
+    return saveBase64Images(
+      "clinic",
+      documentUrls,
+      tenantId,
+      this.storageService
+    );
+  }
+
+  private async mergeDocumentUrlsForClinicUpdate(
+    documentUrls: string[],
+    tenantId: string
+  ): Promise<string[]> {
+    const newBase64Images = documentUrls.filter((url) =>
+      url.startsWith("data:")
+    );
+    const existingUrls = documentUrls.filter((url) => !url.startsWith("data:"));
+    const storedNewUrls = await saveBase64Images(
+      "clinic",
+      newBase64Images,
+      tenantId,
+      this.storageService
+    );
+    return [...existingUrls, ...storedNewUrls];
+  }
+
+  /** Settings: tenant bo‘yicha birinchi klinika; yo‘q bo‘lsa BadRequest (oldingi xabar bilan). */
+  private async getFirstClinicRowForSettingsOrThrow(
+    tenantId: string
+  ): Promise<Record<string, unknown> & { id: string }> {
+    const clinics = await this.repository.findByTenant(tenantId);
+    if (clinics.length === 0) {
+      throw new BadRequestException("Clinic not found for this tenant");
+    }
+    return clinics[0] as Record<string, unknown> & { id: string };
+  }
+
+  /** Logo: birinchi klinika; yo‘q bo‘lsa NotFound (oldingi xabar bilan). */
+  private async getFirstClinicRowForLogoOrThrow(
+    tenantId: string
+  ): Promise<{ id: string }> {
+    const clinic = await this.repository.findByTenant(tenantId);
+    if (!clinic || clinic.length === 0) {
+      throw new NotFoundException("Clinic not found");
+    }
+    return clinic[0];
+  }
+
+  // --- Certificate verify helpers ---
+
+  private async saveCertificateBufferToUploads(
+    buffer: Buffer,
+    tenantId?: string,
+    mimetype?: string
+  ): Promise<string | null> {
+    if (!tenantId) {
+      return null;
+    }
+    try {
+      const uploadRoot = getUploadRoot();
+      const categoryDir = join(uploadRoot, "clinic", tenantId);
+      await fs.mkdir(categoryDir, { recursive: true });
+
+      const extension = this.extensionFromImageMimetype(mimetype);
+      const filename = `${uuidv4()}${extension}`;
+      const filePath = join(categoryDir, filename);
+      await fs.writeFile(filePath, buffer);
+      return `/uploads/clinic/${tenantId}/${filename}`;
+    } catch {
+      return null;
+    }
+  }
+
+  private extensionFromImageMimetype(mimetype?: string): string {
+    if (!mimetype) {
+      return ".jpg";
+    }
+    if (mimetype === "image/png") {
+      return ".png";
+    }
+    if (mimetype === "image/jpeg" || mimetype === "image/jpg") {
+      return ".jpg";
+    }
+    if (mimetype === "image/webp") {
+      return ".webp";
+    }
+    return ".jpg";
+  }
+
+  private emptyMappedDataForOcrFailure(): NonNullable<
+    VerifyCertificateResponseDto["mappedData"]
+  > {
+    return {
+      name: "",
+      category: "",
+      location: "",
+      medicalSubjects: "",
+      licenseType: "의사면허",
+      licenseNumber: "",
+      documentIssueNumber: "",
+    };
+  }
+
+  private buildFailedHiraVerificationState(
+    warnings: string[]
+  ): NonNullable<VerifyCertificateResponseDto["hiraVerification"]> {
+    return {
+      isValid: false,
+      confidence: 0,
+      matches: {
+        nameMatch: false,
+        addressMatch: false,
+        typeMatch: false,
+        dateMatch: false,
+      },
+      warnings,
+    };
+  }
+
+  private buildOcrFailureVerifyResponse(
+    fileUrl: string | null,
+    error: unknown
+  ): VerifyCertificateResponseDto {
+    return {
+      isValid: false,
+      confidence: 0,
+      fields: {},
+      mappedData: this.emptyMappedDataForOcrFailure(),
+      rawText: "",
+      warnings: [
+        "OCR 서비스에 연결할 수 없습니다. Google Cloud Vision API 설정을 확인해주세요.",
+        error instanceof Error ? error.message : "Unknown OCR error",
+      ],
+      fileUrl: fileUrl || undefined,
+      hiraVerification: this.buildFailedHiraVerificationState([
+        "OCR failed, HIRA verification skipped",
+      ]),
+    };
+  }
+
+  private async runCertificateOcr(
+    buffer: Buffer,
+    fileUrl: string | null
+  ): Promise<
+    | { ok: true; rawText: string }
+    | { ok: false; response: VerifyCertificateResponseDto }
+  > {
+    try {
+      const rawText =
+        await this.googleVisionService.extractTextFromBuffer(buffer);
+      return { ok: true, rawText };
+    } catch (error) {
+      this.logger.error("OCR extraction failed:", error);
+      return {
+        ok: false,
+        response: this.buildOcrFailureVerifyResponse(fileUrl, error),
+      };
+    }
+  }
+
+  private getMissingCertificateRequiredFieldNames(
+    fields: ReturnType<
+      CertificateParserService["parseKoreanClinicCertificate"]
+    >
+  ): string[] {
+    return CERTIFICATE_REQUIRED_FIELD_KEYS.filter((field) => {
+      const v = fields[field as keyof typeof fields];
+      return !v || v === "";
+    }) as string[];
+  }
+
+  private async runHiraVerificationForCertificateFields(
+    fields: ReturnType<
+      CertificateParserService["parseKoreanClinicCertificate"]
+    >
+  ): Promise<HiraVerificationResult> {
+    if (!fields.clinicName) {
+      return {
+        isValid: false,
+        confidence: 0,
+        matches: {
+          nameMatch: false,
+          addressMatch: false,
+          typeMatch: false,
+          dateMatch: false,
+        },
+        warnings: ["Clinic name is required for HIRA verification"],
+      };
+    }
+
+    try {
+      return await this.hiraService.verifyClinicInfo({
+        clinicName: fields.clinicName,
+        address: fields.address,
+        clinicType: fields.clinicType,
+        openDate: fields.openDate,
+      });
+    } catch (error) {
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof (error as { message: unknown }).message === "string"
+          ? (error as { message: string }).message
+          : "Unknown error";
+      return {
+        isValid: false,
+        confidence: 0,
+        matches: {
+          nameMatch: false,
+          addressMatch: false,
+          typeMatch: false,
+          dateMatch: false,
+        },
+        warnings: [`HIRA verification failed: ${message}`],
+      };
+    }
+  }
+
+  private computeCertificateConfidence(
+    ocrValid: boolean,
+    hiraVerification: HiraVerificationResult
+  ): number {
+    let confidence = ocrValid ? 0.8 : 0.2;
+
+    if (hiraVerification.isValid) {
+      confidence = confidence * 0.4 + hiraVerification.confidence * 0.6;
+    } else {
+      confidence = 0;
+    }
+
+    return confidence;
+  }
+
+  private buildCertificateVerificationWarnings(
+    fields: ReturnType<
+      CertificateParserService["parseKoreanClinicCertificate"]
+    >,
+    missingRequired: string[],
+    hiraVerification: HiraVerificationResult
+  ): string[] {
+    const warnings: string[] = [];
+
+    if (missingRequired.length > 0) {
+      warnings.push(`Missing required fields: ${missingRequired.join(", ")}`);
+    }
+
+    CERTIFICATE_OPTIONAL_WARNING_KEYS.forEach((field) => {
+      const v = fields[field as keyof typeof fields];
+      if (!v || v === "") {
+        warnings.push(`Missing optional field: ${field}`);
+      }
+    });
+
+    if (hiraVerification.warnings.length > 0) {
+      warnings.push(...hiraVerification.warnings);
+    }
+
+    if (!hiraVerification.isValid) {
+      if (
+        hiraVerification.warnings.some((w) =>
+          w.includes("not found in HIRA database")
+        )
+      ) {
+        warnings.push(
+          "이 의료기관은 국가에서 인정하지 않은 병원이거나 의료기관개설신고증을 다시 확인해주세요."
+        );
+      }
+    }
+
+    return warnings;
+  }
+
+  private mapParsedCertificateToRegisterDtoShape(
+    fields: ReturnType<
+      CertificateParserService["parseKoreanClinicCertificate"]
+    >
+  ): NonNullable<VerifyCertificateResponseDto["mappedData"]> {
+    return {
+      name: fields.clinicName || "",
+      category: fields.clinicType || "",
+      location: fields.address || "",
+      medicalSubjects: fields.department || "",
+      openDate: fields.openDate
+        ? `${fields.openDate.substring(0, 4)}-${fields.openDate.substring(4, 6)}-${fields.openDate.substring(6, 8)}`
+        : undefined,
+      doctorName: fields.doctorName || undefined,
+      licenseType: fields.licenseType || "의사면허",
+      licenseNumber: fields.doctorLicenseNo || "",
+      documentIssueNumber: fields.reportNumber || "",
+    };
+  }
+
+  private mapParsedCertificateToResponseFields(
+    fields: ReturnType<
+      CertificateParserService["parseKoreanClinicCertificate"]
+    >
+  ): VerifyCertificateResponseDto["fields"] {
+    return {
+      clinicName: fields.clinicName,
+      clinicType: fields.clinicType,
+      address: fields.address,
+      department: fields.department,
+      openDate: fields.openDate,
+      doctorName: fields.doctorName,
+      doctorLicenseNo: fields.doctorLicenseNo,
+      licenseType: fields.licenseType,
+      reportNumber: fields.reportNumber,
+    };
+  }
+
+  private mapHiraResultToVerifyResponse(
+    hiraVerification: HiraVerificationResult
+  ): NonNullable<VerifyCertificateResponseDto["hiraVerification"]> {
+    return {
+      isValid: hiraVerification.isValid,
+      confidence: hiraVerification.confidence,
+      matches: hiraVerification.matches,
+      hiraData: hiraVerification.hiraData,
+      warnings: hiraVerification.warnings,
+    };
   }
 }

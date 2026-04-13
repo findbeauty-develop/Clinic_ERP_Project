@@ -2,59 +2,23 @@ import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
-import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
-import { PrometheusInterceptor } from "./common/interceptors/prometheus.interceptor";
-import { AttackDetectionInterceptor } from "./common/interceptors/attack-detection.interceptor";
 import { PrismaModule } from "./core/prisma.module";
 import { StorageModule } from "./core/storage/storage.module";
-import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
-import { IamModule } from "./modules/iam/iam.module";
-import { MemberModule } from "./modules/member/member.module";
-import { ProductModule } from "./modules/product/product.module";
-import { OutboundModule } from "./modules/outbound/outbound.module";
-import { PackageModule } from "./modules/package/package.module";
-import { ReturnModule } from "./modules/return/return.module";
-import { OrderModule } from "./modules/order/order.module";
-import { OrderReturnModule } from "./modules/order-return/order-return.module";
-import { SupplierModule } from "./modules/supplier/supplier.module";
-import { InventoryModule } from "./modules/inventory/inventory.module";
-import { UploadsModule } from "./uploads/uploads.module";
-import { NewsModule } from "./modules/news/news.module";
-import { HiraModule } from "./modules/hira/hira.module";
-import { CalendarModule } from "./modules/calendar/calendar.module";
-import { WeatherModule } from "./modules/weather/weather.module";
-import { SupportModule } from "./modules/support/support.module";
 import { PerformanceLoggerMiddleware } from "./common/middleware/performance-logger.middleware";
 import { CommonModule } from "./common/common.module";
-import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { getNestConfigEnvFilePath } from "./common/nest-config-env.paths";
+import { ComponentsModule } from "./components/components.module";
+import { CoreModule } from "./core/core.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // Try multiple paths for .env file (local dev and Docker)
-      envFilePath:
-        process.env.NODE_ENV === "production"
-          ? [
-              ".env.production",
-              "apps/backend/.env.production",
-              "../../apps/backend/.env.production",
-            ]
-          : [
-              ".env.local", // ✅ Development uchun .env.local (priority)
-              ".env", // ✅ Development uchun .env
-              "apps/backend/.env.local",
-              "apps/backend/.env",
-              "../../apps/backend/.env.local",
-              "../../apps/backend/.env",
-            ],
+      envFilePath: getNestConfigEnvFilePath(),
       ignoreEnvFile: false,
-      ignoreEnvVars: false, // Always read from process.env
+      ignoreEnvVars: false,
       expandVariables: true,
     }),
-    // ✅ Rate Limiting - Auth-only throttler configuration
-    // Global throttler removed to prevent "Too Many Requests" errors on data-heavy pages
-    // Throttling now applied selectively only to auth endpoints (login, signup, etc.)
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minute (milliseconds)
@@ -64,48 +28,10 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
     PrismaModule, // Global PrismaModule - barcha module'larda PrismaService mavjud bo'ladi
     EventEmitterModule.forRoot(),
     StorageModule, // Global StorageModule - Supabase Storage for file uploads
-    IamModule,
-    ProductModule,
-    MemberModule,
-    OutboundModule,
-    PackageModule,
-    ReturnModule,
-    OrderModule,
-    NotificationsModule,
-    OrderReturnModule,
-    SupplierModule,
-    InventoryModule,
-    UploadsModule,
-    NewsModule,
-    HiraModule,
-    CalendarModule,
-    WeatherModule,
-    SupportModule,
-    CommonModule, // ✅ Global monitoring va notification services
+    CommonModule,
+    ComponentsModule, // ✅ Global monitoring va notification services
   ],
-  providers: [
-    // ❌ REMOVED: Global throttler guard (caused "Too Many Requests" on cache-disabled pages)
-    // Throttling now applied selectively only to auth endpoints via @Throttle() decorator
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: ThrottlerGuard,
-    // },
-    // ✅ Global exception filter (error handling uchun)
-    {
-      provide: APP_FILTER,
-      useClass: HttpExceptionFilter,
-    },
-    // ✅ Global Prometheus interceptor (API metrics uchun)
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: PrometheusInterceptor,
-    },
-    // ✅ Global Attack Detection interceptor (Cyber attack monitoring uchun)
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: AttackDetectionInterceptor,
-    },
-  ],
+  providers: [CoreModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
