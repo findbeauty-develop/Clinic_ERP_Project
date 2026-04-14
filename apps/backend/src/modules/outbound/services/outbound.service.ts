@@ -143,21 +143,11 @@ export class OutboundService {
       }
     }
 
-    // ✅ CRITICAL: Also clear ProductsService cache since getProductsForOutbound uses getAllProducts
-    // This ensures fresh data from database after outbound creation
+    // ✅ CRITICAL: Also clear ProductsService list cache (getProductsForOutbound uses getAllProducts)
     if (this.productsService) {
       try {
-        // Access ProductsService's private cache using bracket notation
-        const productsService = this.productsService as any;
-        const productsCache = productsService.productsCache;
-
-        if (productsCache && productsCache.delete) {
-          // ProductsService uses cache key format: "products:${tenantId}"
-          const productsCacheKey = `products:${tenantId}`;
-          productsCache.delete(productsCacheKey);
-        }
+        this.productsService.invalidateProductsCache(tenantId);
       } catch (error) {
-        // If cache doesn't exist or method doesn't exist, log warning but continue
         console.warn(
           `[OutboundService] Could not invalidate ProductsService cache:`,
           error

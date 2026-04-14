@@ -68,15 +68,17 @@ export class StorageService {
       // Image optimization (only for images)
       if (optimize && file.mimetype.startsWith('image/')) {
         this.logger.debug(`Optimizing image: ${storagePath}`);
-        
+
+        // JPEG has no alpha; without this, transparent PNG areas become black after .jpeg().
         fileBuffer = await sharp(file.buffer)
           .resize(maxWidth, maxHeight, {
             fit: 'inside',
             withoutEnlargement: true,
           })
+          .flatten({ background: { r: 255, g: 255, b: 255 } })
           .jpeg({ quality })
           .toBuffer();
-        
+
         contentType = 'image/jpeg'; // Convert to JPEG after optimization
       }
 

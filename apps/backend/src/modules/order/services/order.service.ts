@@ -56,7 +56,7 @@ export class OrderService {
   /**
    * Mahsulotlar ro'yxatini olish (barcha productlar)
    */
-  async getProductsForOrder(tenantId: string): Promise<any[]> {
+  public async getProductsForOrder(tenantId: string): Promise<any[]> {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
@@ -1633,8 +1633,7 @@ export class OrderService {
       totalAmount:
         Number(fullOrder?.total_amount ?? fallbackOrder.total_amount) || 0,
       managerName:
-        (fullOrder?.clinic_manager_name ??
-          fallbackOrder.clinic_manager_name) ||
+        (fullOrder?.clinic_manager_name ?? fallbackOrder.clinic_manager_name) ||
         undefined,
     };
   }
@@ -1805,10 +1804,7 @@ export class OrderService {
       });
 
       const clinicName = clinic?.name || "병원";
-      const fullOrder = await this.orderRepository.findById(
-        order.id,
-        tenantId
-      );
+      const fullOrder = await this.orderRepository.findById(order.id, tenantId);
       const p = this.extractOrderSupplierNotifyPayload(fullOrder, order);
 
       if (phoneNumber) {
@@ -2611,174 +2607,171 @@ export class OrderService {
         );
 
         // Har bir manager'ga bitta SMS yuborish (barcha product'lar bilan)
-        const smsPromises = dedupedSmsGroups.map(
-          async (group) => {
-            try {
-              // Agar platform supplier bo'lsa, SMS yuborish
-              if (group.isPlatformSupplier && group.supplierTenantId) {
-                // ✅ Agar specific managerId bo'lsa — FAQAT shu managerni ishlatish (receive_sms flag'dan qat'iy nazar)
-                if (group.managerId && group.phoneNumber) {
-                  const totalQuantity = group.items.reduce(
-                    (sum, item) => sum + item.quantity,
-                    0
-                  );
-                  const totalAmount = group.items.reduce(
-                    (sum, item) => sum + item.totalPrice,
-                    0
-                  );
-                  const products = group.items.map((item) => ({
-                    productName: item.productName,
-                    brand: item.brand,
-                    quantity: item.quantity,
-                  }));
-                  await this.messageService.sendOrderNotification(
-                    group.phoneNumber,
-                    finalClinicName,
-                    order.order_no,
-                    totalAmount,
-                    totalQuantity,
-                    clinicManagerName,
-                    products
-                  );
-                } else {
-                  // managerId yo'q bo'lsa — receive_sms: true bo'lgan barcha active managerlarga
-                  const allManagers =
-                    await this.prisma.supplierManager.findMany({
-                      where: {
-                        supplier_tenant_id: group.supplierTenantId,
-                        status: "ACTIVE",
-                        receive_sms: true,
-                      },
-                      select: {
-                        id: true,
-                        name: true,
-                        phone_number: true,
-                      },
+        const smsPromises = dedupedSmsGroups.map(async (group) => {
+          try {
+            // Agar platform supplier bo'lsa, SMS yuborish
+            if (group.isPlatformSupplier && group.supplierTenantId) {
+              // ✅ Agar specific managerId bo'lsa — FAQAT shu managerni ishlatish (receive_sms flag'dan qat'iy nazar)
+              if (group.managerId && group.phoneNumber) {
+                const totalQuantity = group.items.reduce(
+                  (sum, item) => sum + item.quantity,
+                  0
+                );
+                const totalAmount = group.items.reduce(
+                  (sum, item) => sum + item.totalPrice,
+                  0
+                );
+                const products = group.items.map((item) => ({
+                  productName: item.productName,
+                  brand: item.brand,
+                  quantity: item.quantity,
+                }));
+                await this.messageService.sendOrderNotification(
+                  group.phoneNumber,
+                  finalClinicName,
+                  order.order_no,
+                  totalAmount,
+                  totalQuantity,
+                  clinicManagerName,
+                  products
+                );
+              } else {
+                // managerId yo'q bo'lsa — receive_sms: true bo'lgan barcha active managerlarga
+                const allManagers = await this.prisma.supplierManager.findMany({
+                  where: {
+                    supplier_tenant_id: group.supplierTenantId,
+                    status: "ACTIVE",
+                    receive_sms: true,
+                  },
+                  select: {
+                    id: true,
+                    name: true,
+                    phone_number: true,
+                  },
+                });
+
+                if (allManagers.length > 0) {
+                  const managersToNotify = allManagers;
+                  const seenNotifyPhones = new Set<string>();
+
+                  const managerSmsPromises = managersToNotify
+                    .filter((manager) => manager.phone_number)
+                    .filter((manager) => {
+                      const pk = this.normalizeOrderNotifySmsPhoneKey(
+                        manager.phone_number
+                      );
+                      if (!pk || seenNotifyPhones.has(pk)) {
+                        return false;
+                      }
+                      seenNotifyPhones.add(pk);
+                      return true;
+                    })
+                    .map(async (manager) => {
+                      try {
+                        // Barcha product'lar uchun umumiy miqdor va narx
+                        const totalQuantity = group.items.reduce(
+                          (sum, item) => sum + item.quantity,
+                          0
+                        );
+                        const totalAmount = group.items.reduce(
+                          (sum, item) => sum + item.totalPrice,
+                          0
+                        );
+
+                        // Barcha product'lar ro'yxati
+                        const products = group.items.map((item) => ({
+                          productName: item.productName,
+                          brand: item.brand,
+                          quantity: item.quantity,
+                        }));
+
+                        await this.messageService.sendOrderNotification(
+                          manager.phone_number,
+                          finalClinicName,
+                          order.order_no,
+                          totalAmount,
+                          totalQuantity,
+                          clinicManagerName,
+                          products
+                        );
+                      } catch (smsError: any) {
+                        this.logger.error(
+                          `❌ Failed to send SMS to SupplierManager ${
+                            manager.name
+                          } (${manager.phone_number}): ${
+                            smsError?.message || "Unknown error"
+                          }`
+                        );
+                      }
                     });
 
-                  if (allManagers.length > 0) {
-                    const managersToNotify = allManagers;
-                    const seenNotifyPhones = new Set<string>();
+                  await Promise.all(managerSmsPromises);
+                } else {
+                  // Fallback: Agar ACTIVE manager bo'lmasa, ClinicSupplierManager telefoniga SMS
+                  if (group.phoneNumber) {
+                    const totalQuantity = group.items.reduce(
+                      (sum, item) => sum + item.quantity,
+                      0
+                    );
+                    const totalAmount = group.items.reduce(
+                      (sum, item) => sum + item.totalPrice,
+                      0
+                    );
+                    const products = group.items.map((item) => ({
+                      productName: item.productName,
+                      brand: item.brand,
+                      quantity: item.quantity,
+                    }));
 
-                    const managerSmsPromises = managersToNotify
-                      .filter((manager) => manager.phone_number)
-                      .filter((manager) => {
-                        const pk = this.normalizeOrderNotifySmsPhoneKey(
-                          manager.phone_number
-                        );
-                        if (!pk || seenNotifyPhones.has(pk)) {
-                          return false;
-                        }
-                        seenNotifyPhones.add(pk);
-                        return true;
-                      })
-                      .map(async (manager) => {
-                        try {
-                          // Barcha product'lar uchun umumiy miqdor va narx
-                          const totalQuantity = group.items.reduce(
-                            (sum, item) => sum + item.quantity,
-                            0
-                          );
-                          const totalAmount = group.items.reduce(
-                            (sum, item) => sum + item.totalPrice,
-                            0
-                          );
-
-                          // Barcha product'lar ro'yxati
-                          const products = group.items.map((item) => ({
-                            productName: item.productName,
-                            brand: item.brand,
-                            quantity: item.quantity,
-                          }));
-
-                          await this.messageService.sendOrderNotification(
-                            manager.phone_number,
-                            finalClinicName,
-                            order.order_no,
-                            totalAmount,
-                            totalQuantity,
-                            clinicManagerName,
-                            products
-                          );
-                        } catch (smsError: any) {
-                          this.logger.error(
-                            `❌ Failed to send SMS to SupplierManager ${
-                              manager.name
-                            } (${manager.phone_number}): ${
-                              smsError?.message || "Unknown error"
-                            }`
-                          );
-                        }
-                      });
-
-                    await Promise.all(managerSmsPromises);
-                  } else {
-                    // Fallback: Agar ACTIVE manager bo'lmasa, ClinicSupplierManager telefoniga SMS
-                    if (group.phoneNumber) {
-                      const totalQuantity = group.items.reduce(
-                        (sum, item) => sum + item.quantity,
-                        0
-                      );
-                      const totalAmount = group.items.reduce(
-                        (sum, item) => sum + item.totalPrice,
-                        0
-                      );
-                      const products = group.items.map((item) => ({
-                        productName: item.productName,
-                        brand: item.brand,
-                        quantity: item.quantity,
-                      }));
-
-                      await this.messageService.sendOrderNotification(
-                        group.phoneNumber,
-                        finalClinicName,
-                        order.order_no,
-                        totalAmount,
-                        totalQuantity,
-                        clinicManagerName,
-                        products
-                      );
-                    }
+                    await this.messageService.sendOrderNotification(
+                      group.phoneNumber,
+                      finalClinicName,
+                      order.order_no,
+                      totalAmount,
+                      totalQuantity,
+                      clinicManagerName,
+                      products
+                    );
                   }
-                } // closes: else { // managerId yo'q
-              } else {
-                // Manual supplier: ClinicSupplierManager telefoniga SMS
-                if (group.phoneNumber) {
-                  const totalQuantity = group.items.reduce(
-                    (sum, item) => sum + item.quantity,
-                    0
-                  );
-                  const totalAmount = group.items.reduce(
-                    (sum, item) => sum + item.totalPrice,
-                    0
-                  );
-                  const products = group.items.map((item) => ({
-                    productName: item.productName,
-                    brand: item.brand,
-                    quantity: item.quantity,
-                  }));
-
-                  await this.messageService.sendOrderNotification(
-                    group.phoneNumber,
-                    finalClinicName,
-                    order.order_no,
-                    totalAmount,
-                    totalQuantity,
-                    clinicManagerName,
-                    products,
-                    "manual"
-                  );
                 }
+              } // closes: else { // managerId yo'q
+            } else {
+              // Manual supplier: ClinicSupplierManager telefoniga SMS
+              if (group.phoneNumber) {
+                const totalQuantity = group.items.reduce(
+                  (sum, item) => sum + item.quantity,
+                  0
+                );
+                const totalAmount = group.items.reduce(
+                  (sum, item) => sum + item.totalPrice,
+                  0
+                );
+                const products = group.items.map((item) => ({
+                  productName: item.productName,
+                  brand: item.brand,
+                  quantity: item.quantity,
+                }));
+
+                await this.messageService.sendOrderNotification(
+                  group.phoneNumber,
+                  finalClinicName,
+                  order.order_no,
+                  totalAmount,
+                  totalQuantity,
+                  clinicManagerName,
+                  products,
+                  "manual"
+                );
               }
-            } catch (error: any) {
-              this.logger.error(
-                `Error sending SMS for ${group.items.length} product(s): ${
-                  error?.message || "Unknown error"
-                }`
-              );
             }
+          } catch (error: any) {
+            this.logger.error(
+              `Error sending SMS for ${group.items.length} product(s): ${
+                error?.message || "Unknown error"
+              }`
+            );
           }
-        );
+        });
 
         await Promise.all(smsPromises);
       } catch (error: any) {
@@ -3232,7 +3225,9 @@ export class OrderService {
         let supplierCompanyName: string | null = null;
         let supplierManagerName: string | null = null;
         if (order.supplier_id) {
-          const mgr = await (this.prisma as any).clinicSupplierManager.findUnique({
+          const mgr = await (
+            this.prisma as any
+          ).clinicSupplierManager.findUnique({
             where: { id: order.supplier_id },
             select: { company_name: true, name: true },
           });
@@ -3289,236 +3284,9 @@ export class OrderService {
     return `pending-inbound:${tenantId}`;
   }
 
-  private getCachedPendingInbound(
-    tenantId: string
-  ): { data: any; isStale: boolean } | null {
-    const key = this.getPendingInboundCacheKey(tenantId);
-    return this.pendingInboundCache.getWithStaleCheck(key);
-  }
-
   private setCachedPendingInbound(tenantId: string, data: any): void {
     const key = this.getPendingInboundCacheKey(tenantId);
     this.pendingInboundCache.set(key, data);
-  }
-
-  private async refreshPendingInboundCacheInBackground(
-    tenantId: string
-  ): Promise<void> {
-    try {
-      const orders = await this.prisma.executeWithRetry(async () => {
-        return await (this.prisma as any).order.findMany({
-          where: {
-            tenant_id: tenantId,
-            status: {
-              in: ["pending", "supplier_confirmed", "rejected"],
-            },
-          },
-          include: {
-            items: {
-              include: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    brand: true,
-                    unit: true,
-                    alert_days: true,
-                  },
-                },
-              },
-            },
-          },
-          orderBy: [{ confirmed_at: "desc" }, { order_date: "desc" }],
-        });
-      });
-
-      // Filter out rejected orders that haven't been confirmed yet
-      // (i.e., no item has rejection_acknowledged — member hasn't clicked "상황 확인")
-      const filteredOrders = orders.filter((order: any) => {
-        if (order.status === "rejected") {
-          const hasAcknowledged = (order.items || []).some(
-            (item: any) => item.item_status === "rejection_acknowledged"
-          );
-          if (!hasAcknowledged) return false;
-        }
-        return true;
-      });
-
-      // Collect all unique supplier IDs and member IDs for batch fetching
-      const supplierIds = new Set<string>();
-      const memberIds = new Set<string>();
-
-      filteredOrders.forEach((order: any) => {
-        if (order.supplier_id) {
-          supplierIds.add(order.supplier_id);
-        }
-        if (order.created_by && !order.clinic_manager_name) {
-          memberIds.add(order.created_by);
-        }
-      });
-
-      // Batch fetch all ClinicSupplierManagers
-      const supplierManagersMap = new Map<string, any>();
-      if (supplierIds.size > 0) {
-        const supplierManagers = await this.prisma.executeWithRetry(
-          async () => {
-            return await (this.prisma as any).clinicSupplierManager.findMany({
-              where: {
-                id: {
-                  in: Array.from(supplierIds),
-                },
-              },
-              include: {
-                linkedManager: {
-                  select: {
-                    name: true,
-                    position: true,
-                    supplier: {
-                      select: {
-                        id: true,
-                        company_name: true,
-                      },
-                    },
-                  },
-                },
-              },
-            });
-          }
-        );
-
-        supplierManagers.forEach((manager: any) => {
-          supplierManagersMap.set(manager.id, manager);
-        });
-      }
-
-      // Batch fetch all members
-      const membersMap = new Map<string, any>();
-      if (memberIds.size > 0) {
-        const members = await this.prisma.executeWithRetry(async () => {
-          return await (this.prisma as any).member.findMany({
-            where: {
-              id: {
-                in: Array.from(memberIds),
-              },
-            },
-            select: {
-              id: true,
-              full_name: true,
-              member_id: true,
-            },
-          });
-        });
-
-        members.forEach((member: any) => {
-          membersMap.set(member.id, member);
-        });
-      }
-
-      // Group by supplier
-      const grouped: Record<string, any> = {};
-
-      for (const order of filteredOrders) {
-        const supplierId = order.supplier_id || "unknown";
-
-        if (!grouped[supplierId]) {
-          let supplierInfo = {
-            companyName: "알 수 없음",
-            managerName: "",
-            managerPosition: "",
-          };
-          if (order.supplier_id) {
-            const clinicSupplierManager = supplierManagersMap.get(
-              order.supplier_id
-            );
-
-            if (clinicSupplierManager) {
-              if (clinicSupplierManager.linkedManager?.supplier) {
-                supplierInfo.companyName =
-                  clinicSupplierManager.linkedManager.supplier.company_name;
-              } else {
-                supplierInfo.companyName =
-                  clinicSupplierManager.company_name || "알 수 없음";
-              }
-              supplierInfo.managerName =
-                clinicSupplierManager.linkedManager?.name ||
-                clinicSupplierManager.name ||
-                "";
-              supplierInfo.managerPosition =
-                clinicSupplierManager.linkedManager?.position || "";
-            }
-          }
-
-          grouped[supplierId] = {
-            supplierId: supplierId,
-            supplierName: supplierInfo.companyName,
-            managerName: supplierInfo.managerName,
-            managerPosition: supplierInfo.managerPosition,
-            orders: [],
-          };
-        }
-
-        const adjustments = Array.isArray(order.supplier_adjustments)
-          ? order.supplier_adjustments
-          : order.supplier_adjustments?.adjustments || [];
-
-        const formattedItems = order.items.map((item: any) => {
-          let adjustment = adjustments.find(
-            (adj: any) => adj.itemId === item.id
-          );
-          if (!adjustment) {
-            adjustment = adjustments.find(
-              (adj: any) => adj.productId === item.product_id
-            );
-          }
-
-          return {
-            id: item.id,
-            productId: item.product_id,
-            productName: item.product?.name || "제품",
-            brand: item.product?.brand || "",
-            unit: item.product?.unit || "EA",
-            orderedQuantity: item.quantity,
-            confirmedQuantity: adjustment?.actualQuantity || item.quantity,
-            orderedPrice: item.unit_price,
-            confirmedPrice: item.confirmed_unit_price ?? item.unit_price,
-            quantityReason: adjustment?.quantityChangeReason || null,
-            priceReason: adjustment?.priceChangeReason || null,
-            expiryMonths: item.product?.expiry_months || null,
-            expiryUnit: item.product?.expiry_unit || null,
-            alertDays: item.product?.alert_days || null,
-            product: {
-              id: item.product?.id,
-              name: item.product?.name,
-              brand: item.product?.brand,
-              unit: item.product?.unit,
-              alert_days: item.product?.alert_days,
-              barcode: item.product?.barcode, // ✅ Include barcode for scanner
-            },
-          };
-        });
-
-        const creatorMember = order.clinic_manager_name
-          ? { full_name: order.clinic_manager_name, member_id: "" }
-          : membersMap.get(order.created_by);
-
-        grouped[supplierId].orders.push({
-          id: order.id,
-          orderNo: order.order_no,
-          orderDate: order.order_date,
-          status: order.status,
-          confirmedAt: order.confirmed_at,
-          items: formattedItems,
-          creatorName: creatorMember?.full_name || "알 수 없음",
-          creatorMemberId: creatorMember?.member_id || "",
-          totalAmount: order.total_amount,
-        });
-      }
-
-      const result = Object.values(grouped);
-      this.setCachedPendingInbound(tenantId, result);
-    } catch (error) {
-      // Error handling (user'ga ko'rsatilmaydi)
-    }
   }
 
   private clearPendingInboundCache(tenantId: string): void {
@@ -4174,7 +3942,7 @@ export class OrderService {
           supplier_id: true,
           memo: true,
           updated_at: true,
-            items: {
+          items: {
             where: {
               item_status: {
                 in: ["rejected", "rejection_acknowledged"],

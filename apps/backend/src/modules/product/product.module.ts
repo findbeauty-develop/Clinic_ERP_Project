@@ -4,6 +4,7 @@ import { JwtTenantGuard } from "../../common/guards/jwt-tenant.guard";
 import { ProductsController } from "./controllers/products.controller";
 import { ProductsRepository } from "./repositories/products.repository";
 import { ProductsService } from "./services/products.service";
+import { ProductCacheService } from "./services/product-cache.service";
 import { SupplierModule } from "../supplier/supplier.module";
 import { OutboundModule } from "../outbound/outbound.module";
 
@@ -15,10 +16,11 @@ import { OutboundModule } from "../outbound/outbound.module";
   controllers: [ProductsController],
   providers: [
     ProductsService,
+    ProductCacheService,
     ProductsRepository,
     SupabaseService,
     JwtTenantGuard,
   ],
-  exports: [ProductsService], // ← Qo'shildi (OutboundModule uchun)
+  exports: [ProductsService, ProductCacheService],
 })
 export class ProductModule {}

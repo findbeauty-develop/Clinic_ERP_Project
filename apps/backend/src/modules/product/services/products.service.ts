@@ -12,28 +12,29 @@ import { saveBase64Images } from "../../../common/utils/upload.utils";
 import {
   CreateBatchDto,
   CreateProductDto,
+  LinkSupplierDto,
   UpdateBatchDto,
 } from "../dto/create-product.dto";
 import { UpdateProductDto } from "../dto/update-product.dto";
 import { ImportProductRowDto } from "../dto/import-products.dto";
 import { ClinicSupplierHelperService } from "../../supplier/services/clinic-supplier-helper.service";
-import { CacheManager } from "../../../common/cache";
 import { StorageService } from "../../../core/storage/storage.service";
+import { ProductCacheService } from "./product-cache.service";
+import { mapProductBatchesToAdminRows } from "../mappers/product-batch.mapper";
+import { mapProductToListRow } from "../mappers/product-list.mapper";
+import { mapPrismaProductToDetailView } from "../mappers/product-detail.mapper";
 
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
-  // ✅ Replaced Map with CacheManager - automatic cleanup, size limits, LRU eviction
-  private productsCache: CacheManager<any>;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly clinicSupplierHelper: ClinicSupplierHelperService,
     private readonly storageService: StorageService,
+    private readonly productCacheService: ProductCacheService,
     @Inject(
       forwardRef(() => {
-        // Lazy import to avoid circular dependency
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const {
           OutboundService,
         } = require("../../outbound/services/outbound.service");
@@ -41,181 +42,11 @@ export class ProductsService {
       })
     )
     private readonly outboundService?: any
-  ) {
-    // Initialize CacheManager with auto-cleanup
-    this.productsCache = new CacheManager({
-      maxSize: 100, // Max 100 tenants cached
-      ttl: 0, // Disabled - inventory data must be real-time (was 5 seconds)
-      cleanupInterval: 60000, // Cleanup every minute
-      name: "ProductsService",
-    });
-  }
-
-  // Cache helper methods
-  private getCacheKey(tenantId: string): string {
-    return `products:${tenantId}`;
-  }
-
-  private getCachedData(
-    tenantId: string
-  ): { data: any; isStale: boolean } | null {
-    const key = this.getCacheKey(tenantId);
-    const result = this.productsCache.getWithStaleCheck(key);
-    return result;
-  }
-  private async refreshProductsCacheInBackground(
-    tenantId: string
-  ): Promise<void> {
-    try {
-      // Parallel fetching - 3 ta query bir vaqtda (3x tezroq)
-      const [products, returnPolicies, productSuppliers] = await Promise.all([
-        // 1. Products va batches
-        this.prisma.executeWithRetry(async () => {
-          return await (this.prisma.product.findMany as any)({
-            where: { tenant_id: tenantId },
-            select: {
-              id: true,
-              name: true,
-              brand: true,
-              barcode: true,
-              image_url: true,
-              category: true,
-              current_stock: true,
-              min_stock: true,
-              purchase_price: true,
-              sale_price: true,
-              unit: true,
-              usage_capacity: true,
-              capacity_unit: true,
-              capacity_per_product: true,
-              alert_days: true,
-              created_at: true,
-              batches: {
-                select: {
-                  id: true,
-                  batch_no: true,
-                  qty: true,
-                  inbound_qty: true,
-                  used_count: true,
-                  available_quantity: true,
-                  unit: true,
-                  min_stock: true,
-                  expiry_date: true,
-                  storage: true,
-                  alert_days: true,
-                  created_at: true,
-                },
-                orderBy: { created_at: "desc" },
-                // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
-              },
-            },
-            orderBy: { created_at: "desc" },
-          });
-        }),
-
-        // 2. ReturnPolicies (parallel)
-        this.prisma.executeWithRetry(async () => {
-          return await (this.prisma.returnPolicy.findMany as any)({
-            where: { tenant_id: tenantId },
-            select: {
-              product_id: true,
-              note: true,
-            },
-          });
-        }),
-
-        // 3. ProductSuppliers va ClinicSupplierManagers (parallel)
-        this.prisma.executeWithRetry(async () => {
-          return await (this.prisma.productSupplier.findMany as any)({
-            where: { tenant_id: tenantId },
-            select: {
-              product_id: true,
-              clinicSupplierManager: {
-                select: {
-                  id: true,
-                  company_name: true,
-                  name: true,
-                  phone_number: true,
-                  business_number: true,
-                  position: true, // ✅ Added for managerPosition
-                },
-              },
-            },
-          });
-        }),
-      ]);
-
-      // In-memory mapping (tezroq)
-      const returnPolicyMap = new Map(
-        returnPolicies.map((rp: any) => [rp.product_id, rp])
-      );
-      const supplierMap = new Map(
-        productSuppliers.map((ps: any) => [ps.product_id, ps])
-      );
-
-      // Format products
-      const formattedProducts = products.map((product: any) => {
-        const latestBatch = product.batches?.[0];
-        const returnPolicy: any = returnPolicyMap.get(product.id);
-        const productSupplier: any = supplierMap.get(product.id);
-        const supplierManager: any = productSupplier?.clinicSupplierManager;
-
-        return {
-          id: product.id,
-          productName: product.name,
-          brand: product.brand,
-          barcode: product.barcode,
-          productImage: product.image_url,
-          category: product.category,
-          status: null, // status field removed from Product table
-          currentStock: product.current_stock,
-          minStock: product.min_stock,
-          purchasePrice: product.purchase_price,
-          taxRate: product.tax_rate,
-          salePrice: product.sale_price,
-          unit: product.unit,
-          usageCapacity: product.usage_capacity,
-          usageCapacityUnit: product.capacity_unit,
-          capacityPerProduct: product.capacity_per_product,
-          capacityUnit: product.capacity_unit,
-          supplierName: supplierManager?.company_name ?? null,
-          managerName: supplierManager?.name ?? null,
-          supplierId: supplierManager?.id ?? null,
-          managerPosition: supplierManager?.position ?? null, // ✅ Added
-          expiryDate: latestBatch?.expiry_date ?? null,
-          storageLocation: latestBatch?.storage ?? null, // Only from batch now
-          productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
-          memo: returnPolicy?.note ?? null,
-          expiryMonths: null, // Removed from Product table
-          expiryUnit: null, // Removed from Product table
-          isLowStock: product.current_stock < product.min_stock,
-          updated_at: product.updated_at, // ✅ For image cache busting
-          batches: product.batches || [],
-        };
-      });
-
-      // Cache'ga saqlash
-      this.setCachedData(tenantId, formattedProducts);
-    } catch (error) {
-      // Error handling (user'ga ko'rsatilmaydi)
-    }
-  }
-
-  private setCachedData(tenantId: string, data: any): void {
-    const key = this.getCacheKey(tenantId);
-    this.productsCache.set(key, data);
-  }
+  ) {}
 
   // ETag uchun cache timestamp olish
   getCacheTimestamp(tenantId: string): number {
-    const key = this.getCacheKey(tenantId);
-    const cached = this.productsCache.getWithStaleCheck(key);
-    return cached ? Date.now() : 0; // Return current time if cached, 0 if not
-  }
-
-  private clearProductsCache(tenantId: string): void {
-    const key = this.getCacheKey(tenantId);
-    this.productsCache.delete(key);
+    return this.productCacheService.getCacheTimestamp(tenantId);
   }
 
   /**
@@ -223,107 +54,405 @@ export class ProductsService {
    * Used by other services (e.g., PackageService) to clear cache when products might have changed
    */
   public invalidateProductsCache(tenantId: string): void {
-    this.clearProductsCache(tenantId);
+    this.productCacheService.invalidateProductsCache(tenantId);
   }
 
-  /**
-   * Format a single product for cache (same format as getAllProducts)
-   */
-  private formatProductForCache(
-    product: any,
-    returnPolicy?: any,
-    productSupplier?: any
-  ): any {
-    const latestBatch = product.batches?.[0];
-    const supplierManager: any = productSupplier?.clinicSupplierManager;
-
+  /** GTIN duplicate payload for pre-check and P2002 recovery (same shape as before). */
+  private async tryBuildDuplicateGtinProductPayload(
+    tenantId: string,
+    gtin: string
+  ) {
+    const existingGtin = await this.prisma.productGTIN.findUnique({
+      where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+      select: { product_id: true },
+    });
+    if (!existingGtin) {
+      return null;
+    }
+    const existingProduct = await this.getProduct(
+      existingGtin.product_id,
+      tenantId
+    );
+    if (!existingProduct) {
+      return null;
+    }
     return {
-      id: product.id,
-      productName: product.name,
-      brand: product.brand,
-      barcode: product.barcode,
-      productImage: product.image_url,
-      category: product.category,
-      status: null, // status field removed from Product table
-      currentStock: product.current_stock,
-      minStock: product.min_stock,
-      purchasePrice: product.purchase_price,
-      taxRate: product.tax_rate,
-      salePrice: product.sale_price,
-      unit: product.unit,
-      usageCapacity: product.usage_capacity,
-      usageCapacityUnit: product.capacity_unit,
-      capacityPerProduct: product.capacity_per_product,
-      capacityUnit: product.capacity_unit,
-      supplierName: supplierManager?.company_name ?? null,
-      managerName: supplierManager?.name ?? null,
-      managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
-      supplierId: supplierManager?.id ?? null,
-      expiryDate: latestBatch?.expiry_date ?? null,
-      storageLocation: latestBatch?.storage ?? null, // Only from batch now
-      productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
-      memo: returnPolicy?.note ?? null,
-      expiryMonths: null, // Removed from Product table
-      expiryUnit: null, // Removed from Product table
-      isLowStock: product.current_stock < product.min_stock,
-      batches: product.batches || [],
+      ...existingProduct,
+      existingForBarcode: true as const,
+      code: "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE" as const,
     };
   }
 
-  /**
-   * Add new product to cache instead of invalidating (optimized approach)
-   */
-  private addProductToCache(tenantId: string, product: any): void {
-    const key = this.getCacheKey(tenantId);
-    const result = this.productsCache.getWithStaleCheck(key);
+  private async uploadProductImageIfProvided(
+    dto: CreateProductDto,
+    tenantId: string
+  ): Promise<string | undefined> {
+    if (!dto.image) {
+      return undefined;
+    }
+    const [savedImage] = await saveBase64Images(
+      "product",
+      [dto.image],
+      tenantId,
+      this.storageService
+    );
+    return savedImage;
+  }
 
-    if (result && result.data) {
-      const cached = result.data;
-      // Format new product
-      const returnPolicy = product.returnPolicy;
-      const productSupplier = product.productSupplier?.[0];
-      const formattedProduct = this.formatProductForCache(
-        product,
-        returnPolicy,
-        productSupplier
+  private resolveProductActivationFromDto(dto: CreateProductDto): {
+    resolvedStatus: string;
+    resolvedIsActive: boolean;
+  } {
+    const resolvedStatus =
+      dto.status ?? (dto.isActive === false ? "단종" : "활성");
+    const resolvedIsActive =
+      dto.isActive ??
+      (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
+    return { resolvedStatus, resolvedIsActive };
+  }
+
+  private async resolveClinicSupplierManagerIdForCreate(
+    tenantId: string,
+    dto: CreateProductDto
+  ): Promise<string> {
+    if (dto.suppliers && dto.suppliers.length > 0) {
+      const s = dto.suppliers[0];
+      const supplierManager =
+        await this.clinicSupplierHelper.findOrCreateSupplierManager(tenantId, {
+          supplier_id: s.supplier_id,
+          company_name: s.company_name,
+          business_number: s.business_number,
+          company_phone: s.company_phone,
+          company_email: s.company_email,
+          company_address: s.company_address,
+          contact_name: s.contact_name,
+          contact_phone: s.contact_phone,
+          contact_email: s.contact_email,
+        });
+      return supplierManager.id;
+    }
+    const defaultSupplier =
+      await this.clinicSupplierHelper.findOrCreateDefaultSupplierManager(
+        tenantId
       );
+    return defaultSupplier.id;
+  }
 
-      // Check if product already exists in cache (update case)
-      const existingIndex = cached.findIndex((p: any) => p.id === product.id);
+  private buildProductUncheckedCreateInput(
+    tenantId: string,
+    dto: CreateProductDto,
+    imageUrl: string | undefined,
+    resolvedIsActive: boolean
+  ): Prisma.ProductUncheckedCreateInput {
+    return {
+      tenant_id: tenantId,
+      name: dto.name,
+      brand: dto.brand,
+      barcode: dto.barcode,
+      image_url: imageUrl,
+      category: dto.category,
+      is_active: resolvedIsActive,
+      unit: dto.unit ?? null,
+      purchase_price: dto.purchasePrice ?? null,
+      tax_rate: dto.taxRate ?? 0,
+      sale_price: dto.salePrice ?? null,
+      current_stock: dto.currentStock ?? 0,
+      min_stock: dto.minStock ?? 0,
+      capacity_per_product: dto.capacityPerProduct ?? null,
+      capacity_unit: dto.capacityUnit ?? null,
+      usage_capacity: dto.usageCapacity ?? null,
+      alert_days: dto.alertDays ?? null,
+      has_expiry_period: dto.hasExpiryPeriod ?? false,
+      returnPolicy: dto.returnPolicy
+        ? {
+            create: {
+              tenant_id: tenantId,
+              is_returnable: dto.returnPolicy.is_returnable,
+              refund_amount: dto.returnPolicy.refund_amount ?? 0,
+              return_storage: dto.returnPolicy.return_storage ?? null,
+              note: dto.returnPolicy.note ?? null,
+            },
+          }
+        : undefined,
+    };
+  }
 
-      if (existingIndex >= 0) {
-        // Update existing product
-        cached[existingIndex] = formattedProduct;
-      } else {
-        // Add new product at the beginning (most recent first)
-        cached.unshift(formattedProduct);
+  private readonly createProductInitialInclude: Prisma.ProductInclude = {
+    returnPolicy: true,
+    batches: true,
+    productSupplier: {
+      include: {
+        clinicSupplierManager: {
+          include: {
+            linkedManager: {
+              select: {
+                id: true,
+                name: true,
+                phone_number: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  private async createProductGtinsInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    productId: string,
+    dto: CreateProductDto,
+    primaryGtin: string | undefined
+  ): Promise<void> {
+    if (primaryGtin) {
+      await tx.productGTIN.create({
+        data: {
+          tenant_id: tenantId,
+          product_id: productId,
+          gtin: primaryGtin,
+          barcode_package_type: dto.barcodePackageType ?? "BOX",
+        },
+      });
+    }
+    if (!dto.additionalBarcodes?.length) {
+      return;
+    }
+    for (const ab of dto.additionalBarcodes) {
+      const trimmed = ab.gtin?.trim();
+      if (!trimmed) {
+        continue;
       }
-
-      // Update cache with modified data
-      this.productsCache.set(key, cached);
-    } else {
-      // Cache doesn't exist, invalidate to force refresh on next request
-      this.clearProductsCache(tenantId);
+      await tx.productGTIN.create({
+        data: {
+          tenant_id: tenantId,
+          product_id: productId,
+          gtin: trimmed,
+          barcode_package_type: ab.barcode_package_type ?? "BOX",
+        },
+      });
     }
   }
 
-  /**
-   * Remove product from cache instead of invalidating (optimized approach)
-   */
-  private removeProductFromCache(tenantId: string, productId: string): void {
-    const key = this.getCacheKey(tenantId);
-    const result = this.productsCache.getWithStaleCheck(key);
+  private async upsertProductSupplierForCreate(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    productId: string,
+    dto: CreateProductDto,
+    clinicSupplierManagerId: string
+  ): Promise<void> {
+    const where = {
+      tenant_id_product_id: {
+        tenant_id: tenantId,
+        product_id: productId,
+      },
+    };
 
-    if (result && result.data) {
-      // Remove product from cache array
-      const filteredData = result.data.filter((p: any) => p.id !== productId);
-
-      // Update cache with filtered data
-      this.productsCache.set(key, filteredData);
-    } else {
-      // Cache doesn't exist, invalidate to force refresh on next request
-      this.clearProductsCache(tenantId);
+    if (dto.suppliers && dto.suppliers.length > 0) {
+      const s = dto.suppliers[0] as LinkSupplierDto;
+      await tx.productSupplier.upsert({
+        where,
+        create: {
+          tenant_id: tenantId,
+          product_id: productId,
+          clinic_supplier_manager_id: clinicSupplierManagerId,
+          purchase_price: s.purchase_price ?? dto.purchasePrice,
+          moq: s.moq,
+          lead_time_days: s.lead_time_days,
+          note: s.note,
+        },
+        update: {
+          clinic_supplier_manager_id: clinicSupplierManagerId,
+          purchase_price: s.purchase_price ?? dto.purchasePrice,
+          moq: s.moq,
+          lead_time_days: s.lead_time_days,
+          note: s.note,
+        },
+      });
+      return;
     }
+
+    await tx.productSupplier.upsert({
+      where,
+      create: {
+        tenant_id: tenantId,
+        product_id: productId,
+        clinic_supplier_manager_id: clinicSupplierManagerId,
+        purchase_price: dto.purchasePrice,
+      },
+      update: {
+        clinic_supplier_manager_id: clinicSupplierManagerId,
+        purchase_price: dto.purchasePrice,
+      },
+    });
+  }
+
+  private async createInitialBatchesInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    product: {
+      id: string;
+      unit: string | null;
+      min_stock: number;
+      alert_days: string | null;
+    },
+    dto: CreateProductDto
+  ): Promise<void> {
+    if (!dto.initial_batches?.length) {
+      return;
+    }
+
+    for (const batch of dto.initial_batches) {
+      let batchNo: string;
+      if (batch.batch_no && batch.batch_no.trim() !== "") {
+        batchNo = await this.generateBatchNo(
+          product.id,
+          tenantId,
+          tx,
+          batch.batch_no.trim()
+        );
+      } else {
+        batchNo = await this.generateBatchNo(product.id, tenantId, tx);
+      }
+
+      await tx.batch.create({
+        data: {
+          tenant_id: tenantId,
+          product_id: product.id,
+          batch_no: batchNo,
+          qty: batch.qty,
+          inbound_qty: batch.qty,
+          unit: product.unit ?? null,
+          min_stock: product.min_stock,
+          expiry_months: batch.expiry_months ?? null,
+          expiry_unit: batch.expiry_unit ?? null,
+          manufacture_date: batch.manufacture_date
+            ? new Date(batch.manufacture_date)
+            : null,
+          storage: batch.storage ?? null,
+          purchase_price: batch.purchase_price ?? null,
+          inbound_manager: batch.inbound_manager ?? null,
+          sale_price: batch.sale_price ?? null,
+          expiry_date: batch.expiry_date ? new Date(batch.expiry_date) : null,
+          alert_days:
+            batch.alert_days && batch.alert_days.trim() !== ""
+              ? batch.alert_days
+              : product.alert_days && product.alert_days.trim() !== ""
+                ? product.alert_days
+                : null,
+        } as Prisma.BatchUncheckedCreateInput,
+      });
+    }
+  }
+
+  private loadPostCreateProductSnapshot(
+    tx: Prisma.TransactionClient,
+    productId: string
+  ) {
+    return tx.product.findUnique({
+      where: { id: productId },
+      include: {
+        returnPolicy: true,
+        batches: {
+          select: {
+            id: true,
+            batch_no: true,
+            qty: true,
+            expiry_date: true,
+            storage: true,
+            alert_days: true,
+            created_at: true,
+          },
+          orderBy: { created_at: "desc" },
+          take: 1,
+        },
+        productSupplier: {
+          include: {
+            clinicSupplierManager: {
+              select: {
+                id: true,
+                company_name: true,
+                name: true,
+                phone_number: true,
+                business_number: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  private async runCreateProductTransaction(
+    tx: Prisma.TransactionClient,
+    params: {
+      tenantId: string;
+      dto: CreateProductDto;
+      imageUrl: string | undefined;
+      gtin: string | undefined;
+    }
+  ) {
+    const { tenantId, dto, imageUrl, gtin } = params;
+    const { resolvedIsActive } = this.resolveProductActivationFromDto(dto);
+    const clinicSupplierManagerId =
+      await this.resolveClinicSupplierManagerIdForCreate(tenantId, dto);
+
+    const product = await tx.product.create({
+      data: this.buildProductUncheckedCreateInput(
+        tenantId,
+        dto,
+        imageUrl,
+        resolvedIsActive
+      ),
+      include: this.createProductInitialInclude,
+    });
+
+    await this.createProductGtinsInTransaction(
+      tx,
+      tenantId,
+      product.id,
+      dto,
+      gtin
+    );
+    await this.upsertProductSupplierForCreate(
+      tx,
+      tenantId,
+      product.id,
+      dto,
+      clinicSupplierManagerId
+    );
+    await this.createInitialBatchesInTransaction(tx, tenantId, product, dto);
+
+    return this.loadPostCreateProductSnapshot(tx, product.id);
+  }
+
+  private async tryRecoverDuplicateGtinFromPrismaError(
+    err: unknown,
+    tenantId: string,
+    gtin: string | undefined
+  ) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code?: string }).code
+        : undefined;
+    if (code !== "P2002" || !gtin) {
+      return null;
+    }
+    return this.tryBuildDuplicateGtinProductPayload(tenantId, gtin);
+  }
+
+  private finalizeCreateProductCache(
+    tenantId: string,
+    created: Awaited<
+      ReturnType<ProductsService["loadPostCreateProductSnapshot"]>
+    >
+  ) {
+    if (created) {
+      this.productCacheService.addProductToCache(tenantId, created);
+      this.productCacheService.clearProductsCache(tenantId);
+      return created;
+    }
+    this.productCacheService.clearProductsCache(tenantId);
+    return null;
   }
 
   async createProduct(dto: CreateProductDto, tenantId: string) {
@@ -333,342 +462,51 @@ export class ProductsService {
 
     const gtin = dto.barcode?.trim();
     if (gtin) {
-      const existingGtin = await (this.prisma as any).productGTIN.findUnique({
-        where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
-        select: { product_id: true },
-      });
-      if (existingGtin) {
-        const existingProduct = await this.getProduct(
-          existingGtin.product_id,
-          tenantId
-        );
-        if (existingProduct) {
-          return {
-            ...existingProduct,
-            existingForBarcode: true,
-            code: "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE",
-          } as any;
-        }
+      const duplicate = await this.tryBuildDuplicateGtinProductPayload(
+        tenantId,
+        gtin
+      );
+      if (duplicate) {
+        return duplicate;
       }
     }
 
-    let imageUrl: string | undefined;
+    const imageUrl = await this.uploadProductImageIfProvided(dto, tenantId);
 
-    if (dto.image) {
-      const [savedImage] = await saveBase64Images(
-        "product",
-        [dto.image],
-        tenantId,
-        this.storageService
-      );
-      imageUrl = savedImage;
-    }
+    let createdProductFromTransaction: Awaited<
+      ReturnType<ProductsService["loadPostCreateProductSnapshot"]>
+    > | null;
 
-    let createdProductFromTransaction: any;
     try {
       createdProductFromTransaction = await this.prisma.$transaction(
-        async (tx: any) => {
-          const resolvedStatus =
-            dto.status ?? (dto.isActive === false ? "단종" : "활성");
-          const resolvedIsActive =
-            dto.isActive ??
-            (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
-
-          // ✅ NEW: Find or create ClinicSupplierManager
-          let clinicSupplierManagerId: string;
-
-          if (dto.suppliers && dto.suppliers.length > 0) {
-            const s = dto.suppliers[0]; // Birinchi supplier olinadi
-
-            const supplierManager =
-              await this.clinicSupplierHelper.findOrCreateSupplierManager(
-                tenantId,
-                {
-                  supplier_id: s.supplier_id,
-                  company_name: s.company_name,
-                  business_number: s.business_number,
-                  company_phone: s.company_phone,
-                  company_email: s.company_email,
-                  company_address: s.company_address,
-                  contact_name: s.contact_name,
-                  contact_phone: s.contact_phone,
-                  contact_email: s.contact_email,
-                }
-              );
-
-            clinicSupplierManagerId = supplierManager.id;
-          } else {
-            // Default supplier manager
-            const defaultSupplier =
-              await this.clinicSupplierHelper.findOrCreateDefaultSupplierManager(
-                tenantId
-              );
-            clinicSupplierManagerId = defaultSupplier.id;
-          }
-
-          const product = await tx.product.create({
-            data: {
-              tenant_id: tenantId,
-              name: dto.name,
-              brand: dto.brand,
-              barcode: dto.barcode,
-              image_url: imageUrl,
-              category: dto.category,
-              // status field removed from Product table
-              is_active: resolvedIsActive,
-              unit: dto.unit ?? null,
-              purchase_price: dto.purchasePrice ?? null, // Default/fallback price
-              tax_rate: dto.taxRate ?? 0,
-              sale_price: dto.salePrice ?? null,
-              current_stock: dto.currentStock ?? 0,
-              min_stock: dto.minStock ?? 0,
-              capacity_per_product: dto.capacityPerProduct ?? null,
-              capacity_unit: dto.capacityUnit ?? null,
-              usage_capacity: dto.usageCapacity ?? null,
-              alert_days: dto.alertDays ?? null,
-              has_expiry_period: dto.hasExpiryPeriod ?? false,
-              // All removed fields: expiry_months, expiry_unit, inbound_manager, storage
-              // has_different_packaging_quantity, packaging_from_unit, packaging_to_unit, etc.
-              returnPolicy: dto.returnPolicy
-                ? {
-                    create: {
-                      tenant_id: tenantId,
-                      is_returnable: dto.returnPolicy.is_returnable,
-                      refund_amount: dto.returnPolicy.refund_amount ?? 0,
-                      return_storage: dto.returnPolicy.return_storage ?? null,
-                      note: dto.returnPolicy.note ?? null,
-                    },
-                  }
-                : undefined,
-            } as any,
-            include: {
-              returnPolicy: true,
-              batches: true,
-              productSupplier: {
-                include: {
-                  clinicSupplierManager: {
-                    include: {
-                      linkedManager: {
-                        select: {
-                          id: true,
-                          name: true,
-                          phone_number: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          });
-
-          // ✅ GTIN: link barcode to product for duplicate prevention (unique per tenant)
-          if (gtin) {
-            await (tx as any).productGTIN.create({
-              data: {
-                tenant_id: tenantId,
-                product_id: product.id,
-                gtin,
-                barcode_package_type: (dto as any).barcodePackageType ?? "BOX",
-              },
-            });
-          }
-
-          // Additional barcodes
-          if ((dto as any).additionalBarcodes?.length) {
-            for (const ab of (dto as any).additionalBarcodes) {
-              if (ab.gtin?.trim()) {
-                await (tx as any).productGTIN.create({
-                  data: {
-                    tenant_id: tenantId,
-                    product_id: product.id,
-                    gtin: ab.gtin.trim(),
-                    barcode_package_type: ab.barcode_package_type ?? "BOX",
-                  },
-                });
-              }
-            }
-          }
-
-          // ✅ NEW: Create ProductSupplier mapping (using transaction client)
-          if (dto.suppliers && dto.suppliers.length > 0) {
-            const s = dto.suppliers[0];
-            await tx.productSupplier.upsert({
-              where: {
-                tenant_id_product_id: {
-                  tenant_id: tenantId,
-                  product_id: product.id,
-                },
-              },
-              create: {
-                tenant_id: tenantId,
-                product_id: product.id,
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price: s.purchase_price ?? dto.purchasePrice,
-                moq: s.moq,
-                lead_time_days: s.lead_time_days,
-                note: s.note,
-              },
-              update: {
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price: s.purchase_price ?? dto.purchasePrice,
-                moq: s.moq,
-                lead_time_days: s.lead_time_days,
-                note: s.note,
-              },
-            });
-          } else {
-            // Default ProductSupplier mapping
-            await tx.productSupplier.upsert({
-              where: {
-                tenant_id_product_id: {
-                  tenant_id: tenantId,
-                  product_id: product.id,
-                },
-              },
-              create: {
-                tenant_id: tenantId,
-                product_id: product.id,
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price: dto.purchasePrice,
-              },
-              update: {
-                clinic_supplier_manager_id: clinicSupplierManagerId,
-                purchase_price: dto.purchasePrice,
-              },
-            });
-          }
-
-          // Create batches
-          if (dto.initial_batches?.length) {
-            for (const batch of dto.initial_batches) {
-              // Avtomatik batch_no yaratish (agar berilmagan bo'lsa)
-              // Agar barcode-dan batch_no kelgan bo'lsa, unga tartib raqam qo'shamiz
-              let batchNo: string;
-              if (batch.batch_no && batch.batch_no.trim() !== "") {
-                // Barcode-dan kelgan batch number: tartib raqam qo'shish kerak
-                batchNo = await this.generateBatchNo(
-                  product.id,
-                  tenantId,
-                  tx,
-                  batch.batch_no.trim()
-                );
-              } else {
-                // Random batch number yaratish: 9ta random raqam - 001
-                batchNo = await this.generateBatchNo(product.id, tenantId, tx);
-              }
-
-              await tx.batch.create({
-                data: {
-                  tenant_id: tenantId,
-                  product_id: product.id,
-                  batch_no: batchNo,
-                  qty: batch.qty, // 입고 수량 (Inbound quantity)
-                  inbound_qty: batch.qty, // ✅ Original qty from inbound (immutable)
-                  unit: product.unit ?? null, // ✅ Copy unit from product
-                  min_stock: product.min_stock, // ✅ Copy min_stock from product (immutable, can be 0, null, or any number)
-                  expiry_months: batch.expiry_months ?? null, // 유형 기간 (Expiry period)
-                  expiry_unit: batch.expiry_unit ?? null,
-                  manufacture_date: batch.manufacture_date
-                    ? new Date(batch.manufacture_date)
-                    : null, // 제조일 (Manufacture date)
-                  storage: batch.storage ?? null, // 보관 위치 (Storage location)
-                  purchase_price: batch.purchase_price ?? null, // 구매원가 (Purchase price)
-                  inbound_manager: (batch as any).inbound_manager ?? null, // 입고 담당자 (Inbound manager)
-                  sale_price: batch.sale_price ?? null,
-                  expiry_date: batch.expiry_date
-                    ? new Date(batch.expiry_date)
-                    : null,
-                  alert_days:
-                    batch.alert_days && batch.alert_days.trim() !== ""
-                      ? batch.alert_days
-                      : product.alert_days && product.alert_days.trim() !== ""
-                        ? product.alert_days
-                        : null,
-                } as any,
-              });
-            }
-
-            // inbound_qty field removed from Product table - no longer needed
-          }
-
-          // Return product with all related data
-          const productWithRelations = await tx.product.findUnique({
-            where: { id: product.id },
-            include: {
-              returnPolicy: true,
-              batches: {
-                select: {
-                  id: true,
-                  batch_no: true,
-                  qty: true,
-                  expiry_date: true,
-                  storage: true,
-                  alert_days: true,
-                  created_at: true,
-                },
-                orderBy: { created_at: "desc" },
-                take: 1,
-              },
-              productSupplier: {
-                include: {
-                  clinicSupplierManager: {
-                    select: {
-                      id: true,
-                      company_name: true,
-                      name: true,
-                      phone_number: true,
-                      business_number: true,
-                    },
-                  },
-                },
-              },
-            },
-          });
-
-          return productWithRelations;
-        },
+        (tx: Prisma.TransactionClient) =>
+          this.runCreateProductTransaction(tx, {
+            tenantId,
+            dto,
+            imageUrl,
+            gtin,
+          }),
         {
-          timeout: 60000, // 60 seconds (default 5 seconds)
-          maxWait: 10000, // 10 seconds max wait
+          timeout: 60000,
+          maxWait: 10000,
         }
       );
-    } catch (e: any) {
-      if (e?.code === "P2002" && gtin) {
-        const existingGtin = await (this.prisma as any).productGTIN.findUnique({
-          where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
-          select: { product_id: true },
-        });
-        if (existingGtin) {
-          const existingProduct = await this.getProduct(
-            existingGtin.product_id,
-            tenantId
-          );
-          if (existingProduct) {
-            return {
-              ...existingProduct,
-              existingForBarcode: true,
-              code: "PRODUCT_ALREADY_EXISTS_FOR_THIS_BARCODE",
-            } as any;
-          }
-        }
+    } catch (error) {
+      const recovered = await this.tryRecoverDuplicateGtinFromPrismaError(
+        error,
+        tenantId,
+        gtin
+      );
+      if (recovered) {
+        return recovered;
       }
-      throw e;
+      throw error;
     }
 
-    // ✅ Optimized: Add new product to cache instead of invalidating
-    // This prevents performance degradation on VPS
-    // Use the product returned from transaction for cache
-    if (createdProductFromTransaction) {
-      this.addProductToCache(tenantId, createdProductFromTransaction);
-      // ✅ Cache invalidation: Force full cache refresh after create
-      this.clearProductsCache(tenantId);
-      return createdProductFromTransaction;
-    }
-
-    // Fallback: if product not found, invalidate cache
-    this.clearProductsCache(tenantId);
-    return null;
+    return this.finalizeCreateProductCache(
+      tenantId,
+      createdProductFromTransaction
+    );
   }
 
   async getProduct(productId: string, tenantId: string) {
@@ -676,7 +514,7 @@ export class ProductsService {
       throw new BadRequestException("Tenant ID is required");
     }
 
-    const product = await (this.prisma.product.findFirst as any)({
+    const product = await this.prisma.product.findFirst({
       where: { id: productId, tenant_id: tenantId },
       include: {
         returnPolicy: true,
@@ -708,66 +546,7 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    const latestBatch = (product.batches as any[])?.[0];
-
-    // alertDays ni batch'dan yoki product'dan olish
-    // Agar batch'da alert_days bo'lsa, uni ishlatish, aks holda null
-    const alertDays = latestBatch?.alert_days ?? null;
-
-    // ✅ NEW: Get supplier info from ProductSupplier
-    const productSupplier = product.productSupplier;
-    const supplierManager = productSupplier?.clinicSupplierManager;
-    const purchasePrice =
-      productSupplier?.purchase_price ?? product.purchase_price; // Source of truth
-
-    return {
-      id: product.id,
-      productName: product.name,
-      brand: product.brand,
-      barcode: product.barcode ?? null,
-      barcodes: (product.productGtins ?? []).map((g: any) => ({
-        id: g.id,
-        gtin: g.gtin,
-        barcode_package_type: g.barcode_package_type ?? "BOX",
-      })),
-      productImage: product.image_url,
-      category: product.category,
-      status: null, // status field removed from Product table
-      currentStock: product.current_stock,
-      inboundQty: null, // inbound_qty removed from Product table - should get from first Batch if needed
-      minStock: product.min_stock,
-      purchasePrice: purchasePrice, // ProductSupplier.purchase_price or Product.purchase_price
-      taxRate: product.tax_rate ?? 0,
-      salePrice: product.sale_price,
-      unit: product.unit,
-      capacityPerProduct: product.capacity_per_product,
-      capacityUnit: product.capacity_unit,
-      usageCapacity: product.usage_capacity,
-      supplierId: supplierManager?.id ?? null, // ClinicSupplierManager ID
-      supplierName: supplierManager?.company_name ?? null,
-      managerName: supplierManager?.name ?? null,
-      contactPhone: supplierManager?.phone_number ?? null,
-      contactEmail: supplierManager?.email1 ?? null,
-      // Full supplier details for edit page
-      supplierCompanyAddress: supplierManager?.company_address ?? null,
-      supplierBusinessNumber: supplierManager?.business_number ?? null,
-      supplierCompanyPhone: supplierManager?.company_phone ?? null,
-      supplierCompanyEmail: supplierManager?.company_email ?? null,
-      supplierPosition: supplierManager?.position ?? null,
-      supplierEmail2: supplierManager?.email2 ?? null,
-      supplierResponsibleProducts: supplierManager?.responsible_products ?? [],
-      supplierMemo: supplierManager?.memo ?? null,
-      expiryDate: latestBatch?.expiry_date ?? null, // Only from batch now
-      storageLocation: latestBatch?.storage ?? null, // Only from batch now
-      productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
-      inboundManager: null, // Removed from Product table
-      memo: product.returnPolicy?.note ?? null,
-      isReturnable: product.returnPolicy?.is_returnable ?? false,
-      refundAmount: product.returnPolicy?.refund_amount ?? null,
-      returnStorage: product.returnPolicy?.return_storage ?? null,
-      alertDays: product.alert_days ?? null,
-      hasExpiryPeriod: (product as any).has_expiry_period ?? false,
-    };
+    return mapPrismaProductToDetailView(product);
   }
 
   async getAllProducts(tenantId: string) {
@@ -870,74 +649,45 @@ export class ProductsService {
 
     // Format products
     const formattedProducts = products.map((product: any) => {
-      const latestBatch = product.batches?.[0];
       const returnPolicy: any = returnPolicyMap.get(product.id);
       const productSupplier: any = supplierMap.get(product.id);
       const supplierManager: any = productSupplier?.clinicSupplierManager;
 
-      return {
-        id: product.id,
-        productName: product.name,
-        brand: product.brand,
-        barcode: product.barcode,
-        productImage: product.image_url,
-        category: product.category,
-        status: null, // status field removed from Product table
-        currentStock: product.current_stock,
-        minStock: product.min_stock,
-        purchasePrice: product.purchase_price,
-        taxRate: product.tax_rate ?? 0,
-        salePrice: product.sale_price,
-        unit: product.unit,
-        usageCapacity: product.usage_capacity,
-        usageCapacityUnit: product.capacity_unit,
-        capacityPerProduct: product.capacity_per_product,
-        capacityUnit: product.capacity_unit,
-        supplierName: supplierManager?.company_name ?? null,
-        managerName: supplierManager?.name ?? null,
-        managerPosition: supplierManager?.position ?? null, // ✅ 직책 (Position)
-        supplierId: supplierManager?.id ?? null,
-        expiryDate: latestBatch?.expiry_date ?? null,
-        storageLocation: latestBatch?.storage ?? null, // Only from batch now
-        productStorage: latestBatch?.storage ?? null, // Fallback to batch storage
-        memo: returnPolicy?.note ?? null,
-        expiryMonths: null, // Removed from Product table
-        expiryUnit: null, // Removed from Product table
-        alertDays: product.alert_days ?? null,
-        hasExpiryPeriod: (product as any).has_expiry_period ?? false,
-        isLowStock: product.current_stock < product.min_stock,
-        batches: (product.batches || []).map((batch: any) => {
-          const expiryDate = batch.expiry_date
-            ? new Date(batch.expiry_date)
-            : null;
-          const alertDays = batch.alert_days ?? product.alert_days ?? null;
-          const daysUntilExpiry = expiryDate
-            ? this.calculateDaysUntilExpiry(expiryDate)
-            : null;
-          const isExpiringSoon = expiryDate
-            ? this.calculateExpiringSoon(expiryDate, alertDays)
-            : false;
-          return {
-            ...batch,
-            daysUntilExpiry,
-            isExpiringSoon,
-          };
-        }),
-      };
+      const enrichedBatches = (product.batches || []).map((batch: any) => {
+        const expiryDate = batch.expiry_date
+          ? new Date(batch.expiry_date)
+          : null;
+        const alertDays = batch.alert_days ?? product.alert_days ?? null;
+        const daysUntilExpiry = expiryDate
+          ? this.calculateDaysUntilExpiry(expiryDate)
+          : null;
+        const isExpiringSoon = expiryDate
+          ? this.calculateExpiringSoon(expiryDate, alertDays)
+          : false;
+        return {
+          ...batch,
+          daysUntilExpiry,
+          isExpiringSoon,
+        };
+      });
+
+      return mapProductToListRow(
+        product,
+        returnPolicy?.note ?? null,
+        supplierManager,
+        {
+          taxRate: product.tax_rate ?? 0,
+          batches: enrichedBatches,
+          listExtras: {
+            alertDays: product.alert_days ?? null,
+            hasExpiryPeriod: (product as any).has_expiry_period ?? false,
+          },
+        }
+      );
     });
 
-    // 🔍 DEBUG LOG - First 3 products
-    if (formattedProducts.length > 0) {
-      this.logger.log(
-        `[getAllProducts] First 3 products currentStock:`,
-        formattedProducts
-          .slice(0, 3)
-          .map((p: any) => `${p.productName}: ${p.currentStock}`)
-      );
-    }
-
     // Cache'ga saqlash
-    this.setCachedData(tenantId, formattedProducts);
+    this.productCacheService.setCachedData(tenantId, formattedProducts);
 
     return formattedProducts;
   }
@@ -982,33 +732,78 @@ export class ProductsService {
   }
 
   async updateProduct(id: string, dto: UpdateProductDto, tenantId: string) {
+    this.ensureTenantForMutation(tenantId);
+
+    const existing = await this.findExistingProductForUpdateOrThrow(
+      id,
+      tenantId
+    );
+    const imageUrl = await this.resolveUpdatedProductImage(
+      dto,
+      tenantId,
+      existing.image_url
+    );
+    const { newCurrentStock, stockWasChanged, newBarcode } =
+      this.buildProductUpdateContext(existing, dto);
+
+    await this.validateUniqueBarcodesForProductUpdate({
+      productId: id,
+      tenantId,
+      dto,
+      newBarcode,
+      previousBarcodeTrimmed: existing.barcode?.trim() || null,
+    });
+
+    await this.runUpdateProductTransaction({
+      id,
+      tenantId,
+      dto,
+      existing,
+      imageUrl,
+      newCurrentStock,
+      stockWasChanged,
+      newBarcode,
+    });
+
+    await this.refreshProductListCacheAfterUpdate(id, tenantId);
+
+    return this.getProduct(id, tenantId);
+  }
+
+  private ensureTenantForMutation(tenantId: string): void {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
+  }
 
+  private async findExistingProductForUpdateOrThrow(
+    id: string,
+    tenantId: string
+  ) {
     const existing = await this.prisma.product.findFirst({
       where: { id, tenant_id: tenantId },
       include: { returnPolicy: true },
     });
-
     if (!existing) {
       throw new NotFoundException("Product not found");
     }
+    return existing;
+  }
 
-    let imageUrl = existing.image_url;
-
-    // Image handling: agar null yuborilgan bo'lsa, image'ni o'chirish
-    // Agar yangi image yuborilgan bo'lsa, yangi image'ni saqlash
+  private async resolveUpdatedProductImage(
+    dto: UpdateProductDto,
+    tenantId: string,
+    currentImageUrl: string | null | undefined
+  ): Promise<string | null | undefined> {
+    let imageUrl: string | null | undefined = currentImageUrl;
     if (dto.image !== undefined) {
       if (dto.image === null || dto.image === "") {
-        // Image o'chirilmoqda
         imageUrl = null;
       } else if (
         dto.image &&
         typeof dto.image === "string" &&
         dto.image.length > 0
       ) {
-        // Yangi image yuklanmoqda (base64 format'da)
         const [savedImage] = await saveBase64Images(
           "product",
           [dto.image],
@@ -1018,41 +813,45 @@ export class ProductsService {
         imageUrl = savedImage;
       }
     }
-    // Agar dto.image undefined bo'lsa, eski image saqlanadi (image o'zgarmagan)
+    return imageUrl;
+  }
 
-    // const resolvedStatus = dto.status ?? existing.status;
-    // const resolvedIsActive =
-    //   dto.isActive ??
-    //   (resolvedStatus === "활성" || resolvedStatus === "재고 부족");
-
+  private buildProductUpdateContext(existing: any, dto: UpdateProductDto) {
     const newCurrentStock =
       dto.currentStock !== undefined
         ? dto.currentStock
         : existing.current_stock;
-
-    // ✅ Track if user manually changed stock (for batch update later).
-    // Product table no longer has inbound_qty column (removed in 20260217).
     const stockWasChanged =
       dto.currentStock !== undefined &&
       dto.currentStock !== existing.current_stock;
-
     const newBarcode =
       dto.barcode !== undefined
         ? dto.barcode?.trim() || null
         : existing.barcode?.trim() || null;
-    if (newBarcode && newBarcode !== (existing.barcode?.trim() || null)) {
+    return { newCurrentStock, stockWasChanged, newBarcode };
+  }
+
+  private async validateUniqueBarcodesForProductUpdate(params: {
+    productId: string;
+    tenantId: string;
+    dto: UpdateProductDto;
+    newBarcode: string | null;
+    previousBarcodeTrimmed: string | null;
+  }): Promise<void> {
+    const { productId, tenantId, dto, newBarcode, previousBarcodeTrimmed } =
+      params;
+    if (newBarcode && newBarcode !== previousBarcodeTrimmed) {
       const other = await (this.prisma as any).productGTIN.findUnique({
         where: { tenant_id_gtin: { tenant_id: tenantId, gtin: newBarcode } },
         select: { product_id: true },
       });
-      if (other && other.product_id !== id) {
+      if (other && other.product_id !== productId) {
         throw new BadRequestException(
           "Bu 바코드(GTIN)는 이미 다른 제품에 등록되어 있습니다."
         );
       }
     }
 
-    // ✅ Additional barcodes duplicate check
     const additionalBarcodesPayload = (dto as any).additionalBarcodes ?? [];
     for (const ab of additionalBarcodesPayload) {
       const abGtin = ab.gtin?.trim();
@@ -1061,15 +860,86 @@ export class ProductsService {
         where: { tenant_id_gtin: { tenant_id: tenantId, gtin: abGtin } },
         select: { product_id: true },
       });
-      if (existing_ab && existing_ab.product_id !== id) {
+      if (existing_ab && existing_ab.product_id !== productId) {
         throw new BadRequestException(
           `추가 바코드 ${abGtin}는 이미 다른 제품에 등록되어 있습니다.`
         );
       }
     }
+  }
+
+  private async refreshProductListCacheAfterUpdate(
+    id: string,
+    tenantId: string
+  ): Promise<void> {
+    // ✅ Optimized: Update product in cache instead of invalidating
+    // Fetch updated product with all relations and update cache
+    const updatedProduct = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        returnPolicy: true,
+        batches: {
+          select: {
+            id: true,
+            batch_no: true,
+            qty: true,
+            expiry_date: true,
+            storage: true,
+            alert_days: true,
+            created_at: true,
+          },
+          orderBy: { created_at: "desc" },
+          take: 1,
+        },
+        productSupplier: {
+          include: {
+            clinicSupplierManager: {
+              select: {
+                id: true,
+                company_name: true,
+                name: true,
+                phone_number: true,
+                business_number: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (updatedProduct) {
+      this.productCacheService.addProductToCache(tenantId, updatedProduct);
+      // ✅ Cache invalidation: Force full cache refresh after update
+      this.productCacheService.clearProductsCache(tenantId);
+    } else {
+      // Fallback: invalidate if product not found
+      this.productCacheService.clearProductsCache(tenantId);
+    }
+  }
+
+  private async runUpdateProductTransaction(params: {
+    id: string;
+    tenantId: string;
+    dto: UpdateProductDto;
+    existing: any;
+    imageUrl: string | null | undefined;
+    newCurrentStock: number;
+    stockWasChanged: boolean;
+    newBarcode: string | null;
+  }): Promise<void> {
+    const {
+      id,
+      tenantId,
+      dto,
+      existing,
+      imageUrl,
+      newCurrentStock,
+      stockWasChanged,
+      newBarcode,
+    } = params;
 
     await this.prisma.$transaction(
-      async (tx: any) => {
+      async (tx: Prisma.TransactionClient) => {
         await tx.product.update({
           where: { id },
           data: {
@@ -1467,56 +1337,10 @@ export class ProductsService {
         }
       },
       {
-        timeout: 60000, // 60 seconds
-        maxWait: 10000, // 10 seconds max wait
+        timeout: 60000,
+        maxWait: 10000,
       }
     );
-
-    // ✅ Optimized: Update product in cache instead of invalidating
-    // Fetch updated product with all relations and update cache
-    const updatedProduct = await this.prisma.product.findUnique({
-      where: { id },
-      include: {
-        returnPolicy: true,
-        batches: {
-          select: {
-            id: true,
-            batch_no: true,
-            qty: true,
-            expiry_date: true,
-            storage: true,
-            alert_days: true,
-            created_at: true,
-          },
-          orderBy: { created_at: "desc" },
-          take: 1,
-        },
-        productSupplier: {
-          include: {
-            clinicSupplierManager: {
-              select: {
-                id: true,
-                company_name: true,
-                name: true,
-                phone_number: true,
-                business_number: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (updatedProduct) {
-      this.addProductToCache(tenantId, updatedProduct);
-      // ✅ Cache invalidation: Force full cache refresh after update
-      this.clearProductsCache(tenantId);
-    } else {
-      // Fallback: invalidate if product not found
-      this.clearProductsCache(tenantId);
-    }
-
-    return this.getProduct(id, tenantId);
   }
 
   async deleteProduct(id: string, tenantId: string) {
@@ -1553,7 +1377,7 @@ export class ProductsService {
 
     // ✅ Optimized: Remove product from cache instead of invalidating
     // This prevents performance degradation on VPS
-    this.removeProductFromCache(tenantId, id);
+    this.productCacheService.removeProductFromCache(tenantId, id);
 
     // ✅ Also invalidate OutboundService cache since outbound page uses products
     if (this.outboundService) {
@@ -1583,23 +1407,17 @@ export class ProductsService {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-
-    // Product mavjudligini tekshirish
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenant_id: tenantId },
     });
-
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-
-    // Product'ning barcha batch'larini olish
-    // IMPORTANT: Faqat qty > 0 bo'lgan batch'larni ko'rsatish (0ga yetgan batch'lar ochib ketadi)
     const batches = await (this.prisma.batch.findMany as any)({
       where: {
         product_id: productId,
         tenant_id: tenantId,
-        qty: { gt: 0 }, // Faqat qty > 0 bo'lgan batch'lar
+        qty: { gt: 0 },
       },
       orderBy: { created_at: "desc" },
       select: {
@@ -1624,38 +1442,7 @@ export class ProductsService {
         reason_for_modification: true,
       },
     });
-
-    // Formatlash: 유효기간 ni yaratish (expiry_date yoki expiry_months + expiry_unit)
-    return batches.map((batch: any) => ({
-      id: batch.id,
-      batch_no: batch.batch_no,
-      유효기간: batch.expiry_date
-        ? batch.expiry_date.toISOString().split("T")[0]
-        : batch.expiry_months && batch.expiry_unit
-          ? `${batch.expiry_months} ${batch.expiry_unit}`
-          : null,
-      보관위치: batch.storage ?? null,
-      "입고 수량": batch.qty,
-      inbound_qty: batch.inbound_qty ?? null,
-      unit: batch.unit ?? null,
-      min_stock: batch.min_stock ?? null,
-      purchase_price: batch.purchase_price ?? null,
-      created_at: batch.created_at,
-      is_separate_purchase: batch.is_separate_purchase ?? false,
-      manufacture_date: batch.manufacture_date
-        ? batch.manufacture_date.toISOString().split("T")[0]
-        : null,
-      expiry_date: batch.expiry_date
-        ? batch.expiry_date.toISOString().split("T")[0]
-        : null,
-      inbound_manager: batch.inbound_manager ?? null,
-      reason_for_modification: batch.reason_for_modification ?? null,
-      expiry_months: batch.expiry_months,
-      expiry_unit: batch.expiry_unit,
-      alert_days: batch.alert_days,
-      storage: batch.storage,
-      qty: batch.qty,
-    }));
+    return mapProductBatchesToAdminRows(batches);
   }
 
   /**
@@ -1711,36 +1498,7 @@ export class ProductsService {
       },
     });
 
-    return batches.map((batch: any) => ({
-      id: batch.id,
-      batch_no: batch.batch_no,
-      유효기간: batch.expiry_date
-        ? batch.expiry_date.toISOString().split("T")[0]
-        : batch.expiry_months && batch.expiry_unit
-          ? `${batch.expiry_months} ${batch.expiry_unit}`
-          : null,
-      보관위치: batch.storage ?? null,
-      "입고 수량": batch.qty,
-      inbound_qty: batch.inbound_qty ?? null,
-      unit: batch.unit ?? null,
-      min_stock: batch.min_stock ?? null,
-      purchase_price: batch.purchase_price ?? null,
-      created_at: batch.created_at,
-      is_separate_purchase: batch.is_separate_purchase ?? false,
-      manufacture_date: batch.manufacture_date
-        ? batch.manufacture_date.toISOString().split("T")[0]
-        : null,
-      expiry_date: batch.expiry_date
-        ? batch.expiry_date.toISOString().split("T")[0]
-        : null,
-      inbound_manager: batch.inbound_manager ?? null,
-      reason_for_modification: batch.reason_for_modification ?? null,
-      expiry_months: batch.expiry_months,
-      expiry_unit: batch.expiry_unit,
-      alert_days: batch.alert_days,
-      storage: batch.storage,
-      qty: batch.qty,
-    }));
+    return mapProductBatchesToAdminRows(batches);
   }
 
   /**
@@ -1861,11 +1619,6 @@ export class ProductsService {
 
         const newCurrentStock = totalStock._sum.qty ?? 0;
 
-        // 🔍 DEBUG LOG
-        this.logger.log(
-          `[UPDATE CURRENT_STOCK] Product ${productId}: ${newCurrentStock} (from ${await tx.batch.count({ where: { product_id: productId, tenant_id: tenantId } })} batches)`
-        );
-
         await tx.product.update({
           where: { id: productId },
           data: {
@@ -1924,50 +1677,6 @@ export class ProductsService {
         maxWait: 10000, // 10 seconds max wait
       }
     );
-
-    // ✅ Optimized: Update product in cache to reflect new batch
-    // Fetch product with updated batches and relations
-    const updatedProduct = await this.prisma.product.findUnique({
-      where: { id: productId },
-      include: {
-        returnPolicy: true,
-        batches: {
-          select: {
-            id: true,
-            batch_no: true,
-            qty: true,
-            expiry_date: true,
-            storage: true,
-            alert_days: true,
-            created_at: true,
-          },
-          orderBy: { created_at: "desc" },
-          take: 1,
-        },
-        productSupplier: {
-          include: {
-            clinicSupplierManager: {
-              select: {
-                id: true,
-                company_name: true,
-                name: true,
-                phone_number: true,
-                business_number: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (updatedProduct) {
-      this.addProductToCache(tenantId, updatedProduct);
-      // ✅ Cache invalidation: Force full cache refresh after batch create
-      this.clearProductsCache(tenantId);
-    } else {
-      // Fallback: invalidate if product not found
-      this.clearProductsCache(tenantId);
-    }
   }
 
   /**
@@ -2053,7 +1762,7 @@ export class ProductsService {
   private async generateBatchNo(
     productId: string,
     tenantId: string,
-    tx: any,
+    tx: Prisma.TransactionClient,
     customPrefix?: string // Optional: barcode-dan kelgan batch number uchun
   ): Promise<string> {
     // ✅ Generate 9 random digits
@@ -2062,25 +1771,6 @@ export class ProductsService {
     ).toString();
 
     try {
-      // ✅ Validate transaction client before using it
-      if (!tx || typeof tx.batch?.count !== "function") {
-        // Fallback: use regular prisma client if transaction is invalid
-        console.warn(
-          `[ProductsService] Transaction client invalid in generateBatchNo, using fallback for productId: ${productId}`
-        );
-        const existingBatchesCount = await this.countBatchesForPrefix(
-          this.prisma,
-          productId,
-          tenantId,
-          customPrefix
-        );
-        const sequenceNumber = (existingBatchesCount + 1)
-          .toString()
-          .padStart(3, "0");
-        const prefix = customPrefix || randomDigits;
-        return `${prefix}-${sequenceNumber}`;
-      }
-
       // Lot (customPrefix) bo'yicha suffix: 1234K56 → 1234K56-001, keyin 1234K56-002
       const existingBatchesCount = await this.countBatchesForPrefix(
         tx,
@@ -2132,32 +1822,6 @@ export class ProductsService {
       where.batch_no = { startsWith: `${customPrefix.trim()}-` };
     }
     return prismaOrTx.batch.count({ where });
-  }
-
-  /**
-   * Batch'larni FEFO bo'yicha sortlash
-   * 정렬 우선순위: ① 유효기간 → ② 미량 재고 (qty) → ③ 배치번호
-   */
-  private sortBatchesByFEFO(batches: any[]): any[] {
-    return [...batches].sort((a, b) => {
-      // 1. 유효기간 (expiry_date) bo'yicha sortlash - oldre olan batches birinchi
-      if (a.expiry_date && b.expiry_date) {
-        const dateDiff = a.expiry_date.getTime() - b.expiry_date.getTime();
-        if (dateDiff !== 0) return dateDiff; // Eng eski (yaqin expiry) birinchi
-      } else if (a.expiry_date && !b.expiry_date) {
-        return -1; // a.expiry_date bor, b.expiry_date yo'q → a birinchi
-      } else if (!a.expiry_date && b.expiry_date) {
-        return 1; // b.expiry_date bor, a.expiry_date yo'q → b birinchi
-      }
-
-      // 2. 미량 재고 우선 (qty 적은 것 먼저 소진) - kam qty birinchi
-      if (a.qty !== b.qty) {
-        return a.qty - b.qty; // Kam miqdor birinchi
-      }
-
-      // 3. 배치번호 bo'yicha sortlash
-      return a.batch_no.localeCompare(b.batch_no);
-    });
   }
 
   /**
@@ -2525,194 +2189,80 @@ export class ProductsService {
     mode: "strict" | "flexible" = "strict",
     inboundManager: string = ""
   ) {
+    this.assertConfirmImportTenantAndRows(tenantId, rows);
+
+    const preview = await this.previewImport(tenantId, rows);
+    this.assertImportStrictModeAllowsImport(preview, mode);
+
+    const validRows = rows;
+    if (validRows.length === 0) {
+      throw new BadRequestException("No valid rows to import");
+    }
+
+    const { imported, failed, existingProductCount } =
+      await this.runConfirmImportBatches(validRows, tenantId);
+
+    this.productCacheService.clearAll();
+
+    return {
+      success: true,
+      total: rows.length,
+      imported: imported.length,
+      failed: failed.length,
+      existingProductCount,
+      failures: failed.length > 0 ? failed : undefined,
+    };
+  }
+
+  private assertConfirmImportTenantAndRows(
+    tenantId: string,
+    rows: ImportProductRowDto[]
+  ): void {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-
     if (!rows || rows.length === 0) {
       throw new BadRequestException("No data to import");
     }
+  }
 
-    // Re-validate before import
-    const preview = await this.previewImport(tenantId, rows);
-
+  private assertImportStrictModeAllowsImport(
+    preview: { errors: number },
+    mode: "strict" | "flexible"
+  ): void {
     if (mode === "strict" && preview.errors > 0) {
       throw new BadRequestException(
         `유효성 검사 오류가 ${preview.errors}건 발생하여 입고할 수 없습니다. CSV 파일에서 오류를 수정한 뒤 다시 시도해 주세요.`
       );
     }
+  }
 
-    // Strict only: use all rows (validation already enforced above)
-    const validRows = rows;
-
-    if (validRows.length === 0) {
-      throw new BadRequestException("No valid rows to import");
-    }
-
+  private async runConfirmImportBatches(
+    validRows: ImportProductRowDto[],
+    tenantId: string
+  ): Promise<{
+    imported: any[];
+    failed: any[];
+    existingProductCount: number;
+  }> {
     const imported: any[] = [];
     const failed: any[] = [];
     let existingProductCount = 0;
-    const BATCH_SIZE = 100; // Process 100 rows at a time
-    const BATCH_DELAY = 100; // 100ms delay between batches
+    const BATCH_SIZE = 100;
+    const BATCH_DELAY = 100;
 
-    // Process in batches with transaction per batch
     for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
       const batch = validRows.slice(i, i + BATCH_SIZE);
 
       try {
-        // Use transaction for each batch
         const batchResults = await this.prisma.$transaction(
           async (tx: any) => {
             const results: any[] = [];
-
             for (const row of batch) {
               try {
-                const gtin = row.barcode?.trim();
-                const existingGtin = gtin
-                  ? await tx.productGTIN.findUnique({
-                      where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
-                      select: { product_id: true },
-                    })
-                  : null;
-
-                let product: any;
-                let productId: string;
-                let supplierId: string | null = null;
-                let supplierName: string | null = null;
-
-                if (existingGtin) {
-                  productId = existingGtin.product_id;
-                  product = await tx.product.findUnique({
-                    where: { id: productId, tenant_id: tenantId },
-                  });
-                  if (!product) {
-                    results.push({
-                      success: false,
-                      row,
-                      error: "Existing product for barcode not found",
-                    });
-                    continue;
-                  }
-                  // No inbound_qty: no stock update for existing product
-                } else {
-                  productId = this.generateProductId();
-
-                  if (row.contact_phone?.trim()) {
-                    const supplier = await this.findSupplierByPhone(
-                      tenantId,
-                      row.contact_phone,
-                      tx
-                    );
-                    if (supplier) {
-                      supplierId = supplier.id;
-                      supplierName = supplier.company_name;
-                    } else {
-                      this.logger.warn(
-                        `📞 No supplier found for phone: ${row.contact_phone}`
-                      );
-                    }
-                  }
-
-                  product = await (tx.product.create as any)({
-                    data: {
-                      id: productId,
-                      tenant_id: tenantId,
-                      name: row.name.trim(),
-                      brand: row.brand.trim(),
-                      barcode: gtin || null,
-                      category: row.category.trim(),
-                      unit: row.unit.trim(),
-                      min_stock: row.min_stock,
-                      purchase_price: row.purchase_price ?? null,
-                      sale_price: row.sale_price ?? null,
-                      usage_capacity: row.usage_capacity,
-                      capacity_unit: row.capacity_unit.trim(),
-                      capacity_per_product: row.capacity_per_product,
-                      alert_days: row.alert_days.toString(),
-                      has_expiry_period: !!row.has_expiry_period,
-                      current_stock: 0,
-                    },
-                  });
-
-                  if (gtin) {
-                    try {
-                      await tx.productGTIN.create({
-                        data: {
-                          tenant_id: tenantId,
-                          product_id: productId,
-                          gtin,
-                          barcode_package_type:
-                            (row as any).barcode_package_type
-                              ?.trim()
-                              .toUpperCase() ?? "BOX",
-                        },
-                      });
-                    } catch (gtinErr: any) {
-                      if (gtinErr?.code === "P2002") {
-                        const existing = await tx.productGTIN.findUnique({
-                          where: {
-                            tenant_id_gtin: { tenant_id: tenantId, gtin },
-                          },
-                          select: { product_id: true },
-                        });
-                        if (existing) {
-                          await tx.product.delete({ where: { id: productId } });
-                          productId = existing.product_id;
-                          product = await tx.product.findUnique({
-                            where: { id: productId, tenant_id: tenantId },
-                          });
-                        } else throw gtinErr;
-                      } else throw gtinErr;
-                    }
-                  }
-
-                  if (supplierId) {
-                    await (tx.productSupplier.upsert as any)({
-                      where: {
-                        tenant_id_product_id: {
-                          tenant_id: tenantId,
-                          product_id: productId,
-                        },
-                      },
-                      create: {
-                        tenant_id: tenantId,
-                        product_id: productId,
-                        clinic_supplier_manager_id: supplierId,
-                        purchase_price: row.purchase_price ?? null,
-                      },
-                      update: {
-                        clinic_supplier_manager_id: supplierId,
-                        purchase_price: row.purchase_price ?? null,
-                      },
-                    });
-                  }
-
-                  if (
-                    row.refund_amount !== undefined &&
-                    row.refund_amount !== null
-                  ) {
-                    await tx.returnPolicy.upsert({
-                      where: { product_id: productId },
-                      create: {
-                        tenant_id: tenantId,
-                        product_id: productId,
-                        is_returnable: true,
-                        refund_amount: Number(row.refund_amount),
-                      },
-                      update: { refund_amount: Number(row.refund_amount) },
-                    });
-                  }
-                }
-
-                // No batch created from CSV (inbound_qty, storage, expiry_date removed)
-
-                results.push({
-                  success: true,
-                  product,
-                  supplierLinked: !!supplierId,
-                  supplierName,
-                  existingProduct: !!existingGtin,
-                });
+                results.push(
+                  await this.processImportRowInTransaction(tx, row, tenantId)
+                );
               } catch (error: any) {
                 this.logger.error(
                   `Failed to import row: ${JSON.stringify(row)}`,
@@ -2725,16 +2275,14 @@ export class ProductsService {
                 });
               }
             }
-
             return results;
           },
           {
-            maxWait: 10000, // 10 seconds max wait
-            timeout: 300000, // 5 minutes timeout
+            maxWait: 10000,
+            timeout: 300000,
           }
         );
 
-        // Separate successful and failed imports
         for (const result of batchResults) {
           if (result.success) {
             imported.push(result.product);
@@ -2747,12 +2295,10 @@ export class ProductsService {
           }
         }
 
-        // Delay between batches to avoid overwhelming database
         if (i + BATCH_SIZE < validRows.length) {
           await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
         }
       } catch (error: any) {
-        // If batch transaction fails, mark all batch rows as failed
         for (const row of batch) {
           failed.push({
             row,
@@ -2762,16 +2308,158 @@ export class ProductsService {
       }
     }
 
-    // Clear cache after import
-    this.productsCache.clear();
+    return { imported, failed, existingProductCount };
+  }
+
+  private async processImportRowInTransaction(
+    tx: any,
+    row: ImportProductRowDto,
+    tenantId: string
+  ): Promise<
+    | {
+        success: true;
+        product: any;
+        supplierLinked: boolean;
+        supplierName: string | null;
+        existingProduct: boolean;
+      }
+    | { success: false; row: ImportProductRowDto; error: string }
+  > {
+    const gtin = row.barcode?.trim();
+    const existingGtin = gtin
+      ? await tx.productGTIN.findUnique({
+          where: { tenant_id_gtin: { tenant_id: tenantId, gtin } },
+          select: { product_id: true },
+        })
+      : null;
+
+    let product: any;
+    let productId: string;
+    let supplierId: string | null = null;
+    let supplierName: string | null = null;
+
+    if (existingGtin) {
+      productId = existingGtin.product_id;
+      product = await tx.product.findUnique({
+        where: { id: productId, tenant_id: tenantId },
+      });
+      if (!product) {
+        return {
+          success: false,
+          row,
+          error: "Existing product for barcode not found",
+        };
+      }
+    } else {
+      productId = this.generateProductId();
+
+      if (row.contact_phone?.trim()) {
+        const supplier = await this.findSupplierByPhone(
+          tenantId,
+          row.contact_phone,
+          tx
+        );
+        if (supplier) {
+          supplierId = supplier.id;
+          supplierName = supplier.company_name;
+        } else {
+          this.logger.warn(`No supplier found for phone: ${row.contact_phone}`);
+        }
+      }
+
+      product = await (tx.product.create as any)({
+        data: {
+          id: productId,
+          tenant_id: tenantId,
+          name: row.name.trim(),
+          brand: row.brand.trim(),
+          barcode: gtin || null,
+          category: row.category.trim(),
+          unit: row.unit.trim(),
+          min_stock: row.min_stock,
+          purchase_price: row.purchase_price ?? null,
+          sale_price: row.sale_price ?? null,
+          usage_capacity: row.usage_capacity,
+          capacity_unit: row.capacity_unit.trim(),
+          capacity_per_product: row.capacity_per_product,
+          alert_days: row.alert_days.toString(),
+          has_expiry_period: !!row.has_expiry_period,
+          current_stock: 0,
+        },
+      });
+
+      if (gtin) {
+        try {
+          await tx.productGTIN.create({
+            data: {
+              tenant_id: tenantId,
+              product_id: productId,
+              gtin,
+              barcode_package_type:
+                (row as any).barcode_package_type?.trim().toUpperCase() ??
+                "BOX",
+            },
+          });
+        } catch (gtinErr: any) {
+          if (gtinErr?.code === "P2002") {
+            const existing = await tx.productGTIN.findUnique({
+              where: {
+                tenant_id_gtin: { tenant_id: tenantId, gtin },
+              },
+              select: { product_id: true },
+            });
+            if (existing) {
+              await tx.product.delete({ where: { id: productId } });
+              productId = existing.product_id;
+              product = await tx.product.findUnique({
+                where: { id: productId, tenant_id: tenantId },
+              });
+            } else throw gtinErr;
+          } else throw gtinErr;
+        }
+      }
+
+      if (supplierId) {
+        await (tx.productSupplier.upsert as any)({
+          where: {
+            tenant_id_product_id: {
+              tenant_id: tenantId,
+              product_id: productId,
+            },
+          },
+          create: {
+            tenant_id: tenantId,
+            product_id: productId,
+            clinic_supplier_manager_id: supplierId,
+            purchase_price: row.purchase_price ?? null,
+          },
+          update: {
+            clinic_supplier_manager_id: supplierId,
+            purchase_price: row.purchase_price ?? null,
+          },
+        });
+      }
+
+      if (row.refund_amount !== undefined && row.refund_amount !== null) {
+        await tx.returnPolicy.upsert({
+          where: { product_id: productId },
+          create: {
+            tenant_id: tenantId,
+            product_id: productId,
+            is_returnable: true,
+            refund_amount: Number(row.refund_amount),
+          },
+          update: { refund_amount: Number(row.refund_amount) },
+        });
+      }
+    }
 
     return {
       success: true,
-      total: rows.length,
-      imported: imported.length,
-      failed: failed.length,
-      existingProductCount,
-      failures: failed.length > 0 ? failed : undefined,
+      product,
+      supplierLinked: !!supplierId,
+      supplierName,
+      existingProduct: !!existingGtin,
     };
   }
 
@@ -2784,39 +2472,6 @@ export class ProductsService {
       .toString()
       .padStart(6, "0");
     return `P${timestamp}${random}`;
-  }
-
-  /**
-   * Generate unique batch ID
-   */
-  private generateBatchId(): string {
-    const timestamp = Date.now().toString().slice(-10);
-    const random = Math.floor(Math.random() * 1000000)
-      .toString()
-      .padStart(6, "0");
-    return `B${timestamp}${random}`;
-  }
-
-  /**
-   * Convert expiry date from MM/DD/YYYY or YYYY-MM-DD to Date object
-   */
-  private parseExpiryDate(dateString: string): Date {
-    const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD
-    const usDatePattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/; // MM/DD/YYYY
-
-    if (isoDatePattern.test(dateString)) {
-      return new Date(dateString);
-    } else if (usDatePattern.test(dateString)) {
-      // Convert MM/DD/YYYY to YYYY-MM-DD
-      const parts = dateString.split("/");
-      const month = parts[0].padStart(2, "0");
-      const day = parts[1].padStart(2, "0");
-      const year = parts[2];
-      return new Date(`${year}-${month}-${day}`);
-    }
-
-    // Fallback to default parsing
-    return new Date(dateString);
   }
 
   /**

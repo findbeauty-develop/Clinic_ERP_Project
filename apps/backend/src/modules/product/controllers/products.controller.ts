@@ -15,7 +15,11 @@ import {
 } from "@nestjs/common";
 import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
-import { CreateProductDto, CreateBatchDto, UpdateBatchDto } from "../dto/create-product.dto";
+import {
+  CreateProductDto,
+  CreateBatchDto,
+  UpdateBatchDto,
+} from "../dto/create-product.dto";
 import { PreviewImportDto, ConfirmImportDto } from "../dto/import-products.dto";
 import { ProductsService } from "../services/products.service";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
@@ -31,11 +35,11 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Create a new product" })
-  create(@Body() dto: CreateProductDto, @Tenant() tenantId: string) {
+  async create(@Body() dto: CreateProductDto, @Tenant() tenantId: string) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
-    return this.productsService.createProduct(dto, tenantId);
+    return await this.productsService.createProduct(dto, tenantId);
   }
 
   @Get(":id")
@@ -109,12 +113,12 @@ export class ProductsController {
     return res.json(products);
   }
 
-  @Get('barcode/:barcode')
+  @Get("barcode/:barcode")
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Find product by barcode (GTIN)' })
+  @ApiOperation({ summary: "Find product by barcode (GTIN)" })
   async findByBarcode(
-    @Param('barcode') barcode: string,
+    @Param("barcode") barcode: string,
     @Tenant() tenantId: string
   ) {
     return this.productsService.findByBarcode(barcode, tenantId);
