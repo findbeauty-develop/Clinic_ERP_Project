@@ -20,6 +20,7 @@ import { TelegramNotificationService } from "src/common/services/telegram-notifi
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { ORDER_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
 import type { OrderSupplierNotifiedPayload } from "../../notifications/types/order-supplier-notified.payload";
+import { PurchasePathService } from "../../product/services/purchase-path.service";
 
 /** Prisma select shape for 교환 입고 pending-inbound merge */
 type ExchangeInboundProductRow = {
@@ -44,7 +45,8 @@ export class OrderService {
     private readonly messageService: MessageService,
     private readonly emailService: EmailService,
     private readonly telegramService: TelegramNotificationService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly purchasePathService: PurchasePathService
   ) {
     this.pendingInboundCache = new CacheManager({
       maxSize: 100,
@@ -738,6 +740,21 @@ export class OrderService {
         item.supplierId = supplierId;
       }
 
+      const pathResolved = await this.purchasePathService.resolveForOrderItem({
+        tenantId,
+        productId: item.productId,
+        purchasePathId: item.purchasePathId ?? null,
+        fallbackManagerSupplierId: item.supplierId,
+      });
+      (item as any)._orderGroupKey = pathResolved.orderGroupKey;
+      (item as any)._purchasePathId = pathResolved.purchasePathId;
+      (item as any)._purchasePathType = pathResolved.purchasePathType;
+      (item as any)._purchasePathSnapshot = pathResolved.snapshot;
+      (item as any)._touchPurchasePathId = pathResolved.touchPathId;
+      if (pathResolved.orderGroupKey.startsWith("purchasePath:")) {
+        item.supplierId = null;
+      }
+
       // Zaxira tekshirish (agar batch bo'lsa)
       if (item.batchId) {
         const batch = await this.prisma.batch.findFirst({
@@ -757,54 +774,61 @@ export class OrderService {
       }
     }
 
-    // Supplier bo'yicha guruhlash
+    // Supplier yoki 구매 경로 (SITE/OTHER) bo'yicha guruhlash
     const groupedBySupplier: Record<string, any> = {};
     for (const item of items) {
-      const supplierId = item.supplierId || "unknown";
-      if (!groupedBySupplier[supplierId]) {
-        groupedBySupplier[supplierId] = {
-          supplierId: supplierId,
+      const groupKey =
+        (item as any)._orderGroupKey || item.supplierId || "unknown";
+      if (!groupedBySupplier[groupKey]) {
+        groupedBySupplier[groupKey] = {
+          supplierId: groupKey,
           items: [],
           totalAmount: 0,
         };
       }
-      groupedBySupplier[supplierId].items.push(item);
-      groupedBySupplier[supplierId].totalAmount += item.totalPrice;
+      groupedBySupplier[groupKey].items.push(item);
+      groupedBySupplier[groupKey].totalAmount += item.totalPrice;
     }
 
     // Har bir supplier uchun alohida order yaratish
     const createdOrders = [];
-    for (const [supplierId, group] of Object.entries(groupedBySupplier)) {
+    const touchPurchasePathIds: string[] = [];
+    for (const [groupKey, group] of Object.entries(groupedBySupplier)) {
       // Order number yaratish
       const orderNo = await this.generateOrderNumber(tenantId);
 
       // Supplier uchun memo olish
-      const supplierMemo = dto.supplierMemos?.[supplierId] || dto.memo || null;
+      const supplierMemo = dto.supplierMemos?.[groupKey] || dto.memo || null;
+
+      const isPurchasePathOnlyGroup = groupKey.startsWith("purchasePath:");
+      const lookupSupplierId =
+        !isPurchasePathOnlyGroup && groupKey !== "unknown" ? groupKey : null;
 
       // ✅ STEP 1: Check if supplier is platform or manual
-      const clinicSupplierManager = await this.prisma.executeWithRetry(
-        async () => {
-          return await (this.prisma as any).clinicSupplierManager.findFirst({
-            where: {
-              id: supplierId,
-              tenant_id: tenantId,
-            },
-            select: {
-              id: true,
-              company_name: true,
-              linked_supplier_manager_id: true, // ✅ Key field!
-              phone_number: true, // For SMS notification on cancel
-            },
-          });
-        }
-      );
+      const clinicSupplierManager = lookupSupplierId
+        ? await this.prisma.executeWithRetry(async () => {
+            return await (this.prisma as any).clinicSupplierManager.findFirst({
+              where: {
+                id: lookupSupplierId,
+                tenant_id: tenantId,
+              },
+              select: {
+                id: true,
+                company_name: true,
+                linked_supplier_manager_id: true, // ✅ Key field!
+                phone_number: true, // For SMS notification on cancel
+              },
+            });
+          })
+        : null;
 
       const isManualSupplier =
+        isPurchasePathOnlyGroup ||
         !clinicSupplierManager?.linked_supplier_manager_id;
       const initialStatus = isManualSupplier ? "supplier_confirmed" : "pending";
 
       this.logger.log(
-        `📦 [Order Create] Supplier: ${clinicSupplierManager?.company_name}, ` +
+        `📦 [Order Create] Group: ${groupKey}, Supplier: ${clinicSupplierManager?.company_name ?? "—"}, ` +
           `Type: ${isManualSupplier ? "MANUAL" : "PLATFORM"}, ` +
           `Initial Status: ${initialStatus}`
       );
@@ -818,7 +842,11 @@ export class OrderService {
               tenant_id: tenantId,
               order_no: orderNo,
               status: initialStatus, // ✅ Dynamic status
-              supplier_id: supplierId !== "unknown" ? supplierId : null,
+              supplier_id: isPurchasePathOnlyGroup
+                ? null
+                : groupKey !== "unknown"
+                  ? groupKey
+                  : null,
               total_amount: group.totalAmount,
               expected_delivery_date: dto.expectedDeliveryDate
                 ? new Date(dto.expectedDeliveryDate)
@@ -850,6 +878,9 @@ export class OrderService {
                   tax_rate: item.taxRate ?? 0,
                   memo: item.memo ?? null,
                   item_status: initialItemStatus,
+                  purchase_path_id: item._purchasePathId ?? null,
+                  purchase_path_type: item._purchasePathType ?? null,
+                  purchase_path_snapshot: item._purchasePathSnapshot ?? undefined,
                 },
               })
             )
@@ -890,7 +921,7 @@ export class OrderService {
           createdBy,
           dto.clinicManagerName
         );
-      } else {
+      } else if (!isPurchasePathOnlyGroup && clinicSupplierManager) {
         // ✅ NEW: Send SMS and Email to manual supplier
         this.logger.log(
           `📝 [Order Create] Manual supplier - sending SMS and Email notification`
@@ -901,7 +932,15 @@ export class OrderService {
           tenantId
         );
       }
+
+      for (const it of group.items as any[]) {
+        if (it._touchPurchasePathId) {
+          touchPurchasePathIds.push(it._touchPurchasePathId);
+        }
+      }
     }
+
+    await this.purchasePathService.touchLastUsed(touchPurchasePathIds);
 
     // Draft'ni o'chirish (barcha order'lar yaratilgandan keyin)
     // Check if draft exists before deleting

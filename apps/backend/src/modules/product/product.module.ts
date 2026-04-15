@@ -5,6 +5,7 @@ import { ProductsController } from "./controllers/products.controller";
 import { ProductsRepository } from "./repositories/products.repository";
 import { ProductsService } from "./services/products.service";
 import { ProductCacheService } from "./services/product-cache.service";
+import { PurchasePathService } from "./services/purchase-path.service";
 import { SupplierModule } from "../supplier/supplier.module";
 import { OutboundModule } from "../outbound/outbound.module";
 
@@ -17,10 +18,11 @@ import { OutboundModule } from "../outbound/outbound.module";
   providers: [
     ProductsService,
     ProductCacheService,
+    PurchasePathService,
     ProductsRepository,
     SupabaseService,
     JwtTenantGuard,
   ],
-  exports: [ProductsService, ProductCacheService],
+  exports: [ProductsService, ProductCacheService, PurchasePathService],
 })
 export class ProductModule {}

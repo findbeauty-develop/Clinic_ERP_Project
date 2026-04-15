@@ -37,6 +37,24 @@ type BarcodeItem = {
   barcode_package_type: string;
 };
 
+type PurchasePathDetail = {
+  id: string;
+  pathType: "MANAGER" | "SITE" | "OTHER";
+  isDefault?: boolean;
+  siteName?: string | null;
+  siteUrl?: string | null;
+  normalizedDomain?: string | null;
+  otherText?: string | null;
+  clinicSupplierManagerId?: string | null;
+  manager?: {
+    id: string;
+    companyName: string;
+    name: string;
+    position?: string | null;
+    phoneNumber?: string | null;
+  } | null;
+};
+
 type ProductDetail = {
   id: string;
   productName: string;
@@ -78,6 +96,7 @@ type ProductDetail = {
   returnStorage?: string | null;
   alertDays?: string | number | null;
   hasExpiryPeriod?: boolean;
+  purchasePaths?: PurchasePathDetail[];
   batches?: {
     id: string;
     batch_no: string;
@@ -275,6 +294,9 @@ export default function ProductDetailPage() {
           hasExpiryPeriod:
             data.hasExpiryPeriod ?? data.has_expiry_period ?? false,
           batches: data.batches,
+          purchasePaths: (data.purchasePaths ?? data.purchase_paths ?? []) as
+            | PurchasePathDetail[]
+            | undefined,
         };
 
         setProduct(formattedProduct);
@@ -457,6 +479,9 @@ export default function ProductDetailPage() {
               onSuccess={(updatedProduct) => {
                 setProduct(updatedProduct);
                 setIsEditing(false);
+              }}
+              onPurchasePathsUpdated={(paths) => {
+                setProduct((p) => (p ? { ...p, purchasePaths: paths } : p));
               }}
             />
           ) : (
@@ -823,35 +848,78 @@ export default function ProductDetailPage() {
                 </div>
               </>
 
-              {/* 공급업체 정보 Section */}
-              {product.supplierName && (
-                <>
-                  <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-                    <TruckIcon className="h-5 w-5 text-indigo-500" />
-                    공급업체 정보
-                  </h2>
-                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <ReadOnlyField
-                        label="회사명"
-                        value={product.supplierName || "—"}
-                      />
-                      <ReadOnlyField
-                        label="담당자"
-                        value={product.managerName || "—"}
-                      />
-                      <ReadOnlyField
-                        label="담당자 연락처"
-                        value={product.contactPhone || "—"}
-                      />
-                      <ReadOnlyField
-                        label="이메일"
-                        value={product.contactEmail || "—"}
-                      />
+              {/* 구매 경로 (read-only) */}
+              <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                <TruckIcon className="h-5 w-5 text-indigo-500" />
+                구매 경로
+              </h2>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+                {product.purchasePaths && product.purchasePaths.length > 0 ? (
+                  <ul className="space-y-3">
+                    {product.purchasePaths.map((p) => (
+                      <li
+                        key={p.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/50"
+                      >
+                        <div className="font-medium text-slate-800 dark:text-slate-100">
+                          {p.pathType === "MANAGER" &&
+                            (p.manager
+                              ? `${p.manager.companyName} · ${p.manager.name}${
+                                  p.manager.phoneNumber
+                                    ? ` (${p.manager.phoneNumber})`
+                                    : ""
+                                }`
+                              : "담당자 경로")}
+                          {p.pathType === "SITE" &&
+                            (p.siteUrl ||
+                              p.siteName ||
+                              p.normalizedDomain ||
+                              "사이트 경로")}
+                          {p.pathType === "OTHER" &&
+                            (p.otherText || "기타 경로")}
+                        </div>
+                        {p.isDefault && (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                            기본
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    등록된 구매 경로가 없습니다. 제품 수정에서 경로를 추가할 수
+                    있습니다.
+                  </p>
+                )}
+                {product.supplierName &&
+                  (!product.purchasePaths ||
+                    product.purchasePaths.length === 0) && (
+                    <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-700">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        연결 공급업체 (기본)
+                      </p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <ReadOnlyField
+                          label="회사명"
+                          value={product.supplierName || "—"}
+                        />
+                        <ReadOnlyField
+                          label="담당자"
+                          value={product.managerName || "—"}
+                        />
+                        <ReadOnlyField
+                          label="담당자 연락처"
+                          value={product.contactPhone || "—"}
+                        />
+                        <ReadOnlyField
+                          label="이메일"
+                          value={product.contactEmail || "—"}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  )}
+              </div>
 
               {/* 보관 정보 Section */}
               {/* {(product.storageLocation ||
@@ -1364,12 +1432,37 @@ export default function ProductDetailPage() {
   );
 }
 
+function mapPurchasePathApiRow(raw: any): PurchasePathDetail {
+  const m = raw.clinicSupplierManager ?? raw.clinic_supplier_manager;
+  return {
+    id: raw.id,
+    pathType: raw.path_type ?? raw.pathType,
+    isDefault: raw.is_default ?? raw.isDefault,
+    siteName: raw.site_name ?? raw.siteName ?? null,
+    siteUrl: raw.site_url ?? raw.siteUrl ?? null,
+    normalizedDomain: raw.normalized_domain ?? raw.normalizedDomain ?? null,
+    otherText: raw.other_text ?? raw.otherText ?? null,
+    clinicSupplierManagerId:
+      raw.clinic_supplier_manager_id ?? raw.clinicSupplierManagerId ?? null,
+    manager: m
+      ? {
+          id: m.id,
+          companyName: m.company_name ?? m.companyName ?? "",
+          name: m.name ?? "",
+          position: m.position ?? null,
+          phoneNumber: m.phone_number ?? m.phoneNumber ?? null,
+        }
+      : null,
+  };
+}
+
 // Product Edit Form Component
 interface ProductEditFormProps {
   product: ProductDetail;
   apiUrl: string;
   onCancel: () => void;
   onSuccess: (updatedProduct: ProductDetail) => void;
+  onPurchasePathsUpdated?: (paths: PurchasePathDetail[]) => void;
 }
 
 function ProductEditForm({
@@ -1377,6 +1470,7 @@ function ProductEditForm({
   apiUrl,
   onCancel,
   onSuccess,
+  onPurchasePathsUpdated,
 }: ProductEditFormProps) {
   const unitOptions = [
     "cc",
@@ -1416,6 +1510,22 @@ function ProductEditForm({
     useState(false);
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>("");
   const [phoneSearchNoResults, setPhoneSearchNoResults] = useState(false);
+
+  const [purchasePathsList, setPurchasePathsList] = useState<
+    PurchasePathDetail[]
+  >(product.purchasePaths ?? []);
+  const [purchasePathAddOpen, setPurchasePathAddOpen] = useState(false);
+  const [purchasePathType, setPurchasePathType] = useState<
+    "" | "MANAGER" | "SITE" | "OTHER"
+  >("");
+  const [sitePathInput, setSitePathInput] = useState("");
+  const [otherPathInput, setOtherPathInput] = useState("");
+  const [purchasePathWriteNow, setPurchasePathWriteNow] = useState(true);
+  const [purchasePathSaving, setPurchasePathSaving] = useState(false);
+
+  useEffect(() => {
+    setPurchasePathsList(product.purchasePaths ?? []);
+  }, [product.id, product.purchasePaths]);
 
   // New supplier form state
   const [newSupplierForm, setNewSupplierForm] = useState({
@@ -1464,6 +1574,7 @@ function ProductEditForm({
           companyPhone: product.supplierCompanyPhone || null,
           companyEmail: product.supplierCompanyEmail || "",
           managerId: product.supplierId || "",
+          clinicSupplierManagerId: product.supplierId || undefined,
           managerName: product.managerName,
           position: product.supplierPosition || null,
           phoneNumber: product.contactPhone || "",
@@ -1692,6 +1803,8 @@ function ProductEditForm({
           companyPhone: item.companyPhone || null,
           companyEmail: item.companyEmail || "",
           managerId: item.managerId || "",
+          clinicSupplierManagerId:
+            item.clinicSupplierManagerId || item.managerId || item.id || "",
           managerName: item.managerName || "",
           position: item.position || null,
           phoneNumber: item.phoneNumber || "",
@@ -1774,7 +1887,13 @@ function ProductEditForm({
   };
 
   const handleSupplierSelect = (result: any) => {
-    setSelectedSupplierDetails(result);
+    setSelectedSupplierDetails({
+      ...result,
+      clinicSupplierManagerId:
+        result.clinicSupplierManagerId ||
+        result.managerId ||
+        result.supplierId,
+    });
     setEditingSupplierDetails({
       companyName: result.companyName,
       companyAddress: result.companyAddress || "",
@@ -1806,6 +1925,138 @@ function ProductEditForm({
         email1: editingSupplierDetails.email1,
       });
       setShowSupplierEditModal(false);
+    }
+  };
+
+  const refreshPurchasePathsList = useCallback(async () => {
+    try {
+      const { apiGet } = await import("../../../lib/api");
+      const rows = await apiGet<any[]>(
+        `${apiUrl}/products/${product.id}/purchase-paths`
+      );
+      const mapped = (rows || []).map(mapPurchasePathApiRow);
+      setPurchasePathsList(mapped);
+      onPurchasePathsUpdated?.(mapped);
+    } catch (e) {
+      console.error("Failed to load purchase paths", e);
+    }
+  }, [apiUrl, product.id, onPurchasePathsUpdated]);
+
+  const registerManagerPurchasePath = async () => {
+    const mgrId =
+      selectedSupplierDetails?.clinicSupplierManagerId ||
+      selectedSupplierDetails?.managerId ||
+      selectedSupplierDetails?.supplierId;
+    if (!mgrId) {
+      alert("담당자를 검색하여 선택한 뒤 등록할 수 있습니다.");
+      return;
+    }
+    if (
+      purchasePathsList.some(
+        (p) =>
+          p.pathType === "MANAGER" &&
+          (p.clinicSupplierManagerId === mgrId || p.manager?.id === mgrId)
+      )
+    ) {
+      alert("이미 동일한 담당자 경로가 등록되어 있습니다.");
+      return;
+    }
+    setPurchasePathSaving(true);
+    try {
+      const { apiPost } = await import("../../../lib/api");
+      await apiPost(`${apiUrl}/products/${product.id}/purchase-paths`, {
+        pathType: "MANAGER",
+        clinicSupplierManagerId: mgrId,
+      });
+      await refreshPurchasePathsList();
+      alert("구매 경로가 등록되었습니다.");
+      setPurchasePathType("");
+      setPurchasePathAddOpen(false);
+    } catch (err: any) {
+      const msg =
+        err?.response?.message ||
+        err?.message ||
+        "구매 경로 등록에 실패했습니다.";
+      alert(typeof msg === "string" ? msg : JSON.stringify(msg));
+    } finally {
+      setPurchasePathSaving(false);
+    }
+  };
+
+  const registerSitePurchasePath = async () => {
+    const v = sitePathInput.trim();
+    if (!v) {
+      alert("사이트 이름 또는 URL을 입력해주세요.");
+      return;
+    }
+    const asUrl = /^https?:\/\//i.test(v)
+      ? v
+      : /^www\./i.test(v) || /\.[a-z0-9-]+\.[a-z]{2,}/i.test(v)
+        ? `https://${v.replace(/^https?:\/\//i, "")}`
+        : null;
+    setPurchasePathSaving(true);
+    try {
+      const { apiPost } = await import("../../../lib/api");
+      await apiPost(`${apiUrl}/products/${product.id}/purchase-paths`, {
+        pathType: "SITE",
+        ...(asUrl ? { siteUrl: asUrl } : { siteName: v }),
+      });
+      await refreshPurchasePathsList();
+      setSitePathInput("");
+      alert("구매 경로가 등록되었습니다.");
+      setPurchasePathType("");
+      setPurchasePathAddOpen(false);
+    } catch (err: any) {
+      const msg =
+        err?.response?.message ||
+        err?.message ||
+        "구매 경로 등록에 실패했습니다.";
+      alert(typeof msg === "string" ? msg : JSON.stringify(msg));
+    } finally {
+      setPurchasePathSaving(false);
+    }
+  };
+
+  const registerOtherPurchasePath = async () => {
+    const v = otherPathInput.trim();
+    if (!v) {
+      alert("구매 경로 내용을 입력해주세요.");
+      return;
+    }
+    setPurchasePathSaving(true);
+    try {
+      const { apiPost } = await import("../../../lib/api");
+      await apiPost(`${apiUrl}/products/${product.id}/purchase-paths`, {
+        pathType: "OTHER",
+        otherText: v,
+      });
+      await refreshPurchasePathsList();
+      setOtherPathInput("");
+      alert("구매 경로가 등록되었습니다.");
+      setPurchasePathType("");
+      setPurchasePathAddOpen(false);
+    } catch (err: any) {
+      const msg =
+        err?.response?.message ||
+        err?.message ||
+        "구매 경로 등록에 실패했습니다.";
+      alert(typeof msg === "string" ? msg : JSON.stringify(msg));
+    } finally {
+      setPurchasePathSaving(false);
+    }
+  };
+
+  const deletePurchasePath = async (pathId: string) => {
+    if (!confirm("이 구매 경로를 삭제할까요?")) return;
+    setPurchasePathSaving(true);
+    try {
+      const { apiDelete } = await import("../../../lib/api");
+      await apiDelete(`${apiUrl}/products/${product.id}/purchase-paths/${pathId}`);
+      await refreshPurchasePathsList();
+    } catch (err: any) {
+      alert(err?.message || "삭제에 실패했습니다.");
+    } finally {
+      setPurchasePathSaving(false);
     }
   };
 
@@ -2236,6 +2487,10 @@ function ProductEditForm({
           product.hasExpiryPeriod ??
           false,
         batches: finalProductResponse.batches || product.batches,
+        purchasePaths: (finalProductResponse.purchasePaths ??
+          finalProductResponse.purchase_paths ??
+          product.purchasePaths ??
+          []) as PurchasePathDetail[] | undefined,
       };
 
       alert("제품이 성공적으로 업데이트되었습니다.");
@@ -3029,12 +3284,170 @@ function ProductEditForm({
         </div>
       </div>
 
-      {/* 공급업체 정보 Section */}
-      <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-        <TruckIcon className="h-5 w-5 text-indigo-500" />
-        공급업체 정보 *
-      </h2>
+      {/* 구매 경로 Section */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <TruckIcon className="h-5 w-5 text-indigo-500" />
+            구매 경로
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              setPurchasePathAddOpen(true);
+              setPurchasePathType("");
+              setSitePathInput("");
+              setOtherPathInput("");
+            }}
+            className="rounded-lg border border-sky-500 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
+          >
+            경로 추가
+          </button>
+        </div>
+
+        {purchasePathsList.length > 0 && (
+          <ul className="mb-4 space-y-2">
+            {purchasePathsList.map((p) => (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+              >
+                <div className="text-slate-800 dark:text-slate-100">
+                  <span className="mr-2 font-semibold text-sky-700 dark:text-sky-300">
+                    {p.pathType === "MANAGER" && "담당자 경로"}
+                    {p.pathType === "SITE" && "사이트 경로"}
+                    {p.pathType === "OTHER" && "기타 경로"}
+                  </span>
+                  <span>
+                    {p.pathType === "MANAGER" &&
+                      (p.manager
+                        ? `${p.manager.companyName} · ${p.manager.name}`
+                        : "—")}
+                    {p.pathType === "SITE" &&
+                      (p.siteUrl || p.siteName || p.normalizedDomain || "—")}
+                    {p.pathType === "OTHER" && (p.otherText || "—")}
+                  </span>
+                  {p.isDefault ? (
+                    <span className="ml-2 text-xs text-sky-600 dark:text-sky-400">
+                      (기본)
+                    </span>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  disabled={purchasePathSaving}
+                  onClick={() => deletePurchasePath(p.id)}
+                  className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
+                >
+                  삭제
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {purchasePathAddOpen && (
+          <div className="mb-6 space-y-4 border-b border-slate-100 pb-6 dark:border-slate-700">
+            {(purchasePathType === "SITE" || purchasePathType === "OTHER") && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={purchasePathWriteNow}
+                  onChange={(e) => setPurchasePathWriteNow(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                이 제품의 구매 경로 바로 작성하기
+              </label>
+            )}
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <span>어디에서 이 제품 구매 하세요?</span>
+              <span
+                className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                title="제품을 구매하는 경로를 등록하면 발주 시 선택할 수 있습니다."
+              >
+                ⓘ
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={purchasePathType}
+                onChange={(e) =>
+                  setPurchasePathType(
+                    e.target.value as "" | "MANAGER" | "SITE" | "OTHER"
+                  )
+                }
+                className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <option value="">구매 경로 선택해주세요</option>
+                <option value="MANAGER">담당자 경로</option>
+                <option value="SITE">사이트 경로</option>
+                <option value="OTHER">기타 경로</option>
+              </select>
+              <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            {purchasePathType === "SITE" && (
+              <div className="space-y-3 pt-2">
+                <input
+                  type="text"
+                  value={sitePathInput}
+                  onChange={(e) => setSitePathInput(e.target.value)}
+                  placeholder="사이트 이름 또는 URL 붙여넣기"
+                  className="h-12 w-full rounded-xl border border-slate-200 px-4 text-sm focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={purchasePathSaving}
+                    onClick={registerSitePurchasePath}
+                    className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                  >
+                    {purchasePathSaving ? "등록 중..." : "등록하기"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {purchasePathType === "OTHER" && (
+              <div className="space-y-3 pt-2">
+                <input
+                  type="text"
+                  value={otherPathInput}
+                  onChange={(e) => setOtherPathInput(e.target.value)}
+                  placeholder="예) 서비스 무료제공, 학회 수령, 샘플 등..."
+                  className="h-12 w-full rounded-xl border border-slate-200 px-4 text-sm focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={purchasePathSaving}
+                    onClick={registerOtherPurchasePath}
+                    className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                  >
+                    {purchasePathSaving ? "등록 중..." : "등록하기"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {purchasePathAddOpen && purchasePathType === "MANAGER" && (
+          <div className="rounded-xl bg-sky-50/90 p-4 dark:bg-sky-950/25">
         {supplierViewMode === "table" && selectedSupplierDetails ? (
           /* 2-rasm: Table Format - Faqat ko'rsatish */
           <div className="relative">
@@ -3799,6 +4212,20 @@ function ProductEditForm({
               </>
             )}
           </>
+        )}
+            {supplierViewMode === "table" && selectedSupplierDetails && (
+              <div className="mt-6 flex justify-end border-t border-sky-200/80 pt-4 dark:border-sky-800/50">
+                <button
+                  type="button"
+                  disabled={purchasePathSaving}
+                  onClick={registerManagerPurchasePath}
+                  className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                >
+                  {purchasePathSaving ? "등록 중..." : "구매 경로 등록하기"}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

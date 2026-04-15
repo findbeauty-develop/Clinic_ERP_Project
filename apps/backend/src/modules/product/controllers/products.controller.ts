@@ -12,6 +12,8 @@ import {
   Header,
   Res,
   Query,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import { Response } from "express";
 import { ApiOperation, ApiTags, ApiBearerAuth } from "@nestjs/swagger";
@@ -25,11 +27,19 @@ import { ProductsService } from "../services/products.service";
 import { JwtTenantGuard } from "../../../common/guards/jwt-tenant.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { UpdateProductDto } from "../dto/update-product.dto";
+import { PurchasePathService } from "../services/purchase-path.service";
+import {
+  CreatePurchasePathDto,
+  UpdatePurchasePathDto,
+} from "../dto/purchase-path.dto";
 
 @ApiTags("products")
 @Controller("products")
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly purchasePathService: PurchasePathService
+  ) {}
 
   @Post()
   @UseGuards(JwtTenantGuard)
@@ -40,6 +50,80 @@ export class ProductsController {
       throw new BadRequestException("Tenant ID is required");
     }
     return await this.productsService.createProduct(dto, tenantId);
+  }
+
+  @Get(":id/purchase-paths")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List purchase paths (구매 경로) for a product" })
+  listPurchasePaths(@Param("id") productId: string, @Tenant() tenantId: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.purchasePathService.listForProduct(productId, tenantId);
+  }
+
+  @Post(":id/purchase-paths")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiOperation({ summary: "Add a purchase path to a product" })
+  createPurchasePath(
+    @Param("id") productId: string,
+    @Tenant() tenantId: string,
+    @Body() dto: CreatePurchasePathDto
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.purchasePathService.create(productId, tenantId, dto);
+  }
+
+  @Patch(":id/purchase-paths/:pathId")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiOperation({ summary: "Update a purchase path" })
+  updatePurchasePath(
+    @Param("id") productId: string,
+    @Param("pathId") pathId: string,
+    @Tenant() tenantId: string,
+    @Body() dto: UpdatePurchasePathDto
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.purchasePathService.update(productId, pathId, tenantId, dto);
+  }
+
+  @Delete(":id/purchase-paths/:pathId")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a purchase path" })
+  deletePurchasePath(
+    @Param("id") productId: string,
+    @Param("pathId") pathId: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.purchasePathService.delete(productId, pathId, tenantId);
+  }
+
+  @Put(":id/purchase-paths/:pathId/default")
+  @UseGuards(JwtTenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Set default purchase path for a product" })
+  setDefaultPurchasePath(
+    @Param("id") productId: string,
+    @Param("pathId") pathId: string,
+    @Tenant() tenantId: string
+  ) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+    return this.purchasePathService.setDefault(productId, pathId, tenantId);
   }
 
   @Get(":id")

@@ -546,7 +546,27 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    return mapPrismaProductToDetailView(product);
+    const purchasePaths = await (this.prisma as any).purchasePath.findMany({
+      where: { product_id: productId, tenant_id: tenantId },
+      orderBy: [{ sort_order: "asc" }, { created_at: "asc" }],
+      include: {
+        clinicSupplierManager: {
+          select: {
+            id: true,
+            company_name: true,
+            name: true,
+            position: true,
+            phone_number: true,
+            linked_supplier_manager_id: true,
+          },
+        },
+      },
+    });
+
+    return mapPrismaProductToDetailView({
+      ...product,
+      purchasePaths,
+    });
   }
 
   async getAllProducts(tenantId: string) {

@@ -6,6 +6,43 @@
 import { mapProductGtinsToBarcodeItems } from "./product-gtin.mapper";
 import { mapClinicSupplierManagerToDetailRowFields } from "./product-supplier.mapper";
 
+const FOUR_MONTHS_MS = 120 * 24 * 60 * 60 * 1000;
+
+function mapPurchasePathsForDetail(paths: any[] | undefined) {
+  if (!paths?.length) return [];
+  const now = Date.now();
+  return paths.map((p) => {
+    const last = p.last_used_at ? new Date(p.last_used_at).getTime() : null;
+    const longUnused =
+      last != null && now - last >= FOUR_MONTHS_MS ? true : false;
+    const m = p.clinicSupplierManager;
+    return {
+      id: p.id,
+      pathType: p.path_type,
+      isDefault: p.is_default,
+      sortOrder: p.sort_order,
+      lastUsedAt: p.last_used_at,
+      clinicSupplierManagerId: p.clinic_supplier_manager_id,
+      siteName: p.site_name,
+      siteUrl: p.site_url,
+      normalizedDomain: p.normalized_domain,
+      otherText: p.other_text,
+      longUnusedTag: longUnused,
+      manager:
+        m != null
+          ? {
+              id: m.id,
+              companyName: m.company_name,
+              name: m.name,
+              position: m.position,
+              phoneNumber: m.phone_number,
+              platformLinked: !!m.linked_supplier_manager_id,
+            }
+          : null,
+    };
+  });
+}
+
 /** Loaded product from getProduct query (include shape). */
 export function mapPrismaProductToDetailView(product: any) {
   const latestBatch = (product.batches as any[])?.[0];
@@ -44,5 +81,6 @@ export function mapPrismaProductToDetailView(product: any) {
     returnStorage: product.returnPolicy?.return_storage ?? null,
     alertDays: product.alert_days ?? null,
     hasExpiryPeriod: product.has_expiry_period ?? false,
+    purchasePaths: mapPurchasePathsForDetail(product.purchasePaths),
   };
 }

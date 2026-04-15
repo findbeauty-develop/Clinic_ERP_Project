@@ -32,6 +32,11 @@ export class OrderItemDto {
   @IsString()
   @IsOptional()
   memo?: string;
+
+  /** Optional 구매 경로 (defaults to product default path when omitted) */
+  @IsString()
+  @IsOptional()
+  purchasePathId?: string;
 }
 
 export class CreateOrderDto {

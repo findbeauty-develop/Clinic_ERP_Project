@@ -43,6 +43,7 @@ model Product {
   supplierProducts SupplierProduct[] // DEPRECATED: Will be removed after migration
   productSupplier  ProductSupplier? // NEW: 1:1 mapping to supplier (per tenant)
   productGtins     ProductGTIN[]
+  purchasePaths    PurchasePath[] // 구매 경로 (담당자 / 사이트 / 기타)
 
   @@index([tenant_id])
   @@index([tenant_id, name])
@@ -56,6 +57,13 @@ enum BarcodePackageType {
   UNIT
   SYRINGE
   BOTTLE
+  OTHER
+}
+
+/// 구매 경로 유형 (제품별 여러 경로)
+enum PurchasePathType {
+  MANAGER
+  SITE
   OTHER
 }
 
@@ -280,6 +288,36 @@ model ProductSupplier {
   @@index([tenant_id, clinic_supplier_manager_id])
 }
 
+/// 구매 경로 — 제품당 여러 개 (담당자 / 사이트 / 기타), 기본 경로 1개
+model PurchasePath {
+  id         String @id @default(uuid())
+  tenant_id  String
+  product_id String
+
+  path_type  PurchasePathType
+  is_default Boolean            @default(false)
+  sort_order Int                @default(0)
+  last_used_at DateTime?
+
+  clinic_supplier_manager_id String?
+  site_name          String?
+  site_url           String?
+  normalized_domain  String?
+  other_text         String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  product               Product                @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  clinicSupplierManager ClinicSupplierManager? @relation(fields: [clinic_supplier_manager_id], references: [id], onDelete: SetNull)
+  orderItems            OrderItem[]
+
+  @@index([tenant_id])
+  @@index([product_id])
+  @@index([product_id, path_type])
+  @@index([tenant_id, product_id])
+}
+
 model Outbound {
   id            String    @id @default(uuid())
   tenant_id     String
@@ -489,9 +527,15 @@ model OrderItem {
   rejection_member_name  String?   // Kim "상황 확인" bosgan (rejection_acknowledged bo'lganda)
   created_at         DateTime  @default(now())
   updated_at         DateTime?
+
+  purchase_path_id          String?
+  purchase_path_type        PurchasePathType?
+  purchase_path_snapshot    Json?
+
   batch              Batch?    @relation(fields: [batch_id], references: [id])
   order              Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
   product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  purchasePath       PurchasePath? @relation(fields: [purchase_path_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id])
   @@index([order_id])
@@ -499,6 +543,7 @@ model OrderItem {
   @@index([batch_id])
   @@index([tenant_id, order_id])
   @@index([item_status])
+  @@index([purchase_path_id])
 }
 
 model OrderDraft {
@@ -672,6 +717,7 @@ model ClinicSupplierManager {
 
   // Relations
   productSuppliers       ProductSupplier[] // Products mapped to this supplier
+  purchasePaths          PurchasePath[]
   clinicLinks            ClinicSupplierLink[] // Trade links created from this contact
   SupplierManager        SupplierManager?
   defectiveProductReturns DefectiveProductReturn[]
