@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString,
   IsOptional,
@@ -6,9 +6,10 @@ import {
   Matches,
   IsIn,
   IsUUID,
+  IsNotEmpty,
+  ValidateIf,
 } from "class-validator";
 
-// Job titles enum
 const JOB_TITLES = [
   "사원",
   "주임",
@@ -21,117 +22,113 @@ const JOB_TITLES = [
   "담당자",
 ] as const;
 
+/** Supplier.status values used for clinic-created rows */
+export const MANUAL_SUPPLIER_STATUSES = ["MANUAL_ONLY", "ACTIVE"] as const;
+
 export class CreateSupplierManualDto {
-  @ApiProperty({
-    description: "ClinicSupplierManager id (edit时必传，新建时不传)",
-    required: false,
+  @ApiPropertyOptional({
+    description: "ClinicSupplierManager id (수정 시)",
   })
   @IsOptional()
   @IsUUID()
   id?: string;
 
-  @ApiProperty({
-    description: "회사명 (Company name)",
-    example: "ABC 제약회사",
+  @ApiPropertyOptional({
+    description: "기존 Supplier.id — 있으면 해당 행을 갱신하고 클리닉 매니저에 연결",
   })
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiProperty({ description: "회사명 (필수)" })
   @IsString()
+  @IsNotEmpty()
   companyName!: string;
 
-  @ApiProperty({
-    description: "사업자 등록번호 (Business registration number)",
+  @ApiPropertyOptional({
+    description: "사업자 등록번호 (선택, 입력 시 123-45-67890 형식)",
     example: "123-45-67890",
   })
+  @IsOptional()
+  @ValidateIf(
+    (o: CreateSupplierManualDto) =>
+      o.businessNumber != null && String(o.businessNumber).trim() !== ""
+  )
   @IsString()
   @Matches(/^\d{3}-\d{2}-\d{5}$/, {
     message: "사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)",
   })
-  businessNumber!: string;
+  businessNumber?: string;
 
-  @ApiProperty({
-    description: "회사 전화번호 (Company phone number)",
-    example: "02-1234-5678",
-    required: false,
-  })
+  @ApiPropertyOptional({ description: "회사 전화번호" })
   @IsString()
   @IsOptional()
   companyPhone?: string;
 
-  @ApiProperty({
-    description: "회사 이메일 (Company email)",
-    example: "info@company.com",
-    required: false,
-  })
+  @ApiPropertyOptional({ description: "회사 이메일" })
   @IsEmail()
   @IsOptional()
   companyEmail?: string;
 
-  @ApiProperty({
-    description: "회사 주소 (Company address)",
-    example: "서울시 강남구",
-    required: false,
-  })
+  @ApiPropertyOptional({ description: "회사 주소" })
   @IsString()
   @IsOptional()
   companyAddress?: string;
 
-  @ApiProperty({
-    description: "담당자 이름 (Manager name)",
-    example: "홍길동",
-    required: false,
-  })
+  @ApiProperty({ description: "담당자 이름 (필수)" })
   @IsString()
-  @IsOptional()
-  managerName?: string;
+  @IsNotEmpty()
+  managerName!: string;
 
   @ApiProperty({
-    description: "담당자 핸드폰 번호 (Manager phone number)",
+    description: "담당자 핸드폰 (필수, 010XXXXXXXX)",
     example: "01012345678",
-    required: false,
   })
   @IsString()
-  @IsOptional()
+  @IsNotEmpty()
   @Matches(/^010\d{8}$/, {
     message: "휴대폰 번호 형식이 올바르지 않습니다 (예: 01012345678)",
   })
-  phoneNumber?: string;
+  phoneNumber!: string;
 
   @ApiProperty({
-    description: "담당자 이메일 (Manager email)",
-    example: "manager@company.com",
-    required: false,
+    description: "Supplier.status (필수)",
+    enum: MANUAL_SUPPLIER_STATUSES,
+    example: "MANUAL_ONLY",
   })
+  @IsString()
+  @IsIn([...MANUAL_SUPPLIER_STATUSES])
+  status!: string;
+
+  @ApiPropertyOptional({ description: "담당자 이메일" })
   @IsEmail()
   @IsOptional()
   managerEmail?: string;
 
-  @ApiProperty({
-    description: "담당자 직함 (Manager position)",
-    example: "과장",
+  @ApiPropertyOptional({
+    description: "담당자 직함",
     enum: JOB_TITLES,
-    required: false,
   })
-  @IsString()
   @IsOptional()
+  @ValidateIf(
+    (o: CreateSupplierManualDto) =>
+      o.position != null && String(o.position).trim() !== ""
+  )
+  @IsString()
   @IsIn(JOB_TITLES, {
     message:
       "직함은 사원, 주임, 대리, 과장, 차장, 부장, 대표, 이사, 담당자 중 하나여야 합니다",
   })
   position?: string;
 
-  @ApiProperty({
-    description: "담당 제품 (Responsible products - comma separated)",
-    example: "시럽, 주사기, 마스크",
-    required: false,
+  @ApiPropertyOptional({
+    description: "담당 제품 (쉼표 구분)",
   })
   @IsString()
   @IsOptional()
   responsibleProducts?: string;
 
-  @ApiProperty({
-    description: "메모 (Memo)",
-    example: "주요 거래처",
-    required: false,
-  })
+  @ApiPropertyOptional({ description: "메모" })
   @IsString()
   @IsOptional()
   memo?: string;

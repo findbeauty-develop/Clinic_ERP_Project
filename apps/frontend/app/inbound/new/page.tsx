@@ -58,6 +58,20 @@ const positionOptions = [
   "담당자",
 ];
 
+type StagedInboundPurchasePath = {
+  tempId: string;
+  pathType: "MANAGER" | "SITE" | "OTHER";
+  clinicSupplierManagerId?: string;
+  displayLabel: string;
+  siteUrl?: string;
+  siteName?: string;
+  otherText?: string;
+};
+
+function newStagedPathTempId() {
+  return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export default function InboundNewPage() {
   const router = useRouter();
   const apiUrl = useMemo(
@@ -201,6 +215,7 @@ export default function InboundNewPage() {
     Array<{
       id?: string; // Supplier ID (UUID)
       supplierId?: string; // Supplier ID (alias)
+      clinicSupplierManagerId?: string;
       companyName: string;
       companyAddress: string | null;
       businessNumber: string;
@@ -220,6 +235,8 @@ export default function InboundNewPage() {
   const [showSupplierConfirmModal, setShowSupplierConfirmModal] =
     useState(false); // Modal for confirming supplier without transaction history
   const [showManualEntryForm, setShowManualEntryForm] = useState(false); // Manual entry form
+  /** false = new simple card; true = legacy card (certificate OCR + full fields) */
+  const [manualEntryLegacyMode, setManualEntryLegacyMode] = useState(false);
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>(""); // Phone number for manual entry
 
   // OCR and Business Verification states
@@ -255,6 +272,7 @@ export default function InboundNewPage() {
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     id?: string; // Supplier ID (UUID)
     supplierId?: string; // Supplier ID (alias)
+    clinicSupplierManagerId?: string;
     companyName: string;
     companyAddress: string | null;
     businessNumber: string;
@@ -268,6 +286,18 @@ export default function InboundNewPage() {
     email2: string | null;
     responsibleProducts: string[];
   } | null>(null);
+
+  const [stagedPurchasePaths, setStagedPurchasePaths] = useState<
+    StagedInboundPurchasePath[]
+  >([]);
+  const [purchasePathAddOpen, setPurchasePathAddOpen] = useState(false);
+  const [purchasePathType, setPurchasePathType] = useState<
+    "" | "MANAGER" | "SITE" | "OTHER"
+  >("");
+  const [sitePathInput, setSitePathInput] = useState("");
+  const [otherPathInput, setOtherPathInput] = useState("");
+  const [purchasePathWriteNow, setPurchasePathWriteNow] = useState(true);
+  const [purchasePathSaving, setPurchasePathSaving] = useState(false);
 
   // GTIN parse helper for additional barcode inputs
   const parseGtinInput = async (
@@ -429,7 +459,8 @@ export default function InboundNewPage() {
       formData.salePrice ||
       formData.supplierName ||
       formData.supplierContactName ||
-      selectedSupplierDetails
+      selectedSupplierDetails ||
+      stagedPurchasePaths.length > 0
     );
   };
 
@@ -447,7 +478,7 @@ export default function InboundNewPage() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [formData, selectedSupplierDetails]);
+  }, [formData, selectedSupplierDetails, stagedPurchasePaths.length]);
 
   // Handle Next.js router navigation
   useEffect(() => {
@@ -469,7 +500,13 @@ export default function InboundNewPage() {
     return () => {
       router.push = originalPush;
     };
-  }, [router, formData, selectedSupplierDetails, isSaving]);
+  }, [
+    router,
+    formData,
+    selectedSupplierDetails,
+    stagedPurchasePaths.length,
+    isSaving,
+  ]);
 
   // Handle dialog actions
   const handleLeavePage = () => {
@@ -558,6 +595,8 @@ export default function InboundNewPage() {
           companyPhone: item.companyPhone || null,
           companyEmail: item.companyEmail || "",
           managerId: item.managerId || "",
+          clinicSupplierManagerId:
+            item.clinicSupplierManagerId || item.managerId || item.id || "",
           managerName: item.managerName || "",
           position: item.position || null,
           phoneNumber: item.phoneNumber || "",
@@ -727,7 +766,14 @@ export default function InboundNewPage() {
     setSelectedSupplierResult(index);
     const result = supplierSearchResults[index];
     if (result) {
-      setSelectedSupplierDetails(result);
+      setSelectedSupplierDetails({
+        ...result,
+        clinicSupplierManagerId:
+          result.clinicSupplierManagerId ||
+          result.managerId ||
+          result.supplierId ||
+          undefined,
+      });
       handleInputChange("supplierId", result.supplierId || result.id); // ✅ Use Supplier.id (UUID)
       handleInputChange("supplierName", result.companyName);
       handleInputChange("supplierContactName", result.managerName);
@@ -812,6 +858,10 @@ export default function InboundNewPage() {
     setSelectedSupplierDetails({
       id: pendingSupplier.supplierId || "",
       supplierId: pendingSupplier.supplierId || "",
+      clinicSupplierManagerId:
+        (pendingSupplier as any).clinicSupplierManagerId ||
+        pendingSupplier.managerId ||
+        undefined,
       companyName: pendingSupplier.companyName,
       companyAddress: pendingSupplier.companyAddress,
       businessNumber: pendingSupplier.businessNumber,
@@ -841,6 +891,7 @@ export default function InboundNewPage() {
   // Handle direct input (직접 입력 button)
   const handleDirectInput = () => {
     setShowSupplierConfirmModal(false);
+    setManualEntryLegacyMode(false);
     setShowManualEntryForm(true);
     // Keep pendingSupplierPhone for pre-filling phone number
   };
@@ -979,8 +1030,16 @@ export default function InboundNewPage() {
   // Handle manual entry form submission
   const handleManualEntrySubmit = async () => {
     // Validate required fields
+    if (!manualEntryForm.companyName?.trim()) {
+      alert("회사명은 필수입니다.");
+      return;
+    }
     if (!manualEntryForm.managerName || !manualEntryForm.phoneNumber) {
       alert("담당자 이름과 핸드폰 번호는 필수입니다.");
+      return;
+    }
+    if (!manualEntryLegacyMode && !manualEntryForm.position?.trim()) {
+      alert("직함을 선택해주세요.");
       return;
     }
 
@@ -1004,32 +1063,30 @@ export default function InboundNewPage() {
       // ✅ getAccessToken() ishlatish (localStorage emas)
       const token = await getAccessToken();
 
-      // Validate business number format if provided
-      let businessNumber = manualEntryForm.businessNumber.trim();
-      if (businessNumber && !/^\d{3}-\d{2}-\d{5}$/.test(businessNumber)) {
+      const businessNumberTrim = manualEntryForm.businessNumber.trim();
+      if (
+        businessNumberTrim &&
+        !/^\d{3}-\d{2}-\d{5}$/.test(businessNumberTrim)
+      ) {
         alert("사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)");
         return;
       }
 
-      // If business number is not provided, generate a temporary one
-      // Format: 000-00-XXXXX (where XXXXX is last 5 digits of phone number)
-      if (!businessNumber) {
-        const phoneLast5 = phoneNumber.slice(-5);
-        businessNumber = `000-00-${phoneLast5}`;
-      }
-
-      // Prepare data for API
-      const supplierData = {
-        companyName: manualEntryForm.companyName || "미입력",
-        businessNumber: businessNumber,
+      // Prepare data for API (필수: companyName, managerName, phoneNumber, status)
+      const supplierData: Record<string, unknown> = {
+        companyName: manualEntryForm.companyName.trim(),
         companyPhone: manualEntryForm.companyPhone || undefined,
         companyEmail: manualEntryForm.email1 || undefined,
         companyAddress: manualEntryForm.companyAddress || undefined,
         managerName: manualEntryForm.managerName,
-        phoneNumber: phoneNumber, // Format: 01012345678
+        phoneNumber: phoneNumber,
+        status: "MANUAL_ONLY",
         managerEmail: manualEntryForm.email1 || undefined,
         position: manualEntryForm.position || undefined,
       };
+      if (businessNumberTrim) {
+        supplierData.businessNumber = businessNumberTrim;
+      }
 
       // Call API to create supplier
       const response = await fetch(`${apiUrl}/supplier/create-manual`, {
@@ -1058,12 +1115,14 @@ export default function InboundNewPage() {
 
       // Close manual entry form and show supplier details
       setShowManualEntryForm(false);
+      setManualEntryLegacyMode(false);
       setSelectedSupplierDetails({
         id: result.supplier?.id || "",
         supplierId: result.supplier?.id || "",
+        clinicSupplierManagerId: result.clinicManager?.id || undefined,
         companyName: manualEntryForm.companyName || "미입력",
         companyAddress: manualEntryForm.companyAddress || null,
-        businessNumber: manualEntryForm.businessNumber || "000-00-00000",
+        businessNumber: businessNumberTrim || "",
         companyPhone: manualEntryForm.companyPhone || null,
         companyEmail: manualEntryForm.email1 || "",
         managerId: result.clinicManager?.id || "", // Manager database ID
@@ -1267,6 +1326,43 @@ export default function InboundNewPage() {
         return;
       }
 
+      const newProductId = (result as any)?.id as string | undefined;
+      if (newProductId && stagedPurchasePaths.length > 0) {
+        try {
+          for (let i = 0; i < stagedPurchasePaths.length; i++) {
+            const p = stagedPurchasePaths[i];
+            const isDefault = i === 0;
+            if (p.pathType === "MANAGER" && p.clinicSupplierManagerId) {
+              await apiPost(`/products/${newProductId}/purchase-paths`, {
+                pathType: "MANAGER",
+                clinicSupplierManagerId: p.clinicSupplierManagerId,
+                isDefault,
+              });
+            } else if (p.pathType === "SITE") {
+              await apiPost(`/products/${newProductId}/purchase-paths`, {
+                pathType: "SITE",
+                isDefault,
+                ...(p.siteUrl
+                  ? { siteUrl: p.siteUrl }
+                  : { siteName: p.siteName || p.displayLabel }),
+              });
+            } else if (p.pathType === "OTHER" && p.otherText) {
+              await apiPost(`/products/${newProductId}/purchase-paths`, {
+                pathType: "OTHER",
+                otherText: p.otherText,
+                isDefault,
+              });
+            }
+          }
+          setStagedPurchasePaths([]);
+        } catch (pathErr) {
+          console.error("Purchase path create after product:", pathErr);
+          alert(
+            "제품은 저장되었으나 구매 경로 등록 중 오류가 있었습니다. 제품 상세에서 구매 경로를 다시 등록해주세요."
+          );
+        }
+      }
+
       router.push("/inbound");
       // isSaving will be reset when component unmounts or navigation completes
     } catch (error) {
@@ -1278,6 +1374,96 @@ export default function InboundNewPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resolveClinicSupplierManagerId = () => {
+    if (!selectedSupplierDetails) return "";
+    return (
+      selectedSupplierDetails.clinicSupplierManagerId ||
+      selectedSupplierDetails.managerId ||
+      ""
+    );
+  };
+
+  const addStagedManagerPurchasePath = () => {
+    const mgrId = resolveClinicSupplierManagerId();
+    if (!mgrId || !selectedSupplierDetails) {
+      alert(
+        "담당자를 검색·선택하거나 수동 등록을 완료한 뒤 추가할 수 있습니다."
+      );
+      return;
+    }
+    if (
+      stagedPurchasePaths.some(
+        (p) => p.pathType === "MANAGER" && p.clinicSupplierManagerId === mgrId
+      )
+    ) {
+      alert("이미 목록에 동일한 담당자 경로가 있습니다.");
+      return;
+    }
+    setStagedPurchasePaths((prev) => [
+      ...prev,
+      {
+        tempId: newStagedPathTempId(),
+        pathType: "MANAGER",
+        clinicSupplierManagerId: mgrId,
+        displayLabel: `${selectedSupplierDetails.companyName} · ${selectedSupplierDetails.managerName}`,
+      },
+    ]);
+    alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
+    setPurchasePathType("");
+    setPurchasePathAddOpen(false);
+  };
+
+  const addStagedSitePurchasePath = () => {
+    const v = sitePathInput.trim();
+    if (!v) {
+      alert("사이트 이름 또는 URL을 입력해주세요.");
+      return;
+    }
+    const asUrl = /^https?:\/\//i.test(v)
+      ? v
+      : /^www\./i.test(v) || /\.[a-z0-9-]+\.[a-z]{2,}/i.test(v)
+        ? `https://${v.replace(/^https?:\/\//i, "")}`
+        : null;
+    setStagedPurchasePaths((prev) => [
+      ...prev,
+      {
+        tempId: newStagedPathTempId(),
+        pathType: "SITE",
+        displayLabel: v,
+        ...(asUrl ? { siteUrl: asUrl } : { siteName: v }),
+      },
+    ]);
+    setSitePathInput("");
+    alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
+    setPurchasePathType("");
+    setPurchasePathAddOpen(false);
+  };
+
+  const addStagedOtherPurchasePath = () => {
+    const v = otherPathInput.trim();
+    if (!v) {
+      alert("구매 경로 내용을 입력해주세요.");
+      return;
+    }
+    setStagedPurchasePaths((prev) => [
+      ...prev,
+      {
+        tempId: newStagedPathTempId(),
+        pathType: "OTHER",
+        displayLabel: v,
+        otherText: v,
+      },
+    ]);
+    setOtherPathInput("");
+    alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
+    setPurchasePathType("");
+    setPurchasePathAddOpen(false);
+  };
+
+  const removeStagedPurchasePath = (tempId: string) => {
+    setStagedPurchasePaths((prev) => prev.filter((p) => p.tempId !== tempId));
   };
 
   return (
@@ -2259,146 +2445,100 @@ export default function InboundNewPage() {
         </section>
 
         <section className="space-y-6">
-          <h2 className="flex items-center gap-3 text-lg font-semibold text-slate-800 dark:text-slate-100">
-            <TruckIcon className="h-5 w-5 text-indigo-500" />
-            공급업체 정보 <span className="text-red-500">*</span>
-          </h2>
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-            {selectedSupplierDetails ? (
-              /* Full Supplier Details Card */
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  공급업체 상세 정보
-                </h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                <TruckIcon className="h-5 w-5 text-indigo-500" />
+                구매 경로
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setPurchasePathAddOpen(true);
+                  setPurchasePathType("");
+                  setSitePathInput("");
+                  setOtherPathInput("");
+                }}
+                className="rounded-lg border border-sky-500 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
+              >
+                경로 추가
+              </button>
+            </div>
 
-                <div className="grid gap-6 md:grid-cols-2">
-                  {/* Left Column */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        회사명
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.companyName}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        회사 주소
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.companyAddress || "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        이름
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.managerName}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        직함
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.position || "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        이메일
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.email1 || "-"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        사업자 등록번호
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.businessNumber}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        회사 전화번호
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.companyPhone || "-"}
-                      </div>
-                    </div>
-                    {/* <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        담당자 ID
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.managerId}
-                      </div>
-                    </div> */}
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        핸드폰 번호
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.phoneNumber}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                        담당 제품
-                      </label>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                        {selectedSupplierDetails.responsibleProducts.length > 0
-                          ? selectedSupplierDetails.responsibleProducts.join(
-                              ", "
-                            )
-                          : "-"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 메모 - Full Width */}
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
-                    메모
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={formData.supplierNote}
-                    onChange={(e) =>
-                      handleInputChange("supplierNote", e.target.value)
-                    }
-                    placeholder="메모를 입력하세요"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
-                  />
-                </div>
-
-                {/* <div className="flex justify-end pt-4">
-                  <button
-                    type="button"
-                    onClick={handleSupplierDetailsClose}
-                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+            {stagedPurchasePaths.length > 0 && (
+              <ul className="mb-4 space-y-2">
+                {stagedPurchasePaths.map((p) => (
+                  <li
+                    key={p.tempId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-2.5 text-sm dark:border-amber-900/40 dark:bg-amber-950/20"
                   >
-                    확인하기
-                  </button>
-                </div> */}
-              </div>
-            ) : showManualEntryForm ? (
-              /* Manual Entry Form */
-              <div className="space-y-6">
-                {/* Header with back button */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+                    <div className="text-slate-800 dark:text-slate-100">
+                      <span className="mr-2 font-semibold text-amber-800 dark:text-amber-200">
+                        저장 대기 ·{" "}
+                        {p.pathType === "MANAGER"
+                          ? "담당자 경로"
+                          : p.pathType === "SITE"
+                            ? "사이트 경로"
+                            : "기타 경로"}
+                      </span>
+                      {p.displayLabel}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={purchasePathSaving}
+                      onClick={() => removeStagedPurchasePath(p.tempId)}
+                      className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
+                    >
+                      삭제
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {purchasePathAddOpen && (
+              <div className="mb-6 space-y-4 border-b border-slate-100 pb-6 dark:border-slate-700">
+                {(purchasePathType === "SITE" ||
+                  purchasePathType === "OTHER") && (
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={purchasePathWriteNow}
+                      onChange={(e) =>
+                        setPurchasePathWriteNow(e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    이 제품의 구매 경로 바로 작성하기
+                  </label>
+                )}
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <span>어디에서 이 제품 구매 하세요?</span>
+                  <span
+                    className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                    title="저장 시 제품과 함께 구매 경로가 등록됩니다."
+                  >
+                    ⓘ
+                  </span>
+                </div>
+                <div className="relative">
+                  <select
+                    value={purchasePathType}
+                    onChange={(e) =>
+                      setPurchasePathType(
+                        e.target.value as "" | "MANAGER" | "SITE" | "OTHER"
+                      )
+                    }
+                    className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="">구매 경로 선택해주세요</option>
+                    <option value="MANAGER">담당자 경로</option>
+                    <option value="SITE">사이트 경로</option>
+                    <option value="OTHER">기타 경로</option>
+                  </select>
+                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                     <svg
-                      className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+                      className="h-4 w-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -2407,176 +2547,386 @@ export default function InboundNewPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        d="M19 9l-7 7-7-7"
                       />
                     </svg>
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      담당자님 정보 없습니다. 입력 부탁드립니다.
-                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowManualEntryForm(false);
-                      setPendingSupplierPhone("");
-                    }}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    뒤로
-                  </button>
                 </div>
 
-                {/* Form Content */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  {/* Left Column */}
-                  <div className="space-y-4">
-                    {/* 담당자 이름 + 직함 */}
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        담당자 이름*
+                {purchasePathType === "SITE" && (
+                  <div className="space-y-3 pt-2">
+                    <input
+                      type="text"
+                      value={sitePathInput}
+                      onChange={(e) => setSitePathInput(e.target.value)}
+                      placeholder="사이트 이름 또는 URL 붙여넣기"
+                      className="h-12 w-full rounded-xl border border-slate-200 px-4 text-sm bg-white focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-white dark:text-slate-100"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={purchasePathSaving}
+                        onClick={addStagedSitePurchasePath}
+                        className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                      >
+                        등록하기
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {purchasePathType === "OTHER" && (
+                  <div className="space-y-3 pt-2">
+                    <input
+                      type="text"
+                      value={otherPathInput}
+                      onChange={(e) => setOtherPathInput(e.target.value)}
+                      placeholder="예) 서비스 무료제공, 학회 수령, 샘플 등..."
+                      className="h-12 w-full rounded-xl border border-slate-200 px-4 text-sm bg-white focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-white dark:text-slate-100"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={purchasePathSaving}
+                        onClick={addStagedOtherPurchasePath}
+                        className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                      >
+                        등록하기
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {purchasePathAddOpen && purchasePathType === "MANAGER" && (
+              <div className="rounded-xl bg-sky-50/90 p-4 dark:bg-sky-950/25">
+                {selectedSupplierDetails ? (
+                  /* Full Supplier Details Card */
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                      공급업체 상세 정보
+                    </h3>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      {/* Left Column */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            회사명
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.companyName}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            회사 주소
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.companyAddress || "-"}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            이름
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.managerName}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            직함
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.position || "-"}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            이메일
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.email1 || "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            사업자 등록번호
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.businessNumber}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            회사 전화번호
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.companyPhone || "-"}
+                          </div>
+                        </div>
+                        {/* <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        담당자 ID
                       </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={manualEntryForm.managerName}
-                          onChange={(e) =>
-                            setManualEntryForm((prev) => ({
-                              ...prev,
-                              managerName: e.target.value,
-                            }))
-                          }
-                          placeholder="성함"
-                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                        />
-                        <select
-                          value={manualEntryForm.position}
-                          onChange={(e) =>
-                            setManualEntryForm((prev) => ({
-                              ...prev,
-                              position: e.target.value,
-                            }))
-                          }
-                          className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                        >
-                          {positionOptions.map((option) => (
-                            <option
-                              key={option}
-                              value={option === "직함 선택" ? "" : option}
-                            >
-                              {option}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                        {selectedSupplierDetails.managerId}
+                      </div>
+                    </div> */}
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            핸드폰 번호
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.phoneNumber}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                            담당 제품
+                          </label>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            {selectedSupplierDetails.responsibleProducts
+                              .length > 0
+                              ? selectedSupplierDetails.responsibleProducts.join(
+                                  ", "
+                                )
+                              : "-"}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* 사업자등록증 업로드 */}
+                    {/* 메모 - Full Width */}
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사업자등록증
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                        메모
                       </label>
-                      <div className="space-y-2">
-                        {manualEntryForm.certificatePreview ? (
-                          <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 ">
-                            <img
-                              src={manualEntryForm.certificatePreview}
-                              alt="Certificate preview"
-                              className="h-62 w-full object-contain rounded-lg"
+                      <textarea
+                        rows={4}
+                        value={formData.supplierNote}
+                        onChange={(e) =>
+                          handleInputChange("supplierNote", e.target.value)
+                        }
+                        placeholder="메모를 입력하세요"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
+                      />
+                    </div>
+
+                    {/* <div className="flex justify-end pt-4">
+                  <button
+                    type="button"
+                    onClick={handleSupplierDetailsClose}
+                    className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  >
+                    확인하기
+                  </button>
+                </div> */}
+                  </div>
+                ) : showManualEntryForm ? (
+                  manualEntryLegacyMode ? (
+                    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/90 md:p-6">
+                      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                          담당자 정보 작성
+                        </h3>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowManualEntryForm(false);
+                            setPendingSupplierPhone("");
+                            setManualEntryLegacyMode(false);
+                          }}
+                          className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 dark:border-sky-800 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-slate-700"
+                          aria-label="닫기"
+                        >
+                          <svg
+                            className="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
                             />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setManualEntryForm((prev) => ({
-                                  ...prev,
-                                  certificatePreview: "",
-                                  certificateImage: null,
-                                  certificateUrl: "",
-                                }));
-                                setCertificatePreview("");
-                                setCertificateUrl("");
-                                setOcrResult(null);
-                                setVerificationResult(null);
-                                setIsBusinessValid(null);
-                                setOcrExtractedData(null);
-                              }}
-                              className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
-                            >
-                              <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="rounded-xl flex  flex-row border gap-4 border-sky-100 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/30">
+                        <button
+                          type="button"
+                          onClick={() => setManualEntryLegacyMode(false)}
+                          className="mb-2 inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+                        >
+                          회사정보 수동 등록
+                        </button>
+                        <p className="mb-2 text-xl inline-flex leading-relaxed items-center justify-center text-blue-800">
+                          {" "}
+                          직접 입력하여 회사 정보를 등록합니다.
+                        </p>
+                      </div>
+                      <div className="grid gap-6 md:grid-cols-2">
+                        {/* Left Column */}
+                        <div className="space-y-4">
+                          {/* 담당자 이름 + 직함 */}
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              담당자 이름{" "}
+                              <span className="text-rose-500">*</span>
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={manualEntryForm.managerName}
+                                onChange={(e) =>
+                                  setManualEntryForm((prev) => ({
+                                    ...prev,
+                                    managerName: e.target.value,
+                                  }))
+                                }
+                                placeholder="담당자 성함을 입력해주세요"
+                                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                              />
+                              <select
+                                value={manualEntryForm.position}
+                                onChange={(e) =>
+                                  setManualEntryForm((prev) => ({
+                                    ...prev,
+                                    position: e.target.value,
+                                  }))
+                                }
+                                className="h-11 w-36 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            </button>
-                            {ocrProcessing && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
-                                <div className="bg-white rounded-lg p-4 flex items-center gap-3">
-                                  <svg
-                                    className="animate-spin h-5 w-5 text-sky-600"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
+                                {positionOptions.map((option) => (
+                                  <option
+                                    key={option}
+                                    value={option === "직함 선택" ? "" : option}
                                   >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                  <span className="text-sm font-medium text-slate-700">
-                                    OCR 처리 중...
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50">
-                            <div className="text-center">
-                              <p className="text-sm text-slate-500 dark:text-slate-400">
-                                이미지를 업로드하세요
-                              </p>
-                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                                업로드 시 자동으로 정보를 추출합니다
-                              </p>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </div>
-                        )}
 
-                        {/* OCR Extracted Data Notification */}
+                          {/* 사업자등록증 업로드 */}
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              사업자등록증
+                            </label>
+                            <div className="space-y-2">
+                              {manualEntryForm.certificatePreview ? (
+                                <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-4 ">
+                                  <img
+                                    src={manualEntryForm.certificatePreview}
+                                    alt="Certificate preview"
+                                    className="h-62 w-full object-contain rounded-lg"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setManualEntryForm((prev) => ({
+                                        ...prev,
+                                        certificatePreview: "",
+                                        certificateImage: null,
+                                        certificateUrl: "",
+                                      }));
+                                      setCertificatePreview("");
+                                      setCertificateUrl("");
+                                      setOcrResult(null);
+                                      setVerificationResult(null);
+                                      setIsBusinessValid(null);
+                                      setOcrExtractedData(null);
+                                    }}
+                                    className="absolute right-2 top-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                                  >
+                                    <svg
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M6 18L18 6M6 6l12 12"
+                                      />
+                                    </svg>
+                                  </button>
+                                  {ocrProcessing && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+                                      <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+                                        <svg
+                                          className="animate-spin h-5 w-5 text-sky-600"
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <circle
+                                            className="opacity-25"
+                                            cx="12"
+                                            cy="12"
+                                            r="10"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                          ></circle>
+                                          <path
+                                            className="opacity-75"
+                                            fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                          ></path>
+                                        </svg>
+                                        <span className="text-sm font-medium text-slate-700">
+                                          OCR 처리 중...
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/80 dark:border-slate-600 dark:bg-slate-900/40">
+                                  <div className="text-center px-2">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                                      이미지를 업로드하세요 / 업로드 시 자동으로
+                                      정보를 추출합니다
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
 
-                        <label className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                          {uploadingCertificate || ocrProcessing
-                            ? "업로드 및 OCR 처리 중..."
-                            : manualEntryForm.certificatePreview
-                              ? "사업자등록증 변경"
-                              : "사업자등록증 업로드"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleCertificateUpload}
-                            disabled={uploadingCertificate || ocrProcessing}
-                            className="hidden"
-                          />
-                        </label>
+                              {/* OCR Extracted Data Notification */}
 
-                        {/* Business Verification Status */}
-                        {/* {isBusinessValid === true && (
+                              <label className="flex h-11 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50/60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-800 dark:hover:bg-slate-700">
+                                {uploadingCertificate || ocrProcessing
+                                  ? "업로드 및 OCR 처리 중..."
+                                  : manualEntryForm.certificatePreview
+                                    ? "사업자등록증 변경"
+                                    : "사업자등록증 업로드"}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleCertificateUpload}
+                                  disabled={
+                                    uploadingCertificate || ocrProcessing
+                                  }
+                                  className="hidden"
+                                />
+                              </label>
+
+                              {/* Business Verification Status */}
+                              {/* {isBusinessValid === true && (
                           <div className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
                             <div className="flex items-center gap-2">
                               <svg
@@ -2603,461 +2953,693 @@ export default function InboundNewPage() {
                             )}
                           </div>
                         )} */}
-                        {isBusinessValid === false && (
-                          <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                            <div className="flex items-center gap-2">
-                              <svg
-                                className="h-5 w-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                              <span className="font-medium">
-                                ⚠️ 사업자 정보 확인 실패
-                              </span>
+                              {isBusinessValid === false && (
+                                <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                                  <div className="flex items-center gap-2">
+                                    <svg
+                                      className="h-5 w-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M6 18L18 6M6 6l12 12"
+                                      />
+                                    </svg>
+                                    <span className="font-medium">
+                                      ⚠️ 사업자 정보 확인 실패
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs">
+                                    수동으로 정보를 입력해주세요
+                                  </p>
+                                </div>
+                              )}
+                              {uploading && (
+                                <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                                  <div className="flex items-center gap-2">
+                                    <svg
+                                      className="h-5 w-5 animate-spin"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                      />
+                                      <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                      />
+                                    </svg>
+                                    <span className="font-medium">
+                                      사업자 정보 확인 중...
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            <p className="mt-1 text-xs">
-                              수동으로 정보를 입력해주세요
-                            </p>
                           </div>
-                        )}
-                        {uploading && (
-                          <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
-                            <div className="flex items-center gap-2">
-                              <svg
-                                className="h-5 w-5 animate-spin"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                />
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                />
-                              </svg>
-                              <span className="font-medium">
-                                사업자 정보 확인 중...
-                              </span>
-                            </div>
+                        </div>
+
+                        {/* Right Column */}
+                        <div className="space-y-4">
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              핸드폰 번호{" "}
+                              <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="tel"
+                              value={manualEntryForm.phoneNumber}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  phoneNumber: e.target.value,
+                                }))
+                              }
+                              placeholder="핸드폰 번호를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
                           </div>
-                        )}
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              회사명 <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.companyName}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  companyName: e.target.value,
+                                }))
+                              }
+                              placeholder="회사명을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              회사 주소
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.companyAddress}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  companyAddress: e.target.value,
+                                }))
+                              }
+                              placeholder="주소를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              사업자 등록번호{" "}
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.businessNumber}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  businessNumber: e.target.value,
+                                }))
+                              }
+                              placeholder="사업자등록번호를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              회사 전화번호{" "}
+                            </label>
+                            <input
+                              type="tel"
+                              value={manualEntryForm.companyPhone}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  companyPhone: e.target.value,
+                                }))
+                              }
+                              placeholder="회사 전화번호를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              이메일
+                            </label>
+                            <input
+                              type="email"
+                              value={manualEntryForm.email1}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  email1: e.target.value,
+                                }))
+                              }
+                              placeholder="이메일을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              담당 제품
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.responsibleProducts}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  responsibleProducts: e.target.value,
+                                }))
+                              }
+                              placeholder="제품을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              메모
+                            </label>
+                            <textarea
+                              value={manualEntryForm.memo}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  memo: e.target.value,
+                                }))
+                              }
+                              rows={3}
+                              placeholder="메모를 입력하세요"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Save Button — * 필드: 담당자 이름, 회사명, 핸드폰(010+8) */}
+                      <div className="flex justify-end border-t border-slate-100 pt-4 dark:border-slate-700">
+                        <button
+                          type="button"
+                          onClick={handleManualEntrySubmit}
+                          disabled={
+                            savingManualEntry ||
+                            !manualEntryForm.managerName?.trim() ||
+                            !manualEntryForm.companyName?.trim() ||
+                            !/^010\d{8}$/.test(
+                              manualEntryForm.phoneNumber.replace(/\D/g, "")
+                            ) ||
+                            (!!certificateUrl && isBusinessValid !== true)
+                          }
+                          className={`rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            !!certificateUrl && isBusinessValid !== true
+                              ? "bg-slate-400"
+                              : "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700"
+                          }`}
+                        >
+                          {savingManualEntry
+                            ? "저장 중..."
+                            : !!certificateUrl && isBusinessValid !== true
+                              ? "사업자 확인 필요"
+                              : "저장 및 등록"}
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        핸드폰 번호*
-                      </label>
-                      <input
-                        type="tel"
-                        value={manualEntryForm.phoneNumber}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            phoneNumber: e.target.value,
-                          }))
-                        }
-                        placeholder="-없이 입력해주세요."
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사명 *
-                      </label>
-                      <input
-                        type="text"
-                        value={manualEntryForm.companyName}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            companyName: e.target.value,
-                          }))
-                        }
-                        placeholder="회사명"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 주소 *
-                      </label>
-                      <input
-                        type="text"
-                        value={manualEntryForm.companyAddress}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            companyAddress: e.target.value,
-                          }))
-                        }
-                        placeholder="주소를 압력햐주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사업자 등록번호 *
-                      </label>
-                      <input
-                        type="text"
-                        value={manualEntryForm.businessNumber}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            businessNumber: e.target.value,
-                          }))
-                        }
-                        placeholder="00-000-0000"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 전화번호 *
-                      </label>
-                      <input
-                        type="tel"
-                        value={manualEntryForm.companyPhone}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            companyPhone: e.target.value,
-                          }))
-                        }
-                        placeholder="00-0000-0000"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일 *
-                      </label>
-                      <input
-                        type="email"
-                        value={manualEntryForm.email1}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            email1: e.target.value,
-                          }))
-                        }
-                        placeholder="이메일을 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    {/* <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일 2
-                      </label>
-                      <input
-                        type="email"
-                        value={manualEntryForm.email2}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            email2: e.target.value,
-                          }))
-                        }
-                        placeholder="이메일을 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div> */}
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        담당 제품 *
-                      </label>
-                      <input
-                        type="text"
-                        value={manualEntryForm.responsibleProducts}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            responsibleProducts: e.target.value,
-                          }))
-                        }
-                        placeholder="제품을 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        메모
-                      </label>
-                      <textarea
-                        value={manualEntryForm.memo}
-                        onChange={(e) =>
-                          setManualEntryForm((prev) => ({
-                            ...prev,
-                            memo: e.target.value,
-                          }))
-                        }
-                        rows={3}
-                        placeholder="메모를 입력하세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Save Button */}
-                <div className="flex justify-end pt-4">
-                  <button
-                    type="button"
-                    onClick={handleManualEntrySubmit}
-                    disabled={
-                      savingManualEntry ||
-                      !manualEntryForm.managerName ||
-                      !manualEntryForm.phoneNumber ||
-                      (!!certificateUrl && isBusinessValid !== true)
-                    }
-                    className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      !!certificateUrl && isBusinessValid !== true
-                        ? "bg-slate-400 dark:bg-slate-600"
-                        : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-                    }`}
-                  >
-                    {savingManualEntry
-                      ? "저장 중..."
-                      : !!certificateUrl && isBusinessValid !== true
-                        ? "🔒 사업자 확인 필요"
-                        : "저장 및 등록"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Search Fields */}
-                <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      공급업체명
-                    </label>
-                    <input
-                      type="text"
-                      value={supplierSearchCompanyName}
-                      onChange={(e) =>
-                        setSupplierSearchCompanyName(e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          supplierSearchCompanyName &&
-                          supplierSearchManagerName
-                        ) {
-                          handleSupplierSearch();
-                        }
-                      }}
-                      placeholder="공급업체명을 입력해주세요."
-                      className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      담당자
-                    </label>
-                    <input
-                      type="text"
-                      value={supplierSearchManagerName}
-                      onChange={(e) =>
-                        setSupplierSearchManagerName(e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          supplierSearchCompanyName &&
-                          supplierSearchManagerName
-                        ) {
-                          handleSupplierSearch();
-                        }
-                      }}
-                      placeholder="담당자 이름"
-                      className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={handleSupplierSearch}
-                      disabled={
-                        supplierSearchLoading ||
-                        !supplierSearchCompanyName ||
-                        !supplierSearchManagerName
-                      }
-                      className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-                      title="검색"
-                    >
-                      {supplierSearchLoading ? (
-                        <svg
-                          className="h-5 w-5 animate-spin"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
+                  ) : (
+                    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/90 md:p-6">
+                      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                          담당자 정보 작성
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowManualEntryForm(false);
+                            setPendingSupplierPhone("");
+                            setManualEntryLegacyMode(false);
+                          }}
+                          className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 dark:border-sky-800 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-slate-700"
+                          aria-label="닫기"
                         >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
+                          <svg
+                            className="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
                             stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                      ) : (
-                        <SearchIcon className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
 
-                {/* Search Results Table */}
-                {supplierSearchResults.length > 0 && (
-                  <div className="mb-6 overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            회사명
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            이름
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            직함
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            핸드폰 번호
-                          </th>
-                          {/* <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <div className="rounded-xl flex  flex-row border gap-4 border-sky-100 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/30">
+                        <button
+                          type="button"
+                          onClick={() => setManualEntryLegacyMode(true)}
+                          className="mb-2 inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+                        >
+                          회사정보 간편 등록
+                        </button>
+                        <p className="mb-2 text-xl inline-flex leading-relaxed items-center justify-center text-blue-800">
+                          {" "}
+                          사업자등록증으로 등록하면 회사 정보가 자동으로
+                          입력됩니다.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="mb-3 text-xl font-bold text-slate-500 dark:text-slate-400">
+                          {" "}
+                          회사 정보
+                        </h4>
+                        <div className="grid px-4 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              회사명 <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.companyName}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  companyName: e.target.value,
+                                }))
+                              }
+                              placeholder="회사명을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              사업자등록번호{" "}
+                              <span className="font-normal text-slate-500">
+                                (선택)
+                              </span>
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.businessNumber}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  businessNumber: e.target.value,
+                                }))
+                              }
+                              placeholder="사업자등록번호를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="mb-3 text-xl font-bold text-slate-500 dark:text-slate-400">
+                          {" "}
+                          담당자 정보
+                        </h4>
+                        <div className="grid px-4 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              담당자 성함{" "}
+                              <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={manualEntryForm.managerName}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  managerName: e.target.value,
+                                }))
+                              }
+                              placeholder="담당자 성함을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              직함 <span className="text-rose-500">*</span>
+                            </label>
+                            <select
+                              value={manualEntryForm.position}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  position: e.target.value,
+                                }))
+                              }
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            >
+                              {positionOptions.map((option) => (
+                                <option
+                                  key={option}
+                                  value={option === "직함 선택" ? "" : option}
+                                >
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              핸드폰 번호{" "}
+                              <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="tel"
+                              value={manualEntryForm.phoneNumber}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  phoneNumber: e.target.value,
+                                }))
+                              }
+                              placeholder="담당자 핸드폰 번호를 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                              이메일 주소{" "}
+                              <span className="font-normal text-slate-500">
+                                (선택)
+                              </span>
+                            </label>
+                            <input
+                              type="email"
+                              value={manualEntryForm.email1}
+                              onChange={(e) =>
+                                setManualEntryForm((prev) => ({
+                                  ...prev,
+                                  email1: e.target.value,
+                                }))
+                              }
+                              placeholder="담당자 이메일을 입력해주세요"
+                              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="mb-2 text-xm font-bold text-slate-800 dark:text-slate-200">
+                          메모
+                        </h4>
+                        <textarea
+                          value={manualEntryForm.memo}
+                          onChange={(e) =>
+                            setManualEntryForm((prev) => ({
+                              ...prev,
+                              memo: e.target.value,
+                            }))
+                          }
+                          rows={4}
+                          placeholder="메모를 입력하세요"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="flex justify-end border-t border-slate-100 pt-4 dark:border-slate-700">
+                        <button
+                          type="button"
+                          onClick={handleManualEntrySubmit}
+                          disabled={
+                            savingManualEntry ||
+                            !manualEntryForm.companyName?.trim() ||
+                            !manualEntryForm.managerName?.trim() ||
+                            !manualEntryForm.position?.trim() ||
+                            !/^010\d{8}$/.test(
+                              manualEntryForm.phoneNumber.replace(/\D/g, "")
+                            ) ||
+                            (!!certificateUrl && isBusinessValid !== true)
+                          }
+                          className={`rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            !!certificateUrl && isBusinessValid !== true
+                              ? "bg-slate-400"
+                              : "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700"
+                          }`}
+                        >
+                          {savingManualEntry
+                            ? "등록 중..."
+                            : !!certificateUrl && isBusinessValid !== true
+                              ? "사업자 확인 필요"
+                              : "등록하기"}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {/* Search Fields */}
+                    <div className="mb-6 grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          공급업체명
+                        </label>
+                        <input
+                          type="text"
+                          value={supplierSearchCompanyName}
+                          onChange={(e) =>
+                            setSupplierSearchCompanyName(e.target.value)
+                          }
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              supplierSearchCompanyName &&
+                              supplierSearchManagerName
+                            ) {
+                              handleSupplierSearch();
+                            }
+                          }}
+                          placeholder="공급업체명을 입력해주세요."
+                          className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          담당자
+                        </label>
+                        <input
+                          type="text"
+                          value={supplierSearchManagerName}
+                          onChange={(e) =>
+                            setSupplierSearchManagerName(e.target.value)
+                          }
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              supplierSearchCompanyName &&
+                              supplierSearchManagerName
+                            ) {
+                              handleSupplierSearch();
+                            }
+                          }}
+                          placeholder="담당자 이름"
+                          className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={handleSupplierSearch}
+                          disabled={
+                            supplierSearchLoading ||
+                            !supplierSearchCompanyName ||
+                            !supplierSearchManagerName
+                          }
+                          className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+                          title="검색"
+                        >
+                          {supplierSearchLoading ? (
+                            <svg
+                              className="h-5 w-5 animate-spin"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                          ) : (
+                            <SearchIcon className="h-5 w-5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Search Results Table */}
+                    {supplierSearchResults.length > 0 && (
+                      <div className="mb-6 overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                회사명
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                이름
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                직함
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                핸드폰 번호
+                              </th>
+                              {/* <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
                             담당자 ID
                           </th> */}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {supplierSearchResults.map((result, index) => (
-                          <tr
-                            key={index}
-                            onClick={() => handleSupplierResultSelect(index)}
-                            className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
-                              selectedSupplierResult === index
-                                ? "bg-blue-50 dark:bg-blue-900/20"
-                                : ""
-                            }`}
-                          >
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
-                              {result.companyName}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
-                              {result.managerName}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
-                              {result.position || "-"}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
-                              {result.phoneNumber}
-                            </td>
-                            {/* <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {supplierSearchResults.map((result, index) => (
+                              <tr
+                                key={index}
+                                onClick={() =>
+                                  handleSupplierResultSelect(index)
+                                }
+                                className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
+                                  selectedSupplierResult === index
+                                    ? "bg-blue-50 dark:bg-blue-900/20"
+                                    : ""
+                                }`}
+                              >
+                                <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                                  {result.companyName}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                                  {result.managerName}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                                  {result.position || "-"}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
+                                  {result.phoneNumber}
+                                </td>
+                                {/* <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
                               {result.managerId}
                             </td> */}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
-                {/* No Results Message with Fallback Option */}
-                {!supplierSearchLoading &&
-                  supplierSearchResults.length === 0 &&
-                  supplierSearchFallback && (
-                    <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
-                      <div className="flex items-start gap-3">
-                        <span className="mt-0.5 text-amber-600 dark:text-amber-400">
-                          ℹ️
+                    {/* No Results Message with Fallback Option */}
+                    {!supplierSearchLoading &&
+                      supplierSearchResults.length === 0 &&
+                      supplierSearchFallback && (
+                        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+                          <div className="flex items-start gap-3">
+                            <span className="mt-0.5 text-amber-600 dark:text-amber-400">
+                              ℹ️
+                            </span>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                                거래 이력이 있는 공급업체를 찾을 수 없습니다.
+                              </p>
+                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                                등록된 공급업체를 찾으려면 아래에서 핸드폰
+                                번호로 검색해보세요.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Phone Number Search Section */}
+                    <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
+                      <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
+                        <span className="mt-0.5">▲</span>
+                        <span>
+                          담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더
+                          검색해 보세요.
                         </span>
+                      </div>
+                      <div className="flex gap-3">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                            거래 이력이 있는 공급업체를 찾을 수 없습니다.
-                          </p>
-                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                            등록된 공급업체를 찾으려면 아래에서 핸드폰 번호로
-                            검색해보세요.
-                          </p>
+                          <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            핸드폰 번호
+                          </label>
+                          <input
+                            type="tel"
+                            value={supplierSearchPhoneNumber}
+                            onChange={(e) =>
+                              setSupplierSearchPhoneNumber(e.target.value)
+                            }
+                            placeholder="000-0000-0000"
+                            className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={handlePhoneNumberSearch}
+                            disabled={
+                              supplierSearchLoading ||
+                              !supplierSearchPhoneNumber
+                            }
+                            className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
+                          >
+                            {supplierSearchLoading ? "검색 중..." : "검색하기"}
+                          </button>
                         </div>
                       </div>
                     </div>
-                  )}
-
-                {/* Phone Number Search Section */}
-                <div className="mt-6 space-y-4 border-t border-slate-200 pt-6 dark:border-slate-700">
-                  <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400">
-                    <span className="mt-0.5">▲</span>
-                    <span>
-                      담당자님 못 찾은 경우, 핸드폰 입력하시고 한번 더 검색해
-                      보세요.
-                    </span>
+                  </>
+                )}
+                {selectedSupplierDetails && (
+                  <div className="mt-6 flex justify-end border-t border-sky-200/80 pt-4 dark:border-sky-800/50">
+                    <button
+                      type="button"
+                      disabled={purchasePathSaving}
+                      onClick={addStagedManagerPurchasePath}
+                      className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
+                    >
+                      구매 경로에 추가
+                    </button>
                   </div>
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        핸드폰 번호
-                      </label>
-                      <input
-                        type="tel"
-                        value={supplierSearchPhoneNumber}
-                        onChange={(e) =>
-                          setSupplierSearchPhoneNumber(e.target.value)
-                        }
-                        placeholder="000-0000-0000"
-                        className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={handlePhoneNumberSearch}
-                        disabled={
-                          supplierSearchLoading || !supplierSearchPhoneNumber
-                        }
-                        className="h-12 rounded-lg bg-slate-600 px-6 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-500 dark:hover:bg-slate-600"
-                      >
-                        {supplierSearchLoading ? "검색 중..." : "검색하기"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
+                )}
+              </div>
             )}
           </div>
         </section>

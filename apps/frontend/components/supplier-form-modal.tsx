@@ -152,21 +152,23 @@ export default function SupplierFormModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
+    // Validation (API: companyName, managerName, phoneNumber, status 필수)
     if (!formData.company_name.trim()) {
       alert("회사명을 입력하세요");
       return;
     }
-    if (!formData.business_number.trim()) {
-      alert("사업자번호를 입력하세요 (형식: 123-45-67890)");
+    if (!formData.name.trim()) {
+      alert("담당자 이름을 입력하세요");
       return;
     }
-    if (!formData.phone_number.trim()) {
-      alert("담당자 연락처를 입력하세요");
+    const phoneDigits = formData.phone_number.replace(/-/g, "").trim();
+    if (!/^010\d{8}$/.test(phoneDigits)) {
+      alert("담당자 연락처를 01012345678 형식으로 입력하세요");
       return;
     }
-    if (!formData.responsible_products.trim()) {
-      alert("담당 제품을 입력하세요");
+    const brn = formData.business_number.trim();
+    if (brn && !/^\d{3}-\d{2}-\d{5}$/.test(brn)) {
+      alert("사업자번호 형식: 123-45-67890 (또는 비워두세요)");
       return;
     }
 
@@ -191,13 +193,15 @@ export default function SupplierFormModal({
         },
         body: JSON.stringify({
           ...(supplier?.id && { id: supplier.id }),
-          companyName: formData.company_name,
-          businessNumber: formData.business_number,
+          ...(supplier?.supplier_id && { supplierId: supplier.supplier_id }),
+          companyName: formData.company_name.trim(),
+          ...(brn ? { businessNumber: brn } : {}),
           companyPhone: formData.company_phone || undefined,
           companyEmail: formData.company_email || undefined,
           companyAddress: formData.company_address || undefined,
-          managerName: formData.name || undefined,
-          phoneNumber: formData.phone_number,
+          managerName: formData.name.trim(),
+          phoneNumber: phoneDigits,
+          status: "MANUAL_ONLY",
           managerEmail: formData.email1 || undefined,
           position: formData.position || undefined,
           responsibleProducts: formData.responsible_products || undefined,

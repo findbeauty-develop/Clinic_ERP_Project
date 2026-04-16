@@ -1,8 +1,10 @@
 import { Injectable, BadRequestException, Logger } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { SupplierRepository } from "../repositories/supplier.repository";
 import { SearchSupplierDto } from "../dto/search-supplier.dto";
 import { CreateSupplierManualDto } from "../dto/create-supplier-manual.dto";
 import { PrismaService } from "../../../core/prisma.service";
+import type { Prisma } from "../../../../node_modules/.prisma/client-backend";
 
 @Injectable()
 export class SupplierService {
@@ -143,146 +145,136 @@ export class SupplierService {
   }
 
   /**
-   * Clinic tomonidan manual supplier yaratish/update qilish
-   * business_number va phone_number bo'yicha upsert qiladi
+   * Clinic manual supplier: Supplier row ↔ ClinicSupplierManager via Supplier.id (`supplier_id`).
+   * Required: companyName, managerName, phoneNumber, status. Optional: businessNumber, etc.
    */
   async createOrUpdateSupplierManual(
     dto: CreateSupplierManualDto,
     tenantId: string
   ) {
-    // Validation
-    if (!dto.companyName || !dto.businessNumber) {
-      throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
+    const companyName = dto.companyName?.trim();
+    const managerName = dto.managerName?.trim();
+    const phoneNumber = dto.phoneNumber?.trim();
+    const status = dto.status?.trim();
+
+    if (!companyName || !managerName || !phoneNumber || !status) {
+      throw new BadRequestException(
+        "회사명, 담당자명, 연락처, 상태는 필수입니다."
+      );
     }
 
-    // Ensure company_email is always provided (required field)
+    const brn =
+      dto.businessNumber != null && String(dto.businessNumber).trim() !== ""
+        ? String(dto.businessNumber).trim()
+        : null;
+
+    const digitsPhone = phoneNumber.replace(/\D/g, "");
     const companyEmail =
-      dto.companyEmail || `${dto.businessNumber.replace(/-/g, "")}@temp.com`;
+      dto.companyEmail?.trim() || `${digitsPhone}@manual.supplier.local`;
 
     try {
       return await this.prisma.executeWithRetry(async () => {
-        // 1. Supplier upsert (business_number bo'yicha)
+        let supplier;
 
-        // Manual supplier uchun tenant_id har bir kompaniya uchun unique bo'lishi kerak
-        // (Supplier.tenant_id unique); keyin supplier ro'yxatdan o'tsa business_number bo'yicha update qilinadi
-        const manualSupplierTenantId = `supplier_${dto.businessNumber.replace(/-/g, "")}_${Date.now()}`;
-
-        const supplier = await this.prisma.supplier.upsert({
-          where: { business_number: dto.businessNumber },
-          update: {
-            company_name: dto.companyName,
-            company_phone: dto.companyPhone || null,
-            company_email: companyEmail,
-            company_address: dto.companyAddress || null,
-            updated_at: new Date(),
-          },
-          create: {
-            company_name: dto.companyName,
-            business_number: dto.businessNumber,
-            company_phone: dto.companyPhone || null,
-            company_email: companyEmail,
-            company_address: dto.companyAddress || null,
-            status: "MANUAL_ONLY", // Clinic manual yaratgan supplier
-            tenant_id: manualSupplierTenantId,
-          },
-        });
-
-        // 2. ClinicSupplierManager upsert
-        let clinicManager = null;
-        if (dto.phoneNumber && dto.managerName) {
-          // Edit: id berilgan bo'lsa shu ClinicSupplierManager'ni UPDATE qilish (yangi yaratmaslik)
-          if (dto.id) {
-            const existingById =
-              await this.prisma.clinicSupplierManager.findFirst({
-                where: { id: dto.id, tenant_id: tenantId },
-              });
-            if (existingById) {
-              clinicManager = await this.prisma.clinicSupplierManager.update({
-                where: { id: existingById.id },
-                data: {
-                  company_name: dto.companyName,
-                  business_number: dto.businessNumber || null,
-                  company_phone: dto.companyPhone || null,
-                  company_email: companyEmail,
-                  company_address: dto.companyAddress || null,
-                  name: dto.managerName,
-                  phone_number: dto.phoneNumber,
-                  email1: dto.managerEmail || null,
-                  email2: null,
-                  position: dto.position || null,
-                  responsible_products: dto.responsibleProducts
-                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
-                    : [],
-                  memo: dto.memo || null,
-                  updated_at: new Date(),
-                },
-              });
-            }
+        if (dto.supplierId) {
+          const found = await this.prisma.supplier.findUnique({
+            where: { id: dto.supplierId },
+          });
+          if (!found) {
+            throw new BadRequestException("Supplier를 찾을 수 없습니다.");
           }
+          supplier = await this.prisma.supplier.update({
+            where: { id: dto.supplierId },
+            data: {
+              company_name: companyName,
+              business_number: brn,
+              company_phone: dto.companyPhone ?? null,
+              company_email: companyEmail,
+              company_address: dto.companyAddress ?? null,
+              status,
+              updated_at: new Date(),
+            } as Prisma.SupplierUpdateInput,
+          });
+        } else {
+          supplier = await this.prisma.supplier.create({
+            data: {
+              tenant_id: `manual_${randomUUID()}`,
+              company_name: companyName,
+              business_number: brn,
+              company_phone: dto.companyPhone || null,
+              company_email: companyEmail,
+              company_address: dto.companyAddress || null,
+              status,
+              product_categories: [],
+              share_consent: false,
+            } as Prisma.SupplierCreateInput,
+          });
+        }
 
-          if (!clinicManager) {
-            // Create yoki phone bo'yicha topib update (id yo'q yoki topilmadi)
-            const existingClinicManager =
-              await this.prisma.clinicSupplierManager.findFirst({
-                where: {
-                  tenant_id: tenantId,
-                  phone_number: dto.phoneNumber,
-                },
-              });
+        const managerPatch = {
+          supplier_id: supplier.id,
+          company_name: companyName,
+          business_number: brn,
+          company_phone: dto.companyPhone || null,
+          company_email: companyEmail,
+          company_address: dto.companyAddress || null,
+          name: managerName,
+          phone_number: phoneNumber,
+          email1: dto.managerEmail || null,
+          email2: null,
+          position: dto.position || null,
+          responsible_products: dto.responsibleProducts
+            ? dto.responsibleProducts.split(",").map((p) => p.trim())
+            : [],
+          memo: dto.memo || null,
+        };
 
-            if (existingClinicManager) {
-              clinicManager = await this.prisma.clinicSupplierManager.update({
-                where: { id: existingClinicManager.id },
-                data: {
-                  company_name: dto.companyName,
-                  business_number: dto.businessNumber || null,
-                  company_phone: dto.companyPhone || null,
-                  company_email: companyEmail,
-                  company_address: dto.companyAddress || null,
-                  name: dto.managerName,
-                  email1: dto.managerEmail || null,
-                  email2: null,
-                  position: dto.position || null,
-                  responsible_products: dto.responsibleProducts
-                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
-                    : [],
-                  memo: dto.memo || null,
-                  updated_at: new Date(),
-                },
-              });
-            } else {
-              clinicManager = await this.prisma.clinicSupplierManager.create({
-                data: {
-                  tenant_id: tenantId,
-                  company_name: dto.companyName,
-                  business_number: dto.businessNumber || null,
-                  company_phone: dto.companyPhone || null,
-                  company_email: companyEmail,
-                  company_address: dto.companyAddress || null,
-                  name: dto.managerName,
-                  phone_number: dto.phoneNumber,
-                  email1: dto.managerEmail || null,
-                  email2: null,
-                  position: dto.position || null,
-                  certificate_image_url: null,
-                  responsible_regions: [],
-                  responsible_products: dto.responsibleProducts
-                    ? dto.responsibleProducts.split(",").map((p) => p.trim())
-                    : [],
-                  memo: dto.memo || null,
-                },
-              });
-            }
+        let clinicManager = null;
+
+        if (dto.id) {
+          const existingById =
+            await this.prisma.clinicSupplierManager.findFirst({
+              where: { id: dto.id, tenant_id: tenantId },
+            });
+          if (existingById) {
+            clinicManager = await this.prisma.clinicSupplierManager.update({
+              where: { id: existingById.id },
+              data: {
+                ...managerPatch,
+                updated_at: new Date(),
+              },
+            });
           }
         }
 
-        // 3. Trade link creation removed
-        // IMPORTANT: ClinicSupplierLink should NOT be auto-created when clinic manually creates supplier
-        // Trade links should only be created when:
-        // 1. Clinic creates a product with this supplier (automatic)
-        // 2. Clinic manually approves trade relationship via approve-trade-link endpoint
-        // This ensures that only clinics that have actually done business with the supplier
-        // will see the supplier in primary search results
+        if (!clinicManager) {
+          const existingClinicManager =
+            await this.prisma.clinicSupplierManager.findFirst({
+              where: {
+                tenant_id: tenantId,
+                phone_number: phoneNumber,
+              },
+            });
+
+          if (existingClinicManager) {
+            clinicManager = await this.prisma.clinicSupplierManager.update({
+              where: { id: existingClinicManager.id },
+              data: {
+                ...managerPatch,
+                updated_at: new Date(),
+              },
+            });
+          } else {
+            clinicManager = await this.prisma.clinicSupplierManager.create({
+              data: {
+                tenant_id: tenantId,
+                ...managerPatch,
+                certificate_image_url: null,
+                responsible_regions: [],
+              },
+            });
+          }
+        }
 
         return {
           supplier: {
@@ -302,6 +294,9 @@ export class SupplierService {
         };
       });
     } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       this.logger.error(
         `Error creating/updating supplier manually: ${error.message}`,
         error.stack

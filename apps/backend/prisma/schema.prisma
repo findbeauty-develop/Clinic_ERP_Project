@@ -633,7 +633,7 @@ model Supplier {
   id                 String            @id @default(uuid())
   tenant_id          String            @unique
   company_name       String
-  business_number    String            @unique
+  business_number    String?           @unique
   company_phone      String?
   company_email      String
   company_address    String?
@@ -643,6 +643,7 @@ model Supplier {
   created_at         DateTime          @default(now())
   updated_at         DateTime?
   managers           SupplierManager[] @relation("SupplierToManagers")
+  clinicSupplierManagers ClinicSupplierManager[] @relation("ClinicSupplierToSupplier")
 
   @@index([tenant_id])
   @@index([business_number])
@@ -688,6 +689,10 @@ model ClinicSupplierManager {
   id        String @id @default(uuid())
   tenant_id String
 
+  /// Canonical Supplier row (clinic manual / UUID link; replaces business_number as join key)
+  supplier_id String?
+  supplier    Supplier? @relation("ClinicSupplierToSupplier", fields: [supplier_id], references: [id], onDelete: SetNull)
+
   // Company information (denormalized - stored here for manual suppliers)
   company_name    String // Company name (required)
   business_number String? // Business registration number (for claim matching)
@@ -725,6 +730,7 @@ model ClinicSupplierManager {
   @@index([tenant_id])
   @@index([tenant_id, phone_number])
   @@index([tenant_id, business_number])
+  @@index([supplier_id])
   @@index([linked_supplier_manager_id])
   @@index([phone_number]) // For claim matching
 }

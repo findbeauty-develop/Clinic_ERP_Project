@@ -8,6 +8,8 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -93,19 +95,16 @@ export class SupplierController {
 
   @Post("create-manual")
   @UseGuards(JwtTenantGuard)
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   @ApiOperation({
     summary: "Clinic tomonidan manual supplier yaratish/update qilish",
     description:
-      "Clinic tomonidan supplier ma'lumotlarini manual kiritish. business_number va phone_number bo'yicha upsert qiladi.",
+      "필수: companyName, managerName, phoneNumber, status. 선택: businessNumber 등. Supplier.id(UUID)로 ClinicSupplierManager와 연결합니다.",
   })
   async createSupplierManual(
     @Body() dto: CreateSupplierManualDto,
     @Tenant() tenantId: string
   ) {
-    if (!dto.companyName || !dto.businessNumber) {
-      throw new BadRequestException("회사명과 사업자 등록번호는 필수입니다");
-    }
-
     const result = await this.supplierService.createOrUpdateSupplierManual(
       dto,
       tenantId

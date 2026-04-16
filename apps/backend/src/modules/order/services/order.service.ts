@@ -880,7 +880,8 @@ export class OrderService {
                   item_status: initialItemStatus,
                   purchase_path_id: item._purchasePathId ?? null,
                   purchase_path_type: item._purchasePathType ?? null,
-                  purchase_path_snapshot: item._purchasePathSnapshot ?? undefined,
+                  purchase_path_snapshot:
+                    item._purchasePathSnapshot ?? undefined,
                 },
               })
             )

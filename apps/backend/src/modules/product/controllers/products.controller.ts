@@ -56,7 +56,10 @@ export class ProductsController {
   @UseGuards(JwtTenantGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "List purchase paths (구매 경로) for a product" })
-  listPurchasePaths(@Param("id") productId: string, @Tenant() tenantId: string) {
+  listPurchasePaths(
+    @Param("id") productId: string,
+    @Tenant() tenantId: string
+  ) {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }
