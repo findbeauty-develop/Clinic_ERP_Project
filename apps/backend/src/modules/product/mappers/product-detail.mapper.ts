@@ -37,6 +37,15 @@ function mapPurchasePathsForDetail(paths: any[] | undefined) {
               position: m.position,
               phoneNumber: m.phone_number,
               platformLinked: !!m.linked_supplier_manager_id,
+              businessNumber: m.business_number ?? null,
+              companyPhone: m.company_phone ?? null,
+              companyEmail: m.company_email ?? null,
+              companyAddress: m.company_address ?? null,
+              email1: m.email1 ?? null,
+              email2: m.email2 ?? null,
+              responsibleProducts: m.responsible_products ?? [],
+              responsibleRegions: m.responsible_regions ?? [],
+              memo: m.memo ?? null,
             }
           : null,
     };

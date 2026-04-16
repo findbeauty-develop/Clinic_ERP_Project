@@ -168,9 +168,10 @@ export class SupplierService {
         ? String(dto.businessNumber).trim()
         : null;
 
-    const digitsPhone = phoneNumber.replace(/\D/g, "");
     const companyEmail =
-      dto.companyEmail?.trim() || `${digitsPhone}@manual.supplier.local`;
+      dto.companyEmail != null && String(dto.companyEmail).trim() !== ""
+        ? String(dto.companyEmail).trim()
+        : null;
 
     try {
       return await this.prisma.executeWithRetry(async () => {

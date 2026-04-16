@@ -635,7 +635,7 @@ model Supplier {
   company_name       String
   business_number    String?           @unique
   company_phone      String?
-  company_email      String
+  company_email      String? // manual 공급업체: 미입력 시 null (가짜 이메일 자동 생성 안 함)
   company_address    String?
   product_categories String[]          @default([])
   share_consent      Boolean           @default(false)

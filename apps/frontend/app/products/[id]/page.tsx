@@ -40,6 +40,8 @@ type BarcodeItem = {
 type PurchasePathDetail = {
   id: string;
   pathType: "MANAGER" | "SITE" | "OTHER";
+  /** Backend sort_order — read-only guruhlarda tartib uchun */
+  sortOrder?: number;
   isDefault?: boolean;
   siteName?: string | null;
   siteUrl?: string | null;
@@ -52,6 +54,17 @@ type PurchasePathDetail = {
     name: string;
     position?: string | null;
     phoneNumber?: string | null;
+    /** 플랫폼 SupplierManager 와 연결됨 (없으면 클리닉 수동 담당자) */
+    platformLinked?: boolean;
+    businessNumber?: string | null;
+    companyPhone?: string | null;
+    companyEmail?: string | null;
+    companyAddress?: string | null;
+    email1?: string | null;
+    email2?: string | null;
+    responsibleProducts?: string[];
+    responsibleRegions?: string[];
+    memo?: string | null;
   } | null;
 };
 
@@ -115,6 +128,96 @@ type ProductDetail = {
   }[];
 };
 
+function mapPurchasePathApiRow(raw: any): PurchasePathDetail {
+  const m =
+    raw.clinicSupplierManager ?? raw.clinic_supplier_manager ?? raw.manager;
+  const ptRaw = raw.path_type ?? raw.pathType;
+  let pathType: PurchasePathDetail["pathType"] = "OTHER";
+  if (typeof ptRaw === "string") {
+    const u = ptRaw.toUpperCase();
+    if (u === "MANAGER" || u === "SITE" || u === "OTHER") {
+      pathType = u as PurchasePathDetail["pathType"];
+    }
+  }
+  return {
+    id: raw.id,
+    pathType,
+    sortOrder:
+      typeof raw.sort_order === "number"
+        ? raw.sort_order
+        : typeof raw.sortOrder === "number"
+          ? raw.sortOrder
+          : 0,
+    isDefault: raw.is_default ?? raw.isDefault,
+    siteName: raw.site_name ?? raw.siteName ?? null,
+    siteUrl: raw.site_url ?? raw.siteUrl ?? null,
+    normalizedDomain: raw.normalized_domain ?? raw.normalizedDomain ?? null,
+    otherText: raw.other_text ?? raw.otherText ?? null,
+    clinicSupplierManagerId:
+      raw.clinic_supplier_manager_id ?? raw.clinicSupplierManagerId ?? null,
+    manager: m
+      ? {
+          id: m.id,
+          companyName: m.company_name ?? m.companyName ?? "",
+          name: m.name ?? "",
+          position: m.position ?? null,
+          phoneNumber: m.phone_number ?? m.phoneNumber ?? null,
+          platformLinked:
+            typeof m.platformLinked === "boolean"
+              ? m.platformLinked
+              : !!(m.linked_supplier_manager_id ?? m.linkedSupplierManagerId),
+          businessNumber: m.business_number ?? m.businessNumber ?? null,
+          companyPhone: m.company_phone ?? m.companyPhone ?? null,
+          companyEmail: m.company_email ?? m.companyEmail ?? null,
+          companyAddress: m.company_address ?? m.companyAddress ?? null,
+          email1: m.email1 ?? null,
+          email2: m.email2 ?? null,
+          responsibleProducts: Array.isArray(
+            m.responsible_products ?? m.responsibleProducts
+          )
+            ? (m.responsible_products ?? m.responsibleProducts)
+            : [],
+          responsibleRegions: Array.isArray(
+            m.responsible_regions ?? m.responsibleRegions
+          )
+            ? (m.responsible_regions ?? m.responsibleRegions)
+            : [],
+          memo: m.memo ?? null,
+        }
+      : null,
+  };
+}
+
+/** Detail GET ichidagi purchasePaths ba'zan to'liq emas — list API bilan id bo'yicha birlashtiramiz. */
+async function mergePurchasePathsForProduct(
+  apiUrl: string,
+  productId: string,
+  embeddedRows: any[]
+): Promise<PurchasePathDetail[]> {
+  const { apiGet } = await import("../../../lib/api");
+  const embedded = (embeddedRows ?? []).map((r) => mapPurchasePathApiRow(r));
+  const byId = new Map<string, PurchasePathDetail>();
+  for (const p of embedded) {
+    if (p.id) byId.set(p.id, p);
+  }
+  try {
+    const list = await apiGet<any[]>(
+      `${apiUrl}/products/${productId}/purchase-paths`
+    );
+    if (Array.isArray(list)) {
+      for (const row of list) {
+        const p = mapPurchasePathApiRow(row);
+        if (p.id) byId.set(p.id, p);
+      }
+    }
+  } catch {
+    /* faqat embedded */
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+  );
+}
+
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -127,6 +230,21 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [managerSupplierDetailModal, setManagerSupplierDetailModal] =
+    useState<PurchasePathDetail | null>(null);
+
+  const purchasePathGroups = useMemo(() => {
+    const paths = product?.purchasePaths ?? [];
+    const manager = paths.filter((p) => p.pathType === "MANAGER");
+    const site = paths.filter((p) => p.pathType === "SITE");
+    const other = paths.filter((p) => p.pathType === "OTHER");
+    return {
+      manager,
+      site,
+      other,
+      rawCount: paths.length,
+    };
+  }, [product?.purchasePaths]);
 
   const [showBatchHistory, setShowBatchHistory] = useState(false);
   const [batchHistoryMonths, setBatchHistoryMonths] = useState(3);
@@ -242,6 +360,17 @@ export default function ProductDetailPage() {
         const rawImageUrl = data.productImage || data.image_url;
         const formattedImageUrl = formatImageUrl(rawImageUrl);
 
+        const pathRows: any[] = Array.isArray(data.purchasePaths)
+          ? data.purchasePaths
+          : Array.isArray(data.purchase_paths)
+            ? data.purchase_paths
+            : [];
+        const purchasePaths = await mergePurchasePathsForProduct(
+          apiUrl,
+          params.id,
+          pathRows
+        );
+
         const formattedProduct: ProductDetail = {
           id: data.id,
           productName: data.productName || data.name,
@@ -294,9 +423,7 @@ export default function ProductDetailPage() {
           hasExpiryPeriod:
             data.hasExpiryPeriod ?? data.has_expiry_period ?? false,
           batches: data.batches,
-          purchasePaths: (data.purchasePaths ?? data.purchase_paths ?? []) as
-            | PurchasePathDetail[]
-            | undefined,
+          purchasePaths,
         };
 
         setProduct(formattedProduct);
@@ -853,72 +980,169 @@ export default function ProductDetailPage() {
                 <TruckIcon className="h-5 w-5 text-indigo-500" />
                 구매 경로
               </h2>
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900/70">
-                {product.purchasePaths && product.purchasePaths.length > 0 ? (
-                  <ul className="space-y-3">
-                    {product.purchasePaths.map((p) => (
-                      <li
-                        key={p.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/50"
-                      >
-                        <div className="font-medium text-slate-800 dark:text-slate-100">
-                          {p.pathType === "MANAGER" &&
-                            (p.manager
-                              ? `${p.manager.companyName} · ${p.manager.name}${
-                                  p.manager.phoneNumber
-                                    ? ` (${p.manager.phoneNumber})`
-                                    : ""
-                                }`
-                              : "담당자 경로")}
-                          {p.pathType === "SITE" &&
-                            (p.siteUrl ||
-                              p.siteName ||
-                              p.normalizedDomain ||
-                              "사이트 경로")}
-                          {p.pathType === "OTHER" &&
-                            (p.otherText || "기타 경로")}
-                        </div>
-                        {p.isDefault && (
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                            기본
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    등록된 구매 경로가 없습니다. 제품 수정에서 경로를 추가할 수
-                    있습니다.
-                  </p>
-                )}
-                {product.supplierName &&
-                  (!product.purchasePaths ||
-                    product.purchasePaths.length === 0) && (
-                    <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-700">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        연결 공급업체 (기본)
-                      </p>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <ReadOnlyField
-                          label="회사명"
-                          value={product.supplierName || "—"}
-                        />
-                        <ReadOnlyField
-                          label="담당자"
-                          value={product.managerName || "—"}
-                        />
-                        <ReadOnlyField
-                          label="담당자 연락처"
-                          value={product.contactPhone || "—"}
-                        />
-                        <ReadOnlyField
-                          label="이메일"
-                          value={product.contactEmail || "—"}
-                        />
-                      </div>
+              <div className="space-y-4">
+                {purchasePathGroups.manager.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+                      담당자 경로
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[640px] border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                            {/* <th className="pb-2 pr-3">구분</th> */}
+                            <th className="pb-2 pr-3">회사명</th>
+                            <th className="pb-2 pr-3">담당자 성함</th>
+                            <th className="pb-2 pr-3">직함</th>
+                            <th className="pb-2 pr-3">연락처</th>
+                            <th className="pb-2 pr-3">플랫폼</th>
+                            <th className="pb-2 text-right">액션</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchasePathGroups.manager.map((p) => (
+                            <tr
+                              key={p.id}
+                              className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                            >
+                              {/* <td className="py-3 pr-3 align-middle">
+                                {p.isDefault ? (
+                                  <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                                    기본경로
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td> */}
+                              <td className="py-3 pr-3 align-middle font-medium text-slate-800 dark:text-slate-100">
+                                {p.manager?.companyName || "—"}
+                              </td>
+                              <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                                {p.manager?.name || "—"}
+                              </td>
+                              <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                                {p.manager?.position || "—"}
+                              </td>
+                              <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                                {p.manager?.phoneNumber || "—"}
+                              </td>
+                              <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                                {!p.manager
+                                  ? "—"
+                                  : p.manager.platformLinked
+                                    ? "연동"
+                                    : "수동"}
+                              </td>
+                              <td className="py-3 align-middle text-right">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setManagerSupplierDetailModal(p)
+                                  }
+                                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700"
+                                >
+                                  상세보기
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
+                  </div>
+                )}
+
+                {purchasePathGroups.site.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+                      사이트 경로
+                    </h3>
+                    <div className="grid grid-cols-[minmax(0,140px)_1fr] justify-items-center gap-x-4 gap-y-2 border-b border-slate-100 pb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      <span>경로</span>
+                      <span>내용</span>
+                    </div>
+                    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {purchasePathGroups.site.map((p) => (
+                        <li
+                          key={p.id}
+                          className="grid grid-cols-[minmax(0,140px)_1fr] justify-items-center gap-x-4 gap-y-1 py-3 text-sm"
+                        >
+                          <span className="text-center text-slate-600 dark:text-slate-300">
+                            {p.siteName?.trim() || "사이트 경로"}
+                          </span>
+
+                          <span className="text-center break-all text-slate-800 dark:text-slate-100">
+                            {p.siteUrl ||
+                              p.normalizedDomain ||
+                              p.siteName ||
+                              "—"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {purchasePathGroups.other.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+                      기타 경로
+                    </h3>
+                    <div className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-2 border-b border-slate-100 pb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      <span>경로</span>
+                      <span>내용</span>
+                    </div>
+                    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {purchasePathGroups.other.map((p) => (
+                        <li
+                          key={p.id}
+                          className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-1 py-3 text-sm"
+                        >
+                          <span className="text-slate-600 dark:text-slate-300">
+                            기타 경로
+                          </span>
+                          <span className="text-slate-800 dark:text-slate-100">
+                            {p.otherText?.trim() || "—"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {purchasePathGroups.rawCount === 0 && (
+                  <>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      등록된 구매 경로가 없습니다. 제품 수정에서 경로를 추가할
+                      수 있습니다.
+                    </p>
+                    {product.supplierName && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                        <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          연결 공급업체 (기본)
+                        </p>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <ReadOnlyField
+                            label="회사명"
+                            value={product.supplierName || "—"}
+                          />
+                          <ReadOnlyField
+                            label="담당자"
+                            value={product.managerName || "—"}
+                          />
+                          <ReadOnlyField
+                            label="담당자 연락처"
+                            value={product.contactPhone || "—"}
+                          />
+                          <ReadOnlyField
+                            label="이메일"
+                            value={product.contactEmail || "—"}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* 보관 정보 Section */}
@@ -961,6 +1185,200 @@ export default function ProductDetailPage() {
             </section>
           )
         ) : null}
+
+        {/* 담당자 경로 — 공급업체 정보 (read-only) */}
+        {managerSupplierDetailModal?.manager && (
+          <div
+            className="fixed inset-0 z-50  flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manager-supplier-detail-title"
+            onClick={() => setManagerSupplierDetailModal(null)}
+          >
+            <div
+              className="mr-10 w-[calc(100%-80px)] max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-sky-100 bg-sky-50 px-6 py-4 dark:border-sky-900/40 dark:bg-sky-950/40">
+                <div className="flex items-start justify-between gap-3">
+                  <h3
+                    id="manager-supplier-detail-title"
+                    className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+                  >
+                    공급업체 정보
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setManagerSupplierDetailModal(null)}
+                    className="rounded-lg p-1 text-slate-500 hover:bg-sky-100 dark:text-slate-400 dark:hover:bg-sky-900/50"
+                    aria-label="닫기"
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-8 p-6">
+                {(() => {
+                  const mgr = managerSupplierDetailModal.manager!;
+                  const show = (v: string | null | undefined) =>
+                    v?.trim() ? v : "—";
+                  const showList = (arr: string[] | undefined) =>
+                    arr?.length ? arr.join(", ") : "—";
+                  const emailLine = [mgr.email1, mgr.email2]
+                    .filter((e) => e?.trim())
+                    .join(" · ");
+                  return (
+                    <>
+                      <div>
+                        <h4 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          담당자 정보
+                        </h4>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              담당자 성함
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.name)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              직함
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.position)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              핸드폰 번호
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.phoneNumber)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              이메일 주소
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {emailLine || "—"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          회사 정보
+                        </h4>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="md:col-span-2">
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              회사명
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.companyName)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              사업자 등록번호 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.businessNumber)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              회사 전화번호 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.companyPhone)}
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              회사 주소 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.companyAddress)}
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              회사 이메일 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {show(mgr.companyEmail)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          업무 정보
+                        </h4>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              담당 제품 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {showList(mgr.responsibleProducts)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                              담당 지역 (선택)
+                            </label>
+                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                              {showList(mgr.responsibleRegions)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                          메모 (선택)
+                        </label>
+                        <div className="min-h-[5rem] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 whitespace-pre-wrap dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                          {show(mgr.memo)}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="flex justify-end border-t border-slate-100 px-6 py-4 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setManagerSupplierDetailModal(null)}
+                  className="rounded-lg bg-sky-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+                >
+                  확인하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Batch edit modal */}
         {editingBatch && (
@@ -1432,30 +1850,6 @@ export default function ProductDetailPage() {
   );
 }
 
-function mapPurchasePathApiRow(raw: any): PurchasePathDetail {
-  const m = raw.clinicSupplierManager ?? raw.clinic_supplier_manager;
-  return {
-    id: raw.id,
-    pathType: raw.path_type ?? raw.pathType,
-    isDefault: raw.is_default ?? raw.isDefault,
-    siteName: raw.site_name ?? raw.siteName ?? null,
-    siteUrl: raw.site_url ?? raw.siteUrl ?? null,
-    normalizedDomain: raw.normalized_domain ?? raw.normalizedDomain ?? null,
-    otherText: raw.other_text ?? raw.otherText ?? null,
-    clinicSupplierManagerId:
-      raw.clinic_supplier_manager_id ?? raw.clinicSupplierManagerId ?? null,
-    manager: m
-      ? {
-          id: m.id,
-          companyName: m.company_name ?? m.companyName ?? "",
-          name: m.name ?? "",
-          position: m.position ?? null,
-          phoneNumber: m.phone_number ?? m.phoneNumber ?? null,
-        }
-      : null,
-  };
-}
-
 // Product Edit Form Component
 interface ProductEditFormProps {
   product: ProductDetail;
@@ -1510,6 +1904,8 @@ function ProductEditForm({
     useState(false);
   const [pendingSupplierPhone, setPendingSupplierPhone] = useState<string>("");
   const [phoneSearchNoResults, setPhoneSearchNoResults] = useState(false);
+  /** true = 사업자등록증/OCR 카드, false = 간단 입력 카드 (inbound/new 와 동일) */
+  const [manualEntryLegacyMode, setManualEntryLegacyMode] = useState(false);
 
   const [purchasePathsList, setPurchasePathsList] = useState<
     PurchasePathDetail[]
@@ -1549,6 +1945,36 @@ function ProductEditForm({
   const [isBusinessValid, setIsBusinessValid] = useState<boolean | null>(null);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showTaxDropdown, setShowTaxDropdown] = useState(false);
+
+  const manualSupplierFormReady = useMemo(() => {
+    if (!showNewSupplierModal) return true;
+    const digits = pendingSupplierPhone.replace(/\D/g, "");
+    const phoneOk = /^010\d{8}$/.test(digits);
+    if (
+      !supplierSearchManagerName?.trim() ||
+      !newSupplierForm.companyName?.trim() ||
+      !phoneOk
+    ) {
+      return false;
+    }
+    if (!manualEntryLegacyMode && !supplierSearchPosition?.trim()) {
+      return false;
+    }
+    if (certificateUrl && isBusinessValid !== true) {
+      return false;
+    }
+    return true;
+  }, [
+    showNewSupplierModal,
+    manualEntryLegacyMode,
+    supplierSearchManagerName,
+    pendingSupplierPhone,
+    newSupplierForm.companyName,
+    supplierSearchPosition,
+    certificateUrl,
+    isBusinessValid,
+  ]);
+
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<{
     id?: string;
     supplierId?: string;
@@ -2157,29 +2583,41 @@ function ProductEditForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ✅ Validate manual supplier form if active
+    // ✅ Validate manual supplier form if active (inbound/new 와 동일 규칙)
     if (showNewSupplierModal) {
       if (
-        !supplierSearchManagerName ||
-        !pendingSupplierPhone ||
-        !newSupplierForm.companyName
+        !supplierSearchManagerName?.trim() ||
+        !pendingSupplierPhone?.trim() ||
+        !newSupplierForm.companyName?.trim()
       ) {
         alert("담당자 이름, 핸드폰 번호, 회사명은 필수 입력 사항입니다.");
         setLoading(false);
         return;
       }
-
-      if (!newSupplierForm.businessNumber || !newSupplierForm.companyPhone) {
-        alert("사업자번호와 회사 전화번호는 필수 입력 사항입니다.");
+      const phoneDigits = pendingSupplierPhone.replace(/\D/g, "");
+      if (!/^010\d{8}$/.test(phoneDigits)) {
+        alert("휴대폰 번호 형식이 올바르지 않습니다 (예: 01012345678)");
         setLoading(false);
         return;
       }
-
-      // if (!newSupplierForm.companyEmail) {
-      //   alert("회사 이메일은 필수 입력 사항입니다.");
-      //   setLoading(false);
-      //   return;
-      // }
+      if (!manualEntryLegacyMode && !supplierSearchPosition?.trim()) {
+        alert("직함을 선택해주세요.");
+        setLoading(false);
+        return;
+      }
+      if (certificateUrl && isBusinessValid !== true) {
+        alert(
+          "사업자 정보 확인이 필요합니다. 사업자등록증을 다시 업로드하거나 확인해주세요."
+        );
+        setLoading(false);
+        return;
+      }
+      const brnTrim = newSupplierForm.businessNumber.trim();
+      if (brnTrim && !/^\d{3}-\d{2}-\d{5}$/.test(brnTrim)) {
+        alert("사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890)");
+        setLoading(false);
+        return;
+      }
     }
 
     setLoading(true);
@@ -2263,17 +2701,25 @@ function ProductEditForm({
 
       // ✅ Manual Supplier Information (from newSupplierForm)
       if (showNewSupplierModal && newSupplierForm.companyName) {
+        const contactPhone = pendingSupplierPhone.replace(/\D/g, "");
+        const brnTrim = newSupplierForm.businessNumber.trim();
         payload.suppliers = [
           {
             supplier_id: null, // Will trigger CREATE in backend
             company_name: newSupplierForm.companyName,
-            business_number: newSupplierForm.businessNumber,
-            company_phone: newSupplierForm.companyPhone,
-            company_email: newSupplierForm.companyEmail,
-            company_address: newSupplierForm.companyAddress,
-            contact_name: supplierSearchManagerName,
-            contact_phone: pendingSupplierPhone,
-            contact_email: newSupplierForm.companyEmail,
+            ...(brnTrim ? { business_number: brnTrim } : {}),
+            ...(newSupplierForm.companyPhone?.trim()
+              ? { company_phone: newSupplierForm.companyPhone.trim() }
+              : {}),
+            ...(newSupplierForm.companyEmail?.trim()
+              ? { company_email: newSupplierForm.companyEmail.trim() }
+              : {}),
+            ...(newSupplierForm.companyAddress?.trim()
+              ? { company_address: newSupplierForm.companyAddress.trim() }
+              : {}),
+            contact_name: supplierSearchManagerName.trim(),
+            contact_phone: contactPhone,
+            contact_email: newSupplierForm.companyEmail?.trim() || undefined,
             purchase_price: formData.purchasePrice
               ? Number(formData.purchasePrice)
               : undefined,
@@ -2487,11 +2933,24 @@ function ProductEditForm({
           product.hasExpiryPeriod ??
           false,
         batches: finalProductResponse.batches || product.batches,
-        purchasePaths: (finalProductResponse.purchasePaths ??
-          finalProductResponse.purchase_paths ??
-          product.purchasePaths ??
-          []) as PurchasePathDetail[] | undefined,
+        purchasePaths: await mergePurchasePathsForProduct(
+          apiUrl,
+          product.id,
+          purchasePathsList
+        ),
       };
+
+      if (showNewSupplierModal) {
+        setShowNewSupplierModal(false);
+        setManualEntryLegacyMode(false);
+        setPhoneSearchNoResults(false);
+        setCertificateImage(null);
+        setCertificatePreview("");
+        setCertificateUrl("");
+        setOcrResult(null);
+        setVerificationResult(null);
+        setIsBusinessValid(null);
+      }
 
       alert("제품이 성공적으로 업데이트되었습니다.");
       onSuccess(updatedProduct);
@@ -3574,198 +4033,198 @@ function ProductEditForm({
                 </table>
               </div>
             ) : showNewSupplierModal ? (
-              /* New Supplier Registration Card - inbound/new pagedagiday */
-              <div className="space-y-6">
-                {/* Header with back button */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
-                    <svg
-                      className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                      />
-                    </svg>
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      담당자님 정보 없습니다. 입력 부탁드립니다.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewSupplierModal(false);
-                      setPendingSupplierPhone("");
-                      setPhoneSearchNoResults(false);
-                      // Clear form and certificate data
-                      setNewSupplierForm({
-                        companyName: "",
-                        position: "",
-                        companyAddress: "",
-                        businessNumber: "",
-                        companyPhone: "",
-                        companyEmail: "",
-                        responsibleProducts: "",
-                        memo: "",
-                      });
-                      setCertificateImage(null);
-                      setCertificatePreview("");
-                      setCertificateUrl("");
-                      setOcrResult(null);
-                      setVerificationResult(null);
-                      setIsBusinessValid(null);
-                    }}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    뒤로
-                  </button>
-                </div>
+              <>
+                {manualEntryLegacyMode ? (
+                  <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/90 md:p-6">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                        담당자 정보 작성
+                      </h3>
 
-                {/* Form Content - Placeholder for now (same as modal) */}
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        담당자 이름*
-                      </label>
-                      <div className="flex-1 flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={supplierSearchManagerName}
-                          onChange={(e) =>
-                            setSupplierSearchManagerName(e.target.value)
-                          }
-                          placeholder="성함"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                        />
-                        <select
-                          value={supplierSearchPosition}
-                          onChange={(e) =>
-                            setSupplierSearchPosition(e.target.value)
-                          }
-                          className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewSupplierModal(false);
+                          setManualEntryLegacyMode(false);
+                          setPendingSupplierPhone("");
+                          setPhoneSearchNoResults(false);
+                          setNewSupplierForm({
+                            companyName: "",
+                            position: "",
+                            companyAddress: "",
+                            businessNumber: "",
+                            companyPhone: "",
+                            companyEmail: "",
+                            responsibleProducts: "",
+                            memo: "",
+                          });
+                          setCertificateImage(null);
+                          setCertificatePreview("");
+                          setCertificateUrl("");
+                          setOcrResult(null);
+                          setVerificationResult(null);
+                          setIsBusinessValid(null);
+                        }}
+                        className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 dark:border-sky-800 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-slate-700"
+                        aria-label="닫기"
+                      >
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
                         >
-                          {positionOptions.map((option) => (
-                            <option
-                              key={option}
-                              value={option === "직함 선택" ? "" : option}
-                            >
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사업자등록증
-                      </label>
-                      <div className="space-y-3">
-                        {!certificatePreview ? (
-                          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-blue-400 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/50 dark:hover:border-blue-600 dark:hover:bg-slate-800">
-                            <svg
-                              className="mb-3 h-12 w-12 text-slate-400"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                              />
-                            </svg>
-                            <span className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                              사업자등록증 이미지 업로드
-                            </span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400">
-                              PNG, JPG, WEBP (최대 10MB)
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleCertificateUpload}
-                              disabled={uploading}
-                              className="hidden"
-                            />
+
+                    <div className="flex flex-row gap-4 rounded-xl border border-sky-100 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/30">
+                      <button
+                        type="button"
+                        onClick={() => setManualEntryLegacyMode(false)}
+                        className="mb-2 inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+                      >
+                        회사정보 수동 등록
+                      </button>
+                      <p className="mb-2 inline-flex items-center justify-center text-xl leading-relaxed text-blue-800">
+                        직접 입력하여 회사 정보를 등록합니다.
+                      </p>
+                    </div>
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            담당자 이름 <span className="text-rose-500">*</span>
                           </label>
-                        ) : (
-                          <div className="relative">
-                            <img
-                              src={certificatePreview}
-                              alt="Certificate preview"
-                              className="h-128 w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700"
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={supplierSearchManagerName}
+                              onChange={(e) =>
+                                setSupplierSearchManagerName(e.target.value)
+                              }
+                              placeholder="담당자 성함을 입력해주세요"
+                              className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
                             />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCertificateImage(null);
-                                setCertificatePreview("");
-                                setCertificateUrl("");
-                                setOcrResult(null);
-                                setVerificationResult(null);
-                                setIsBusinessValid(null);
-                                // Clear auto-filled form fields
-                                setNewSupplierForm((prev) => ({
-                                  ...prev,
-                                  companyName: "",
-                                  companyAddress: "",
-                                  businessNumber: "",
-                                }));
-                              }}
-                              className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                            <select
+                              value={supplierSearchPosition}
+                              onChange={(e) =>
+                                setSupplierSearchPosition(e.target.value)
+                              }
+                              className="h-11 w-36 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                             >
-                              <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
+                              {positionOptions.map((option) => (
+                                <option
+                                  key={option}
+                                  value={option === "직함 선택" ? "" : option}
+                                >
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            사업자등록증
+                          </label>
+                          <div className="space-y-3">
+                            {!certificatePreview ? (
+                              <label className="flex h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 transition hover:border-sky-300 hover:bg-sky-50/50 dark:border-slate-600 dark:bg-slate-900/40 dark:hover:border-sky-800">
+                                <span className="mb-1 text-center text-sm text-slate-600 dark:text-slate-400">
+                                  이미지를 업로드하세요 / 업로드 시 자동으로
+                                  정보를 추출합니다
+                                </span>
+                                <span className="text-xs text-slate-500 dark:text-slate-500">
+                                  PNG, JPG, WEBP
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleCertificateUpload}
+                                  disabled={uploading}
+                                  className="hidden"
                                 />
-                              </svg>
-                            </button>
-                            {uploading && (
-                              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
-                                <div className="text-center text-white">
+                              </label>
+                            ) : (
+                              <div className="relative">
+                                <img
+                                  src={certificatePreview}
+                                  alt="Certificate preview"
+                                  className="h-128 w-full rounded-lg border border-slate-200 object-contain dark:border-slate-700"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCertificateImage(null);
+                                    setCertificatePreview("");
+                                    setCertificateUrl("");
+                                    setOcrResult(null);
+                                    setVerificationResult(null);
+                                    setIsBusinessValid(null);
+                                    // Clear auto-filled form fields
+                                    setNewSupplierForm((prev) => ({
+                                      ...prev,
+                                      companyName: "",
+                                      companyAddress: "",
+                                      businessNumber: "",
+                                    }));
+                                  }}
+                                  className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white transition hover:bg-red-600"
+                                >
                                   <svg
-                                    className="mx-auto h-8 w-8 animate-spin"
+                                    className="h-4 w-4"
                                     fill="none"
+                                    stroke="currentColor"
                                     viewBox="0 0 24 24"
                                   >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    />
                                     <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M6 18L18 6M6 6l12 12"
                                     />
                                   </svg>
-                                  <p className="mt-2 text-sm">OCR 처리 중...</p>
-                                </div>
+                                </button>
+                                {uploading && (
+                                  <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                                    <div className="text-center text-white">
+                                      <svg
+                                        className="mx-auto h-8 w-8 animate-spin"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <circle
+                                          className="opacity-25"
+                                          cx="12"
+                                          cy="12"
+                                          r="10"
+                                          stroke="currentColor"
+                                          strokeWidth="4"
+                                        />
+                                        <path
+                                          className="opacity-75"
+                                          fill="currentColor"
+                                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                        />
+                                      </svg>
+                                      <p className="mt-2 text-sm">
+                                        OCR 처리 중...
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
-                          </div>
-                        )}
 
-                        {/* Business Verification Status */}
-                        {/* {isBusinessValid === true && (
+                            {/* Business Verification Status */}
+                            {/* {isBusinessValid === true && (
                       <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
                         <div className="flex items-center gap-2">
                           <svg
@@ -3817,156 +4276,416 @@ function ProductEditForm({
                         </p>
                       </div>
                     )} */}
-                        {uploading && (
-                          <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
-                            <div className="flex items-center gap-2">
-                              <svg
-                                className="h-5 w-5 animate-spin"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                />
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                />
-                              </svg>
-                              <span className="font-medium">
-                                사업자 정보 확인 중...
-                              </span>
-                            </div>
+                            {uploading && (
+                              <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                                <div className="flex items-center gap-2">
+                                  <svg
+                                    className="h-5 w-5 animate-spin"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    />
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    />
+                                  </svg>
+                                  <span className="font-medium">
+                                    사업자 정보 확인 중...
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
+                      </div>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            핸드폰 번호 <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            value={pendingSupplierPhone}
+                            onChange={(e) =>
+                              setPendingSupplierPhone(e.target.value)
+                            }
+                            placeholder="핸드폰 번호를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            회사명 <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.companyName}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyName: e.target.value,
+                              }))
+                            }
+                            placeholder="회사명을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            회사 주소
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.companyAddress}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyAddress: e.target.value,
+                              }))
+                            }
+                            placeholder="회사 주소를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            사업자 등록번호
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.businessNumber}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                businessNumber: e.target.value,
+                              }))
+                            }
+                            placeholder="사업자등록번호를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            회사 전화번호
+                          </label>
+                          <input
+                            type="tel"
+                            value={newSupplierForm.companyPhone}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyPhone: e.target.value,
+                              }))
+                            }
+                            placeholder="핸드폰 번호를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            이메일
+                          </label>
+                          <input
+                            type="email"
+                            value={newSupplierForm.companyEmail}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyEmail: e.target.value,
+                              }))
+                            }
+                            placeholder="이메일을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            담당 제품
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.responsibleProducts}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                responsibleProducts: e.target.value,
+                              }))
+                            }
+                            placeholder="제품을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            메모
+                          </label>
+                          <textarea
+                            value={newSupplierForm.memo}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                memo: e.target.value,
+                              }))
+                            }
+                            placeholder="메모를 입력하세요"
+                            rows={3}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewSupplierModal(false);
+                          setManualEntryLegacyMode(false);
+                          setPendingSupplierPhone("");
+                          setPhoneSearchNoResults(false);
+                          setNewSupplierForm({
+                            companyName: "",
+                            companyAddress: "",
+                            position: "",
+                            businessNumber: "",
+                            companyPhone: "",
+                            companyEmail: "",
+                            responsibleProducts: "",
+                            memo: "",
+                          });
+                          setCertificateImage(null);
+                          setCertificatePreview("");
+                          setCertificateUrl("");
+                          setOcrResult(null);
+                          setVerificationResult(null);
+                          setIsBusinessValid(null);
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        취소
+                      </button>
+                      <div className="flex max-w-md items-center gap-2 text-right text-xs text-slate-600 dark:text-slate-400 sm:text-sm">
+                        <svg
+                          className="h-5 w-5 shrink-0 text-sky-500"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <span className="font-medium">
+                          하단{" "}
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            저장
+                          </span>
+                          을 눌러 등록을 완료하세요.
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        핸드폰 번호*
-                      </label>
-                      <input
-                        type="tel"
-                        value={pendingSupplierPhone}
-                        readOnly
-                        placeholder="-없이 입력해주세요."
-                        className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                      />
+                ) : (
+                  <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/90 md:p-6">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                        담당자 정보 작성
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewSupplierModal(false);
+                          setManualEntryLegacyMode(false);
+                          setPendingSupplierPhone("");
+                          setPhoneSearchNoResults(false);
+                          setNewSupplierForm({
+                            companyName: "",
+                            position: "",
+                            companyAddress: "",
+                            businessNumber: "",
+                            companyPhone: "",
+                            companyEmail: "",
+                            responsibleProducts: "",
+                            memo: "",
+                          });
+                          setCertificateImage(null);
+                          setCertificatePreview("");
+                          setCertificateUrl("");
+                          setOcrResult(null);
+                          setVerificationResult(null);
+                          setIsBusinessValid(null);
+                        }}
+                        className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 dark:border-sky-800 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-slate-700"
+                        aria-label="닫기"
+                      >
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사명 *
-                      </label>
-                      <input
-                        type="text"
-                        value={newSupplierForm.companyName}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            companyName: e.target.value,
-                          }))
-                        }
-                        placeholder="회사명"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
+
+                    <div className="rounded-xl flex  flex-row  border gap-4 border-sky-100 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/30">
+                      <button
+                        type="button"
+                        onClick={() => setManualEntryLegacyMode(true)}
+                        className="mb-2 inline-flex w-full items-center justify-center rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 sm:w-auto dark:bg-sky-500 dark:hover:bg-sky-600"
+                      >
+                        회사정보 간편 등록
+                      </button>
+                      <p className="mb-2 text-xl inline-flex leading-relaxed items-center justify-center text-blue-800">
+                        사업자등록증으로 등록하면 회사 정보가 자동으로
+                        입력됩니다.
+                      </p>
                     </div>
+
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 주소
-                      </label>
-                      <input
-                        type="text"
-                        value={newSupplierForm.companyAddress}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            companyAddress: e.target.value,
-                          }))
-                        }
-                        placeholder="주소를 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
+                      <h4 className="mb-3 text-xl font-bold text-slate-500 dark:text-slate-400">
+                        회사 정보
+                      </h4>
+                      <div className="grid px-4 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            회사명 <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.companyName}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyName: e.target.value,
+                              }))
+                            }
+                            placeholder="회사명을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            사업자등록번호{" "}
+                            <span className="font-normal text-slate-500">
+                              (선택)
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newSupplierForm.businessNumber}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                businessNumber: e.target.value,
+                              }))
+                            }
+                            placeholder="사업자등록번호를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        </div>
+                      </div>
                     </div>
+
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        사업자 등록번호 *
-                      </label>
-                      <input
-                        type="text"
-                        value={newSupplierForm.businessNumber}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            businessNumber: e.target.value,
-                          }))
-                        }
-                        placeholder="00-000-0000"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
+                      <h4 className="mb-3 text-xl font-bold text-slate-500 dark:text-slate-400">
+                        담당자 정보
+                      </h4>
+                      <div className="grid px-4 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            담당자 성함 <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={supplierSearchManagerName}
+                            onChange={(e) =>
+                              setSupplierSearchManagerName(e.target.value)
+                            }
+                            placeholder="담당자 성함을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            직함 <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            value={supplierSearchPosition}
+                            onChange={(e) =>
+                              setSupplierSearchPosition(e.target.value)
+                            }
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          >
+                            {positionOptions.map((option) => (
+                              <option
+                                key={option}
+                                value={option === "직함 선택" ? "" : option}
+                              >
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            핸드폰 번호 <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            value={pendingSupplierPhone}
+                            onChange={(e) =>
+                              setPendingSupplierPhone(e.target.value)
+                            }
+                            placeholder="담당자 핸드폰 번호를 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xm font-semibold text-slate-700 dark:text-slate-300">
+                            이메일 주소{" "}
+                            <span className="font-normal text-slate-500">
+                              (선택)
+                            </span>
+                          </label>
+                          <input
+                            type="email"
+                            value={newSupplierForm.companyEmail}
+                            onChange={(e) =>
+                              setNewSupplierForm((prev) => ({
+                                ...prev,
+                                companyEmail: e.target.value,
+                              }))
+                            }
+                            placeholder="담당자 이메일을 입력해주세요"
+                            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        </div>
+                      </div>
                     </div>
+
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        회사 전화번호
-                      </label>
-                      <input
-                        type="tel"
-                        value={newSupplierForm.companyPhone}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            companyPhone: e.target.value,
-                          }))
-                        }
-                        placeholder="00-0000-0000"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        이메일
-                      </label>
-                      <input
-                        type="email"
-                        value={newSupplierForm.companyEmail}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            companyEmail: e.target.value,
-                          }))
-                        }
-                        placeholder="이메일을 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        담당 제품 *
-                      </label>
-                      <input
-                        type="text"
-                        value={newSupplierForm.responsibleProducts}
-                        onChange={(e) =>
-                          setNewSupplierForm((prev) => ({
-                            ...prev,
-                            responsibleProducts: e.target.value,
-                          }))
-                        }
-                        placeholder="제품을 입력해주세요"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      <h4 className="mb-2 text-xm font-bold text-slate-800 dark:text-slate-200">
                         메모
-                      </label>
+                      </h4>
                       <textarea
                         value={newSupplierForm.memo}
                         onChange={(e) =>
@@ -3975,69 +4694,50 @@ function ProductEditForm({
                             memo: e.target.value,
                           }))
                         }
+                        rows={4}
                         placeholder="메모를 입력하세요"
-                        rows={3}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                       />
                     </div>
-                  </div>
-                </div>
 
-                {/* Action Buttons */}
-                <div className="flex justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewSupplierModal(false);
-                      setPendingSupplierPhone("");
-                      setPhoneSearchNoResults(false);
-                      // Clear form and certificate data
-                      setNewSupplierForm({
-                        companyName: "",
-                        companyAddress: "",
-                        position: "",
-                        businessNumber: "",
-                        companyPhone: "",
-                        companyEmail: "",
-                        responsibleProducts: "",
-                        memo: "",
-                      });
-                      setCertificateImage(null);
-                      setCertificatePreview("");
-                      setCertificateUrl("");
-                      setOcrResult(null);
-                      setVerificationResult(null);
-                      setIsBusinessValid(null);
-                    }}
-                    className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    취소
-                  </button>
-                  {/* INFO: User should scroll down and click the main GREEN "저장" button at the bottom of the page */}
-                  <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                    <svg
-                      className="h-5 w-5 text-blue-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span className="font-medium">
-                      공급업체 정보를 입력한 후, 페이지 하단의{" "}
-                      <span className="text-green-600 dark:text-green-400 font-bold">
-                        &quot;저장&quot;
-                      </span>{" "}
-                      버튼을 클릭하세요
-                    </span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewSupplierModal(false);
+                          setManualEntryLegacyMode(false);
+                          setPendingSupplierPhone("");
+                          setPhoneSearchNoResults(false);
+                          setNewSupplierForm({
+                            companyName: "",
+                            position: "",
+                            companyAddress: "",
+                            businessNumber: "",
+                            companyPhone: "",
+                            companyEmail: "",
+                            responsibleProducts: "",
+                            memo: "",
+                          });
+                          setCertificateImage(null);
+                          setCertificatePreview("");
+                          setCertificateUrl("");
+                          setOcrResult(null);
+                          setVerificationResult(null);
+                          setIsBusinessValid(null);
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        취소
+                      </button>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        하단{" "}
+                        <span className="font-bold text-emerald-600">저장</span>
+                        으로 완료합니다.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+              </>
             ) : (
               /* Search Fields - 1-rasm: Search Form */
               <>
@@ -4205,7 +4905,10 @@ function ProductEditForm({
                       <div className="mt-4 flex justify-center">
                         <button
                           type="button"
-                          onClick={() => setShowNewSupplierModal(true)}
+                          onClick={() => {
+                            setManualEntryLegacyMode(false);
+                            setShowNewSupplierModal(true);
+                          }}
                           className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
                         >
                           새로 등록
@@ -4488,6 +5191,7 @@ function ProductEditForm({
                     // "직접 입력" button bosilganda, to'liq form modal'ni ochish
 
                     setShowNewSupplierConfirmModal(false);
+                    setManualEntryLegacyMode(false);
                     setShowNewSupplierModal(true);
                   }}
                   className="rounded-lg bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
@@ -4514,7 +5218,7 @@ function ProductEditForm({
           type="submit"
           onClick={(e) => {}}
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={loading}
+          disabled={loading || !manualSupplierFormReady}
         >
           {loading ? "저장 중..." : "저장"}
         </button>
