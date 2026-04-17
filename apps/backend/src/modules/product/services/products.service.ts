@@ -22,6 +22,7 @@ import { StorageService } from "../../../core/storage/storage.service";
 import { ProductCacheService } from "./product-cache.service";
 import { mapProductBatchesToAdminRows } from "../mappers/product-batch.mapper";
 import { mapProductToListRow } from "../mappers/product-list.mapper";
+import { defaultPurchasePathToListApiFields } from "../mappers/purchase-path-list.mapper";
 import { mapPrismaProductToDetailView } from "../mappers/product-detail.mapper";
 
 @Injectable()
@@ -668,6 +669,41 @@ export class ProductsService {
       }),
     ]);
 
+    const productIdList = (products as any[]).map((p: any) => p.id);
+    const defaultPurchasePaths =
+      productIdList.length === 0
+        ? []
+        : await this.prisma.executeWithRetry(async () => {
+            return await (this.prisma as any).purchasePath.findMany({
+              where: {
+                tenant_id: tenantId,
+                product_id: { in: productIdList },
+                is_default: true,
+              },
+              select: {
+                product_id: true,
+                path_type: true,
+                site_name: true,
+                site_url: true,
+                normalized_domain: true,
+                other_text: true,
+                clinicSupplierManager: {
+                  select: {
+                    company_name: true,
+                    name: true,
+                  },
+                },
+              },
+            });
+          });
+
+    const defaultPathByProductId = new Map<string, any>();
+    for (const row of defaultPurchasePaths as any[]) {
+      if (row?.product_id && !defaultPathByProductId.has(row.product_id)) {
+        defaultPathByProductId.set(row.product_id, row);
+      }
+    }
+
     // In-memory mapping (tezroq)
     const returnPolicyMap = new Map(
       returnPolicies.map((rp: any) => [rp.product_id, rp])
@@ -700,7 +736,7 @@ export class ProductsService {
         };
       });
 
-      return mapProductToListRow(
+      const baseRow = mapProductToListRow(
         product,
         returnPolicy?.note ?? null,
         supplierManager,
@@ -713,6 +749,11 @@ export class ProductsService {
           },
         }
       );
+      const defaultPath = defaultPathByProductId.get(product.id);
+      return {
+        ...baseRow,
+        ...defaultPurchasePathToListApiFields(defaultPath ?? null),
+      };
     });
 
     // Cache'ga saqlash

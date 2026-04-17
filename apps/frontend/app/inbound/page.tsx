@@ -13,6 +13,10 @@ import { flushSync } from "react-dom";
 import Link from "next/link";
 import Papa from "papaparse";
 import { getAccessToken, getTenantId } from "../../lib/api";
+import {
+  purchasePathSupplierDisplayLine,
+  purchasePathSupplierDisplayLineForOrder,
+} from "../../lib/purchase-path-supplier-line";
 import { fixBarcodeKoreanToEng } from "../../utils/koreanBarcodeFix";
 
 const inboundFilters = [
@@ -94,6 +98,14 @@ type ProductListItem = {
   supplierName?: string | null;
   managerName?: string | null;
   managerPosition?: string | null;
+  /** 기본 구매 경로(PurchasePath is_default) — 출고와 동일 getAllProducts 필드 */
+  isPath?: boolean;
+  purchasePathType?: "MANAGER" | "SITE" | "OTHER" | string | null;
+  pathCompanyName?: string | null;
+  pathManagerName?: string | null;
+  pathSiteLabel?: string | null;
+  pathOtherText?: string | null;
+  normalizedDomain?: string | null;
   expiryDate?: string | null;
   storageLocation?: string | null;
   memo?: string | null;
@@ -2262,6 +2274,8 @@ const ProductCard = memo(function ProductCard({
     }
   };
 
+  const supplierPathLine = purchasePathSupplierDisplayLine(product);
+
   return (
     <>
       <div
@@ -2316,17 +2330,12 @@ const ProductCard = memo(function ProductCard({
                   {product.minStock.toLocaleString()} {product.unit ?? "EA"}
                 </span>
 
-                {product.supplierName && (
+                {supplierPathLine ? (
                   <span className="inline-flex items-center gap-1">
                     <TruckIcon className="h-4 w-4 text-indigo-500" />
-                    {product.supplierName}
+                    {supplierPathLine}
                   </span>
-                )}
-                {product.managerName && (
-                  <span className="inline-flex items-center gap-1">
-                    {product.managerName} {product.managerPosition}
-                  </span>
-                )}
+                ) : null}
                 {/* {product.managerPosition && (
                 <span className="inline-flex items-center gap-1">
                   
@@ -7440,6 +7449,20 @@ const PendingOrdersList = memo(function PendingOrdersList({
                   const managerText = [managerName, managerPosition]
                     .filter(Boolean)
                     .join(" ");
+                  const orderPathLine = order?.items?.length
+                    ? purchasePathSupplierDisplayLineForOrder({
+                        items: order.items,
+                        supplierName:
+                          order?.supplierName ??
+                          order?.supplier?.name ??
+                          order?.companyName ??
+                          null,
+                        managerName:
+                          order?.managerName ??
+                          order?.supplier?.managerName ??
+                          null,
+                      })
+                    : null;
                   const orderNo = first?.orderNo ?? "000000-000000";
                   const dateStr = new Date().toLocaleDateString("ko-KR", {
                     year: "numeric",
@@ -7452,13 +7475,21 @@ const PendingOrdersList = memo(function PendingOrdersList({
                     <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                         <div className="flex flex-row gap-2 min-w-0">
-                          <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
-                            {companyName}
-                          </span>
-                          {managerText && (
-                            <span className="text-slate-600 dark:text-slate-400 truncate">
-                              {managerText}
+                          {orderPathLine ? (
+                            <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {orderPathLine}
                             </span>
+                          ) : (
+                            <>
+                              <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                                {companyName}
+                              </span>
+                              {managerText && (
+                                <span className="text-slate-600 dark:text-slate-400 truncate">
+                                  {managerText}
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                         <span className="font-medium text-slate-700 dark:text-slate-300 shrink-0">
@@ -8411,6 +8442,12 @@ const OrderCard = memo(function OrderCard({
       })
       .filter((reason: any) => reason !== null) || [];
 
+  const orderSupplierPathLine = purchasePathSupplierDisplayLineForOrder({
+    items: order.items || [],
+    supplierName: order.supplierName ?? null,
+    managerName: order.managerName ?? null,
+  });
+
   return (
     <div className="space-y-2">
       {/* Badge: rejected yoki sectionLabel (주문 요청 / 주문 진행) */}
@@ -8510,17 +8547,13 @@ const OrderCard = memo(function OrderCard({
           {/* Left: 공급업체 + Manager */}
           <div className="space-y-1">
             <div className="mt-3">
-              <div className="flex items-center gap-1">
-                <TruckIcon className="h-5 w-5 text-indigo-500" />
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-900 dark:text-white">
-                  {order.supplierName || "알 수 없음"}
-                </h3>
-                {order.managerName && (
-                  <p className="text-sm text-slate-500 dark:text-slate-400 ml-2">
-                    담당자: {order.managerName}
-                    {order.managerPosition && `${order.managerPosition}`}
-                  </p>
-                )}
+              <div className="flex flex-wrap items-center gap-1">
+                <TruckIcon className="h-5 w-5 text-indigo-500 shrink-0" />
+                <div className="text-base font-semibold text-slate-900 dark:text-white">
+                  {orderSupplierPathLine ?? (
+                    <span>{order.supplierName || "알 수 없음"}</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

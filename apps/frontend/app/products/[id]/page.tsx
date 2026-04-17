@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAccessToken, getTenantId } from "../../../lib/api";
 import { position } from "html2canvas/dist/types/css/property-descriptors/position";
 
@@ -982,50 +982,46 @@ export default function ProductDetailPage() {
               </h2>
               <div className="space-y-4">
                 {purchasePathGroups.manager.length > 0 && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                    <h3 className="mb-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <h3 className="mb-4 text-base font-semibold text-left text-slate-800 dark:text-slate-100">
                       담당자 경로
                     </h3>
+
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[640px] border-collapse text-sm">
+                      <table className="w-full min-w-[640px] border-collapse text-center text-sm">
                         <thead>
-                          <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                            {/* <th className="pb-2 pr-3">구분</th> */}
+                          <tr className="border-b border-slate-200 text-center text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                             <th className="pb-2 pr-3">회사명</th>
                             <th className="pb-2 pr-3">담당자 성함</th>
                             <th className="pb-2 pr-3">직함</th>
                             <th className="pb-2 pr-3">연락처</th>
                             <th className="pb-2 pr-3">플랫폼</th>
-                            <th className="pb-2 text-right">액션</th>
+                            <th className="pb-2">액션</th>
                           </tr>
                         </thead>
+
                         <tbody>
                           {purchasePathGroups.manager.map((p) => (
                             <tr
                               key={p.id}
                               className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                             >
-                              {/* <td className="py-3 pr-3 align-middle">
-                                {p.isDefault ? (
-                                  <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                                    기본경로
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400">—</span>
-                                )}
-                              </td> */}
                               <td className="py-3 pr-3 align-middle font-medium text-slate-800 dark:text-slate-100">
                                 {p.manager?.companyName || "—"}
                               </td>
+
                               <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
                                 {p.manager?.name || "—"}
                               </td>
+
                               <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
                                 {p.manager?.position || "—"}
                               </td>
+
                               <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
                                 {p.manager?.phoneNumber || "—"}
                               </td>
+
                               <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
                                 {!p.manager
                                   ? "—"
@@ -1033,7 +1029,8 @@ export default function ProductDetailPage() {
                                     ? "연동"
                                     : "수동"}
                               </td>
-                              <td className="py-3 align-middle text-right">
+
+                              <td className="py-3 align-middle">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1084,19 +1081,21 @@ export default function ProductDetailPage() {
                 )}
 
                 {purchasePathGroups.other.length > 0 && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-                    <h3 className="mb-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                    <h3 className="mb-4 text-base font-semibold text-left text-slate-800 dark:text-slate-100">
                       기타 경로
                     </h3>
-                    <div className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-2 border-b border-slate-100 pb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+
+                    <div className="grid grid-cols-[minmax(0,140px)_1fr] justify-items-center gap-x-4 gap-y-2 border-b border-slate-100 pb-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                       <span>경로</span>
                       <span>내용</span>
                     </div>
+
                     <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                       {purchasePathGroups.other.map((p) => (
                         <li
                           key={p.id}
-                          className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-1 py-3 text-sm"
+                          className="grid grid-cols-[minmax(0,140px)_1fr] justify-items-center gap-x-4 gap-y-1 py-3 text-center text-sm"
                         >
                           <span className="text-slate-600 dark:text-slate-300">
                             기타 경로
@@ -1918,10 +1917,34 @@ function ProductEditForm({
   const [otherPathInput, setOtherPathInput] = useState("");
   const [purchasePathWriteNow, setPurchasePathWriteNow] = useState(true);
   const [purchasePathSaving, setPurchasePathSaving] = useState(false);
+  /** Parallel refresh (delete + add) da eski javob yangi roʻyxatni ustidan yozmasin */
+  const purchasePathsRefreshGen = useRef(0);
+  const [purchasePathEditModal, setPurchasePathEditModal] = useState<
+    | { kind: "SITE" | "OTHER"; path: PurchasePathDetail }
+    | { kind: "MANAGER"; path: PurchasePathDetail }
+    | null
+  >(null);
+  const [editSiteName, setEditSiteName] = useState("");
+  const [editSiteUrl, setEditSiteUrl] = useState("");
+  const [editOtherText, setEditOtherText] = useState("");
+
+  // Faqat boshqa mahsulotga oʻtganda sinxronlash — `product.purchasePaths` har yangilanishida
+  // mahalliy roʻyxatni (delete/add keyingi) eski parent state bilan ustma-ust qoʻymaymiz.
+  useEffect(() => {
+    purchasePathsRefreshGen.current += 1;
+    setPurchasePathsList(product.purchasePaths ?? []);
+  }, [product.id]);
 
   useEffect(() => {
-    setPurchasePathsList(product.purchasePaths ?? []);
-  }, [product.id, product.purchasePaths]);
+    if (!purchasePathEditModal) return;
+    if (purchasePathEditModal.kind === "SITE") {
+      const p = purchasePathEditModal.path;
+      setEditSiteName(p.siteName?.trim() ?? "");
+      setEditSiteUrl((p.siteUrl || p.normalizedDomain || "").trim());
+    } else if (purchasePathEditModal.kind === "OTHER") {
+      setEditOtherText(purchasePathEditModal.path.otherText?.trim() ?? "");
+    }
+  }, [purchasePathEditModal]);
 
   // New supplier form state
   const [newSupplierForm, setNewSupplierForm] = useState({
@@ -2353,11 +2376,13 @@ function ProductEditForm({
   };
 
   const refreshPurchasePathsList = useCallback(async () => {
+    const gen = ++purchasePathsRefreshGen.current;
     try {
       const { apiGet } = await import("../../../lib/api");
       const rows = await apiGet<any[]>(
         `${apiUrl}/products/${product.id}/purchase-paths`
       );
+      if (gen !== purchasePathsRefreshGen.current) return;
       const mapped = (rows || []).map(mapPurchasePathApiRow);
       setPurchasePathsList(mapped);
       onPurchasePathsUpdated?.(mapped);
@@ -2365,6 +2390,83 @@ function ProductEditForm({
       console.error("Failed to load purchase paths", e);
     }
   }, [apiUrl, product.id, onPurchasePathsUpdated]);
+
+  const purchasePathEditGroups = useMemo(() => {
+    return {
+      manager: purchasePathsList.filter((p) => p.pathType === "MANAGER"),
+      site: purchasePathsList.filter((p) => p.pathType === "SITE"),
+      other: purchasePathsList.filter((p) => p.pathType === "OTHER"),
+    };
+  }, [purchasePathsList]);
+
+  const setDefaultPurchasePath = async (pathId: string) => {
+    if (purchasePathSaving) return;
+    const current = purchasePathsList.find((p) => p.id === pathId);
+    if (current?.isDefault) return;
+    setPurchasePathSaving(true);
+    try {
+      const { apiPut } = await import("../../../lib/api");
+      await apiPut(
+        `${apiUrl}/products/${product.id}/purchase-paths/${pathId}/default`,
+        {}
+      );
+      await refreshPurchasePathsList();
+    } catch (err: any) {
+      alert(err?.message || "기본 경로 설정에 실패했습니다.");
+    } finally {
+      setPurchasePathSaving(false);
+    }
+  };
+
+  const savePurchasePathEdit = async () => {
+    if (!purchasePathEditModal) return;
+    const { path, kind } = purchasePathEditModal;
+    if (kind === "MANAGER") return;
+    setPurchasePathSaving(true);
+    try {
+      const { apiRequest } = await import("../../../lib/api");
+      let siteUrlBody = editSiteUrl.trim() || undefined;
+      if (
+        siteUrlBody &&
+        !/^https?:\/\//i.test(siteUrlBody) &&
+        (/^www\./i.test(siteUrlBody) ||
+          /\.[a-z0-9-]+\.[a-z]{2,}/i.test(siteUrlBody))
+      ) {
+        siteUrlBody = `https://${siteUrlBody.replace(/^https?:\/\//i, "")}`;
+      }
+      const body =
+        kind === "SITE"
+          ? {
+              siteName: editSiteName.trim() || undefined,
+              siteUrl: siteUrlBody,
+            }
+          : { otherText: editOtherText.trim() };
+      if (kind === "SITE" && !editSiteName.trim() && !editSiteUrl.trim()) {
+        alert("사이트 이름 또는 URL 중 하나는 입력해 주세요.");
+        setPurchasePathSaving(false);
+        return;
+      }
+      if (kind === "OTHER" && !editOtherText.trim()) {
+        alert("내용을 입력해 주세요.");
+        setPurchasePathSaving(false);
+        return;
+      }
+      const res = await apiRequest(
+        `${apiUrl}/products/${product.id}/purchase-paths/${path.id}`,
+        { method: "PATCH", body: JSON.stringify(body) }
+      );
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || "수정에 실패했습니다.");
+      }
+      setPurchasePathEditModal(null);
+      await refreshPurchasePathsList();
+    } catch (err: any) {
+      alert(err?.message || "수정에 실패했습니다.");
+    } finally {
+      setPurchasePathSaving(false);
+    }
+  };
 
   const registerManagerPurchasePath = async () => {
     const mgrId =
@@ -3765,44 +3867,275 @@ function ProductEditForm({
         </div>
 
         {purchasePathsList.length > 0 && (
-          <ul className="mb-4 space-y-2">
-            {purchasePathsList.map((p) => (
-              <li
-                key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800/60"
-              >
-                <div className="text-slate-800 dark:text-slate-100">
-                  <span className="mr-2 font-semibold text-sky-700 dark:text-sky-300">
-                    {p.pathType === "MANAGER" && "담당자 경로"}
-                    {p.pathType === "SITE" && "사이트 경로"}
-                    {p.pathType === "OTHER" && "기타 경로"}
-                  </span>
-                  <span>
-                    {p.pathType === "MANAGER" &&
-                      (p.manager
-                        ? `${p.manager.companyName} · ${p.manager.name}`
-                        : "—")}
-                    {p.pathType === "SITE" &&
-                      (p.siteUrl || p.siteName || p.normalizedDomain || "—")}
-                    {p.pathType === "OTHER" && (p.otherText || "—")}
-                  </span>
-                  {p.isDefault ? (
-                    <span className="ml-2 text-xs text-sky-600 dark:text-sky-400">
-                      (기본)
-                    </span>
-                  ) : null}
+          <div className="mb-4 space-y-4">
+            {purchasePathEditGroups.manager.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+                <h3 className="mb-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  담당자 경로
+                </h3>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-center text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-center text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                        <th className="pb-2 pr-2 text-left">기본경로</th>
+                        <th className="pb-2 pr-3">회사명</th>
+                        <th className="pb-2 pr-3">담당자 성함</th>
+                        <th className="pb-2 pr-3">직함</th>
+                        <th className="pb-2 pr-3">연락처</th>
+                        <th className="pb-2 pr-3">플랫폼</th>
+                        <th className="pb-2 text-right">액션</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {purchasePathEditGroups.manager.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                        >
+                          <td className="py-3 pr-2 align-middle text-left">
+                            <label className="inline-flex cursor-pointer items-center justify-start gap-2">
+                              {" "}
+                              <input
+                                type="radio"
+                                name="productPurchasePathDefault"
+                                className="h-4 w-4 shrink-0 appearance-none rounded-full border border-slate-300 bg-white checked:border-sky-600 checked:bg-white checked:shadow-[inset_0_0_0_3px_theme(colors.sky.600)]"
+                                checked={!!p.isDefault}
+                                disabled={purchasePathSaving}
+                                onChange={() => setDefaultPurchasePath(p.id)}
+                              />
+                              <span className="text-xs">기본 경로</span>
+                            </label>
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle font-medium text-slate-800 dark:text-slate-100">
+                            {p.manager?.companyName || "—"}
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            {p.manager?.name || "—"}
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            {p.manager?.position || "—"}
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            {p.manager?.phoneNumber || "—"}
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            {!p.manager
+                              ? "—"
+                              : p.manager.platformLinked
+                                ? "연동"
+                                : "수동"}
+                          </td>
+
+                          <td className="py-3 align-middle text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              {" "}
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() =>
+                                  setPurchasePathEditModal({
+                                    kind: "MANAGER",
+                                    path: p,
+                                  })
+                                }
+                                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                              >
+                                수정하기
+                              </button>
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() => deletePurchasePath(p.id)}
+                                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <button
-                  type="button"
-                  disabled={purchasePathSaving}
-                  onClick={() => deletePurchasePath(p.id)}
-                  className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
-                >
-                  삭제
-                </button>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+
+            {purchasePathEditGroups.site.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+                <h3 className="mb-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  사이트 경로
+                </h3>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] border-collapse text-center text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-center text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                        <th className="pb-2 pr-2 text-left">기본경로</th>
+                        <th className="pb-2 pr-3">경로</th>
+                        <th className="pb-2 pr-3">내용</th>
+                        <th className="pb-2 text-right">액션</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {purchasePathEditGroups.site.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                        >
+                          <td className="py-3 pr-2 align-middle text-left">
+                            <label className="inline-flex cursor-pointer items-center justify-start gap-2">
+                              <input
+                                type="radio"
+                                name="productPurchasePathDefault"
+                                className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white checked:border-sky-600 checked:bg-white checked:shadow-[inset_0_0_0_3px_theme(colors.sky.600)] focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 disabled:opacity-50 dark:border-slate-500 dark:bg-white dark:checked:bg-white dark:checked:shadow-[inset_0_0_0_3px_theme(colors.sky.500)]"
+                                checked={!!p.isDefault}
+                                disabled={purchasePathSaving}
+                                onChange={() => setDefaultPurchasePath(p.id)}
+                              />
+                              <span className="text-xs text-slate-700 dark:text-slate-200">
+                                기본 경로
+                              </span>
+                              <span className="sr-only">기본 경로</span>
+                            </label>
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            {p.siteName?.trim() || "사이트 경로"}
+                          </td>
+
+                          <td className="max-w-xs py-3 pr-3 align-middle break-all text-slate-800 dark:text-slate-100">
+                            {p.siteUrl ||
+                              p.normalizedDomain ||
+                              p.siteName ||
+                              "—"}
+                          </td>
+
+                          <td className="py-3 align-middle text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() =>
+                                  setPurchasePathEditModal({
+                                    kind: "SITE",
+                                    path: p,
+                                  })
+                                }
+                                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                              >
+                                수정하기
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() => deletePurchasePath(p.id)}
+                                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                                aria-label="삭제"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {purchasePathEditGroups.other.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+                <h3 className="mb-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  기타 경로
+                </h3>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] border-collapse text-center text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-center text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                        <th className="pb-2 pr-2 text-left">기본경로</th>
+                        <th className="pb-2 pr-3">경로</th>
+                        <th className="pb-2 pr-3">내용</th>
+                        <th className="pb-2 text-right">액션</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {purchasePathEditGroups.other.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                        >
+                          <td className="py-3 pr-2 align-middle text-left">
+                            <label className="inline-flex cursor-pointer items-center justify-start gap-2">
+                              <input
+                                type="radio"
+                                name="productPurchasePathDefault"
+                                className="h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white checked:border-sky-600 checked:bg-white checked:shadow-[inset_0_0_0_3px_theme(colors.sky.600)] focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-0 disabled:opacity-50 dark:border-slate-500 dark:bg-white dark:checked:bg-white dark:checked:shadow-[inset_0_0_0_3px_theme(colors.sky.500)]"
+                                checked={!!p.isDefault}
+                                disabled={purchasePathSaving}
+                                onChange={() => setDefaultPurchasePath(p.id)}
+                              />
+                              <span className="text-xs text-slate-700 dark:text-slate-200">
+                                기본 경로
+                              </span>
+                              <span className="sr-only">기본 경로</span>
+                            </label>
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-700 dark:text-slate-200">
+                            기타 경로
+                          </td>
+
+                          <td className="py-3 pr-3 align-middle text-slate-800 dark:text-slate-100">
+                            {p.otherText?.trim() || "—"}
+                          </td>
+
+                          <td className="py-3 align-middle text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() =>
+                                  setPurchasePathEditModal({
+                                    kind: "OTHER",
+                                    path: p,
+                                  })
+                                }
+                                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-50"
+                              >
+                                수정하기
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={purchasePathSaving}
+                                onClick={() => deletePurchasePath(p.id)}
+                                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                                aria-label="삭제"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {purchasePathAddOpen && (
@@ -4934,6 +5267,91 @@ function ProductEditForm({
           </div>
         )}
       </div>
+
+      {/* 구매 경로 수정 / 담당자 안내 */}
+      {purchasePathEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-700">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                {purchasePathEditModal.kind === "MANAGER" && "담당자 경로 수정"}
+                {purchasePathEditModal.kind === "SITE" && "사이트 경로 수정"}
+                {purchasePathEditModal.kind === "OTHER" && "기타 경로 수정"}
+              </h3>
+            </div>
+            <div className="p-5">
+              {purchasePathEditModal.kind === "MANAGER" ? (
+                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  담당자를 바꾸려면 이 경로를 삭제한 뒤{" "}
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">
+                    경로 추가
+                  </span>
+                  에서 다시 등록해 주세요.
+                </p>
+              ) : purchasePathEditModal.kind === "SITE" ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      표시 이름 (선택)
+                    </label>
+                    <input
+                      type="text"
+                      value={editSiteName}
+                      onChange={(e) => setEditSiteName(e.target.value)}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-white dark:text-slate-100"
+                      placeholder="사이트 이름"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      URL
+                    </label>
+                    <input
+                      type="text"
+                      value={editSiteUrl}
+                      onChange={(e) => setEditSiteUrl(e.target.value)}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-600 dark:bg-white dark:text-slate-100"
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    내용
+                  </label>
+                  <textarea
+                    value={editOtherText}
+                    onChange={(e) => setEditOtherText(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-white dark:text-slate-100"
+                    placeholder="기타 구매 경로 설명"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setPurchasePathEditModal(null)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                닫기
+              </button>
+              {purchasePathEditModal.kind !== "MANAGER" && (
+                <button
+                  type="button"
+                  disabled={purchasePathSaving}
+                  onClick={() => void savePurchasePathEdit()}
+                  className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                >
+                  {purchasePathSaving ? "저장 중..." : "저장"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Supplier Edit Modal */}
       {showSupplierEditModal && editingSupplierDetails && (

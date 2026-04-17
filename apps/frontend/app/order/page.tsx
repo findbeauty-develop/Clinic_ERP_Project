@@ -10,6 +10,10 @@ import {
   apiDelete,
   getAccessToken,
 } from "../../lib/api";
+import {
+  purchasePathSupplierDisplayLine,
+  purchasePathSupplierDisplayLineForOrder,
+} from "../../lib/purchase-path-supplier-line";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -47,6 +51,13 @@ type ProductWithRisk = {
   supplierName: string | null;
   managerName: string | null; // 담당자명
   managerPosition?: string | null; // 담당자 직함
+  isPath?: boolean;
+  purchasePathType?: string | null;
+  pathCompanyName?: string | null;
+  pathManagerName?: string | null;
+  pathSiteLabel?: string | null;
+  pathOtherText?: string | null;
+  normalizedDomain?: string | null;
   batchNo: string | null;
   expiryDate: string | null;
   unitPrice: number | null;
@@ -1263,14 +1274,22 @@ export default function OrderPage() {
                                   <span className="font-medium">브랜드:</span>{" "}
                                   {product.brand}
                                 </span>
-                                <span>
-                                  <span className="font-medium">공급처:</span>{" "}
-                                  {product.supplierName || "없음"}
-                                </span>
-                                <span>
-                                  <span className="font-medium">담당자:</span>{" "}
-                                  {product.managerName || "없음"}
-                                </span>
+                                {purchasePathSupplierDisplayLine(product) ?? (
+                                  <>
+                                    <span>
+                                      <span className="font-medium">
+                                        공급처:
+                                      </span>{" "}
+                                      {product.supplierName || "없음"}
+                                    </span>
+                                    <span>
+                                      <span className="font-medium">
+                                        담당자:
+                                      </span>{" "}
+                                      {product.managerName || "없음"}
+                                    </span>
+                                  </>
+                                )}
                                 <span>
                                   <span className="font-medium">단가:</span>{" "}
                                   {unitPrice.toLocaleString()}원
@@ -1400,6 +1419,9 @@ export default function OrderPage() {
                       const managerName = firstProduct?.managerName ?? "";
                       const managerPosition =
                         firstProduct?.managerPosition ?? "";
+                      const draftGroupPathLine = firstProduct
+                        ? purchasePathSupplierDisplayLine(firstProduct)
+                        : null;
 
                       return (
                         <div
@@ -1409,9 +1431,13 @@ export default function OrderPage() {
                           {/* Supplier nomi, manager nomi va umumiy qiymat */}
                           <div className="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
                             <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                              {supplierName}
-                              {managerName && ` ${managerName}`}
-                              {managerPosition && ` ${managerPosition}`}
+                              {draftGroupPathLine ?? (
+                                <>
+                                  {supplierName}
+                                  {managerName && ` ${managerName}`}
+                                  {managerPosition && ` ${managerPosition}`}
+                                </>
+                              )}
                             </div>
                             <div className="text-sm font-semibold text-slate-900 dark:text-white">
                               총 {group.totalAmount.toLocaleString()}원
@@ -1777,38 +1803,30 @@ export default function OrderPage() {
                           <div className="mb-3 flex items-center justify-between border-b border-slate-300 bg-slate-100 px-3 py-2 dark:border-slate-600 dark:bg-slate-700">
                             <div className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-white">
                               <span>
-                                공급처:{" "}
-                                {order.supplierDetails?.companyName ||
-                                  order.supplierName ||
-                                  "공급업체 없음"}{" "}
-                                {/* ✅ PHONE ICON BADGE - Faqat platform supplier uchun
-                              {order.supplierDetails?.isPlatformSupplier && (
-                                <span
-                                  className="ml-1.5 inline-flex items-center text-emerald-600 dark:text-emerald-400"
-                                  title="플랫폼 등록 공급사"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    strokeWidth={2}
-                                    stroke="currentColor"
-                                    className="w-4 h-4"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                                    />
-                                  </svg>
-                                </span>
-                              )} */}
-                                담당자:{" "}
-                                {order.supplierDetails?.managerName ||
-                                  order.managerName ||
-                                  "담당자 없음"}
-                                {order.supplierDetails?.position &&
-                                  ` ${order.supplierDetails.position}`}
+                                {purchasePathSupplierDisplayLineForOrder({
+                                  items: order.items || [],
+                                  supplierName:
+                                    order.supplierDetails?.companyName ||
+                                    order.supplierName ||
+                                    null,
+                                  managerName:
+                                    order.supplierDetails?.managerName ||
+                                    order.managerName ||
+                                    null,
+                                }) ?? (
+                                  <>
+                                    공급처:{" "}
+                                    {order.supplierDetails?.companyName ||
+                                      order.supplierName ||
+                                      "공급업체 없음"}{" "}
+                                    담당자:{" "}
+                                    {order.supplierDetails?.managerName ||
+                                      order.managerName ||
+                                      "담당자 없음"}
+                                    {order.supplierDetails?.position &&
+                                      ` ${order.supplierDetails.position}`}
+                                  </>
+                                )}
                               </span>
                               <span className="text-xs text-slate-600 dark:text-slate-400">
                                 주문번호 {order.orderNo}
@@ -2397,12 +2415,21 @@ export default function OrderPage() {
                         <div className="mb-3 flex items-center justify-between border-b border-slate-300 bg-slate-100 px-3 py-2 dark:border-slate-600 dark:bg-slate-700">
                           <div className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-white">
                             <span>
-                              공급처:{" "}
-                              {rejectedOrder.companyName || "공급업체 없음"}{" "}
-                              담당자:{" "}
-                              {rejectedOrder.managerName || "담당자 없음"}
-                              {rejectedOrder.managerPosition &&
-                                ` ${rejectedOrder.managerPosition}`}
+                              {purchasePathSupplierDisplayLineForOrder({
+                                items: rejectedOrder.items || [],
+                                supplierName:
+                                  rejectedOrder.companyName ?? null,
+                                managerName: rejectedOrder.managerName ?? null,
+                              }) ?? (
+                                <>
+                                  공급처:{" "}
+                                  {rejectedOrder.companyName || "공급업체 없음"}{" "}
+                                  담당자:{" "}
+                                  {rejectedOrder.managerName || "담당자 없음"}
+                                  {rejectedOrder.managerPosition &&
+                                    ` ${rejectedOrder.managerPosition}`}
+                                </>
+                              )}
                             </span>
                             <span className="text-xs text-slate-600 dark:text-slate-400">
                               주문번호 {rejectedOrder.orderNo}
@@ -2744,6 +2771,9 @@ export default function OrderPage() {
                     const supplierManagerName = supplierManager?.name || "";
                     const supplierManagerPosition =
                       supplierManager?.position || "";
+                    const pdfGroupPathLine = firstProduct
+                      ? purchasePathSupplierDisplayLine(firstProduct)
+                      : null;
 
                     // Get logged-in member info (name + position) - for order creator
                     const memberData =
@@ -2817,9 +2847,9 @@ export default function OrderPage() {
                             </svg>
                             <div className="flex-1">
                               <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                                {supplierName}
+                                {pdfGroupPathLine ?? supplierName}
                               </div>
-                              {supplierManagerName && (
+                              {!pdfGroupPathLine && supplierManagerName && (
                                 <div className="text-xs text-slate-500 dark:text-slate-400">
                                   [담당자]{" "}
                                   {supplierManagerPosition && (
@@ -3244,11 +3274,26 @@ export default function OrderPage() {
                     {/* 공급처 (Supplier) */}
                     <div className="p-4">
                       <div className="text-sm font-semibold text-slate-900 mb-3">
-                        공급처:{" "}
-                        {selectedOrder.supplierDetails?.companyName ||
-                          selectedOrder.companyName ||
-                          selectedOrder.supplierName ||
-                          "A사"}
+                        {purchasePathSupplierDisplayLineForOrder({
+                          items: selectedOrder.items || [],
+                          supplierName:
+                            selectedOrder.supplierDetails?.companyName ||
+                            selectedOrder.companyName ||
+                            selectedOrder.supplierName ||
+                            null,
+                          managerName:
+                            selectedOrder.supplierDetails?.managerName ||
+                            selectedOrder.managerName ||
+                            null,
+                        }) ?? (
+                          <>
+                            공급처:{" "}
+                            {selectedOrder.supplierDetails?.companyName ||
+                              selectedOrder.companyName ||
+                              selectedOrder.supplierName ||
+                              "A사"}
+                          </>
+                        )}
                       </div>
                       <div className="text-xs text-slate-600 mb-1">
                         [회사주소]{" "}

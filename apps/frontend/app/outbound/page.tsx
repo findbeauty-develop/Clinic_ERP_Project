@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost, apiDelete, clearCache } from "../../lib/api";
+import { purchasePathSupplierDisplayLine } from "../../lib/purchase-path-supplier-line";
 
 type Batch = {
   id: string;
@@ -46,7 +47,17 @@ type ProductForOutbound = {
   minStock?: number;
   currentStock?: number;
   supplierName?: string | null;
+  /** Legacy ProductSupplier 담당자명 */
+  managerName?: string | null;
+  /** 기본 구매 경로(PurchasePath is_default)가 있을 때 true — 출고 카드에서 경로 기준 표시 */
+  isPath?: boolean;
+  purchasePathType?: "MANAGER" | "SITE" | "OTHER" | string | null;
+  pathCompanyName?: string | null;
+  pathManagerName?: string | null;
+  pathSiteLabel?: string | null;
+  pathOtherText?: string | null;
   storageLocation?: string | null;
+  normalizedDomain?: string | null;
 };
 
 type ScheduledItem = {
@@ -3678,9 +3689,7 @@ const ProductCard = memo(function ProductCard({
                 </span>
               )}
             </span>
-            {product.supplierName && (
-              <span>공급처: {product.supplierName}</span>
-            )}
+            {purchasePathSupplierDisplayLine(product)}
           </div>
         </div>
 

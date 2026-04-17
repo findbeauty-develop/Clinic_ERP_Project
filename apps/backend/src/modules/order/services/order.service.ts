@@ -21,6 +21,7 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 import { ORDER_SUPPLIER_NOTIFIED_EVENT } from "../../notifications/constants/notification-events";
 import type { OrderSupplierNotifiedPayload } from "../../notifications/types/order-supplier-notified.payload";
 import { PurchasePathService } from "../../product/services/purchase-path.service";
+import { defaultPurchasePathToListApiFields } from "../../product/mappers/purchase-path-list.mapper";
 
 /** Prisma select shape for 교환 입고 pending-inbound merge */
 type ExchangeInboundProductRow = {
@@ -88,6 +89,37 @@ export class OrderService {
       },
     });
 
+    const productIdList = products.map((p: any) => p.id);
+    const defaultPurchasePaths =
+      productIdList.length === 0
+        ? []
+        : await this.prisma.executeWithRetry(async () => {
+            return await (this.prisma as any).purchasePath.findMany({
+              where: {
+                tenant_id: tenantId,
+                product_id: { in: productIdList },
+                is_default: true,
+              },
+              select: {
+                product_id: true,
+                path_type: true,
+                site_name: true,
+                site_url: true,
+                normalized_domain: true,
+                other_text: true,
+                clinicSupplierManager: {
+                  select: { company_name: true, name: true },
+                },
+              },
+            });
+          });
+    const defaultPathByProductId = new Map<string, any>();
+    for (const row of defaultPurchasePaths as any[]) {
+      if (row?.product_id && !defaultPathByProductId.has(row.product_id)) {
+        defaultPathByProductId.set(row.product_id, row);
+      }
+    }
+
     // Faqat basic formatting - hamma logic frontend'da
     // 단가: 1) Batch bor bo'lsa = oxirgi inbound (batch) narxi, 2) yo'q bo'lsa = Product/ProductSupplier
     const formattedProducts = products.map((product: any) => {
@@ -110,6 +142,9 @@ export class OrderService {
             product.purchase_price ??
             null);
 
+      const pathExtras = defaultPurchasePathToListApiFields(
+        defaultPathByProductId.get(product.id) ?? null
+      );
       return {
         id: product.id,
         productName: product.name,
@@ -134,6 +169,7 @@ export class OrderService {
           unit: product.unit ?? null,
           purchasePrice: batch.purchase_price ?? null,
         })),
+        ...pathExtras,
       };
     });
 
@@ -1437,6 +1473,8 @@ export class OrderService {
         itemStatus: item.item_status || null,
         taxRate: item.tax_rate ?? 0,
         lineCreatedAt: item.created_at ?? null,
+        purchasePathSnapshot: item.purchase_path_snapshot ?? null,
+        purchasePathType: item.purchase_path_type ?? null,
       }));
 
       // 총금액 = klinika buyurtma paytidagi summa (ordered_quantity * unit_price)
@@ -3659,6 +3697,8 @@ export class OrderService {
             alert_days: item.product?.alert_days,
             barcode: item.product?.barcode, // ✅ Include barcode for scanner
           },
+          purchasePathSnapshot: item.purchase_path_snapshot ?? null,
+          purchasePathType: item.purchase_path_type ?? null,
         };
       });
 
@@ -4003,6 +4043,8 @@ export class OrderService {
               rejection_member_name: true,
               updated_at: true,
               created_at: true,
+              purchase_path_snapshot: true,
+              purchase_path_type: true,
               product: {
                 select: {
                   name: true,
@@ -4085,6 +4127,8 @@ export class OrderService {
           itemStatus: item.item_status || null,
           rejectionMemberName: item.rejection_member_name || null,
           lineCreatedAt: item.created_at ?? null,
+          purchasePathSnapshot: item.purchase_path_snapshot ?? null,
+          purchasePathType: item.purchase_path_type ?? null,
         })),
         memo: order.memo || null,
       };

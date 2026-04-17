@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, ChangeEvent, useCallback } from "react";
 import Link from "next/link";
 import CSVImportModal from "../../../components/csv-import-modal";
 import { getAccessToken, getTenantId } from "../../../lib/api";
+import { purchasePathSupplierDisplayLineForOrder } from "../../../lib/purchase-path-supplier-line";
 
 const inboundFilters = [
   { label: "최근 업데이트순", value: "recent" },
@@ -1667,8 +1668,16 @@ function PendingOrdersList({
                       ) : null}
                     </p>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      {order.supplierName ?? "공급업체"}
-                      {order.managerName ? ` · ${order.managerName}` : ""}
+                      {purchasePathSupplierDisplayLineForOrder({
+                        items: order.items || [],
+                        supplierName: order.supplierName ?? null,
+                        managerName: order.managerName ?? null,
+                      }) ?? (
+                        <>
+                          {order.supplierName ?? "공급업체"}
+                          {order.managerName ? ` · ${order.managerName}` : ""}
+                        </>
+                      )}
                     </p>
                   </div>
                   <button
