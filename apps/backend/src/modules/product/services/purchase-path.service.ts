@@ -77,6 +77,20 @@ export class PurchasePathService {
       if (!mgr) {
         throw new BadRequestException("Clinic supplier manager not found");
       }
+      const dupManagerPath = await (this.prisma as any).purchasePath.findFirst({
+        where: {
+          tenant_id: tenantId,
+          product_id: productId,
+          path_type: "MANAGER",
+          clinic_supplier_manager_id: dto.clinicSupplierManagerId!,
+        },
+        select: { id: true },
+      });
+      if (dupManagerPath) {
+        throw new BadRequestException(
+          "이미 동일한 담당자 구매 경로가 등록되어 있습니다."
+        );
+      }
     }
 
     const count = await (this.prisma as any).purchasePath.count({

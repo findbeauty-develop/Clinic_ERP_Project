@@ -1,7 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { useDebounce } from "../../hooks/useDebounce";
 import {
   apiGet,
@@ -9,11 +9,13 @@ import {
   apiPut,
   apiDelete,
   getAccessToken,
+  clearCache,
 } from "../../lib/api";
 import {
   purchasePathSupplierDisplayLine,
   purchasePathSupplierDisplayLineForOrder,
 } from "../../lib/purchase-path-supplier-line";
+import { AddPurchasePathModal } from "../../components/add-purchase-path-modal";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -51,6 +53,8 @@ type ProductWithRisk = {
   supplierName: string | null;
   managerName: string | null; // 담당자명
   managerPosition?: string | null; // 담당자 직함
+  managerPhoneNumber?: string | null;
+  supplierStatus?: string | null;
   isPath?: boolean;
   purchasePathType?: string | null;
   pathCompanyName?: string | null;
@@ -89,6 +93,8 @@ type DraftItem = {
   taxRate?: number;
   memo?: string;
   isHighlighted?: boolean;
+  /** 구매 경로가 2개 이상일 때 주문에 사용할 경로 (1개면 생략 가능) */
+  purchasePathId?: string;
 };
 
 type DraftResponse = {
@@ -114,6 +120,195 @@ type DraftResponse = {
 
 type FilterTab = "low" | "expiring" | "all";
 
+type OrderPurchasePathOption = {
+  id: string;
+  pathType: "MANAGER" | "SITE" | "OTHER";
+  label: string;
+};
+
+function mapRawToOrderPurchasePath(raw: any): OrderPurchasePathOption | null {
+  if (!raw?.id) return null;
+  const ptRaw = raw.path_type ?? raw.pathType;
+  const pathType: OrderPurchasePathOption["pathType"] =
+    ptRaw === "MANAGER" || ptRaw === "SITE" || ptRaw === "OTHER"
+      ? ptRaw
+      : "OTHER";
+  let label = "";
+  if (pathType === "MANAGER") {
+    const m = raw.clinicSupplierManager ?? raw.clinic_supplier_manager;
+    const c = m?.company_name ?? m?.companyName ?? "";
+    const n = m?.name ?? "";
+    label = `${c} · ${n}`.trim() || "담당자 경로";
+  } else if (pathType === "SITE") {
+    const domain = (raw.normalized_domain ?? raw.normalizedDomain ?? "").trim();
+    const siteName = (raw.site_name ?? raw.siteName ?? "").trim();
+    const siteUrl = (raw.site_url ?? raw.siteUrl ?? "").trim();
+    const stripWww = (s: string) => s.replace(/^www\./i, "");
+    const norm = (s: string) => stripWww(s).toLowerCase();
+    let hostFromUrl = "";
+    if (siteUrl) {
+      try {
+        const u = siteUrl.match(/^https?:\/\//i)
+          ? siteUrl
+          : `https://${siteUrl}`;
+        hostFromUrl = stripWww(new URL(u).hostname);
+      } catch {
+        hostFromUrl = "";
+      }
+    }
+    // 드롭다운: URL·도메인·이름이 같은 내용으로 두 번 나오지 않게 한 줄로 압축
+    if (domain) {
+      label = stripWww(domain);
+    } else if (hostFromUrl) {
+      label = hostFromUrl;
+    } else if (siteName) {
+      label = siteName;
+    } else if (siteUrl) {
+      label = siteUrl;
+    } else {
+      label = "사이트 경로";
+    }
+    if (siteName && (domain || hostFromUrl)) {
+      const ref = domain ? norm(domain) : norm(hostFromUrl);
+      if (ref && norm(siteName) === ref) {
+        label = stripWww(domain || hostFromUrl);
+      }
+    }
+  } else {
+    label = (raw.other_text ?? raw.otherText ?? "").trim() || "기타 경로";
+  }
+  return { id: String(raw.id), pathType, label };
+}
+
+function uniqueOrderPathOptionsById(
+  paths: OrderPurchasePathOption[]
+): OrderPurchasePathOption[] {
+  const byId = new Map<string, OrderPurchasePathOption>();
+  for (const p of paths) {
+    if (!byId.has(p.id)) byId.set(p.id, p);
+  }
+  return [...byId.values()];
+}
+
+/** 동일 표시 문자열이면 드롭다운에서 구분되도록 접미사 부여 */
+function dedupeOrderPathDropdownLabels(
+  paths: OrderPurchasePathOption[]
+): OrderPurchasePathOption[] {
+  const seen = new Map<string, number>();
+  return paths.map((p) => {
+    const base = (p.label || "").trim() || p.id;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    if (n === 0) return p;
+    const tag =
+      p.pathType === "MANAGER"
+        ? "담당자"
+        : p.pathType === "SITE"
+          ? "사이트"
+          : "기타";
+    return { ...p, label: `${base} (${tag} ${n + 1})` };
+  });
+}
+
+function finalizeOrderPathOptionsForDropdown(
+  paths: OrderPurchasePathOption[]
+): OrderPurchasePathOption[] {
+  return dedupeOrderPathDropdownLabels(uniqueOrderPathOptionsById(paths));
+}
+
+function regroupDraftItems(
+  items: DraftItem[],
+  base: Pick<DraftResponse, "id" | "sessionId" | "itemIdMap">
+): DraftResponse {
+  const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const groupedBySupplier: Record<
+    string,
+    { supplierId: string; items: DraftItem[]; totalAmount: number }
+  > = {};
+  items.forEach((item) => {
+    const supId = item.supplierId || "unknown";
+    if (!groupedBySupplier[supId]) {
+      groupedBySupplier[supId] = {
+        supplierId: supId,
+        items: [],
+        totalAmount: 0,
+      };
+    }
+    groupedBySupplier[supId].items.push(item);
+    groupedBySupplier[supId].totalAmount += item.totalPrice;
+  });
+  return {
+    id: base.id,
+    sessionId: base.sessionId,
+    items,
+    totalAmount,
+    groupedBySupplier: Object.values(groupedBySupplier),
+    itemIdMap: base.itemIdMap,
+  };
+}
+
+function validateDraftPurchasePaths(
+  draft: DraftResponse,
+  lists: Record<string, OrderPurchasePathOption[]>,
+  listsReady: boolean
+): { ok: true } | { ok: false; message: string } {
+  if (!listsReady) {
+    return { ok: false, message: "구매 경로 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요." };
+  }
+  for (const item of draft.items) {
+    const paths = lists[item.productId] ?? [];
+    if (paths.length === 0) {
+      return {
+        ok: false,
+        message:
+          "구매 경로가 없는 제품이 있습니다. 주문 요약에서 해당 제품의「구매 경로 추가」를 눌러 등록해 주세요.",
+      };
+    }
+    if (paths.length > 1 && !item.purchasePathId) {
+      return {
+        ok: false,
+        message:
+          "구매 경로가 여러 개인 제품이 있습니다. 주문 요약에서 제품별로 사용할 경로를 선택해 주세요.",
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/** 드롭다운에서 고른 경로 — 목록 줄과 동일한 접두어(기본 경로 / 공급처 / 구매 경로) */
+function orderPathOptionDisplayLine(
+  option: OrderPurchasePathOption
+): ReactNode {
+  if (option.pathType === "MANAGER") {
+    return <span>공급처: {option.label}</span>;
+  }
+  if (option.pathType === "SITE") {
+    return <span>기본 경로: {option.label}</span>;
+  }
+  return <span>구매 경로: {option.label}</span>;
+}
+
+/** 주문 요약 카드 헤더: 선택한 purchasePathId 반영, 없으면 제품 기본 경로 */
+function draftGroupHeaderPathLine(
+  firstItem: DraftItem | undefined,
+  firstProduct: ProductWithRisk | undefined,
+  lists: Record<string, OrderPurchasePathOption[]>
+): ReactNode {
+  if (!firstItem) return null;
+  const paths = lists[firstItem.productId] ?? [];
+  if (firstItem.purchasePathId) {
+    const sel = paths.find((p) => p.id === firstItem.purchasePathId);
+    if (sel) return orderPathOptionDisplayLine(sel);
+  }
+  if (paths.length === 1) {
+    return orderPathOptionDisplayLine(paths[0]);
+  }
+  if (firstProduct) {
+    return purchasePathSupplierDisplayLine(firstProduct);
+  }
+  return null;
+}
+
 /** 주문 내역: 라인 추가 순서(created_at) — 거절 등 상태와 무관 */
 function sortOrderLineItems<
   T extends { lineCreatedAt?: string | null; id?: string },
@@ -130,7 +325,6 @@ function sortOrderLineItems<
 }
 
 export default function OrderPage() {
-  const router = useRouter();
   const apiUrl = useMemo(
     () => process.env.NEXT_PUBLIC_API_URL ?? "https://api.jaclit.com",
     []
@@ -158,6 +352,14 @@ export default function OrderPage() {
   const [productFilter, setProductFilter] = useState<"low-stock" | "all">(
     "low-stock"
   );
+  const [purchasePathModalProduct, setPurchasePathModalProduct] =
+    useState<ProductWithRisk | null>(null);
+  /** 주문 요약용: 제품별 구매 경로 목록 */
+  const [purchasePathLists, setPurchasePathLists] = useState<
+    Record<string, OrderPurchasePathOption[]>
+  >({});
+  const [pathsListLoading, setPathsListLoading] = useState(false);
+  const [purchasePathsVersion, setPurchasePathsVersion] = useState(0);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false); // ✅ Order yaratish loading state
   const [orderMemos, setOrderMemos] = useState<Record<string, string>>({});
@@ -212,11 +414,6 @@ export default function OrderPage() {
 
   // Client-side mount state (hydration error'dan qochish uchun)
   const [isMounted, setIsMounted] = useState(false);
-
-  // No-supplier modal state
-  const [showNoSupplierModal, setShowNoSupplierModal] = useState(false);
-  const [noSupplierProduct, setNoSupplierProduct] =
-    useState<ProductWithRisk | null>(null);
 
   // Price modal state (for products without prices)
   const [showPriceModal, setShowPriceModal] = useState(false);
@@ -445,6 +642,85 @@ export default function OrderPage() {
     }
   }, [fetchDraft, sessionId]);
 
+  const draftProductIdsKey = useMemo(() => {
+    if (!draft?.items?.length) return "";
+    return [...new Set(draft.items.map((i) => i.productId))].sort().join(",");
+  }, [draft?.items]);
+
+  useEffect(() => {
+    if (!draftProductIdsKey) {
+      setPurchasePathLists({});
+      setPathsListLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPathsListLoading(true);
+    const ids = draftProductIdsKey.split(",").filter(Boolean);
+    void (async () => {
+      try {
+        const entries = await Promise.all(
+          ids.map(async (productId) => {
+            try {
+              const rows = await apiGet<any[]>(
+                `/products/${productId}/purchase-paths`
+              );
+              const arr = Array.isArray(rows) ? rows : [];
+              return [
+                productId,
+                finalizeOrderPathOptionsForDropdown(
+                  arr
+                    .map(mapRawToOrderPurchasePath)
+                    .filter(Boolean) as OrderPurchasePathOption[]
+                ),
+              ] as const;
+            } catch {
+              return [productId, [] as OrderPurchasePathOption[]] as const;
+            }
+          })
+        );
+        if (!cancelled) {
+          setPurchasePathLists(Object.fromEntries(entries));
+        }
+      } finally {
+        if (!cancelled) setPathsListLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draftProductIdsKey, purchasePathsVersion]);
+
+  /** 구매 경로가 1개뿐이면 자동으로 선택 */
+  useEffect(() => {
+    setDraft((prev) => {
+      if (!prev?.items?.length) return prev;
+      let changed = false;
+      const nextItems = prev.items.map((item) => {
+        const paths = purchasePathLists[item.productId];
+        if (paths?.length === 1 && item.purchasePathId !== paths[0].id) {
+          changed = true;
+          return { ...item, purchasePathId: paths[0].id };
+        }
+        return item;
+      });
+      if (!changed) return prev;
+      return regroupDraftItems(nextItems, prev);
+    });
+  }, [purchasePathLists]);
+
+  const setDraftLinePurchasePath = useCallback(
+    (itemId: string, purchasePathId: string) => {
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const nextItems = prev.items.map((it) =>
+          it.id === itemId ? { ...it, purchasePathId } : it
+        );
+        return regroupDraftItems(nextItems, prev);
+      });
+    },
+    []
+  );
+
   // Orders olish (History uchun)
   const fetchOrders = useCallback(async () => {
     setOrdersLoading(true);
@@ -606,13 +882,6 @@ export default function OrderPage() {
       const product = products.find((p) => p.id === productId);
       if (!product) return;
 
-      // ✅ CHECK: If quantity > 0 and supplier is missing, show no-supplier modal
-      if (sanitizedQuantity > 0 && !product.supplierId) {
-        setNoSupplierProduct(product);
-        setShowNoSupplierModal(true);
-        return;
-      }
-
       // ✅ CHECK: If quantity > 0 and prices are missing, show modal
       if (sanitizedQuantity > 0) {
         // Get batch if exists
@@ -653,60 +922,9 @@ export default function OrderPage() {
 
       // Local draft state update - "주문 요약" uchun
       setDraft((prevDraft) => {
-        // Agar draft yo'q bo'lsa, yangi draft yaratish
         if (!prevDraft) {
           if (sanitizedQuantity === 0) return null;
-
-          return {
-            id: "local-draft",
-            sessionId: "local",
-            items: [
-              {
-                id: itemId,
-                productId,
-                batchId,
-                supplierId,
-                quantity: sanitizedQuantity,
-                unitPrice,
-                taxRate,
-                totalPrice: sanitizedQuantity * unitPrice,
-                isHighlighted: true,
-              },
-            ],
-            totalAmount: sanitizedQuantity * unitPrice,
-            groupedBySupplier: [
-              {
-                supplierId,
-                items: [
-                  {
-                    id: itemId,
-                    productId,
-                    batchId,
-                    supplierId,
-                    quantity: sanitizedQuantity,
-                    unitPrice,
-                    taxRate,
-                    totalPrice: sanitizedQuantity * unitPrice,
-                  },
-                ],
-                totalAmount: sanitizedQuantity * unitPrice,
-              },
-            ],
-            itemIdMap: {},
-          };
-        }
-
-        const items = [...(prevDraft.items || [])];
-        const existingItemIndex = items.findIndex((item) => item.id === itemId);
-
-        if (sanitizedQuantity === 0) {
-          // Item'ni o'chirish
-          if (existingItemIndex >= 0) {
-            items.splice(existingItemIndex, 1);
-          }
-        } else {
-          // Item qo'shish yoki yangilash
-          const newItem = {
+          const first: DraftItem = {
             id: itemId,
             productId,
             batchId,
@@ -715,7 +933,38 @@ export default function OrderPage() {
             unitPrice,
             taxRate,
             totalPrice: sanitizedQuantity * unitPrice,
-            isHighlighted: existingItemIndex < 0, // Yangi item bo'lsa highlight
+            isHighlighted: true,
+          };
+          return regroupDraftItems([first], {
+            id: "local-draft",
+            sessionId: "local",
+            itemIdMap: {},
+          });
+        }
+
+        const items = [...(prevDraft.items || [])];
+        const existingItemIndex = items.findIndex((item) => item.id === itemId);
+
+        if (sanitizedQuantity === 0) {
+          if (existingItemIndex >= 0) {
+            items.splice(existingItemIndex, 1);
+          }
+        } else {
+          const prevLine =
+            existingItemIndex >= 0 ? items[existingItemIndex] : undefined;
+          const newItem: DraftItem = {
+            id: itemId,
+            productId,
+            batchId,
+            supplierId,
+            quantity: sanitizedQuantity,
+            unitPrice,
+            taxRate,
+            totalPrice: sanitizedQuantity * unitPrice,
+            isHighlighted: existingItemIndex < 0,
+            ...(prevLine?.purchasePathId
+              ? { purchasePathId: prevLine.purchasePathId }
+              : {}),
           };
 
           if (existingItemIndex >= 0) {
@@ -729,35 +978,8 @@ export default function OrderPage() {
           }
         }
 
-        // Total amount hisoblash
-        const totalAmount = items.reduce(
-          (sum, item) => sum + item.totalPrice,
-          0
-        );
-
-        // Supplier bo'yicha grouping
-        const groupedBySupplier: Record<string, any> = {};
-        items.forEach((item) => {
-          const supId = item.supplierId || "unknown";
-          if (!groupedBySupplier[supId]) {
-            groupedBySupplier[supId] = {
-              supplierId: supId,
-              items: [],
-              totalAmount: 0,
-            };
-          }
-          groupedBySupplier[supId].items.push(item);
-          groupedBySupplier[supId].totalAmount += item.totalPrice;
-        });
-
-        // 🔍 DEBUG: Grouped suppliers
-
-        return {
-          ...prevDraft,
-          items,
-          totalAmount,
-          groupedBySupplier: Object.values(groupedBySupplier),
-        };
+        if (items.length === 0) return null;
+        return regroupDraftItems(items, prevDraft);
       });
 
       // ESKI BACKEND CALL'LAR O'CHIRILDI - Faqat local state ishlaydi
@@ -836,8 +1058,10 @@ export default function OrderPage() {
       setDraft((prevDraft) => {
         const items = [...(prevDraft?.items || [])];
         const existingItemIndex = items.findIndex((item) => item.id === itemId);
+        const prevLine =
+          existingItemIndex >= 0 ? items[existingItemIndex] : undefined;
 
-        const newItem = {
+        const newItem: DraftItem = {
           id: itemId,
           productId: selectedProduct.id,
           batchId: selectedBatchId,
@@ -847,6 +1071,9 @@ export default function OrderPage() {
           taxRate: selectedProduct.taxRate ?? 0,
           totalPrice: pendingQuantity * purchasePrice,
           isHighlighted: true,
+          ...(prevLine?.purchasePathId
+            ? { purchasePathId: prevLine.purchasePathId }
+            : {}),
         };
 
         if (existingItemIndex >= 0) {
@@ -858,35 +1085,11 @@ export default function OrderPage() {
           items.push(newItem);
         }
 
-        // Total amount hisoblash
-        const totalAmount = items.reduce(
-          (sum, item) => sum + item.totalPrice,
-          0
-        );
-
-        // Supplier bo'yicha grouping
-        const groupedBySupplier: Record<string, any> = {};
-        items.forEach((item) => {
-          const supId = item.supplierId || "unknown";
-          if (!groupedBySupplier[supId]) {
-            groupedBySupplier[supId] = {
-              supplierId: supId,
-              items: [],
-              totalAmount: 0,
-            };
-          }
-          groupedBySupplier[supId].items.push(item);
-          groupedBySupplier[supId].totalAmount += item.totalPrice;
-        });
-
-        return {
+        return regroupDraftItems(items, {
           id: prevDraft?.id || "local-draft",
           sessionId: prevDraft?.sessionId || "local",
-          items,
-          totalAmount,
-          groupedBySupplier: Object.values(groupedBySupplier),
           itemIdMap: prevDraft?.itemIdMap || {},
-        };
+        });
       });
 
       // Reset modal state
@@ -1269,7 +1472,7 @@ export default function OrderPage() {
                               </div>
 
                               {/* 2-chi qator: Brend, supplier, 담당자, 단가 */}
-                              <div className="mb-3 flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600 dark:text-slate-400">
                                 <span>
                                   <span className="font-medium">브랜드:</span>{" "}
                                   {product.brand}
@@ -1419,30 +1622,118 @@ export default function OrderPage() {
                       const managerName = firstProduct?.managerName ?? "";
                       const managerPosition =
                         firstProduct?.managerPosition ?? "";
-                      const draftGroupPathLine = firstProduct
-                        ? purchasePathSupplierDisplayLine(firstProduct)
-                        : null;
+                      const draftGroupPathLine = draftGroupHeaderPathLine(
+                        firstItem,
+                        firstProduct,
+                        purchasePathLists
+                      );
+                      const headerPathSelectItems = group.items.filter(
+                        (it) =>
+                          (purchasePathLists[it.productId] ?? []).length > 1
+                      );
+                      const firstProductPathCount = firstItem
+                        ? (purchasePathLists[firstItem.productId] ?? []).length
+                        : 0;
+                      const showHeaderAddPathButton =
+                        Boolean(firstProduct) &&
+                        !pathsListLoading &&
+                        firstProductPathCount <= 1;
 
                       return (
                         <div
                           key={group.supplierId}
                           className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
                         >
-                          {/* Supplier nomi, manager nomi va umumiy qiymat */}
-                          <div className="mb-2 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-slate-700">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                              {draftGroupPathLine ?? (
-                                <>
-                                  {supplierName}
-                                  {managerName && ` ${managerName}`}
-                                  {managerPosition && ` ${managerPosition}`}
-                                </>
-                              )}
+                          {/* 기본 경로 / 공급처 + (경로 1개 이하일 때) 구매 경로 추가 · 총액 */}
+                          <div className="mb-2 flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2 dark:border-slate-700">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                              {showHeaderAddPathButton && firstProduct ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPurchasePathModalProduct(firstProduct)
+                                  }
+                                  className="shrink-0 rounded-md border border-sky-500 bg-white px-2 py-0.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
+                                >
+                                  + 구매 경로 추가
+                                </button>
+                              ) : null}
+                              <div className="min-w-0 text-sm font-semibold text-slate-900 dark:text-white">
+                                {draftGroupPathLine ?? (
+                                  <>
+                                    {supplierName}
+                                    {managerName && ` ${managerName}`}
+                                    {managerPosition && ` ${managerPosition}`}
+                                  </>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            <div className="shrink-0 text-sm font-semibold text-slate-900 dark:text-white">
                               총 {group.totalAmount.toLocaleString()}원
                             </div>
                           </div>
+
+                          {/* 이 주문에 사용할 구매 경로 (2개 이상일 때 — 헤더) */}
+                          {!pathsListLoading &&
+                          headerPathSelectItems.length > 0 ? (
+                            <div className="mb-2 space-y-2 border-b border-slate-200 pb-2 dark:border-slate-700">
+                              {headerPathSelectItems.map((item) => {
+                                const paths =
+                                  purchasePathLists[item.productId] ?? [];
+                                const lineProduct = products.find(
+                                  (p) => p.id === item.productId
+                                );
+                                const lineProductName =
+                                  lineProduct?.productName || item.productId;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+                                  >
+                                    <label className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                      {group.items.length > 1
+                                        ? `${lineProductName} — 이 주문에 사용할 구매 경로`
+                                        : "이 주문에 사용할 구매 경로"}
+                                    </label>
+                                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                                      <select
+                                        value={item.purchasePathId || ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          if (v)
+                                            setDraftLinePurchasePath(
+                                              item.id,
+                                              v
+                                            );
+                                        }}
+                                        className="min-h-[2rem] min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      >
+                                        <option value="">선택해 주세요</option>
+                                        {paths.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      {lineProduct ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPurchasePathModalProduct(
+                                              lineProduct
+                                            )
+                                          }
+                                          className="shrink-0 self-stretch rounded-md border border-sky-500 bg-white px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 sm:self-auto dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
+                                        >
+                                          + 구매 경로 추가
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
 
                           {/* Product'lar ro'yxati */}
                           <div className="space-y-2">
@@ -1457,83 +1748,126 @@ export default function OrderPage() {
                                 quantities[item.id] ||
                                 quantities[item.productId] ||
                                 item.quantity;
+                              const paths =
+                                purchasePathLists[item.productId] ?? [];
 
                               return (
                                 <div
                                   key={item.id}
-                                  className={`flex items-center gap-2 rounded-lg border p-2 ${
+                                  className={`space-y-1.5 rounded-lg border p-2 ${
                                     item.isHighlighted
                                       ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20"
                                       : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
                                   }`}
                                 >
-                                  {/* Product name */}
-                                  <div className="flex-1 text-xs font-medium text-slate-900 dark:text-white">
-                                    {productName}
-                                    {item.isHighlighted && (
-                                      <span className="ml-1 text-[10px] text-blue-600 dark:text-blue-400">
-                                        (신규)
-                                      </span>
-                                    )}
-                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {/* Product name */}
+                                    <div className="min-w-0 flex-1 text-xs font-medium text-slate-900 dark:text-white">
+                                      {productName}
+                                      {item.isHighlighted && (
+                                        <span className="ml-1 text-[10px] text-blue-600 dark:text-blue-400">
+                                          (신규)
+                                        </span>
+                                      )}
+                                    </div>
 
-                                  {/* Qty input */}
-                                  <div className="flex items-center gap-0.5">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={currentQty}
-                                      onChange={(e) => {
-                                        const val = Math.max(
-                                          0,
-                                          parseInt(e.target.value) || 0
-                                        );
+                                    {/* Qty input */}
+                                    <div className="flex shrink-0 items-center gap-0.5">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={currentQty}
+                                        onChange={(e) => {
+                                          const val = Math.max(
+                                            0,
+                                            parseInt(e.target.value) || 0
+                                          );
+                                          handleQuantityChange(
+                                            item.productId,
+                                            item.batchId,
+                                            val
+                                          );
+                                        }}
+                                        className="h-6 w-12 rounded border border-slate-300 bg-white px-1 text-center text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      />
+                                      <span className="text-xs text-slate-600 dark:text-slate-400">
+                                        {product?.unit || "개"}
+                                      </span>
+                                    </div>
+
+                                    {/* Total (tax calculated in modal only) */}
+                                    <div className="shrink-0 text-xs font-semibold text-slate-900 dark:text-white">
+                                      {(
+                                        item.unitPrice * currentQty
+                                      ).toLocaleString()}
+                                      원
+                                    </div>
+
+                                    {/* Minus button */}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
                                         handleQuantityChange(
                                           item.productId,
                                           item.batchId,
-                                          val
-                                        );
-                                      }}
-                                      className="h-6 w-12 rounded border border-slate-300 bg-white px-1 text-center text-xs dark:border-slate-600 dark:bg-slate-700 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                    <span className="text-xs text-slate-600 dark:text-slate-400">
-                                      {product?.unit || "개"}
-                                    </span>
-                                  </div>
-
-                                  {/* Total (tax calculated in modal only) */}
-                                  <div className="text-xs font-semibold text-slate-900 dark:text-white">
-                                    {(
-                                      item.unitPrice * currentQty
-                                    ).toLocaleString()}
-                                    원
-                                  </div>
-
-                                  {/* Minus button */}
-                                  <button
-                                    onClick={() =>
-                                      handleQuantityChange(
-                                        item.productId,
-                                        item.batchId,
-                                        0
-                                      )
-                                    }
-                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-400 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:bg-slate-700 dark:hover:border-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                                  >
-                                    <svg
-                                      className="h-3 w-3"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
+                                          0
+                                        )
+                                      }
+                                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-400 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:bg-slate-700 dark:hover:border-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                                     >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M20 12H4"
-                                      />
-                                    </svg>
-                                  </button>
+                                      <svg
+                                        className="h-3 w-3"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M20 12H4"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+
+                                  {pathsListLoading ||
+                                  paths.length === 0 ||
+                                  paths.length === 1 ? (
+                                    <div className="border-t border-slate-200 pt-1.5 dark:border-slate-600">
+                                      {pathsListLoading ? (
+                                        <p className="text-[10px] text-slate-400">
+                                          구매 경로 불러오는 중…
+                                        </p>
+                                      ) : paths.length === 0 ? (
+                                        <div className="space-y-1">
+                                          <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                                            구매 경로 없음 · 주문 전 등록 필요
+                                          </p>
+                                          {product ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setPurchasePathModalProduct(
+                                                  product
+                                                )
+                                              }
+                                              className="w-full rounded-md border border-sky-500 bg-white py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
+                                            >
+                                              구매 경로 추가
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                      ) : (
+                                        <p
+                                          className="truncate text-[10px] text-slate-500 dark:text-slate-400"
+                                          title={paths[0]?.label}
+                                        >
+                                          경로: {paths[0]?.label}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : null}
                                 </div>
                               );
                             })}
@@ -1557,6 +1891,15 @@ export default function OrderPage() {
                     onClick={() => {
                       if (!draft || draft.items.length === 0) {
                         alert("주문 항목이 없습니다.");
+                        return;
+                      }
+                      const pathCheck = validateDraftPurchasePaths(
+                        draft,
+                        purchasePathLists,
+                        draft.items.length > 0 && !pathsListLoading
+                      );
+                      if (!pathCheck.ok) {
+                        alert(pathCheck.message);
                         return;
                       }
                       setShowOrderModal(true);
@@ -2417,8 +2760,7 @@ export default function OrderPage() {
                             <span>
                               {purchasePathSupplierDisplayLineForOrder({
                                 items: rejectedOrder.items || [],
-                                supplierName:
-                                  rejectedOrder.companyName ?? null,
+                                supplierName: rejectedOrder.companyName ?? null,
                                 managerName: rejectedOrder.managerName ?? null,
                               }) ?? (
                                 <>
@@ -3018,6 +3360,16 @@ export default function OrderPage() {
                         // ✅ Duplicate order oldini olish
                         if (isCreatingOrder) return;
 
+                        const pathCheck = validateDraftPurchasePaths(
+                          draft,
+                          purchasePathLists,
+                          draft.items.length > 0 && !pathsListLoading
+                        );
+                        if (!pathCheck.ok) {
+                          alert(pathCheck.message);
+                          return;
+                        }
+
                         setIsCreatingOrder(true);
                         try {
                           // ✅ getAccessToken() ishlatish (localStorage emas)
@@ -3483,95 +3835,6 @@ export default function OrderPage() {
         )}
       </div>
 
-      {/* Price Entry Modal */}
-      {showNoSupplierModal && noSupplierProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-slate-800">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-                  <svg
-                    className="h-5 w-5 text-red-600 dark:text-red-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  주문 불가 제품 주문을 진행할 수 없습니다!
-                </h3>
-              </div>
-              <button
-                onClick={() => {
-                  setShowNoSupplierModal(false);
-                  setNoSupplierProduct(null);
-                }}
-                className="text-xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="px-6 py-5">
-              <p className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                제품: {noSupplierProduct.productName}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400"></p>
-              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-700/40 dark:bg-amber-900/20">
-                <p className="text-sm text-amber-800 dark:text-amber-300">
-                  공급업체 정보가 등록되지 않았습니다. 공급업체 정보를 추가한 후
-                  주문을 진행해 주세요.
-                </p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
-              <button
-                onClick={() => {
-                  setShowNoSupplierModal(false);
-                  setNoSupplierProduct(null);
-                }}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/50"
-              >
-                닫기
-              </button>
-              <button
-                onClick={() => {
-                  setShowNoSupplierModal(false);
-                  router.push(`/products/${noSupplierProduct.id}`);
-                }}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                공급업체 추가
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showPriceModal && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-lg w-full max-w-2xl shadow-xl">
@@ -3678,6 +3941,28 @@ export default function OrderPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {purchasePathModalProduct && (
+        <AddPurchasePathModal
+          open
+          onClose={() => setPurchasePathModalProduct(null)}
+          apiUrl={apiUrl}
+          productId={purchasePathModalProduct.id}
+          productName={purchasePathModalProduct.productName}
+          clinicSupplierManagerId={purchasePathModalProduct.supplierId}
+          initialCompanyName={purchasePathModalProduct.supplierName}
+          initialManagerName={purchasePathModalProduct.managerName}
+          initialPhoneNumber={purchasePathModalProduct.managerPhoneNumber}
+          initialSupplierStatus={purchasePathModalProduct.supplierStatus}
+          onSaved={async () => {
+            const savedProductId = purchasePathModalProduct.id;
+            await fetchProducts();
+            clearCache(`/products/${savedProductId}/purchase-paths`);
+            clearCache("/products");
+            setPurchasePathsVersion((v) => v + 1);
+          }}
+        />
       )}
     </>
   );

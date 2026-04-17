@@ -662,6 +662,7 @@ export class ProductsService {
                 phone_number: true,
                 business_number: true,
                 position: true, // ✅ 직책 (Position)
+                supplier: { select: { status: true } },
               },
             },
           },

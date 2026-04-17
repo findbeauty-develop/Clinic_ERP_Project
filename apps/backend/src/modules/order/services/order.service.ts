@@ -81,6 +81,7 @@ export class OrderService {
                 name: true,
                 phone_number: true,
                 business_number: true,
+                supplier: { select: { status: true } },
                 // unit: true,
               },
             },
@@ -128,6 +129,8 @@ export class OrderService {
       const supplierId = supplierManager?.id ?? null;
       const supplierName = supplierManager?.company_name ?? null;
       const managerName = supplierManager?.name ?? null;
+      const managerPhoneNumber = supplierManager?.phone_number ?? null;
+      const supplierStatus = supplierManager?.supplier?.status ?? null;
 
       const batches = product.batches || [];
       const sortedBatches = [...batches].sort(
@@ -153,6 +156,8 @@ export class OrderService {
         supplierId: supplierId, // ClinicSupplierManager ID
         supplierName: supplierName,
         managerName: managerName,
+        managerPhoneNumber,
+        supplierStatus,
         managerPosition: supplierManager?.position ?? null, // Position is not in ClinicSupplierManager
         unitPrice,
         taxRate: product.tax_rate ?? 0,
@@ -774,6 +779,25 @@ export class OrderService {
         const supplierId =
           product.productSupplier?.clinic_supplier_manager_id || "unknown";
         item.supplierId = supplierId;
+      }
+
+      const pathCount = await this.prisma.executeWithRetry(async () => {
+        return await (this.prisma as any).purchasePath.count({
+          where: {
+            product_id: item.productId,
+            tenant_id: tenantId,
+          },
+        });
+      });
+      if (pathCount === 0) {
+        throw new BadRequestException(
+          `「${product.name ?? item.productId}」제품에 구매 경로가 없습니다. 구매 경로를 등록한 뒤 주문해 주세요.`
+        );
+      }
+      if (pathCount > 1 && !item.purchasePathId) {
+        throw new BadRequestException(
+          `「${product.name ?? item.productId}」제품에 구매 경로가 여러 개 있습니다. 주문할 경로를 선택해 주세요.`
+        );
       }
 
       const pathResolved = await this.purchasePathService.resolveForOrderItem({

@@ -9,6 +9,7 @@ export type ClinicSupplierManagerCore = {
   name?: string | null;
   position?: string | null;
   phone_number?: string | null;
+  supplier?: { status?: string | null } | null;
   email1?: string | null;
   company_address?: string | null;
   business_number?: string | null;
@@ -28,11 +29,15 @@ export type ClinicSupplierManagerLike =
 export function mapClinicSupplierManagerToListRowFields(
   manager: ClinicSupplierManagerLike
 ) {
+  const supplier = (manager as ClinicSupplierManagerCore | null | undefined)
+    ?.supplier;
   return {
     supplierId: manager?.id ?? null,
     supplierName: manager?.company_name ?? null,
     managerName: manager?.name ?? null,
     managerPosition: manager?.position ?? null,
+    managerPhoneNumber: manager?.phone_number ?? null,
+    supplierStatus: supplier?.status ?? null,
   };
 }
 

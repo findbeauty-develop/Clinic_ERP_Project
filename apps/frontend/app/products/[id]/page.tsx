@@ -2468,21 +2468,66 @@ function ProductEditForm({
     }
   };
 
+  const managerPathDedupeKey = (
+    details: NonNullable<typeof selectedSupplierDetails>
+  ) => {
+    const id = (
+      details.clinicSupplierManagerId ||
+      details.managerId ||
+      details.supplierId ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    if (id) return `id:${id}`;
+    const phone = String(details.phoneNumber || "").replace(/\D/g, "");
+    const company = String(details.companyName || "")
+      .trim()
+      .toLowerCase();
+    const name = String(details.managerName || "")
+      .trim()
+      .toLowerCase();
+    return `k:${company}|${name}|${phone}`;
+  };
+
+  const managerPathRowDedupeKey = (p: PurchasePathDetail) => {
+    if (p.pathType !== "MANAGER") return null;
+    const id = (p.clinicSupplierManagerId || p.manager?.id || "")
+      .trim()
+      .toLowerCase();
+    if (id) return `id:${id}`;
+    const m = p.manager;
+    if (!m) return null;
+    const phone = String(m.phoneNumber || "").replace(/\D/g, "");
+    const company = String(m.companyName || "")
+      .trim()
+      .toLowerCase();
+    const name = String(m.name || "")
+      .trim()
+      .toLowerCase();
+    return `k:${company}|${name}|${phone}`;
+  };
+
   const registerManagerPurchasePath = async () => {
+    if (!selectedSupplierDetails) {
+      alert("담당자를 검색하여 선택한 뒤 등록할 수 있습니다.");
+      return;
+    }
     const mgrId =
-      selectedSupplierDetails?.clinicSupplierManagerId ||
-      selectedSupplierDetails?.managerId ||
-      selectedSupplierDetails?.supplierId;
+      selectedSupplierDetails.clinicSupplierManagerId ||
+      selectedSupplierDetails.managerId ||
+      selectedSupplierDetails.supplierId;
     if (!mgrId) {
       alert("담당자를 검색하여 선택한 뒤 등록할 수 있습니다.");
       return;
     }
+    const newKey = managerPathDedupeKey(selectedSupplierDetails);
     if (
-      purchasePathsList.some(
-        (p) =>
-          p.pathType === "MANAGER" &&
-          (p.clinicSupplierManagerId === mgrId || p.manager?.id === mgrId)
-      )
+      purchasePathsList.some((p) => {
+        if (p.pathType !== "MANAGER") return false;
+        const rowKey = managerPathRowDedupeKey(p);
+        return rowKey != null && rowKey === newKey;
+      })
     ) {
       alert("이미 동일한 담당자 경로가 등록되어 있습니다.");
       return;
