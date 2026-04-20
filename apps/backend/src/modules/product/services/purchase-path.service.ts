@@ -17,6 +17,8 @@ import {
 const pathIncludeManager = {
   clinicSupplierManager: {
     select: {
+      id: true,
+      supplier_id: true,
       company_name: true,
       business_number: true,
       company_phone: true,

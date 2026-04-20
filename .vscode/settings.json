@@ -35,6 +35,7 @@
   "workbench.preferredHighContrastLightColorTheme": "Cursor Light",
   "workbench.preferredLightColorTheme": "Cursor Dark",
   "workbench.preferredHighContrastColorTheme": "Cursor Light",
-  "workbench.preferredDarkColorTheme": "Cursor Dark",
-  "workbench.colorTheme": "Cursor Dark"
+  "workbench.preferredDarkColorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.iconTheme": "vscode-icons"
 }

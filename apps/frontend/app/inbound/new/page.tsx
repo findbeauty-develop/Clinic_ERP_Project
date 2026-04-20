@@ -4,6 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getAccessToken, getTenantId } from "../../../lib/api";
+import {
+  PurchasePathGroupedTables,
+  TrashIcon,
+} from "../../../components/purchase-paths/purchase-path-grouped-tables";
 
 const barcodeMethods = [
   {
@@ -58,19 +62,88 @@ const positionOptions = [
   "담당자",
 ];
 
+/** 제품 수정 페이지 구매 경로 MANAGER 행과 동일 스냅샷 */
+type StagedManagerDetails = {
+  id?: string;
+  supplierId?: string;
+  clinicSupplierManagerId?: string;
+  companyName: string;
+  companyAddress: string | null;
+  businessNumber: string;
+  companyPhone: string | null;
+  companyEmail: string;
+  managerId: string;
+  managerName: string;
+  position: string | null;
+  phoneNumber: string;
+  email1: string | null;
+  email2: string | null;
+  responsibleProducts: string[];
+  /** 검색 결과 플랫폼 연동 담당자 여부 */
+  platformLinked?: boolean;
+  /** 상세 모달 메모 (로컬 스테이징) */
+  memo?: string;
+};
+
 type StagedInboundPurchasePath = {
   tempId: string;
   pathType: "MANAGER" | "SITE" | "OTHER";
+  isDefault?: boolean;
   clinicSupplierManagerId?: string;
   displayLabel: string;
   siteUrl?: string;
   siteName?: string;
   otherText?: string;
+  managerDetails?: StagedManagerDetails;
+  managerPlatformLinked?: boolean;
 };
 
 function newStagedPathTempId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
+
+function inboundManagerDedupeKey(d: StagedManagerDetails): string {
+  const id = (
+    d.clinicSupplierManagerId ||
+    d.managerId ||
+    d.supplierId ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (id) return `id:${id}`;
+  const phone = String(d.phoneNumber || "").replace(/\D/g, "");
+  const company = String(d.companyName || "")
+    .trim()
+    .toLowerCase();
+  const name = String(d.managerName || "")
+    .trim()
+    .toLowerCase();
+  return `k:${company}|${name}|${phone}`;
+}
+
+function normalizeBusinessNumberForManualApi(raw: string): string | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+  if (/^\d{3}-\d{2}-\d{5}$/.test(t)) return t;
+  const d = t.replace(/\D/g, "");
+  if (d.length === 10) {
+    return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  }
+  return undefined;
+}
+
+const MANUAL_SUPPLIER_JOB_TITLES = new Set([
+  "사원",
+  "주임",
+  "대리",
+  "과장",
+  "차장",
+  "부장",
+  "대표",
+  "이사",
+  "담당자",
+]);
 
 export default function InboundNewPage() {
   const router = useRouter();
@@ -228,6 +301,7 @@ export default function InboundNewPage() {
       email1: string | null;
       email2: string | null;
       responsibleProducts: string[];
+      platformLinked?: boolean;
     }>
   >([]);
   const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
@@ -285,6 +359,7 @@ export default function InboundNewPage() {
     email1: string | null;
     email2: string | null;
     responsibleProducts: string[];
+    platformLinked?: boolean;
   } | null>(null);
 
   const [stagedPurchasePaths, setStagedPurchasePaths] = useState<
@@ -298,6 +373,34 @@ export default function InboundNewPage() {
   const [otherPathInput, setOtherPathInput] = useState("");
   const [purchasePathWriteNow, setPurchasePathWriteNow] = useState(true);
   const [purchasePathSaving, setPurchasePathSaving] = useState(false);
+  const [duplicateManagerPathModalOpen, setDuplicateManagerPathModalOpen] =
+    useState(false);
+  /** staged 행 수정 중이면 추가 시 해당 tempId 행을 교체 */
+  const [editingStagedPathTempId, setEditingStagedPathTempId] = useState<
+    string | null
+  >(null);
+  const [showSupplierEditModal, setShowSupplierEditModal] = useState(false);
+  const [editingSupplierDetails, setEditingSupplierDetails] = useState<{
+    companyName: string;
+    companyAddress: string;
+    businessNumber: string;
+    companyPhone: string;
+    companyEmail: string;
+    managerName: string;
+    position: string;
+    phoneNumber: string;
+    email1: string;
+    memo: string;
+  } | null>(null);
+  const [supplierDetailModalSaving, setSupplierDetailModalSaving] =
+    useState(false);
+
+  const stagedPurchasePathGroups = useMemo(() => {
+    const manager = stagedPurchasePaths.filter((p) => p.pathType === "MANAGER");
+    const site = stagedPurchasePaths.filter((p) => p.pathType === "SITE");
+    const other = stagedPurchasePaths.filter((p) => p.pathType === "OTHER");
+    return { manager, site, other };
+  }, [stagedPurchasePaths]);
 
   // GTIN parse helper for additional barcode inputs
   const parseGtinInput = async (
@@ -604,6 +707,11 @@ export default function InboundNewPage() {
           email2: item.email2 || null,
           responsibleProducts: item.responsibleProducts || [],
           supplierId: item.supplierId || item.id || null, // Supplier company ID
+          platformLinked: !!(
+            item.linkedSupplierManagerId ??
+            item.linked_supplier_manager_id ??
+            item.supplierManagerId
+          ),
         }));
         setSupplierSearchResults(results);
 
@@ -701,6 +809,7 @@ export default function InboundNewPage() {
               item.isRegisteredOnPlatform === "true" ||
               false,
             supplierId: item.supplierId || item.id || null, // Get supplier ID from response
+            platformLinked: !!supplierManagerId,
           };
         });
 
@@ -773,8 +882,11 @@ export default function InboundNewPage() {
           result.managerId ||
           result.supplierId ||
           undefined,
+        platformLinked: !!(result as { platformLinked?: boolean })
+          .platformLinked,
       });
-      handleInputChange("supplierId", result.supplierId || result.id); // ✅ Use Supplier.id (UUID)
+      /** Supplier.id만 저장 — 없으면 빈 값 (ClinicSupplierManager.id와 혼동 금지) */
+      handleInputChange("supplierId", result.supplierId ?? "");
       handleInputChange("supplierName", result.companyName);
       handleInputChange("supplierContactName", result.managerName);
       handleInputChange("supplierContactPhone", result.phoneNumber);
@@ -874,6 +986,7 @@ export default function InboundNewPage() {
       email1: pendingSupplier.email1,
       email2: pendingSupplier.email2,
       responsibleProducts: pendingSupplier.responsibleProducts || [],
+      platformLinked: !!pendingSupplier.isRegisteredOnPlatform,
     });
 
     // Also update form fields
@@ -1134,6 +1247,7 @@ export default function InboundNewPage() {
         responsibleProducts: manualEntryForm.responsibleProducts
           ? manualEntryForm.responsibleProducts.split(",").map((p) => p.trim())
           : [],
+        platformLinked: false,
       });
 
       alert("공급업체가 성공적으로 등록되었습니다.");
@@ -1329,9 +1443,10 @@ export default function InboundNewPage() {
       const newProductId = (result as any)?.id as string | undefined;
       if (newProductId && stagedPurchasePaths.length > 0) {
         try {
+          const hasExplicitDefault = stagedPurchasePaths.some((p) => p.isDefault);
           for (let i = 0; i < stagedPurchasePaths.length; i++) {
             const p = stagedPurchasePaths[i];
-            const isDefault = i === 0;
+            const isDefault = hasExplicitDefault ? !!p.isDefault : i === 0;
             if (p.pathType === "MANAGER" && p.clinicSupplierManagerId) {
               await apiPost(`/products/${newProductId}/purchase-paths`, {
                 pathType: "MANAGER",
@@ -1376,43 +1491,287 @@ export default function InboundNewPage() {
     }
   };
 
-  const resolveClinicSupplierManagerId = () => {
-    if (!selectedSupplierDetails) return "";
-    return (
+  const snapshotManagerFromSelected = (): StagedManagerDetails | null => {
+    if (!selectedSupplierDetails) return null;
+    const s = selectedSupplierDetails;
+    return {
+      id: s.id,
+      supplierId: s.supplierId,
+      clinicSupplierManagerId: s.clinicSupplierManagerId,
+      companyName: s.companyName,
+      companyAddress: s.companyAddress,
+      businessNumber: s.businessNumber,
+      companyPhone: s.companyPhone,
+      companyEmail: s.companyEmail,
+      managerId: s.managerId,
+      managerName: s.managerName,
+      position: s.position,
+      phoneNumber: s.phoneNumber,
+      email1: s.email1,
+      email2: s.email2,
+      responsibleProducts: [...(s.responsibleProducts || [])],
+      platformLinked: s.platformLinked,
+      memo: (s as { memo?: string }).memo,
+    };
+  };
+
+  /** 담당자 경로 테이블「수정하기」→ 제품 수정과 동일한 공급업체 상세 모달 */
+  const handleInboundStagedSupplierEditSave = async () => {
+    if (!editingSupplierDetails || !selectedSupplierDetails) return;
+    const pathTempId = editingStagedPathTempId;
+    if (!pathTempId) {
+      alert("편집 중인 경로를 찾을 수 없습니다.");
+      return;
+    }
+
+    const phoneDigits = editingSupplierDetails.phoneNumber.replace(/\D/g, "");
+    if (!/^010\d{8}$/.test(phoneDigits)) {
+      alert("휴대폰 번호 형식이 올바르지 않습니다 (예: 01012345678)");
+      return;
+    }
+
+    const brnNorm = normalizeBusinessNumberForManualApi(
+      editingSupplierDetails.businessNumber
+    );
+    if (editingSupplierDetails.businessNumber.trim() && brnNorm == null) {
+      alert(
+        "사업자 등록번호 형식이 올바르지 않습니다 (예: 123-45-67890 또는 10자리 숫자)"
+      );
+      return;
+    }
+
+    const clinicMgrId =
       selectedSupplierDetails.clinicSupplierManagerId ||
       selectedSupplierDetails.managerId ||
-      ""
+      "";
+
+    if (clinicMgrId) {
+      const posTrim = editingSupplierDetails.position?.trim() ?? "";
+      const positionBody =
+        posTrim && MANUAL_SUPPLIER_JOB_TITLES.has(posTrim)
+          ? { position: posTrim }
+          : {};
+      const companyEmailTrim = editingSupplierDetails.companyEmail.trim();
+      const managerEmailTrim = editingSupplierDetails.email1.trim();
+
+      const body: Record<string, unknown> = {
+        id: clinicMgrId,
+        companyName: editingSupplierDetails.companyName.trim(),
+        managerName: editingSupplierDetails.managerName.trim(),
+        phoneNumber: phoneDigits,
+        status: "MANUAL_ONLY",
+        companyAddress:
+          editingSupplierDetails.companyAddress.trim() || undefined,
+        companyPhone: editingSupplierDetails.companyPhone.trim() || undefined,
+        memo: editingSupplierDetails.memo.trim() || undefined,
+        ...positionBody,
+      };
+      /** 검색 API가 supplierId에 ClinicSupplierManager.id를 넣던 경우 제외 (Supplier UUID만 전달) */
+      const clinicRowIdForSupplierFk =
+        selectedSupplierDetails.clinicSupplierManagerId ||
+        selectedSupplierDetails.managerId ||
+        "";
+      const maybeSupplierFk = selectedSupplierDetails.supplierId;
+      if (
+        maybeSupplierFk &&
+        maybeSupplierFk !== clinicRowIdForSupplierFk &&
+        maybeSupplierFk !== selectedSupplierDetails.id
+      ) {
+        body.supplierId = maybeSupplierFk;
+      }
+      if (brnNorm) body.businessNumber = brnNorm;
+      if (companyEmailTrim) body.companyEmail = companyEmailTrim;
+      if (managerEmailTrim) body.managerEmail = managerEmailTrim;
+
+      setSupplierDetailModalSaving(true);
+      try {
+        const token = await getAccessToken();
+        const tenantId = getTenantId();
+        const res = await fetch(`${apiUrl}/supplier/create-manual`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Tenant-Id": tenantId || "",
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          const msg =
+            (errJson as { message?: string }).message ||
+            (await res.text().catch(() => "")) ||
+            `저장 실패 (${res.status})`;
+          throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "저장에 실패했습니다.";
+        alert(msg);
+        return;
+      } finally {
+        setSupplierDetailModalSaving(false);
+      }
+    }
+
+    setStagedPurchasePaths((prev) => {
+      const prevPath = prev.find((x) => x.tempId === pathTempId);
+      const base = prevPath?.managerDetails;
+      if (!base) return prev;
+
+      const mergedManager: StagedManagerDetails = {
+        ...base,
+        companyName: editingSupplierDetails.companyName.trim(),
+        companyAddress: editingSupplierDetails.companyAddress.trim() || null,
+        businessNumber: editingSupplierDetails.businessNumber.trim(),
+        companyPhone: editingSupplierDetails.companyPhone.trim() || null,
+        companyEmail: editingSupplierDetails.companyEmail.trim(),
+        managerName: editingSupplierDetails.managerName.trim(),
+        position: editingSupplierDetails.position.trim() || null,
+        phoneNumber: phoneDigits,
+        email1: editingSupplierDetails.email1.trim() || null,
+        memo: editingSupplierDetails.memo.trim() || undefined,
+      };
+      const displayLabel = `${mergedManager.companyName} · ${mergedManager.managerName}`;
+      return prev.map((p) =>
+        p.tempId === pathTempId && p.pathType === "MANAGER"
+          ? {
+              ...p,
+              displayLabel,
+              clinicSupplierManagerId:
+                mergedManager.clinicSupplierManagerId ||
+                mergedManager.managerId ||
+                p.clinicSupplierManagerId,
+              managerDetails: mergedManager,
+            }
+          : p
+      );
+    });
+
+    setShowSupplierEditModal(false);
+    setEditingSupplierDetails(null);
+    setEditingStagedPathTempId(null);
+    setSelectedSupplierDetails(null);
+  };
+
+  const trySelectSupplierForInboundStagedPath = (index: number) => {
+    const result = supplierSearchResults[index];
+    if (!result) return;
+    const pick: StagedManagerDetails = {
+      companyName: result.companyName || "",
+      companyAddress: result.companyAddress ?? null,
+      businessNumber: result.businessNumber || "",
+      companyPhone: result.companyPhone ?? null,
+      companyEmail: result.companyEmail || "",
+      managerId: result.managerId || "",
+      managerName: result.managerName || "",
+      position: result.position ?? null,
+      phoneNumber: result.phoneNumber || "",
+      email1: result.email1 ?? null,
+      email2: result.email2 ?? null,
+      responsibleProducts: result.responsibleProducts || [],
+      clinicSupplierManagerId:
+        result.clinicSupplierManagerId ||
+        result.managerId ||
+        result.supplierId ||
+        "",
+      supplierId: result.supplierId || undefined,
+      platformLinked: !!(result as { platformLinked?: boolean }).platformLinked,
+    };
+    const newKey = inboundManagerDedupeKey(pick);
+    const dup = stagedPurchasePaths.some((p) => {
+      if (p.pathType !== "MANAGER" || !p.managerDetails) return false;
+      if (editingStagedPathTempId && p.tempId === editingStagedPathTempId)
+        return false;
+      return inboundManagerDedupeKey(p.managerDetails) === newKey;
+    });
+    if (dup) {
+      setDuplicateManagerPathModalOpen(true);
+      return;
+    }
+    if (!commitInboundStagedManagerPath(pick)) return;
+    handleSupplierResultSelect(index);
+    setPurchasePathType("");
+    setPurchasePathAddOpen(false);
+    setSupplierSearchResults([]);
+    setSupplierSearchFallback(false);
+    setSelectedSupplierDetails(null);
+    setSelectedSupplierResult(null);
+  };
+
+  const setDefaultStagedPurchasePath = (tempId: string) => {
+    setStagedPurchasePaths((prev) =>
+      prev.map((p) => ({ ...p, isDefault: p.tempId === tempId }))
     );
   };
 
+  /** 제품 수정 페이지와 같이 검색 행에서 바로 staged 목록(담당자 경로 카드)에 반영 */
+  const commitInboundStagedManagerPath = (snap: StagedManagerDetails) => {
+    const mgrId = snap.clinicSupplierManagerId || snap.managerId || "";
+    if (!mgrId) {
+      alert(
+        "담당자를 검색·선택하거나 수동 등록을 완료한 뒤 추가할 수 있습니다."
+      );
+      return false;
+    }
+    const newKey = inboundManagerDedupeKey(snap);
+    const dup = stagedPurchasePaths.some((p) => {
+      if (p.pathType !== "MANAGER" || !p.managerDetails) return false;
+      if (editingStagedPathTempId && p.tempId === editingStagedPathTempId)
+        return false;
+      return inboundManagerDedupeKey(p.managerDetails) === newKey;
+    });
+    if (dup) {
+      setDuplicateManagerPathModalOpen(true);
+      return false;
+    }
+    const platformLinked = !!snap.platformLinked;
+    const editingId = editingStagedPathTempId;
+    setStagedPurchasePaths((prev) => {
+      if (editingId) {
+        return prev.map((p) =>
+          p.tempId === editingId
+            ? {
+                tempId: editingId,
+                pathType: "MANAGER" as const,
+                clinicSupplierManagerId: mgrId,
+                displayLabel: `${snap.companyName} · ${snap.managerName}`,
+                managerDetails: snap,
+                managerPlatformLinked: platformLinked,
+                isDefault: p.isDefault,
+              }
+            : p
+        );
+      }
+      const nextRow: StagedInboundPurchasePath = {
+        tempId: newStagedPathTempId(),
+        pathType: "MANAGER",
+        clinicSupplierManagerId: mgrId,
+        displayLabel: `${snap.companyName} · ${snap.managerName}`,
+        managerDetails: snap,
+        managerPlatformLinked: platformLinked,
+        isDefault: prev.length === 0,
+      };
+      return [...prev, nextRow];
+    });
+    setEditingStagedPathTempId(null);
+    return true;
+  };
+
   const addStagedManagerPurchasePath = () => {
-    const mgrId = resolveClinicSupplierManagerId();
-    if (!mgrId || !selectedSupplierDetails) {
+    if (!selectedSupplierDetails) {
       alert(
         "담당자를 검색·선택하거나 수동 등록을 완료한 뒤 추가할 수 있습니다."
       );
       return;
     }
-    if (
-      stagedPurchasePaths.some(
-        (p) => p.pathType === "MANAGER" && p.clinicSupplierManagerId === mgrId
-      )
-    ) {
-      alert("이미 목록에 동일한 담당자 경로가 있습니다.");
-      return;
-    }
-    setStagedPurchasePaths((prev) => [
-      ...prev,
-      {
-        tempId: newStagedPathTempId(),
-        pathType: "MANAGER",
-        clinicSupplierManagerId: mgrId,
-        displayLabel: `${selectedSupplierDetails.companyName} · ${selectedSupplierDetails.managerName}`,
-      },
-    ]);
+    const snap = snapshotManagerFromSelected();
+    if (!snap) return;
+    if (!commitInboundStagedManagerPath(snap)) return;
     alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
     setPurchasePathType("");
     setPurchasePathAddOpen(false);
+    setSelectedSupplierDetails(null);
+    setSelectedSupplierResult(null);
   };
 
   const addStagedSitePurchasePath = () => {
@@ -1426,15 +1785,34 @@ export default function InboundNewPage() {
       : /^www\./i.test(v) || /\.[a-z0-9-]+\.[a-z]{2,}/i.test(v)
         ? `https://${v.replace(/^https?:\/\//i, "")}`
         : null;
-    setStagedPurchasePaths((prev) => [
-      ...prev,
-      {
-        tempId: newStagedPathTempId(),
-        pathType: "SITE",
-        displayLabel: v,
-        ...(asUrl ? { siteUrl: asUrl } : { siteName: v }),
-      },
-    ]);
+    const editingId = editingStagedPathTempId;
+    const baseFields = {
+      pathType: "SITE" as const,
+      displayLabel: v,
+      ...(asUrl ? { siteUrl: asUrl } : { siteName: v }),
+    };
+    setStagedPurchasePaths((prev) => {
+      if (editingId) {
+        return prev.map((p) =>
+          p.tempId === editingId
+            ? {
+                ...baseFields,
+                tempId: editingId,
+                isDefault: p.isDefault,
+              }
+            : p
+        );
+      }
+      return [
+        ...prev,
+        {
+          ...baseFields,
+          tempId: newStagedPathTempId(),
+          isDefault: prev.length === 0,
+        },
+      ];
+    });
+    setEditingStagedPathTempId(null);
     setSitePathInput("");
     alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
     setPurchasePathType("");
@@ -1447,15 +1825,34 @@ export default function InboundNewPage() {
       alert("구매 경로 내용을 입력해주세요.");
       return;
     }
-    setStagedPurchasePaths((prev) => [
-      ...prev,
-      {
-        tempId: newStagedPathTempId(),
-        pathType: "OTHER",
-        displayLabel: v,
-        otherText: v,
-      },
-    ]);
+    const editingId = editingStagedPathTempId;
+    const baseFields = {
+      pathType: "OTHER" as const,
+      displayLabel: v,
+      otherText: v,
+    };
+    setStagedPurchasePaths((prev) => {
+      if (editingId) {
+        return prev.map((p) =>
+          p.tempId === editingId
+            ? {
+                ...baseFields,
+                tempId: editingId,
+                isDefault: p.isDefault,
+              }
+            : p
+        );
+      }
+      return [
+        ...prev,
+        {
+          ...baseFields,
+          tempId: newStagedPathTempId(),
+          isDefault: prev.length === 0,
+        },
+      ];
+    });
+    setEditingStagedPathTempId(null);
     setOtherPathInput("");
     alert("구매 경로가 목록에 추가되었습니다. 제품 저장 시 함께 등록됩니다.");
     setPurchasePathType("");
@@ -1463,7 +1860,14 @@ export default function InboundNewPage() {
   };
 
   const removeStagedPurchasePath = (tempId: string) => {
-    setStagedPurchasePaths((prev) => prev.filter((p) => p.tempId !== tempId));
+    setStagedPurchasePaths((prev) => {
+      const removed = prev.find((p) => p.tempId === tempId);
+      const next = prev.filter((p) => p.tempId !== tempId);
+      if (removed?.isDefault && next.length > 0) {
+        next[0] = { ...next[0], isDefault: true };
+      }
+      return next;
+    });
   };
 
   return (
@@ -2454,6 +2858,7 @@ export default function InboundNewPage() {
               <button
                 type="button"
                 onClick={() => {
+                  setEditingStagedPathTempId(null);
                   setPurchasePathAddOpen(true);
                   setPurchasePathType("");
                   setSitePathInput("");
@@ -2466,34 +2871,117 @@ export default function InboundNewPage() {
             </div>
 
             {stagedPurchasePaths.length > 0 && (
-              <ul className="mb-4 space-y-2">
-                {stagedPurchasePaths.map((p) => (
-                  <li
-                    key={p.tempId}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-2.5 text-sm dark:border-amber-900/40 dark:bg-amber-950/20"
-                  >
-                    <div className="text-slate-800 dark:text-slate-100">
-                      <span className="mr-2 font-semibold text-amber-800 dark:text-amber-200">
-                        저장 대기 ·{" "}
-                        {p.pathType === "MANAGER"
-                          ? "담당자 경로"
-                          : p.pathType === "SITE"
-                            ? "사이트 경로"
-                            : "기타 경로"}
-                      </span>
-                      {p.displayLabel}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={purchasePathSaving}
-                      onClick={() => removeStagedPurchasePath(p.tempId)}
-                      className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
-                    >
-                      삭제
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="mb-4 space-y-4">
+                <PurchasePathGroupedTables
+                  radioGroupName="inboundStagedPurchasePathDefault"
+                  disabled={purchasePathSaving}
+                  managerRows={stagedPurchasePathGroups.manager.map((p) => {
+                    const m = p.managerDetails;
+                    const company =
+                      m?.companyName ??
+                      (p.displayLabel.includes(" · ")
+                        ? p.displayLabel.split(" · ")[0]
+                        : p.displayLabel);
+                    const name =
+                      m?.managerName ??
+                      (p.displayLabel.includes(" · ")
+                        ? p.displayLabel.split(" · ")[1]
+                        : "—");
+                    return {
+                      rowKey: p.tempId,
+                      isDefault: !!p.isDefault,
+                      companyName: company || "—",
+                      managerName: name || "—",
+                      position: m?.position ?? "—",
+                      phone: m?.phoneNumber || "—",
+                      platformLinked: !!p.managerPlatformLinked,
+                    };
+                  })}
+                  siteRows={stagedPurchasePathGroups.site.map((p) => ({
+                    rowKey: p.tempId,
+                    isDefault: !!p.isDefault,
+                    pathLabel: p.siteName?.trim() || "사이트 경로",
+                    content:
+                      p.siteUrl ||
+                      p.displayLabel ||
+                      p.siteName ||
+                      "—",
+                  }))}
+                  otherRows={stagedPurchasePathGroups.other.map((p) => ({
+                    rowKey: p.tempId,
+                    isDefault: !!p.isDefault,
+                    content: p.otherText?.trim() || p.displayLabel || "—",
+                  }))}
+                  onSetDefault={setDefaultStagedPurchasePath}
+                  onEditManager={(rowKey) => {
+                    const p = stagedPurchasePaths.find(
+                      (x) => x.tempId === rowKey
+                    );
+                    if (!p || p.pathType !== "MANAGER") return;
+                    const m = p.managerDetails;
+                    if (!m) {
+                      alert(
+                        "담당자 정보가 없습니다. 삭제 후 다시 추가해 주세요."
+                      );
+                      return;
+                    }
+                    setEditingStagedPathTempId(p.tempId);
+                    setSelectedSupplierDetails({
+                      ...m,
+                      platformLinked: m.platformLinked,
+                    });
+                    setEditingSupplierDetails({
+                      companyName: m.companyName,
+                      companyAddress: m.companyAddress || "",
+                      businessNumber: m.businessNumber || "",
+                      companyPhone: m.companyPhone || "",
+                      companyEmail: m.companyEmail || "",
+                      managerName: m.managerName,
+                      position: m.position || "",
+                      phoneNumber: m.phoneNumber,
+                      email1: m.email1 || "",
+                      memo: m.memo || "",
+                    });
+                    setShowSupplierEditModal(true);
+                  }}
+                  onDeleteManager={(rowKey) =>
+                    removeStagedPurchasePath(rowKey)
+                  }
+                  onEditSite={(rowKey) => {
+                    const p = stagedPurchasePaths.find(
+                      (x) => x.tempId === rowKey
+                    );
+                    if (!p || p.pathType !== "SITE") return;
+                    setEditingStagedPathTempId(p.tempId);
+                    setSitePathInput(
+                      p.siteUrl ||
+                        p.siteName ||
+                        p.displayLabel ||
+                        ""
+                    );
+                    setPurchasePathAddOpen(true);
+                    setPurchasePathType("SITE");
+                  }}
+                  onDeleteSite={(rowKey) =>
+                    removeStagedPurchasePath(rowKey)
+                  }
+                  onEditOther={(rowKey) => {
+                    const p = stagedPurchasePaths.find(
+                      (x) => x.tempId === rowKey
+                    );
+                    if (!p || p.pathType !== "OTHER") return;
+                    setEditingStagedPathTempId(p.tempId);
+                    setOtherPathInput(
+                      p.otherText?.trim() || p.displayLabel || ""
+                    );
+                    setPurchasePathAddOpen(true);
+                    setPurchasePathType("OTHER");
+                  }}
+                  onDeleteOther={(rowKey) =>
+                    removeStagedPurchasePath(rowKey)
+                  }
+                />
+              </div>
             )}
 
             {purchasePathAddOpen && (
@@ -2524,11 +3012,15 @@ export default function InboundNewPage() {
                 <div className="relative">
                   <select
                     value={purchasePathType}
-                    onChange={(e) =>
-                      setPurchasePathType(
-                        e.target.value as "" | "MANAGER" | "SITE" | "OTHER"
-                      )
-                    }
+                    onChange={(e) => {
+                      const v = e.target.value as
+                        | ""
+                        | "MANAGER"
+                        | "SITE"
+                        | "OTHER";
+                      setEditingStagedPathTempId(null);
+                      setPurchasePathType(v);
+                    }}
                     className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-sm text-slate-700 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                   >
                     <option value="">구매 경로 선택해주세요</option>
@@ -3524,19 +4016,16 @@ export default function InboundNewPage() {
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
                                 핸드폰 번호
                               </th>
-                              {/* <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            담당자 ID
-                          </th> */}
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                액션
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {supplierSearchResults.map((result, index) => (
                               <tr
                                 key={index}
-                                onClick={() =>
-                                  handleSupplierResultSelect(index)
-                                }
-                                className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 ${
+                                className={`border-b border-slate-100 transition dark:border-slate-700 ${
                                   selectedSupplierResult === index
                                     ? "bg-blue-50 dark:bg-blue-900/20"
                                     : ""
@@ -3554,9 +4043,19 @@ export default function InboundNewPage() {
                                 <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
                                   {result.phoneNumber}
                                 </td>
-                                {/* <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">
-                              {result.managerId}
-                            </td> */}
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      trySelectSupplierForInboundStagedPath(
+                                        index
+                                      )
+                                    }
+                                    className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+                                  >
+                                    담당자 추가
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -3837,6 +4336,243 @@ export default function InboundNewPage() {
                 className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
               >
                 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSupplierEditModal && editingSupplierDetails && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="p-6">
+              <h3 className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                공급업체 상세 정보
+              </h3>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사명
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyName}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyName: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사 주소
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyAddress}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyAddress: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      이름
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.managerName}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          managerName: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      직함
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.position}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          position: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      이메일
+                    </label>
+                    <input
+                      type="email"
+                      value={editingSupplierDetails.email1}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          email1: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      사업자 등록번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.businessNumber}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          businessNumber: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      회사 전화번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.companyPhone}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          companyPhone: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      핸드폰 번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSupplierDetails.phoneNumber}
+                      onChange={(e) =>
+                        setEditingSupplierDetails({
+                          ...editingSupplierDetails,
+                          phoneNumber: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                      담당 제품
+                    </label>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                      {selectedSupplierDetails?.responsibleProducts &&
+                      selectedSupplierDetails.responsibleProducts.length > 0
+                        ? selectedSupplierDetails.responsibleProducts.join(", ")
+                        : "-"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  메모
+                </label>
+                <textarea
+                  rows={4}
+                  value={editingSupplierDetails.memo}
+                  onChange={(e) =>
+                    setEditingSupplierDetails({
+                      ...editingSupplierDetails,
+                      memo: e.target.value,
+                    })
+                  }
+                  placeholder="메모를 입력하세요"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSupplierEditModal(false);
+                    setEditingSupplierDetails(null);
+                    setEditingStagedPathTempId(null);
+                    setSelectedSupplierDetails(null);
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  disabled={supplierDetailModalSaving}
+                  onClick={() => void handleInboundStagedSupplierEditSave()}
+                  className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                  {supplierDetailModalSaving ? "저장 중..." : "수정하기"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {duplicateManagerPathModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <p className="text-center text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+              이미 동일한 담당자 경로가 등록되어 있습니다.
+              <br />
+              다른 담당자를 추가하시겠습니까?
+            </p>
+            <div className="mt-6 flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setDuplicateManagerPathModalOpen(false)}
+                className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                아니요
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateManagerPathModalOpen(false);
+                  setSupplierSearchResults([]);
+                  setSelectedSupplierDetails(null);
+                  setSelectedSupplierResult(null);
+                }}
+                className="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+              >
+                다른 담당자 검색
               </button>
             </div>
           </div>

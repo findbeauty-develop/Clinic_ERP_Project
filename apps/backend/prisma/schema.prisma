@@ -727,6 +727,7 @@ model ClinicSupplierManager {
   SupplierManager        SupplierManager?
   defectiveProductReturns DefectiveProductReturn[]
 
+  @@unique([tenant_id, company_name, name, phone_number])
   @@index([tenant_id])
   @@index([tenant_id, phone_number])
   @@index([tenant_id, business_number])

@@ -5,6 +5,10 @@ import { SearchSupplierDto } from "../dto/search-supplier.dto";
 import { CreateSupplierManualDto } from "../dto/create-supplier-manual.dto";
 import { PrismaService } from "../../../core/prisma.service";
 import type { Prisma } from "../../../../node_modules/.prisma/client-backend";
+import {
+  normalizeManualSupplierPhoneForDedupe,
+  normalizeManualSupplierTextForDedupe,
+} from "../utils/manual-supplier-dedupe";
 
 @Injectable()
 export class SupplierService {
@@ -38,13 +42,15 @@ export class SupplierService {
     return results.map((manager: any) => {
       return {
         id: manager.id, // ClinicSupplierManager ID
-        supplierId: manager.id, // Same as id for consistency
+        /** Supplier.id — create-manual 갱신 시 FK; ClinicSupplierManager.id 와 혼동 금지 */
+        supplierId: manager.supplier_id || undefined,
+        clinicSupplierManagerId: manager.id,
         companyName: manager.company_name || "",
         companyAddress: manager.company_address || null,
         businessNumber: manager.business_number || "",
         companyPhone: manager.company_phone || null,
         companyEmail: manager.company_email || "",
-        managerId: manager.id, // Same as id
+        managerId: manager.id,
         managerName: manager.name || "",
         position: manager.position || null,
         phoneNumber: manager.phone_number || "",
@@ -123,13 +129,14 @@ export class SupplierService {
     return results.map((manager: any) => {
       return {
         id: manager.id, // ClinicSupplierManager ID
-        supplierId: manager.id, // Same as id for consistency
+        supplierId: manager.supplier_id || undefined,
+        clinicSupplierManagerId: manager.id,
         companyName: manager.company_name || "",
         companyAddress: manager.company_address || null,
         businessNumber: manager.business_number || "",
         companyPhone: manager.company_phone || null,
         companyEmail: manager.company_email || "",
-        managerId: manager.id, // Same as id
+        managerId: manager.id,
         managerName: manager.name || "",
         position: manager.position || null,
         phoneNumber: manager.phone_number || "",
@@ -139,7 +146,6 @@ export class SupplierService {
         isRegisteredOnPlatform: false, // Not applicable anymore - all suppliers are clinic-specific
         isClinicCreated: true, // All are clinic-created now
         supplierManagerId: null, // Not applicable - using ClinicSupplierManager
-        clinicSupplierManagerId: manager.id, // ClinicSupplierManager ID
       };
     });
   }
@@ -152,14 +158,26 @@ export class SupplierService {
     dto: CreateSupplierManualDto,
     tenantId: string
   ) {
-    const companyName = dto.companyName?.trim();
-    const managerName = dto.managerName?.trim();
-    const phoneNumber = dto.phoneNumber?.trim();
+    const companyNameNorm = normalizeManualSupplierTextForDedupe(
+      dto.companyName ?? ""
+    );
+    const managerNameNorm = normalizeManualSupplierTextForDedupe(
+      dto.managerName ?? ""
+    );
+    const phoneNorm = normalizeManualSupplierPhoneForDedupe(
+      dto.phoneNumber ?? ""
+    );
     const status = dto.status?.trim();
 
-    if (!companyName || !managerName || !phoneNumber || !status) {
+    if (!companyNameNorm || !managerNameNorm || !phoneNorm || !status) {
       throw new BadRequestException(
         "회사명, 담당자명, 연락처, 상태는 필수입니다."
+      );
+    }
+
+    if (!/^010\d{8}$/.test(phoneNorm)) {
+      throw new BadRequestException(
+        "휴대폰 번호 형식이 올바르지 않습니다 (예: 01012345678)"
       );
     }
 
@@ -175,6 +193,61 @@ export class SupplierService {
 
     try {
       return await this.prisma.executeWithRetry(async () => {
+        let existingById: { id: string } | null = null;
+        if (dto.id) {
+          existingById = await this.prisma.clinicSupplierManager.findFirst({
+            where: { id: dto.id, tenant_id: tenantId },
+            select: { id: true },
+          });
+          if (existingById) {
+            const conflictingComposite =
+              await this.prisma.clinicSupplierManager.findFirst({
+                where: {
+                  tenant_id: tenantId,
+                  company_name: companyNameNorm,
+                  name: managerNameNorm,
+                  phone_number: phoneNorm,
+                  NOT: { id: existingById.id },
+                },
+                select: { id: true },
+              });
+            if (conflictingComposite) {
+              throw new BadRequestException(
+                "동일한 회사명, 담당자명, 연락처로 이미 등록된 공급업체가 있습니다."
+              );
+            }
+          }
+        }
+
+        const byCompositeRaw =
+          await this.prisma.clinicSupplierManager.findFirst({
+            where: {
+              tenant_id: tenantId,
+              company_name: companyNameNorm,
+              name: managerNameNorm,
+              phone_number: phoneNorm,
+            },
+          });
+        const byComposite = byCompositeRaw as
+          | { id: string; supplier_id: string | null }
+          | null;
+
+        if (
+          dto.supplierId &&
+          byComposite?.supplier_id &&
+          byComposite.supplier_id !== dto.supplierId
+        ) {
+          const editingThisRow =
+            !!dto.id &&
+            !!existingById &&
+            existingById.id === byComposite.id;
+          if (!editingThisRow) {
+            throw new BadRequestException(
+              "동일한 회사명, 담당자명, 연락처로 이미 다른 공급업체에 등록되어 있습니다."
+            );
+          }
+        }
+
         let supplier;
 
         if (dto.supplierId) {
@@ -187,7 +260,20 @@ export class SupplierService {
           supplier = await this.prisma.supplier.update({
             where: { id: dto.supplierId },
             data: {
-              company_name: companyName,
+              company_name: companyNameNorm,
+              business_number: brn,
+              company_phone: dto.companyPhone ?? null,
+              company_email: companyEmail,
+              company_address: dto.companyAddress ?? null,
+              status,
+              updated_at: new Date(),
+            } as Prisma.SupplierUpdateInput,
+          });
+        } else if (byComposite?.supplier_id) {
+          supplier = await this.prisma.supplier.update({
+            where: { id: byComposite.supplier_id },
+            data: {
+              company_name: companyNameNorm,
               business_number: brn,
               company_phone: dto.companyPhone ?? null,
               company_email: companyEmail,
@@ -200,7 +286,7 @@ export class SupplierService {
           supplier = await this.prisma.supplier.create({
             data: {
               tenant_id: `manual_${randomUUID()}`,
-              company_name: companyName,
+              company_name: companyNameNorm,
               business_number: brn,
               company_phone: dto.companyPhone || null,
               company_email: companyEmail,
@@ -214,13 +300,13 @@ export class SupplierService {
 
         const managerPatch = {
           supplier_id: supplier.id,
-          company_name: companyName,
+          company_name: companyNameNorm,
           business_number: brn,
           company_phone: dto.companyPhone || null,
           company_email: companyEmail,
           company_address: dto.companyAddress || null,
-          name: managerName,
-          phone_number: phoneNumber,
+          name: managerNameNorm,
+          phone_number: phoneNorm,
           email1: dto.managerEmail || null,
           email2: null,
           position: dto.position || null,
@@ -232,34 +318,20 @@ export class SupplierService {
 
         let clinicManager = null;
 
-        if (dto.id) {
-          const existingById =
-            await this.prisma.clinicSupplierManager.findFirst({
-              where: { id: dto.id, tenant_id: tenantId },
-            });
-          if (existingById) {
-            clinicManager = await this.prisma.clinicSupplierManager.update({
-              where: { id: existingById.id },
-              data: {
-                ...managerPatch,
-                updated_at: new Date(),
-              },
-            });
-          }
+        if (dto.id && existingById) {
+          clinicManager = await this.prisma.clinicSupplierManager.update({
+            where: { id: existingById.id },
+            data: {
+              ...managerPatch,
+              updated_at: new Date(),
+            },
+          });
         }
 
         if (!clinicManager) {
-          const existingClinicManager =
-            await this.prisma.clinicSupplierManager.findFirst({
-              where: {
-                tenant_id: tenantId,
-                phone_number: phoneNumber,
-              },
-            });
-
-          if (existingClinicManager) {
+          if (byCompositeRaw) {
             clinicManager = await this.prisma.clinicSupplierManager.update({
-              where: { id: existingClinicManager.id },
+              where: { id: byCompositeRaw.id },
               data: {
                 ...managerPatch,
                 updated_at: new Date(),
@@ -297,6 +369,11 @@ export class SupplierService {
     } catch (error: any) {
       if (error instanceof BadRequestException) {
         throw error;
+      }
+      if (error?.code === "P2002") {
+        throw new BadRequestException(
+          "동일한 회사명, 담당자명, 연락처로 이미 등록된 공급업체가 있습니다."
+        );
       }
       this.logger.error(
         `Error creating/updating supplier manually: ${error.message}`,

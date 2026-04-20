@@ -61,6 +61,7 @@ export class SupplierRepository {
       where,
       select: {
         id: true,
+        supplier_id: true,
         company_name: true,
         name: true,
         position: true,
