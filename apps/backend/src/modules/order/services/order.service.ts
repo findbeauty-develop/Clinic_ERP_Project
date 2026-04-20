@@ -721,6 +721,8 @@ export class OrderService {
         unitPrice: item.unitPrice,
         taxRate: item.taxRate ?? 0,
         totalPrice: item.quantity * item.unitPrice,
+        memo: item.memo,
+        purchasePathId: item.purchasePathId,
         // supplierId'ni product'dan olish kerak (quyida)
       }));
     } else if (sessionId) {
@@ -793,6 +795,35 @@ export class OrderService {
         throw new BadRequestException(
           `「${product.name ?? item.productId}」제품에 구매 경로가 없습니다. 구매 경로를 등록한 뒤 주문해 주세요.`
         );
+      }
+      if (pathCount > 1 && !item.purchasePathId) {
+        const defaultPath = await this.prisma.executeWithRetry(async () =>
+          (this.prisma as any).purchasePath.findFirst({
+            where: {
+              product_id: item.productId,
+              tenant_id: tenantId,
+              is_default: true,
+            },
+            select: { id: true },
+          })
+        );
+        if (defaultPath?.id) {
+          item.purchasePathId = defaultPath.id;
+        } else {
+          const firstPath = await this.prisma.executeWithRetry(async () =>
+            (this.prisma as any).purchasePath.findFirst({
+              where: {
+                product_id: item.productId,
+                tenant_id: tenantId,
+              },
+              orderBy: [{ sort_order: "asc" }, { created_at: "asc" }],
+              select: { id: true },
+            })
+          );
+          if (firstPath?.id) {
+            item.purchasePathId = firstPath.id;
+          }
+        }
       }
       if (pathCount > 1 && !item.purchasePathId) {
         throw new BadRequestException(

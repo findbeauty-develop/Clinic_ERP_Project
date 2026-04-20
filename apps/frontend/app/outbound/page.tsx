@@ -2099,7 +2099,7 @@ function OutboundPageContent() {
       className="flex-1 bg-slate-50 dark:bg-slate-900/60 outline-none"
       aria-label="출고 관리 메인 콘텐츠"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pt-10 sm:px-6 lg:px-8 lg:pb-4">
+      <div className="mx-auto flex w-full max-w-8xl flex-col gap-6 px-4 pt-10 sm:px-6 lg:px-8 lg:pb-4">
         {/* Header */}
         <header className="space-y-4">
           <div>
@@ -2163,7 +2163,7 @@ function OutboundPageContent() {
         </header>
 
         <div>
-          <div className="grid gap-6 lg:grid-cols-[1fr,420px] lg:h-[calc(100vh-10rem)]">
+          <div className="grid gap-6 lg:grid-cols-[1fr,400px] lg:h-[calc(100vh-10rem)]">
             {/* Left Panel - Product/Package List */}
             <div className="flex flex-col overflow-hidden">
               <div className="flex-1 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 flex flex-col overflow-hidden">
@@ -3689,7 +3689,6 @@ const ProductCard = memo(function ProductCard({
                 </span>
               )}
             </span>
-            {purchasePathSupplierDisplayLine(product)}
           </div>
         </div>
 
@@ -3739,7 +3738,7 @@ const ProductCard = memo(function ProductCard({
       {/* Batch Cards (when expanded) */}
       {isExpanded && (
         <div className="border-t border-slate-200 dark:border-slate-700">
-          <div className="space-y-2 p-4">
+          <div className="space-y-2 p-2">
             {availableBatches.map((batch) => {
               // Faqat product items'ni hisobga olish (package items emas!)
               const scheduledItem = scheduledItems.find(
@@ -3789,7 +3788,7 @@ const ProductCard = memo(function ProductCard({
                     {/* Top Line - Batch Number and Badges */}
                     <div className="mb-2 flex items-center gap-2">
                       <span className="text-base font-bold text-slate-900 dark:text-white">
-                        베치: {batch.batch_no}
+                        배치: {batch.batch_no}
                       </span>
                       {/* ✅ 별도 구매 Badge */}
                       {batch.is_separate_purchase && (
@@ -3847,7 +3846,14 @@ const ProductCard = memo(function ProductCard({
                       >
                         유효기한: {expiryDateStr}
                       </span>
-                      {batch.storage && <span>위치: {batch.storage}</span>}
+                      <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        {batch.storage ? (
+                          <span className="shrink-0">위치: {batch.storage}</span>
+                        ) : null}
+                        <span className="min-w-0 break-words">
+                          {purchasePathSupplierDisplayLine(product)}
+                        </span>
+                      </span>
                     </div>
                   </div>
 

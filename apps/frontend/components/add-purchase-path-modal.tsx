@@ -9,6 +9,7 @@ import {
   getAccessToken,
   getTenantId,
 } from "../lib/api";
+import { PurchasePathGroupedTables } from "./purchase-paths/purchase-path-grouped-tables";
 
 type PathType = "" | "MANAGER" | "SITE" | "OTHER";
 
@@ -45,6 +46,12 @@ type StagedPurchasePath = {
   otherText?: string;
   /** 전화로 신규 등록한 담당자 — 제품 연결 카드와 동일한 요약 카드 표시용 */
   managerLinkedCard?: ManagerLinkedCardFields;
+  /** 담당자 경로 테이블(검색 선택) 표시용 */
+  managerRow?: {
+    position: string;
+    phone: string;
+    platformLinked: boolean;
+  };
 };
 
 type SupplierSearchRow = {
@@ -62,9 +69,8 @@ type SupplierSearchRow = {
   email2: string | null;
   responsibleProducts: string[];
   supplierId?: string | null;
+  platformLinked?: boolean;
 };
-
-type SelectedSupplierDetails = SupplierSearchRow;
 
 /** 백엔드 CreateSupplierManualDto.position 과 동일 */
 const MANAGER_POSITION_OPTIONS = [
@@ -152,6 +158,21 @@ function isDuplicateStagedManager(
   });
 }
 
+function splitManagerDisplayLabel(label: string): {
+  companyName: string;
+  managerName: string;
+} {
+  const sep = label.includes(" · ") ? " · " : label.includes("·") ? "·" : null;
+  if (sep) {
+    const parts = label.split(sep).map((s) => s.trim());
+    return {
+      companyName: parts[0] || "—",
+      managerName: parts[1] || "—",
+    };
+  }
+  return { companyName: label.trim() || "—", managerName: "—" };
+}
+
 function TruckIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -204,6 +225,10 @@ export function AddPurchasePathModal({
   onSaved,
 }: AddPurchasePathModalProps) {
   const [staged, setStaged] = useState<StagedPurchasePath[]>([]);
+  /** 저장 대기 목록 중 기본 구매 경로 (담당자/사이트/기타 공통 1개) */
+  const [defaultStagedTempId, setDefaultStagedTempId] = useState<string | null>(
+    null
+  );
   /** 제품에 이미 저장된 MANAGER 경로 — 중복 검사에 스테이징과 함께 사용 */
   const [persistedManagerPaths, setPersistedManagerPaths] = useState<
     StagedPurchasePath[]
@@ -223,11 +248,6 @@ export function AddPurchasePathModal({
   );
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [supplierFallback, setSupplierFallback] = useState(false);
-  const [selectedResultIdx, setSelectedResultIdx] = useState<number | null>(
-    null
-  );
-  const [selectedDetails, setSelectedDetails] =
-    useState<SelectedSupplierDetails | null>(null);
 
   const [showPhoneManualCreate, setShowPhoneManualCreate] = useState(false);
   const [manualCompanyName, setManualCompanyName] = useState("");
@@ -253,8 +273,6 @@ export function AddPurchasePathModal({
     setSupplierResults([]);
     setSupplierLoading(false);
     setSupplierFallback(false);
-    setSelectedResultIdx(null);
-    setSelectedDetails(null);
     setShowPhoneManualCreate(false);
     setManualCompanyName("");
     setManualManagerName("");
@@ -264,6 +282,7 @@ export function AddPurchasePathModal({
     setManualEmail1("");
     setManualMemo("");
     setManualCreating(false);
+    setDefaultStagedTempId(null);
   }, []);
 
   useEffect(() => {
@@ -271,6 +290,14 @@ export function AddPurchasePathModal({
       resetForm();
     }
   }, [open, productId, resetForm]);
+
+  useEffect(() => {
+    setDefaultStagedTempId((d) => {
+      if (staged.length === 0) return null;
+      if (d != null && staged.some((p) => p.tempId === d)) return d;
+      return staged[0]?.tempId ?? null;
+    });
+  }, [staged]);
 
   useEffect(() => {
     if (!open || !productId) return;
@@ -322,6 +349,71 @@ export function AddPurchasePathModal({
   const managerPathsForDedupeRef = useRef(managerPathsForDedupe);
   managerPathsForDedupeRef.current = managerPathsForDedupe;
 
+  const stagedManagerRowsForTable = useMemo(() => {
+    return staged
+      .filter((p) => p.pathType === "MANAGER")
+      .map((p) => {
+        const split = splitManagerDisplayLabel(p.displayLabel);
+        if (p.managerRow) {
+          return {
+            rowKey: p.tempId,
+            isDefault: p.tempId === defaultStagedTempId,
+            companyName: split.companyName,
+            managerName: split.managerName,
+            position: p.managerRow.position,
+            phone: p.managerRow.phone,
+            platformLinked: p.managerRow.platformLinked,
+          };
+        }
+        if (p.managerLinkedCard) {
+          return {
+            rowKey: p.tempId,
+            isDefault: p.tempId === defaultStagedTempId,
+            companyName: p.managerLinkedCard.companyName || "—",
+            managerName: p.managerLinkedCard.managerName || "—",
+            position: "—",
+            phone: p.managerLinkedCard.phoneNumber || "—",
+            platformLinked: false,
+          };
+        }
+        return {
+          rowKey: p.tempId,
+          isDefault: p.tempId === defaultStagedTempId,
+          companyName: split.companyName,
+          managerName: split.managerName,
+          position: "—",
+          phone: "—",
+          platformLinked: false,
+        };
+      });
+  }, [staged, defaultStagedTempId]);
+
+  const stagedSiteRowsForTable = useMemo(
+    () =>
+      staged
+        .filter((p) => p.pathType === "SITE")
+        .map((p) => ({
+          rowKey: p.tempId,
+          isDefault: p.tempId === defaultStagedTempId,
+          pathLabel: "사이트 경로",
+          content:
+            p.siteUrl || p.siteName || p.displayLabel || "—",
+        })),
+    [staged, defaultStagedTempId]
+  );
+
+  const stagedOtherRowsForTable = useMemo(
+    () =>
+      staged
+        .filter((p) => p.pathType === "OTHER")
+        .map((p) => ({
+          rowKey: p.tempId,
+          isDefault: p.tempId === defaultStagedTempId,
+          content: p.otherText?.trim() || p.displayLabel || "—",
+        })),
+    [staged, defaultStagedTempId]
+  );
+
   const removeStaged = (tempId: string) => {
     setStaged((prev) => prev.filter((p) => p.tempId !== tempId));
   };
@@ -370,34 +462,37 @@ export function AddPurchasePathModal({
     setAddOpen(false);
   };
 
-  const addStagedFromSelectedManager = () => {
-    if (!selectedDetails) {
-      alert("담당자를 검색·선택한 뒤 추가할 수 있습니다.");
+  const commitStagedManagerFromSearchRow = (pick: SupplierSearchRow) => {
+    const newKey = managerDedupeKeyFromSearchRow(pick);
+    if (
+      isDuplicateStagedManager(managerPathsForDedupeRef.current, newKey)
+    ) {
+      alert("이미 목록에 동일한 담당자 경로가 있습니다.");
       return;
     }
     const mgrId =
-      selectedDetails.clinicSupplierManagerId?.trim() ||
-      selectedDetails.managerId?.trim();
+      pick.clinicSupplierManagerId?.trim() || pick.managerId?.trim();
     if (!mgrId) {
-      alert("담당자를 검색·선택한 뒤 추가할 수 있습니다.");
+      alert("담당자 식별 정보가 없습니다.");
       return;
     }
+    const tempId = newTempId();
     setStaged((prev) => [
       ...prev,
       {
-        tempId: newTempId(),
+        tempId,
         pathType: "MANAGER",
         clinicSupplierManagerId: mgrId,
-        displayLabel: `${selectedDetails.companyName} · ${selectedDetails.managerName}`,
+        displayLabel: `${pick.companyName} · ${pick.managerName}`,
+        managerRow: {
+          position: (pick.position && pick.position.trim()) || "—",
+          phone: pick.phoneNumber || "—",
+          platformLinked: !!pick.platformLinked,
+        },
       },
     ]);
-    alert(
-      "구매 경로가 목록에 추가되었습니다. 하단「저장」으로 제품에 반영합니다."
-    );
-    setPathType("");
     setAddOpen(false);
-    setSelectedDetails(null);
-    setSelectedResultIdx(null);
+    setPathType("");
   };
 
   const addStagedFromLinkedProduct = () => {
@@ -413,6 +508,11 @@ export function AddPurchasePathModal({
         pathType: "MANAGER",
         clinicSupplierManagerId: mgrId,
         displayLabel: label,
+        managerRow: {
+          position: "—",
+          phone: (initialPhoneNumber || "").trim() || "—",
+          platformLinked: false,
+        },
       },
     ]);
     alert(
@@ -470,6 +570,7 @@ export function AddPurchasePathModal({
         email2: item.email2 || null,
         responsibleProducts: item.responsibleProducts || [],
         supplierId: item.supplierId || item.id || null,
+        platformLinked: !!(item as { platformLinked?: boolean }).platformLinked,
       }));
       setSupplierResults(results);
       if (
@@ -545,14 +646,13 @@ export function AddPurchasePathModal({
             item.managers?.[0]?.responsibleProducts ||
             [],
           supplierId: item.supplierId || item.id || null,
+          platformLinked: !!(item as { platformLinked?: boolean }).platformLinked,
         };
       });
       setSupplierResults(results);
       if (results.length === 0 && clean.length >= 10) {
         setShowPhoneManualCreate(true);
         setManualPhoneForCreate(supplierPhone.trim());
-        setSelectedDetails(null);
-        setSelectedResultIdx(null);
       } else {
         setShowPhoneManualCreate(false);
       }
@@ -647,16 +747,21 @@ export function AddPurchasePathModal({
         supplierStatus: result.supplier?.status ?? "MANUAL_ONLY",
         phoneNumber: phoneDigits,
       };
-      setStaged((prev) => [
-        ...prev,
-        {
-          tempId: newTempId(),
-          pathType: "MANAGER",
-          clinicSupplierManagerId: mgrId,
-          displayLabel: label,
-          managerLinkedCard: linkedCard,
+    setStaged((prev) => [
+      ...prev,
+      {
+        tempId: newTempId(),
+        pathType: "MANAGER",
+        clinicSupplierManagerId: mgrId,
+        displayLabel: label,
+        managerLinkedCard: linkedCard,
+        managerRow: {
+          position: manualPosition.trim() || "—",
+          phone: phoneDigits,
+          platformLinked: false,
         },
-      ]);
+      },
+    ]);
       setShowPhoneManualCreate(false);
       setManualCompanyName("");
       setManualManagerName("");
@@ -667,8 +772,6 @@ export function AddPurchasePathModal({
       setSupplierPhone("");
       setManualPhoneForCreate("");
       setSupplierResults([]);
-      setSelectedDetails(null);
-      setSelectedResultIdx(null);
       alert(
         "신규 담당자가 등록되어 구매 경로 목록에 추가되었습니다. 하단「저장」으로 제품에 반영합니다."
       );
@@ -680,17 +783,6 @@ export function AddPurchasePathModal({
     }
   };
 
-  const selectSupplierRow = (index: number) => {
-    const r = supplierResults[index];
-    if (!r) return;
-    setSelectedResultIdx(index);
-    setSelectedDetails({
-      ...r,
-      clinicSupplierManagerId:
-        r.clinicSupplierManagerId || r.managerId || String(r.supplierId || ""),
-    });
-  };
-
   const saveAll = async () => {
     if (staged.length === 0) {
       alert("추가할 구매 경로를 등록해주세요.");
@@ -700,7 +792,10 @@ export function AddPurchasePathModal({
     try {
       for (let i = 0; i < staged.length; i++) {
         const p = staged[i];
-        const isDefault = i === 0;
+        const isDefault =
+          defaultStagedTempId != null
+            ? p.tempId === defaultStagedTempId
+            : i === 0;
         if (p.pathType === "MANAGER" && p.clinicSupplierManagerId) {
           await apiPost(`/products/${productId}/purchase-paths`, {
             pathType: "MANAGER",
@@ -801,6 +896,33 @@ export function AddPurchasePathModal({
                 경로 추가
               </button>
             </div>
+
+            {(stagedManagerRowsForTable.length > 0 ||
+              stagedSiteRowsForTable.length > 0 ||
+              stagedOtherRowsForTable.length > 0) && (
+              <div className="mb-4 space-y-4">
+                <PurchasePathGroupedTables
+                  radioGroupName={`addPurchasePathModal-${productId}`}
+                  disabled={saving}
+                  managerRows={stagedManagerRowsForTable}
+                  siteRows={stagedSiteRowsForTable}
+                  otherRows={stagedOtherRowsForTable}
+                  onSetDefault={(rowKey) => setDefaultStagedTempId(rowKey)}
+                  onEditManager={() =>
+                    alert("저장 후 제품 상세에서 수정할 수 있습니다.")
+                  }
+                  onDeleteManager={(rowKey) => removeStaged(rowKey)}
+                  onEditSite={() =>
+                    alert("저장 후 제품 상세에서 수정할 수 있습니다.")
+                  }
+                  onDeleteSite={(rowKey) => removeStaged(rowKey)}
+                  onEditOther={() =>
+                    alert("저장 후 제품 상세에서 수정할 수 있습니다.")
+                  }
+                  onDeleteOther={(rowKey) => removeStaged(rowKey)}
+                />
+              </div>
+            )}
 
             {/* {staged.length > 0 && (
               <ul className="mb-4 space-y-2">
@@ -940,10 +1062,10 @@ export function AddPurchasePathModal({
                       p.pathType === "MANAGER" && p.managerLinkedCard != null
                   )) && (
                   <div className="mb-6 space-y-6">
-                    {clinicSupplierManagerId && (
+                    {/* {clinicSupplierManagerId && (
                       <div className="rounded-lg border border-sky-200 bg-white/80 p-4 dark:border-sky-800 dark:bg-slate-900/60">
                         <p className="mb-2 text-xs font-semibold text-sky-800 dark:text-sky-200">
-                          제품에 연결된 공급처
+                          제품에 연결된 공급처1
                         </p>
                         <div className="grid gap-2 text-sm sm:grid-cols-2">
                           <div>
@@ -980,7 +1102,7 @@ export function AddPurchasePathModal({
                           </div>
                         </div>
                       </div>
-                    )}
+                    )} */}
 
                     {staged
                       .filter(
@@ -1035,48 +1157,6 @@ export function AddPurchasePathModal({
                           </div>
                         );
                       })}
-                  </div>
-                )}
-
-                {selectedDetails && (
-                  <div className="mb-6 space-y-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-900/80">
-                    <h4 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                      공급업체 상세 정보
-                    </h4>
-                    <div className="grid gap-3 text-sm md:grid-cols-2">
-                      <div>
-                        <span className="text-xs text-slate-500">회사명</span>
-                        <p className="font-medium text-slate-900 dark:text-white">
-                          {selectedDetails.companyName}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">담당자</span>
-                        <p className="font-medium text-slate-900 dark:text-white">
-                          {selectedDetails.managerName}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">직함</span>
-                        <p className="text-slate-800 dark:text-slate-200">
-                          {selectedDetails.position || "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">핸드폰</span>
-                        <p className="text-slate-800 dark:text-slate-200">
-                          {selectedDetails.phoneNumber || "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={addStagedFromSelectedManager}
-                      className="w-full rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 py-2.5 text-sm font-semibold text-white shadow disabled:opacity-50"
-                    >
-                      구매 경로에 추가
-                    </button>
                   </div>
                 )}
 
@@ -1173,11 +1253,7 @@ export function AddPurchasePathModal({
                         {supplierResults.map((row, index) => (
                           <tr
                             key={`${row.managerId}-${index}`}
-                            className={`border-b border-slate-100 dark:border-slate-700 ${
-                              selectedResultIdx === index
-                                ? "bg-blue-50 dark:bg-blue-900/20"
-                                : ""
-                            }`}
+                            className="border-b border-slate-100 dark:border-slate-700"
                           >
                             <td className="px-3 py-2">{row.companyName}</td>
                             <td className="px-3 py-2">{row.managerName}</td>
@@ -1190,20 +1266,7 @@ export function AddPurchasePathModal({
                                   e.stopPropagation();
                                   const pick = supplierResults[index];
                                   if (!pick) return;
-                                  const newKey =
-                                    managerDedupeKeyFromSearchRow(pick);
-                                  if (
-                                    isDuplicateStagedManager(
-                                      managerPathsForDedupeRef.current,
-                                      newKey
-                                    )
-                                  ) {
-                                    alert(
-                                      "이미 목록에 동일한 담당자 경로가 있습니다."
-                                    );
-                                    return;
-                                  }
-                                  selectSupplierRow(index);
+                                  commitStagedManagerFromSearchRow(pick);
                                 }}
                                 className="rounded-md border border-sky-500 bg-white px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-400 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-slate-800"
                               >

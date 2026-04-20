@@ -124,6 +124,8 @@ type OrderPurchasePathOption = {
   id: string;
   pathType: "MANAGER" | "SITE" | "OTHER";
   label: string;
+  /** 제품 기본 구매 경로 (is_default) */
+  isDefault?: boolean;
 };
 
 function mapRawToOrderPurchasePath(raw: any): OrderPurchasePathOption | null {
@@ -177,7 +179,8 @@ function mapRawToOrderPurchasePath(raw: any): OrderPurchasePathOption | null {
   } else {
     label = (raw.other_text ?? raw.otherText ?? "").trim() || "기타 경로";
   }
-  return { id: String(raw.id), pathType, label };
+  const isDefault = !!(raw.is_default ?? raw.isDefault);
+  return { id: String(raw.id), pathType, label, isDefault };
 }
 
 function uniqueOrderPathOptionsById(
@@ -247,15 +250,50 @@ function regroupDraftItems(
   };
 }
 
+/** 드롭다운 미선택 시에도 is_default(없으면 첫 경로)로 주문 가능 */
+function resolveDraftLinePurchasePathId(
+  item: DraftItem,
+  paths: OrderPurchasePathOption[]
+): string | undefined {
+  if (!paths.length) return undefined;
+  if (paths.length === 1) return paths[0].id;
+  if (
+    item.purchasePathId &&
+    paths.some((p) => p.id === item.purchasePathId)
+  ) {
+    return item.purchasePathId;
+  }
+  return (paths.find((p) => p.isDefault) ?? paths[0])?.id;
+}
+
+/** 백엔드와 동일: 경로가 여러 개일 때 purchasePathId 없으면 기본 경로로 채움 */
+function enrichDraftItemsWithResolvedPurchasePaths(
+  items: DraftItem[],
+  lists: Record<string, OrderPurchasePathOption[]>
+): DraftItem[] {
+  return items.map((item) => {
+    const paths = lists[item.productId] ?? [];
+    const id = resolveDraftLinePurchasePathId(item, paths);
+    if (!id) return item;
+    if (item.purchasePathId === id) return item;
+    return { ...item, purchasePathId: id };
+  });
+}
+
 function validateDraftPurchasePaths(
   draft: DraftResponse,
   lists: Record<string, OrderPurchasePathOption[]>,
   listsReady: boolean
 ): { ok: true } | { ok: false; message: string } {
   if (!listsReady) {
-    return { ok: false, message: "구매 경로 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요." };
+    return {
+      ok: false,
+      message:
+        "구매 경로 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.",
+    };
   }
-  for (const item of draft.items) {
+  const items = enrichDraftItemsWithResolvedPurchasePaths(draft.items, lists);
+  for (const item of items) {
     const paths = lists[item.productId] ?? [];
     if (paths.length === 0) {
       return {
@@ -264,11 +302,11 @@ function validateDraftPurchasePaths(
           "구매 경로가 없는 제품이 있습니다. 주문 요약에서 해당 제품의「구매 경로 추가」를 눌러 등록해 주세요.",
       };
     }
-    if (paths.length > 1 && !item.purchasePathId) {
+    if (!item.purchasePathId) {
       return {
         ok: false,
         message:
-          "구매 경로가 여러 개인 제품이 있습니다. 주문 요약에서 제품별로 사용할 경로를 선택해 주세요.",
+          "일부 제품의 구매 경로를 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.",
       };
     }
   }
@@ -288,7 +326,7 @@ function orderPathOptionDisplayLine(
   return <span>구매 경로: {option.label}</span>;
 }
 
-/** 주문 요약 카드 헤더: 선택한 purchasePathId 반영, 없으면 제품 기본 경로 */
+/** 주문 요약 카드 헤더: 선택한 purchasePathId 반영, 없으면 해석된 기본 경로 */
 function draftGroupHeaderPathLine(
   firstItem: DraftItem | undefined,
   firstProduct: ProductWithRisk | undefined,
@@ -296,8 +334,9 @@ function draftGroupHeaderPathLine(
 ): ReactNode {
   if (!firstItem) return null;
   const paths = lists[firstItem.productId] ?? [];
-  if (firstItem.purchasePathId) {
-    const sel = paths.find((p) => p.id === firstItem.purchasePathId);
+  const resolvedId = resolveDraftLinePurchasePathId(firstItem, paths);
+  if (resolvedId) {
+    const sel = paths.find((p) => p.id === resolvedId);
     if (sel) return orderPathOptionDisplayLine(sel);
   }
   if (paths.length === 1) {
@@ -353,6 +392,9 @@ export default function OrderPage() {
     "low-stock"
   );
   const [purchasePathModalProduct, setPurchasePathModalProduct] =
+    useState<ProductWithRisk | null>(null);
+  /** 구매 경로 없을 때 + 주문 시도 → 안내 후「구매 경로 추가」로 연결 */
+  const [noPurchasePathGateProduct, setNoPurchasePathGateProduct] =
     useState<ProductWithRisk | null>(null);
   /** 주문 요약용: 제품별 구매 경로 목록 */
   const [purchasePathLists, setPurchasePathLists] = useState<
@@ -642,20 +684,26 @@ export default function OrderPage() {
     }
   }, [fetchDraft, sessionId]);
 
-  const draftProductIdsKey = useMemo(() => {
-    if (!draft?.items?.length) return "";
-    return [...new Set(draft.items.map((i) => i.productId))].sort().join(",");
-  }, [draft?.items]);
+  /** 주문 요약(draft) + 카탈로그 제품 모두 — 목록에서 + 누르기 전에 경로 존재 여부를 알 수 있게 */
+  const purchasePathFetchIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    if (draft?.items?.length) {
+      for (const it of draft.items) ids.add(it.productId);
+    }
+    for (const p of products) ids.add(p.id);
+    if (ids.size === 0) return "";
+    return [...ids].sort().join(",");
+  }, [draft?.items, products]);
 
   useEffect(() => {
-    if (!draftProductIdsKey) {
+    if (!purchasePathFetchIdsKey) {
       setPurchasePathLists({});
       setPathsListLoading(false);
       return;
     }
     let cancelled = false;
     setPathsListLoading(true);
-    const ids = draftProductIdsKey.split(",").filter(Boolean);
+    const ids = purchasePathFetchIdsKey.split(",").filter(Boolean);
     void (async () => {
       try {
         const entries = await Promise.all(
@@ -688,18 +736,34 @@ export default function OrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [draftProductIdsKey, purchasePathsVersion]);
+  }, [purchasePathFetchIdsKey, purchasePathsVersion]);
 
-  /** 구매 경로가 1개뿐이면 자동으로 선택 */
+  /** 구매 경로 1개면 자동 선택; 여러 개면 유효한 선택 없을 때 기본(is_default) 경로로 채움 */
   useEffect(() => {
     setDraft((prev) => {
       if (!prev?.items?.length) return prev;
       let changed = false;
       const nextItems = prev.items.map((item) => {
         const paths = purchasePathLists[item.productId];
-        if (paths?.length === 1 && item.purchasePathId !== paths[0].id) {
+        if (!paths?.length) return item;
+
+        if (paths.length === 1) {
+          if (item.purchasePathId !== paths[0].id) {
+            changed = true;
+            return { ...item, purchasePathId: paths[0].id };
+          }
+          return item;
+        }
+
+        const ok =
+          !!item.purchasePathId &&
+          paths.some((p) => p.id === item.purchasePathId);
+        if (ok) return item;
+
+        const defPath = paths.find((p) => p.isDefault) ?? paths[0];
+        if (defPath?.id) {
           changed = true;
-          return { ...item, purchasePathId: paths[0].id };
+          return { ...item, purchasePathId: defPath.id };
         }
         return item;
       });
@@ -884,6 +948,18 @@ export default function OrderPage() {
 
       // ✅ CHECK: If quantity > 0 and prices are missing, show modal
       if (sanitizedQuantity > 0) {
+        if (pathsListLoading) {
+          alert(
+            "구매 경로 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요."
+          );
+          return;
+        }
+        const pathsForProduct = purchasePathLists[productId] ?? [];
+        if (pathsForProduct.length === 0) {
+          setNoPurchasePathGateProduct(product);
+          return;
+        }
+
         // Get batch if exists
         const batch = batchId
           ? product.batches?.find((b) => b.id === batchId)
@@ -985,7 +1061,7 @@ export default function OrderPage() {
       // ESKI BACKEND CALL'LAR O'CHIRILDI - Faqat local state ishlaydi
       // Backend'ga faqat "주문서 생성" tugmasi bosilganda yuboriladi
     },
-    [products]
+    [products, purchasePathLists, pathsListLoading]
   );
 
   /** Draft qatorida taxRate bo‘lmasa (server draft), product jadvalidan olamiz. */
@@ -1680,6 +1756,9 @@ export default function OrderPage() {
                               {headerPathSelectItems.map((item) => {
                                 const paths =
                                   purchasePathLists[item.productId] ?? [];
+                                const resolvedPathId =
+                                  resolveDraftLinePurchasePathId(item, paths) ??
+                                  "";
                                 const lineProduct = products.find(
                                   (p) => p.id === item.productId
                                 );
@@ -1697,7 +1776,7 @@ export default function OrderPage() {
                                     </label>
                                     <div className="flex min-w-0 flex-1 items-center gap-2">
                                       <select
-                                        value={item.purchasePathId || ""}
+                                        value={resolvedPathId}
                                         onChange={(e) => {
                                           const v = e.target.value;
                                           if (v)
@@ -1708,7 +1787,11 @@ export default function OrderPage() {
                                         }}
                                         className="min-h-[2rem] min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                                       >
-                                        <option value="">선택해 주세요</option>
+                                        {!resolvedPathId ? (
+                                          <option value="">
+                                            선택해 주세요
+                                          </option>
+                                        ) : null}
                                         {paths.map((p) => (
                                           <option key={p.id} value={p.id}>
                                             {p.label}
@@ -3360,8 +3443,12 @@ export default function OrderPage() {
                         // ✅ Duplicate order oldini olish
                         if (isCreatingOrder) return;
 
+                        const itemsForOrder = enrichDraftItemsWithResolvedPurchasePaths(
+                          draft.items,
+                          purchasePathLists
+                        );
                         const pathCheck = validateDraftPurchasePaths(
-                          draft,
+                          { ...draft, items: itemsForOrder },
                           purchasePathLists,
                           draft.items.length > 0 && !pathsListLoading
                         );
@@ -3386,7 +3473,7 @@ export default function OrderPage() {
                             credentials: "include", // ✅ Cookie'ni yuborish
                             body: JSON.stringify({
                               supplierMemos: orderMemos, // Supplier ID bo'yicha memo'lar
-                              items: draft?.items || [], // Local draft items
+                              items: itemsForOrder,
                               clinicManagerName: orderManagerName || null, // 클리닉 담당자 이름
                             }),
                           });
@@ -3938,6 +4025,62 @@ export default function OrderPage() {
                   저장 후 주문 추가
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noPurchasePathGateProduct && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="flex items-center gap-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="size-6 text-red-500 dark:text-red-400"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z "
+                />
+              </svg>
+              <h3 className="text-lg font-semibold text-center  text-red-500 dark:text-red-400">
+                구매 경로 없음!
+              </h3>
+            </div>
+
+            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              구매 경로가 없는 제품을 주문하기 어렵습니다. 주문을 지속하시려면
+              구매 경로를 추가해 주세요.
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setNoPurchasePathGateProduct(null)}
+                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const p = noPurchasePathGateProduct;
+                  setNoPurchasePathGateProduct(null);
+                  setPurchasePathModalProduct(p);
+                }}
+                className="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+              >
+                구매 경로 추가
+              </button>
             </div>
           </div>
         </div>
