@@ -4215,8 +4215,29 @@ export class OrderService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
-    // Update order status and all items to inbounded
+    const confirmedItemsForInbound = (order.items as any[]).filter(
+      (item: any) => item.item_status === "confirmed"
+    );
+
+    // inbound_quantity: har doim DB ga yoziladi (supplier webhook / tenant_id dan mustaqil).
     await this.prisma.executeWithRetry(async () => {
+      if (confirmedItemsForInbound.length > 0) {
+        await Promise.all(
+          confirmedItemsForInbound.map((item: any) => {
+            const qty =
+              item.confirmed_quantity ?? item.ordered_quantity ?? 0;
+            return (this.prisma as any).orderItem.update({
+              where: { id: item.id },
+              data: {
+                inbound_quantity: qty,
+                pending_quantity: 0,
+                item_status: "inbounded",
+                updated_at: new Date(),
+              },
+            });
+          })
+        );
+      }
       await (this.prisma as any).order.update({
         where: { id: orderId },
         data: {
@@ -4224,22 +4245,13 @@ export class OrderService {
           updated_at: new Date(),
         },
       });
-      // Only update items that are confirmed (not pending, rejected, cancelled, or already inbounded)
-      await (this.prisma as any).orderItem.updateMany({
-        where: {
-          order_id: orderId,
-          item_status: { in: ["confirmed"] },
-        },
-        data: { item_status: "inbounded", updated_at: new Date() },
-      });
     });
 
     this.clearPendingInboundCache(tenantId);
 
-    // Notify supplier-backend that order is completed
+    // Notify supplier-backend that order is completed (ixtiyoriy — bog'lanish bo'lmasa ham inbound allaqachon saqlangan)
     if (order.supplier_id) {
       try {
-        // Get supplier's tenant_id from ClinicSupplierManager -> linkedManager -> supplier
         const clinicSupplierManager = await this.prisma.executeWithRetry(
           async () => {
             return await (this.prisma as any).clinicSupplierManager.findUnique({
@@ -4263,43 +4275,19 @@ export class OrderService {
           const supplierTenantId =
             clinicSupplierManager.linkedManager.supplier.tenant_id;
 
-          // Only include confirmed items in inboundItems — rejected/rejection_acknowledged items
-          // were not actually inbounded so they must not be reported to supplier as inbounded.
-          const confirmedItemsForSupplier = order.items.filter(
-            (item: any) => item.item_status === "confirmed"
-          );
-          const inboundItems = confirmedItemsForSupplier.map((item: any) => ({
+          const inboundItems = confirmedItemsForInbound.map((item: any) => ({
             itemId: item.id,
             productId: item.product_id,
-            inboundQuantity: item.confirmed_quantity,
+            inboundQuantity:
+              item.confirmed_quantity ?? item.ordered_quantity ?? 0,
             originalQuantity: item.ordered_quantity,
           }));
-
-          // Update inbound_quantity only for confirmed items — never overwrite
-          // rejection_acknowledged, pending, cancelled, or already-inbounded items.
-          if (confirmedItemsForSupplier.length > 0) {
-            await this.prisma.executeWithRetry(async () => {
-              return await Promise.all(
-                confirmedItemsForSupplier.map((item: any) =>
-                  (this.prisma as any).orderItem.update({
-                    where: { id: item.id },
-                    data: {
-                      inbound_quantity: item.confirmed_quantity,
-                      pending_quantity: 0,
-                      item_status: "inbounded",
-                      updated_at: new Date(),
-                    },
-                  })
-                )
-              );
-            });
-          }
 
           await this.notifySupplierOrderCompleted(
             order.order_no,
             supplierTenantId,
             tenantId,
-            inboundItems // ✅ Inbound items ma'lumotlari
+            inboundItems
           );
         } else {
           this.logger.warn(

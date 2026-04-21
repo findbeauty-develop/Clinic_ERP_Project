@@ -344,8 +344,11 @@ export class OrderReturnService {
   }
 
   /**
-   * SITE/OTHER 구매 경로가 제품에 하나라도 있으면 불량 출고 → order-returns(공급사) 미생성.
-   * Partiya `purchase_path_type` ham SITE/OTHER bo‘lsa skip.
+   * Order-returns (공급사) faqat SITE/OTHER manbali zaxira / yo‘l uchun skip:
+   * - partiya `purchase_path_type` SITE yoki OTHER;
+   * - yoki mahsulotning **default** xarid yo‘li SITE/OTHER;
+   * - yoki mahsulotda faqat SITE/OTHER yo'llar bor (MANAGER yo'li yo'q).
+   * MANAGER default + qo'shimcha SITE yo'li bo'lsa — skip qilinmaydi (ta'minotchidan chiqim).
    */
   private async shouldSkipOrderReturnForSiteOrOtherPurchase(
     tenantId: string,
@@ -356,18 +359,27 @@ export class OrderReturnService {
       return true;
     }
 
-    const siteOrOtherPath = await this.prisma.executeWithRetry(async () =>
-      (this.prisma as any).purchasePath.findFirst({
-        where: {
-          tenant_id: tenantId,
-          product_id: productId,
-          path_type: { in: ["SITE", "OTHER"] },
-        },
-        select: { id: true },
+    const allPaths = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).purchasePath.findMany({
+        where: { tenant_id: tenantId, product_id: productId },
+        select: { path_type: true, is_default: true },
       })
     );
 
-    return Boolean(siteOrOtherPath);
+    let hasManagerPath = false;
+    let hasSiteOrOtherPath = false;
+    let defaultIsSiteOrOther = false;
+    for (const row of allPaths as any[]) {
+      if (row.path_type === "MANAGER") hasManagerPath = true;
+      if (row.path_type === "SITE" || row.path_type === "OTHER") {
+        hasSiteOrOtherPath = true;
+        if (row.is_default) defaultIsSiteOrOther = true;
+      }
+    }
+
+    if (defaultIsSiteOrOther) return true;
+    if (hasSiteOrOtherPath && !hasManagerPath) return true;
+    return false;
   }
 
   private isDefectiveReturnTypeValue(v: string): v is DefectiveReturnTypeValue {

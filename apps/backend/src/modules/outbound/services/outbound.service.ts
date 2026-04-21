@@ -946,6 +946,39 @@ export class OutboundService {
     return where;
   }
 
+  /** 출고 내역: 배치에 저장된 구매 경로 타입 + 스냅샷 → 표시용 한 줄 */
+  private formatOutboundHistoryPurchasePathLabel(
+    purchasePathType: string | null | undefined,
+    snapshot: unknown
+  ): string {
+    const snap =
+      snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+        ? (snapshot as Record<string, unknown>)
+        : null;
+    const type = String(
+      purchasePathType || snap?.pathType || ""
+    ).toUpperCase();
+
+    if (type === "MANAGER") {
+      const company = snap?.companyName ?? snap?.company_name;
+      const mgr = snap?.managerName ?? snap?.manager_name;
+      const parts = ["담당자"];
+      if (company) parts.push(String(company));
+      if (mgr) parts.push(String(mgr));
+      return parts.length > 1 ? parts.join(" · ") : "담당자";
+    }
+    if (type === "SITE") {
+      const site =
+        snap?.siteName ?? snap?.siteUrl ?? snap?.site_url ?? snap?.domain;
+      return site ? `사이트 · ${String(site)}` : "사이트";
+    }
+    if (type === "OTHER") {
+      const text = snap?.text ?? snap?.other_text;
+      return text ? `기타 · ${String(text)}` : "기타";
+    }
+    return "—";
+  }
+
   async getOutboundHistory(
     tenantId: string,
     filters?: {
@@ -1029,6 +1062,8 @@ export class OutboundService {
                   id: true,
                   batch_no: true,
                   expiry_date: true,
+                  purchase_path_type: true,
+                  purchase_path_snapshot: true,
                 },
               },
             },
@@ -1072,6 +1107,8 @@ export class OutboundService {
                   id: true,
                   batch_no: true,
                   expiry_date: true,
+                  purchase_path_type: true,
+                  purchase_path_snapshot: true,
                 },
               },
               package: {
@@ -1155,6 +1192,10 @@ export class OutboundService {
             id: item.id,
             outboundType: "패키지", // 패키지 출고
             outboundDate: item.outbound_date,
+            purchasePathLabel: this.formatOutboundHistoryPurchasePathLabel(
+              item.batch?.purchase_path_type,
+              item.batch?.purchase_path_snapshot
+            ),
             outboundQty: item.package_qty, // Package count (will be displayed as "X packages")
             managerName: item.manager_name,
             patientName: null,
@@ -1202,6 +1243,10 @@ export class OutboundService {
             id: item.id,
             outboundType: item.outbound_type || "제품", // 단품 출고
             outboundDate: item.outbound_date,
+            purchasePathLabel: this.formatOutboundHistoryPurchasePathLabel(
+              item.batch?.purchase_path_type,
+              item.batch?.purchase_path_snapshot
+            ),
             outboundQty: item.outbound_qty,
             defectiveBoxCount: item.defective_box_count ?? null,
             outboundProductName: item.product_name ?? null,

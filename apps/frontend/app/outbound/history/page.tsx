@@ -31,6 +31,8 @@ type OutboundHistoryItem = {
   /** 출고 시점 스냅샷 */
   outboundProductName?: string | null;
   outboundProductUnit?: string | null;
+  /** 배치 구매 경로 (백엔드 포맷) */
+  purchasePathLabel?: string;
   isDamaged?: boolean;
   isDefective?: boolean;
   wasteProduct?: boolean; // 폐기
@@ -671,6 +673,10 @@ export default function OutboundHistoryPage() {
                                     배치: {item.batch.batchNo}
                                   </span>
                                 )}
+                                <span className="text-xs text-sky-700 dark:text-sky-300">
+                                  구매 경로:{" "}
+                                  {item.purchasePathLabel?.trim() || "—"}
+                                </span>
                               </div>
                               <div className="flex flex-col items-end gap-0.5 shrink-0">
                                 {item.isDefective &&
@@ -731,9 +737,13 @@ export default function OutboundHistoryPage() {
                             >
                               {/* Package Main Item */}
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 flex-1">
+                                <div className="flex items-center gap-2 flex-1 flex-wrap">
                                   <span className="font-bold text-base text-slate-900 dark:text-white">
                                     {item.packageName}
+                                  </span>
+                                  <span className="text-xs text-sky-700 dark:text-sky-300">
+                                    구매 경로:{" "}
+                                    {item.purchasePathLabel?.trim() || "—"}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">

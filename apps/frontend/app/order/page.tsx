@@ -257,10 +257,7 @@ function resolveDraftLinePurchasePathId(
 ): string | undefined {
   if (!paths.length) return undefined;
   if (paths.length === 1) return paths[0].id;
-  if (
-    item.purchasePathId &&
-    paths.some((p) => p.id === item.purchasePathId)
-  ) {
+  if (item.purchasePathId && paths.some((p) => p.id === item.purchasePathId)) {
     return item.purchasePathId;
   }
   return (paths.find((p) => p.isDefault) ?? paths[0])?.id;
@@ -321,7 +318,11 @@ function orderPathOptionDisplayLine(
     return <span>공급처: {option.label}</span>;
   }
   if (option.pathType === "SITE") {
-    return <span>기본 경로: {option.label}</span>;
+    return option.isDefault ? (
+      <span>기본 경로: {option.label}</span>
+    ) : (
+      <span>구매 경로(사이트): {option.label}</span>
+    );
   }
   return <span>구매 경로: {option.label}</span>;
 }
@@ -423,13 +424,23 @@ export default function OrderPage() {
   const [orderManagerName, setOrderManagerName] = useState("");
   const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
-  // ✅ Recent 주문 담당자 names for autocomplete dropdown (focus 시 이전 입력값 선택)
+  /** 입고/제품 페이지와 동일 키 — 담당자 이름 제안 공유 */
+  const RECENT_STAFF_LS_KEY = "inbound_recent_inbound_staff";
   const [recentOrderManagers, setRecentOrderManagers] = useState<string[]>(
     () => {
       if (typeof window === "undefined") return [];
       try {
-        const raw = localStorage.getItem("order_recent_manager_names");
-        return raw ? JSON.parse(raw) : [];
+        const primary = JSON.parse(
+          localStorage.getItem(RECENT_STAFF_LS_KEY) || "[]"
+        );
+        const legacy = JSON.parse(
+          localStorage.getItem("order_recent_manager_names") || "[]"
+        );
+        const a = Array.isArray(primary) ? primary : [];
+        const b = Array.isArray(legacy) ? legacy : [];
+        return [
+          ...new Set([...a, ...b].map((x) => String(x).trim()).filter(Boolean)),
+        ].slice(0, 10);
       } catch {
         return [];
       }
@@ -444,6 +455,7 @@ export default function OrderPage() {
       const next = [v, ...prev.filter((x) => x !== v)].slice(0, 10);
       if (typeof window !== "undefined") {
         try {
+          localStorage.setItem(RECENT_STAFF_LS_KEY, JSON.stringify(next));
           localStorage.setItem(
             "order_recent_manager_names",
             JSON.stringify(next)
@@ -755,11 +767,12 @@ export default function OrderPage() {
           return item;
         }
 
-        const ok =
-          !!item.purchasePathId &&
-          paths.some((p) => p.id === item.purchasePathId);
-        if (ok) return item;
+        const chosen = item.purchasePathId?.trim();
+        if (chosen && paths.some((p) => p.id === chosen)) {
+          return item;
+        }
 
+        // Foydalanuvchi tanlagan yo'l yo'q / API ro'yxatida yo'q — faqat shunda default
         const defPath = paths.find((p) => p.isDefault) ?? paths[0];
         if (defPath?.id) {
           changed = true;
@@ -1620,56 +1633,51 @@ export default function OrderPage() {
               )}
             </div>
 
-            {/* Right Panel - Order Summary */}
-            <div className="flex w-1/3 flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
-              <div className="border-b border-slate-200 bg-white px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-slate-900 dark:text-white">
-                    주문 요약
-                  </h2>
+            {/* Right Panel - Order Summary (overflow-y faqat ro'yxatda — 담당자 dropdown kesilmasin) */}
+            <div className="flex min-h-0 min-w-0 w-1/3 flex-col bg-slate-50 dark:bg-slate-900">
+              <div className="relative z-30 shrink-0 border-b border-slate-200 bg-white px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
+                <h2 className="font-semibold text-slate-900 dark:text-white mb-2">
+                  주문 요약
+                </h2>
+                <div className="relative min-w-[10rem] flex flex-row justify-between items-center gap-4 basis-[12rem]">
+                  <label className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400">
+                    주문 담당자
+                  </label>
 
-                  {/* 주문 담당자 (focus 시 이전 입력값 드롭다운) */}
-                  <div className="flex items-center gap-2 relative">
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                      주문 담당자
-                    </label>
-                    <input
-                      type="text"
-                      value={orderManagerName}
-                      onChange={(e) => setOrderManagerName(e.target.value)}
-                      onFocus={() => setShowOrderManagerSuggestions(true)}
-                      onBlur={() =>
-                        setTimeout(
-                          () => setShowOrderManagerSuggestions(false),
-                          200
-                        )
-                      }
-                      placeholder="주문 담당자 이름을 입력하세요"
-                      className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
-                    />
-                    {showOrderManagerSuggestions &&
-                      recentOrderManagers.length > 0 && (
-                        <ul
-                          className="absolute z-20 left-0 right-0 top-full mt-1 max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                          style={{ minWidth: "10rem" }}
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          {recentOrderManagers.map((name) => (
-                            <li
-                              key={name}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setOrderManagerName(name);
-                                setShowOrderManagerSuggestions(false);
-                              }}
-                              className="cursor-pointer px-3 py-2 text-xs text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
-                            >
-                              {name}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                  </div>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={orderManagerName}
+                    onChange={(e) => setOrderManagerName(e.target.value)}
+                    onFocus={() => setShowOrderManagerSuggestions(true)}
+                    onBlur={() =>
+                      setTimeout(
+                        () => setShowOrderManagerSuggestions(false),
+                        200
+                      )
+                    }
+                    placeholder="이름 입력 · 입고 담당과 동일 목록"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-500/20"
+                  />
+
+                  {showOrderManagerSuggestions &&
+                    recentOrderManagers.length > 0 && (
+                      <ul className="absolute z-[100] left-0 right-0 top-full mt-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-800">
+                        {recentOrderManagers.map((name) => (
+                          <li
+                            key={name}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setOrderManagerName(name);
+                              setShowOrderManagerSuggestions(false);
+                            }}
+                            className="cursor-pointer px-3 py-2 text-xs text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            {name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                 </div>
               </div>
 
@@ -1971,7 +1979,13 @@ export default function OrderPage() {
                 </div>
                 <div className="flex gap-3">
                   <button
+                    type="button"
+                    disabled={!orderManagerName.trim()}
                     onClick={() => {
+                      if (!orderManagerName.trim()) {
+                        alert("주문 담당자 이름을 입력해 주세요.");
+                        return;
+                      }
                       if (!draft || draft.items.length === 0) {
                         alert("주문 항목이 없습니다.");
                         return;
@@ -1987,7 +2001,7 @@ export default function OrderPage() {
                       }
                       setShowOrderModal(true);
                     }}
-                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600 dark:bg-blue-500 dark:hover:bg-blue-600 dark:disabled:hover:bg-blue-500"
                   >
                     주문서 작성
                   </button>
@@ -3196,9 +3210,11 @@ export default function OrderPage() {
                     const supplierManagerName = supplierManager?.name || "";
                     const supplierManagerPosition =
                       supplierManager?.position || "";
-                    const pdfGroupPathLine = firstProduct
-                      ? purchasePathSupplierDisplayLine(firstProduct)
-                      : null;
+                    const pdfGroupPathLine = draftGroupHeaderPathLine(
+                      firstItem,
+                      firstProduct,
+                      purchasePathLists
+                    );
 
                     // Get logged-in member info (name + position) - for order creator
                     const memberData =
@@ -3313,6 +3329,15 @@ export default function OrderPage() {
                               supplyAmount * itemTaxRate
                             );
                             const total = supplyAmount + taxAmount;
+                            const modalPaths =
+                              purchasePathLists[item.productId] ?? [];
+                            const modalResolvedPathId =
+                              resolveDraftLinePurchasePathId(item, modalPaths);
+                            const modalPathLabel =
+                              modalResolvedPathId &&
+                              modalPaths.find(
+                                (p) => p.id === modalResolvedPathId
+                              )?.label;
 
                             return (
                               <div
@@ -3326,6 +3351,11 @@ export default function OrderPage() {
                                   <div className="text-sm font-medium text-slate-900 dark:text-white">
                                     {productName}
                                   </div>
+                                  {modalPaths.length > 1 && modalPathLabel ? (
+                                    <div className="mt-1 text-xs font-medium text-sky-700 dark:text-sky-300">
+                                      구매 경로: {modalPathLabel}
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div className="flex flex-col items-end gap-0.5 text-sm text-slate-600 dark:text-slate-400">
                                   <span>
@@ -3443,10 +3473,11 @@ export default function OrderPage() {
                         // ✅ Duplicate order oldini olish
                         if (isCreatingOrder) return;
 
-                        const itemsForOrder = enrichDraftItemsWithResolvedPurchasePaths(
-                          draft.items,
-                          purchasePathLists
-                        );
+                        const itemsForOrder =
+                          enrichDraftItemsWithResolvedPurchasePaths(
+                            draft.items,
+                            purchasePathLists
+                          );
                         const pathCheck = validateDraftPurchasePaths(
                           { ...draft, items: itemsForOrder },
                           purchasePathLists,
