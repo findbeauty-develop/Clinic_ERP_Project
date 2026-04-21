@@ -6384,6 +6384,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
             if (alertDays) payload.alert_days = alertDays;
             if (editedFirstItem?.storageLocation)
               payload.storage = editedFirstItem.storageLocation;
+            if (firstItem?.id) payload.order_item_id = String(firstItem.id);
 
             const created = await apiPost<any>(
               `${apiUrl}/products/${productId}/batches`,
@@ -6417,6 +6418,7 @@ const PendingOrdersList = memo(function PendingOrdersList({
           if (alertDays) batchPayload.alert_days = alertDays;
           if (editedFirstItem?.storageLocation)
             batchPayload.storage = editedFirstItem.storageLocation;
+          if (firstItem?.id) batchPayload.order_item_id = String(firstItem.id);
 
           const createdBatch = await apiPost<any>(
             `${apiUrl}/products/${productId}/batches`,

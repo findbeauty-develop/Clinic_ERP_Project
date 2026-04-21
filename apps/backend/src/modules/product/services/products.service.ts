@@ -628,6 +628,8 @@ export class ProductsService {
                 alert_days: true,
                 created_at: true,
                 is_separate_purchase: true,
+                purchase_path_snapshot: true,
+                purchase_path_type: true,
               },
               orderBy: { created_at: "desc" },
               // ✅ Hamma batch'lar olinadi (qty > 0 bo'lganlar frontend'da filter qilinadi)
@@ -1673,6 +1675,48 @@ export class ProductsService {
           } as any,
         });
 
+        const orderItemId = dto.order_item_id?.trim();
+        if (orderItemId) {
+          const oi = await tx.orderItem.findFirst({
+            where: {
+              id: orderItemId,
+              tenant_id: tenantId,
+              product_id: productId,
+            },
+            select: {
+              id: true,
+              purchase_path_snapshot: true,
+              purchase_path_type: true,
+              batch_id: true,
+            },
+          });
+          if (oi) {
+            const hasSnap =
+              oi.purchase_path_snapshot != null &&
+              typeof oi.purchase_path_snapshot === "object";
+            const hasType = oi.purchase_path_type != null;
+            if (hasSnap || hasType) {
+              await tx.batch.update({
+                where: { id: batch.id },
+                data: {
+                  ...(hasSnap
+                    ? { purchase_path_snapshot: oi.purchase_path_snapshot }
+                    : {}),
+                  ...(hasType
+                    ? { purchase_path_type: oi.purchase_path_type }
+                    : {}),
+                } as any,
+              });
+            }
+            if (!oi.batch_id) {
+              await tx.orderItem.update({
+                where: { id: oi.id },
+                data: { batch_id: batch.id },
+              });
+            }
+          }
+        }
+
         // Debug: Yaratilgan batch'ning min_stock'ini log qilish
 
         // ✅ Check if this is the FIRST batch for this product
@@ -1758,7 +1802,7 @@ export class ProductsService {
     batchId: string,
     dto: UpdateBatchDto,
     tenantId: string
-  ) {
+  ): Promise<any> {
     if (!tenantId) {
       throw new BadRequestException("Tenant ID is required");
     }

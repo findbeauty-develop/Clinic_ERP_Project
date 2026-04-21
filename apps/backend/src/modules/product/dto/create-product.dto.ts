@@ -112,6 +112,11 @@ export class CreateBatchDto {
   @IsOptional()
   @IsString()
   defective_exchange_inbound_expectation_id?: string;
+
+  /** 주문 입고 시 해당 OrderItem.id — 배치에 주문 구매 경로 스냅샷 복사 */
+  @IsOptional()
+  @IsString()
+  order_item_id?: string;
 }
 
 export class UpdateBatchDto {

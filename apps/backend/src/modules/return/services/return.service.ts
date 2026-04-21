@@ -41,107 +41,246 @@ export class ReturnService {
     });
   }
 
-  /**
-   * Qaytarilishi mumkin bo'lgan mahsulotlarni olish
-   * 미반납 수량 = Chiqarilgan miqdor - Qaytarilgan miqdor
-   * Optimized: N+1 query muammosini hal qilish - barcha return'larni bir marta olish
-   */
-  async getAvailableProducts(tenantId: string, search?: string) {
-    if (!tenantId) {
-      throw new BadRequestException("Tenant ID is required");
-    }
-
-    const cacheKey = `available-products:${tenantId}:${search || ""}`;
+  private getCachedAvailableProducts(cacheKey: string): any[] | null {
     const result = this.availableProductsCache.getWithStaleCheck(cacheKey);
 
-    if (result) {
-      if (result.isStale) {
-        // ⚡ Stale cache - o'chirish va yangi data olish
-        this.logger.debug(
-          `⚠️ [getAvailableProducts] Cache STALE for key: ${cacheKey}, deleting and fetching fresh data`
-        );
-        this.availableProductsCache.delete(cacheKey);
-        // Cache o'chirildi - quyida yangi data olinadi
-      } else {
-        this.logger.debug(
-          `✨ [getAvailableProducts] Cache HIT (fresh) for key: ${cacheKey}`
-        );
-        return result.data; // Return fresh cached data
-      }
-    } else {
+    if (!result) {
       this.logger.debug(
         `❌ [getAvailableProducts] Cache MISS for key: ${cacheKey}, fetching from DB`
       );
+      return null;
     }
-    // 1. Barcha return'larni bir marta olish (optimizatsiya: N+1 query muammosini hal qilish)
-    const allReturns = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).return.findMany({
+
+    if (result.isStale) {
+      this.logger.debug(
+        `⚠️ [getAvailableProducts] Cache STALE for key: ${cacheKey}, deleting and fetching fresh data`
+      );
+      this.availableProductsCache.delete(cacheKey);
+      return null;
+    }
+
+    this.logger.debug(
+      `✨ [getAvailableProducts] Cache HIT (fresh) for key: ${cacheKey}`
+    );
+    return result.data;
+  }
+
+  private aggregateReturns(allReturns: any[]): {
+    returnedByProduct: Map<string, number>;
+    returnedByOutbound: Map<string, number>;
+    emptyBoxReturnsByProduct: Map<string, number>;
+  } {
+    const returnedByProduct = new Map<string, number>();
+    const returnedByOutbound = new Map<string, number>();
+    const emptyBoxReturnsByProduct = new Map<string, number>();
+
+    for (const ret of allReturns) {
+      if (ret.product_id) {
+        returnedByProduct.set(
+          ret.product_id,
+          (returnedByProduct.get(ret.product_id) || 0) + (ret.return_qty || 0)
+        );
+
+        if (ret.memo?.includes("자동 반납: 빈 박스")) {
+          emptyBoxReturnsByProduct.set(
+            ret.product_id,
+            (emptyBoxReturnsByProduct.get(ret.product_id) || 0) +
+              (ret.return_qty || 0)
+          );
+        }
+      }
+
+      if (ret.outbound_id) {
+        returnedByOutbound.set(
+          ret.outbound_id,
+          (returnedByOutbound.get(ret.outbound_id) || 0) + (ret.return_qty || 0)
+        );
+      }
+    }
+
+    return {
+      returnedByProduct,
+      returnedByOutbound,
+      emptyBoxReturnsByProduct,
+    };
+  }
+
+  private isSiteOrOtherPurchasePathType(
+    pathType: string | null | undefined
+  ): boolean {
+    return pathType === "SITE" || pathType === "OTHER";
+  }
+
+  /** OutboundService bilan bir xil (불량 문서 수량 / used_count). */
+  private getDefectiveOutboundDocumentQty(product: {
+    capacity_per_product?: number | null;
+    usage_capacity?: number | null;
+  }): number {
+    const cap = Number(product?.capacity_per_product);
+    const use = Number(product?.usage_capacity);
+    if (
+      Number.isFinite(cap) &&
+      cap > 0 &&
+      Number.isFinite(use) &&
+      use > 0
+    ) {
+      const n = Math.round(cap / use);
+      return n >= 1 ? n : 1;
+    }
+    return 1;
+  }
+
+  private getDefectiveUsedCountIncrementPerBox(product: {
+    capacity_per_product?: number | null;
+    usage_capacity?: number | null;
+  }): number {
+    const cap = Number(product?.capacity_per_product);
+    const use = Number(product?.usage_capacity);
+    if (
+      !Number.isFinite(cap) ||
+      cap <= 0 ||
+      !Number.isFinite(use) ||
+      use <= 0
+    ) {
+      return 0;
+    }
+    return cap / use;
+  }
+
+  /**
+   * 불량(is_defective) va 폐기(waste_product) chiqimlar batch.used_count ga qo'shgan qism —
+   * bo'sh quti (returns) hajm hisobidan chiqariladi (oddiy foydalanishdan farqlab).
+   */
+  private async fetchExcludedOutboundUsedCountByBatchForEmptyBoxes(
+    tenantId: string,
+    batchIds: string[],
+    skipEmptyBoxProductIds: Set<string>
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (batchIds.length === 0) return map;
+
+    const rows = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).outbound.findMany({
+        where: {
+          tenant_id: tenantId,
+          batch_id: { in: batchIds },
+          OR: [{ is_defective: true }, { waste_product: true }],
+        },
+        select: {
+          batch_id: true,
+          product_id: true,
+          outbound_qty: true,
+          is_defective: true,
+          waste_product: true,
+          product: {
+            select: {
+              id: true,
+              usage_capacity: true,
+              capacity_per_product: true,
+            },
+          },
+        },
+      })
+    );
+
+    for (const row of rows as any[]) {
+      if (!row.batch_id) continue;
+      let add = 0;
+      if (row.is_defective && row.product) {
+        const p = row.product;
+        const doc = this.getDefectiveOutboundDocumentQty(p);
+        const inc = this.getDefectiveUsedCountIncrementPerBox(p);
+        if (doc > 0 && inc > 0) {
+          const boxes = Number(row.outbound_qty) / doc;
+          if (Number.isFinite(boxes) && boxes > 0) add += inc * boxes;
+        }
+      } else if (row.waste_product) {
+        const pid = row.product_id || row.product?.id;
+        if (pid && skipEmptyBoxProductIds.has(pid)) {
+          // SITE/OTHER 등으로 출고 시 used_count가 오르지 않은 제품 — 폐기분 차감하면 과소 계산됨
+        } else {
+          add += Number(row.outbound_qty) || 0;
+        }
+      }
+      if (add > 0) {
+        map.set(row.batch_id, (map.get(row.batch_id) || 0) + add);
+      }
+    }
+    return map;
+  }
+
+  /**
+   * usage_capacity / capacity_per_product bo'lmasa yoki 0 bo'lsa — undefined.
+   * Aks holda qolgan empty box soni (0 dan kichik bo'lmaydi).
+   * SITE/OTHER partiyalari (batch.purchase_path_type) hajm/bo'sh quti hisobiga kirmaydi.
+   * 불량 / 폐기 chiqimlar batch.used_count ga qo'shilgan qism ayiriladi.
+   */
+  private calculateEmptyBoxes(
+    product: any,
+    emptyBoxReturnsMap: Map<string, number>,
+    excludedOutboundUsedByBatch: Map<string, number>
+  ): number | undefined {
+    if (
+      product.usage_capacity == null ||
+      product.usage_capacity <= 0 ||
+      product.capacity_per_product == null ||
+      product.capacity_per_product <= 0
+    ) {
+      return undefined;
+    }
+
+    const totalVolumeUsed = (product.batches || [])
+      .filter(
+        (b: any) =>
+          !b.is_separate_purchase &&
+          !this.isSiteOrOtherPurchasePathType(b.purchase_path_type)
+      )
+      .reduce((sum: number, b: any) => {
+        const raw = Number(b.used_count) || 0;
+        const excluded = excludedOutboundUsedByBatch.get(b.id) || 0;
+        const effectiveUsed = Math.max(0, raw - excluded);
+        return sum + effectiveUsed * (product.usage_capacity || 0);
+      }, 0);
+
+    const previous = Math.floor(totalVolumeUsed / product.capacity_per_product);
+    const returned = emptyBoxReturnsMap.get(product.id) || 0;
+    return Math.max(0, previous - returned);
+  }
+
+  private async fetchAllReturnsForAvailableProducts(
+    tenantId: string
+  ): Promise<any[]> {
+    return this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).return.findMany({
         where: { tenant_id: tenantId, cancelled_at: null },
         select: {
           product_id: true,
           outbound_id: true,
           return_qty: true,
-          memo: true, // Empty box return'larini aniqlash uchun
+          memo: true,
         },
-      });
-    });
-
-    // 2. Product ID va Outbound ID bo'yicha guruhlash (Map ishlatish - tezroq)
-    const returnedByProduct = new Map<string, number>();
-    const returnedByOutbound = new Map<string, number>();
-    // Empty box return'larini alohida hisoblash
-    const emptyBoxReturnsByProduct = new Map<string, number>();
-
-    allReturns.forEach((ret: any) => {
-      // Product bo'yicha qaytarilgan miqdorni yig'ish
-      if (ret.product_id) {
-        const productSum = returnedByProduct.get(ret.product_id) || 0;
-        returnedByProduct.set(
-          ret.product_id,
-          productSum + (ret.return_qty || 0)
-        );
-
-        // Empty box return'larni alohida hisoblash (memo ichida "자동 반납: 빈 박스" bor bo'lsa)
-        if (ret.memo && ret.memo.includes("자동 반납: 빈 박스")) {
-          const emptyBoxSum = emptyBoxReturnsByProduct.get(ret.product_id) || 0;
-          emptyBoxReturnsByProduct.set(
-            ret.product_id,
-            emptyBoxSum + (ret.return_qty || 0)
-          );
-        }
-      }
-
-      // Outbound bo'yicha qaytarilgan miqdorni yig'ish
-      if (ret.outbound_id) {
-        const outboundSum = returnedByOutbound.get(ret.outbound_id) || 0;
-        returnedByOutbound.set(
-          ret.outbound_id,
-          outboundSum + (ret.return_qty || 0)
-        );
-      }
-    });
-
-    // 3. Barcha product'larni olish (is_returnable = true bo'lganlar)
-    const queryStartTime = Date.now();
-    this.logger.debug(
-      `🔍 [getAvailableProducts] Starting query for tenant: ${tenantId}`
+      })
     );
+  }
 
-    const products = await this.prisma.executeWithRetry(async () => {
-      return await (this.prisma as any).product.findMany({
+  private async fetchProductsForAvailableProducts(
+    tenantId: string
+  ): Promise<any[]> {
+    const queryStartTime = Date.now();
+
+    const rows = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).product.findMany({
         where: {
           tenant_id: tenantId,
-          returnPolicy: {
-            is_returnable: true, // Faqat returnPolicy mavjud va is_returnable = true bo'lgan product'lar
-          },
+          returnPolicy: { is_returnable: true },
         },
         select: {
           id: true,
           name: true,
           brand: true,
           unit: true,
-          usage_capacity: true, // 사용 단위 uchun
-          capacity_per_product: true, // 사용 단위 uchun
+          usage_capacity: true,
+          capacity_per_product: true,
           returnPolicy: {
             select: {
               is_returnable: true,
@@ -160,11 +299,7 @@ export class ReturnService {
                     select: {
                       id: true,
                       name: true,
-                      supplier: {
-                        select: {
-                          id: true,
-                        },
-                      },
+                      supplier: { select: { id: true } },
                     },
                   },
                 },
@@ -172,20 +307,17 @@ export class ReturnService {
             },
           },
           batches: {
-            // ✅ FIX: take: 1 olib tashlandi - BARCHA batch'larning used_count'i kerak!
             orderBy: { created_at: "desc" },
             select: {
+              id: true,
               storage: true,
-              used_count: true, // 사용 단위 uchun
-              is_separate_purchase: true, // ✅ Added: 별도 구매 batch filter uchun
+              used_count: true,
+              is_separate_purchase: true,
+              purchase_path_type: true,
             },
           },
           outbounds: {
-            where: {
-              // ✅ FILTER: Don't include damaged (파손) or defective (불량) outbounds
-              is_damaged: false,
-              is_defective: false,
-            },
+            where: { is_damaged: false, is_defective: false },
             select: {
               id: true,
               batch_id: true,
@@ -193,154 +325,204 @@ export class ReturnService {
               outbound_qty: true,
               outbound_date: true,
               manager_name: true,
-              is_damaged: true, // ✅ ADD: For debugging
-              is_defective: true, // ✅ ADD: For debugging
+              is_damaged: true,
+              is_defective: true,
             },
           },
         },
-      });
+      })
+    );
+
+    return rows;
+  }
+
+  private async loadSkipEmptyBoxProductIds(
+    tenantId: string,
+    productIds: string[]
+  ): Promise<Set<string>> {
+    const skip = new Set<string>();
+    if (productIds.length === 0) return skip;
+
+    const defaultPaths = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).purchasePath.findMany({
+        where: {
+          tenant_id: tenantId,
+          product_id: { in: productIds },
+          is_default: true,
+          path_type: { in: ["SITE", "OTHER"] },
+        },
+        select: { product_id: true },
+      })
+    );
+    for (const row of defaultPaths as any[]) {
+      if (row?.product_id) skip.add(row.product_id);
+    }
+
+    const allPaths = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).purchasePath.findMany({
+        where: {
+          tenant_id: tenantId,
+          product_id: { in: productIds },
+        },
+        select: { product_id: true, path_type: true },
+      })
+    );
+    const hasManagerPath = new Set<string>();
+    const hasSiteOrOtherPath = new Set<string>();
+    for (const row of allPaths as any[]) {
+      const pid = row?.product_id;
+      if (!pid) continue;
+      if (row.path_type === "MANAGER") hasManagerPath.add(pid);
+      if (row.path_type === "SITE" || row.path_type === "OTHER") {
+        hasSiteOrOtherPath.add(pid);
+      }
+    }
+    for (const pid of hasSiteOrOtherPath) {
+      if (!hasManagerPath.has(pid)) skip.add(pid);
+    }
+
+    return skip;
+  }
+
+  private mapProductToAvailableReturnRow(
+    product: any,
+    returnedByProduct: Map<string, number>,
+    returnedByOutbound: Map<string, number>,
+    emptyBoxReturnsByProduct: Map<string, number>,
+    skipEmptyBoxProductIds: Set<string>,
+    excludedOutboundUsedByBatch: Map<string, number>,
+    search?: string
+  ): any | null {
+    const damagedOrDefective = (product.outbounds || []).filter(
+      (o: any) => o.is_damaged || o.is_defective
+    );
+    if (damagedOrDefective.length > 0) {
+      this.logger.warn(
+        `⚠️ [getAvailableProducts] Product ${product.id} has ${damagedOrDefective.length} damaged/defective outbounds (should be filtered out by query)`
+      );
+    }
+
+    const totalOutbound = (product.outbounds || []).reduce(
+      (sum: number, outbound: any) => sum + (outbound.outbound_qty || 0),
+      0
+    );
+    const totalReturned = returnedByProduct.get(product.id) || 0;
+    const unreturnedQty = totalOutbound - totalReturned;
+
+    let emptyBoxes = this.calculateEmptyBoxes(
+      product,
+      emptyBoxReturnsByProduct,
+      excludedOutboundUsedByBatch
+    );
+    if (skipEmptyBoxProductIds.has(product.id)) {
+      emptyBoxes = undefined;
+    }
+
+    if (
+      unreturnedQty <= 0 &&
+      (emptyBoxes == null || emptyBoxes <= 0)
+    ) {
+      return null;
+    }
+
+    const batchDetails = (product.outbounds || []).map((outbound: any) => {
+      const batchReturned = returnedByOutbound.get(outbound.id) || 0;
+      const availableQty = outbound.outbound_qty - batchReturned;
+      return {
+        batchId: outbound.batch_id,
+        batchNo: outbound.batch_no,
+        outboundId: outbound.id,
+        outboundQty: outbound.outbound_qty,
+        returnedQty: batchReturned,
+        availableQty: availableQty > 0 ? availableQty : 0,
+        outboundDate: outbound.outbound_date,
+        managerName: outbound.manager_name,
+      };
     });
 
-    const queryEndTime = Date.now();
-    this.logger.debug(
-      `✅ [getAvailableProducts] Query completed in ${queryEndTime - queryStartTime}ms, found ${products.length} products`
+    if (search?.trim()) {
+      const searchLower = search.toLowerCase().trim();
+      const nameMatch = product.name?.toLowerCase().includes(searchLower);
+      const brandMatch = product.brand?.toLowerCase().includes(searchLower);
+      const batchMatch = batchDetails.some((b: any) =>
+        b.batchNo?.toLowerCase().includes(searchLower)
+      );
+      if (!nameMatch && !brandMatch && !batchMatch) return null;
+    }
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      brand: product.brand,
+      unit: product.unit,
+      supplierId:
+        product.productSupplier?.clinicSupplierManager?.linkedManager?.supplier
+          ?.id || null,
+      supplierName:
+        product.productSupplier?.clinicSupplierManager?.company_name || null,
+      supplierManagerName:
+        product.productSupplier?.clinicSupplierManager?.name || null,
+      storageLocation: product.batches?.[0]?.storage ?? null,
+      unreturnedQty,
+      emptyBoxes,
+      refundAmount: product.returnPolicy?.refund_amount ?? 0,
+      batches: batchDetails.filter((b: any) => b.availableQty > 0),
+    };
+  }
+
+  /**
+   * Qaytarilishi mumkin bo'lgan mahsulotlarni olish
+   * 미반납 수량 = Chiqarilgan miqdor - Qaytarilgan miqdor
+   * Optimized: N+1 query muammosini hal qilish - barcha return'larni bir marta olish
+   */
+  async getAvailableProducts(tenantId: string, search?: string) {
+    if (!tenantId) {
+      throw new BadRequestException("Tenant ID is required");
+    }
+
+    const cacheKey = `available-products:${tenantId}:${search || ""}`;
+    const cached = this.getCachedAvailableProducts(cacheKey);
+    if (cached) return cached;
+
+    const allReturns = await this.fetchAllReturnsForAvailableProducts(tenantId);
+    const { returnedByProduct, returnedByOutbound, emptyBoxReturnsByProduct } =
+      this.aggregateReturns(allReturns);
+
+    const products = await this.fetchProductsForAvailableProducts(tenantId);
+    const productIds = (products as any[]).map((p: any) => p.id);
+    const batchIds = [
+      ...new Set(
+        (products as any[]).flatMap((p: any) =>
+          (p.batches || []).map((b: any) => b.id)
+        )
+      ),
+    ];
+    const skipEmptyBoxProductIds = await this.loadSkipEmptyBoxProductIds(
+      tenantId,
+      productIds
     );
+    const excludedOutboundUsedByBatch =
+      await this.fetchExcludedOutboundUsedCountByBatchForEmptyBoxes(
+        tenantId,
+        batchIds,
+        skipEmptyBoxProductIds
+      );
 
-    const availableProducts = products
-      .map((product: any) => {
-        // ✅ DEBUG: Log product outbounds
-        const damagedOrDefective = (product.outbounds || []).filter(
-          (o: any) => o.is_damaged || o.is_defective
-        );
-        if (damagedOrDefective.length > 0) {
-          this.logger.warn(
-            `⚠️ [getAvailableProducts] Product ${product.id} has ${damagedOrDefective.length} damaged/defective outbounds (should be filtered out by query)`
-          );
-        }
+    const availableProducts = (products as any[])
+      .map((p) =>
+        this.mapProductToAvailableReturnRow(
+          p,
+          returnedByProduct,
+          returnedByOutbound,
+          emptyBoxReturnsByProduct,
+          skipEmptyBoxProductIds,
+          excludedOutboundUsedByBatch,
+          search
+        )
+      )
+      .filter((row): row is NonNullable<typeof row> => row != null);
 
-        // Chiqarilgan jami miqdor
-        const totalOutbound = (product.outbounds || []).reduce(
-          (sum: number, outbound: any) => sum + (outbound.outbound_qty || 0),
-          0
-        );
-
-        // Qaytarilgan jami miqdor (Map'dan olish - alohida query yo'q!)
-        const totalReturned = returnedByProduct.get(product.id) || 0;
-
-        // Qaytarilishi mumkin bo'lgan miqdor
-        const unreturnedQty = totalOutbound - totalReturned;
-
-        // 사용 단위 mantiqi: used_count va capacity_per_product asosida empty boxes hisoblash (avval hisoblash)
-        let emptyBoxes: number | undefined = undefined;
-        if (
-          product.usage_capacity &&
-          product.usage_capacity > 0 &&
-          product.capacity_per_product &&
-          product.capacity_per_product > 0
-        ) {
-          // ✅ used_count = foydalanishlar soni. Hajm = used_count * usage_capacity. Empty boxes = floor(hajm / capacity_per_product)
-          const totalVolumeUsed = (product.batches || [])
-            .filter((batch: any) => !batch.is_separate_purchase)
-            .reduce(
-              (sum: number, batch: any) =>
-                sum + (batch.used_count || 0) * (product.usage_capacity || 0),
-              0
-            );
-
-          const previousEmptyBoxes = Math.floor(
-            totalVolumeUsed / product.capacity_per_product
-          );
-
-          // Return qilingan empty box'lar sonini olish (faqat empty box return'lar)
-          const returnedEmptyBoxes =
-            emptyBoxReturnsByProduct.get(product.id) || 0;
-
-          // Qolgan empty box'lar soni: previousEmptyBoxes - returnedEmptyBoxes
-          emptyBoxes = Math.max(0, previousEmptyBoxes - returnedEmptyBoxes);
-        }
-
-        // usage_capacity bor mahsulot: faqat emptyBoxes > 0 bo'lganda ko'rsat (qisman ishlatiladigan quti)
-        // usage_capacity yo'q mahsulot: oddiy unreturnedQty > 0 bo'lganda ko'rsat
-        const hasUsageCapacity =
-          product.usage_capacity != null &&
-          product.usage_capacity > 0 &&
-          product.capacity_per_product != null &&
-          product.capacity_per_product > 0;
-
-        if (hasUsageCapacity) {
-          if (!emptyBoxes || emptyBoxes <= 0) {
-            return null;
-          }
-        } else {
-          if (unreturnedQty <= 0) {
-            return null;
-          }
-        }
-
-        // Batch'lar bo'yicha tafsilotlar (Map'dan olish - alohida query yo'q!)
-        const batchDetails = (product.outbounds || []).map((outbound: any) => {
-          const batchReturned = returnedByOutbound.get(outbound.id) || 0;
-          const availableQty = outbound.outbound_qty - batchReturned;
-
-          return {
-            batchId: outbound.batch_id,
-            batchNo: outbound.batch_no,
-            outboundId: outbound.id,
-            outboundQty: outbound.outbound_qty,
-            returnedQty: batchReturned,
-            availableQty: availableQty > 0 ? availableQty : 0,
-            outboundDate: outbound.outbound_date,
-            managerName: outbound.manager_name,
-          };
-        });
-
-        // Search filter
-        if (search && search.trim()) {
-          const searchLower = search.toLowerCase().trim();
-          const nameMatch = product.name?.toLowerCase().includes(searchLower);
-          const brandMatch = product.brand?.toLowerCase().includes(searchLower);
-          const batchMatch = batchDetails.some((b: any) =>
-            b.batchNo?.toLowerCase().includes(searchLower)
-          );
-
-          if (!nameMatch && !brandMatch && !batchMatch) {
-            return null;
-          }
-        }
-
-        return {
-          productId: product.id,
-          productName: product.name,
-          brand: product.brand,
-          unit: product.unit,
-          supplierId:
-            product.productSupplier?.clinicSupplierManager?.linkedManager
-              ?.supplier?.id || null,
-          supplierName:
-            product.productSupplier?.clinicSupplierManager?.company_name ||
-            null,
-          supplierManagerName:
-            product.productSupplier?.clinicSupplierManager?.name || null,
-          storageLocation: product.batches?.[0]?.storage ?? null, // Latest batch storage location
-          unreturnedQty,
-          emptyBoxes, // 사용 단위 mantiqi: bo'sh box'lar soni (previousEmptyBoxes)
-          refundAmount: product.returnPolicy?.refund_amount ?? 0,
-          batches: batchDetails.filter((b: any) => b.availableQty > 0),
-        };
-      })
-      .filter((p: any) => p !== null);
-
-    // Null qiymatlarni olib tashlash va faqat qaytarilishi mumkin bo'lganlarni qaytarish
-
-    this.logger.debug(
-      `📦 [getAvailableProducts] Processed ${products.length} products → ${availableProducts.length} available for return`
-    );
-
-    // Cache'ga saqlash
     this.availableProductsCache.set(cacheKey, availableProducts);
-    this.logger.debug(
-      `💾 [getAvailableProducts] Cached result for key: ${cacheKey}`
-    );
 
     return availableProducts;
   }
@@ -445,6 +627,7 @@ export class ReturnService {
                 id: true,
                 batch_no: true,
                 used_count: true, // 사용 단위 uchun
+                purchase_path_type: true,
               },
             });
 
@@ -493,8 +676,26 @@ export class ReturnService {
               },
             });
 
+            const defaultSiteOrOtherPath = await (
+              tx as any
+            ).purchasePath.findFirst({
+              where: {
+                product_id: item.productId,
+                tenant_id: tenantId,
+                is_default: true,
+                path_type: { in: ["SITE", "OTHER"] },
+              },
+              select: { id: true },
+            });
+
+            const batchIsSiteOrOther = this.isSiteOrOtherPurchasePathType(
+              batch.purchase_path_type
+            );
+
             // Product'ning usage_capacity va capacity_per_product ni tekshirish
             if (
+              !defaultSiteOrOtherPath &&
+              !batchIsSiteOrOther &&
               productDetails?.usage_capacity &&
               productDetails.usage_capacity > 0 &&
               productDetails?.capacity_per_product &&

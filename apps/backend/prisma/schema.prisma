@@ -216,6 +216,9 @@ model Batch {
   outbound_count   Int         @default(0) // Barcha outbound uchun (normal, damaged, defective)
   available_quantity Float?    // (inbound_qty * capacity_per_product) - (used_count * usage_capacity), float
   is_separate_purchase Boolean @default(false) // 별도 구매 (true) vs 바코드 입고 (false)
+  /// 주문 입고 시 OrderItem.purchase_path_snapshot 복사 (출고 카드에서 주문 경로 표시)
+  purchase_path_snapshot Json?
+  purchase_path_type      PurchasePathType?
   created_at       DateTime    @default(now())
   updated_at       DateTime?
   expiry_unit      String?

@@ -23,6 +23,44 @@ export class OutboundService {
   // ✅ Replaced Map with CacheManager
   private productsForOutboundCache: CacheManager<any[]>;
 
+  /**
+   * Mahsulotning 기본 구매 경로 (is_default) SITE yoki OTHER bo'lsa — hajm/bo'sh quti
+   * (used_count) mantiqi qo'llanmaydi: chiqimda batch.qty to'g'ridan-to'g'ri outbound bilan kamayadi.
+   * MANAGER (ta'mindovchi) default — bo'sh quti / qaytarish oqimi saqlanadi.
+   */
+  private async productDefaultPathSkipsVolumeEmptyBox(
+    productId: string,
+    tenantId: string
+  ): Promise<boolean> {
+    const row = await (this.prisma as any).purchasePath.findFirst({
+      where: {
+        product_id: productId,
+        tenant_id: tenantId,
+        is_default: true,
+        path_type: { in: ["SITE", "OTHER"] },
+      },
+      select: { id: true },
+    });
+    return Boolean(row);
+  }
+
+  private async buildSkipVolumeEmptyBoxByProductId(
+    productIds: string[],
+    tenantId: string
+  ): Promise<Map<string, boolean>> {
+    const unique = [...new Set(productIds)];
+    const map = new Map<string, boolean>();
+    await Promise.all(
+      unique.map(async (id) => {
+        map.set(
+          id,
+          await this.productDefaultPathSkipsVolumeEmptyBox(id, tenantId)
+        );
+      })
+    );
+    return map;
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly productsService: ProductsService,
@@ -265,6 +303,11 @@ export class OutboundService {
       ? this.getDefectiveUsedCountIncrementPerBox(batch.product)
       : 0;
 
+    const skipVolumeEmptyBox = await this.productDefaultPathSkipsVolumeEmptyBox(
+      dto.productId,
+      tenantId
+    );
+
     return this.prisma
       .$transaction(
         async (tx: any) => {
@@ -307,6 +350,7 @@ export class OutboundService {
 
           if (
             !isDamagedOrDefective && // ✅ ADD: Skip used_count update for damaged/defective
+            !skipVolumeEmptyBox &&
             product &&
             product.usage_capacity &&
             product.usage_capacity > 0 &&
@@ -346,7 +390,7 @@ export class OutboundService {
             batchQtyDecrement = Math.max(0, emptyBoxesToCreate);
 
             // used_count ni yangilash (foydalanishlar soni, butun)
-            const updatedBatch = await tx.batch.update({
+            await tx.batch.update({
               where: { id: dto.batchId },
               data: { used_count: newUsedCount },
             });
@@ -357,6 +401,10 @@ export class OutboundService {
 
             // Empty box'lar avtomatik Return jadvaliga yozilmaydi
             // Ular faqat Return page'da ko'rsatiladi va user xohlagan paytda return qiladi
+          } else if (skipVolumeEmptyBox && !isDamagedOrDefective) {
+            this.logger.debug(
+              `📦 [createOutbound] Default SITE/OTHER purchase path — skip used_count / empty-box qty logic; decrement batch qty by ${dto.outboundQty}`
+            );
           } else if (dto.isDamaged && !dto.isDefective) {
             this.logger.warn(
               `⚠️ [createOutbound] Skipping used_count update for damaged-only outbound (isDamaged=${dto.isDamaged})`
@@ -481,6 +529,12 @@ export class OutboundService {
 
     const productMap = new Map(products.map((p: any) => [p.id, p]));
 
+    const skipVolumeEmptyBoxByProduct =
+      await this.buildSkipVolumeEmptyBoxByProductId(
+        [...new Set(productIds)],
+        tenantId
+      );
+
     // Validation - har bir item uchun
     for (const item of dto.items) {
       const batch = batches.find(
@@ -554,6 +608,7 @@ export class OutboundService {
             if (
               !item.isDamaged &&
               !item.isDefective &&
+              !skipVolumeEmptyBoxByProduct.get(item.productId) &&
               product &&
               product.usage_capacity &&
               product.usage_capacity > 0 &&
@@ -1435,6 +1490,12 @@ export class OutboundService {
       products.map((p: any) => [p.id, p])
     );
 
+    const skipVolumeEmptyBoxByProduct =
+      await this.buildSkipVolumeEmptyBoxByProductId(
+        [...new Set(validItems.map((i) => i.productId))],
+        tenantId
+      );
+
     return this.prisma
       .$transaction(
         async (tx: any) => {
@@ -1474,6 +1535,7 @@ export class OutboundService {
 
             if (
               product &&
+              !skipVolumeEmptyBoxByProduct.get(item.productId) &&
               product.usage_capacity &&
               product.usage_capacity > 0 &&
               product.capacity_per_product &&
@@ -1691,6 +1753,12 @@ export class OutboundService {
       };
     }
 
+    const skipVolumeEmptyBoxByProductUnified =
+      await this.buildSkipVolumeEmptyBoxByProductId(
+        [...new Set(validItems.map((i) => i.productId))],
+        tenantId
+      );
+
     return this.prisma
       .$transaction(
         async (tx: any) => {
@@ -1836,6 +1904,7 @@ export class OutboundService {
             // ✅ Empty box logic (faqat capacity mavjud bo'lgan productlar uchun)
             if (
               product &&
+              !skipVolumeEmptyBoxByProductUnified.get(productId) &&
               product.usage_capacity &&
               product.usage_capacity > 0 &&
               product.capacity_per_product &&
@@ -2236,6 +2305,12 @@ export class OutboundService {
       throw new NotFoundException("출고 내역을 찾을 수 없습니다.");
     }
 
+    const skipVolumeEmptyBoxByProductCancel =
+      await this.buildSkipVolumeEmptyBoxByProductId(
+        [...new Set(outbounds.map((o) => o.product_id))],
+        tenantId
+      );
+
     // Transaction으로 재고 복원 및 출고 기록 삭제
     return this.prisma.$transaction(async (tx: any) => {
       const productStockUpdates = new Map<string, number>();
@@ -2272,6 +2347,7 @@ export class OutboundService {
         // 사용 단위 mantiqi: used_count kamaytirish va qancha box qaytarilishini hisoblash
         if (
           product &&
+          !skipVolumeEmptyBoxByProductCancel.get(outbound.product_id) &&
           product.usage_capacity &&
           product.usage_capacity > 0 &&
           product.capacity_per_product &&

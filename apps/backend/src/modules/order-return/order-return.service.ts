@@ -336,6 +336,40 @@ export class OrderReturnService {
     );
   }
 
+  /** Return service bilan bir xil: SITE/OTHER partiya yoki default SITE/OTHER yo‘l */
+  private isSiteOrOtherPurchasePathType(
+    pathType: string | null | undefined
+  ): boolean {
+    return pathType === "SITE" || pathType === "OTHER";
+  }
+
+  /**
+   * SITE/OTHER 구매 경로가 제품에 하나라도 있으면 불량 출고 → order-returns(공급사) 미생성.
+   * Partiya `purchase_path_type` ham SITE/OTHER bo‘lsa skip.
+   */
+  private async shouldSkipOrderReturnForSiteOrOtherPurchase(
+    tenantId: string,
+    productId: string,
+    batchPurchasePathType: string | null | undefined
+  ): Promise<boolean> {
+    if (this.isSiteOrOtherPurchasePathType(batchPurchasePathType)) {
+      return true;
+    }
+
+    const siteOrOtherPath = await this.prisma.executeWithRetry(async () =>
+      (this.prisma as any).purchasePath.findFirst({
+        where: {
+          tenant_id: tenantId,
+          product_id: productId,
+          path_type: { in: ["SITE", "OTHER"] },
+        },
+        select: { id: true },
+      })
+    );
+
+    return Boolean(siteOrOtherPath);
+  }
+
   private isDefectiveReturnTypeValue(v: string): v is DefectiveReturnTypeValue {
     return (DEFECTIVE_RETURN_TYPE_VALUES as readonly string[]).includes(v);
   }
@@ -1179,13 +1213,41 @@ ${clinicName}에서 ${productName} ${quantity}개 ${returnTypeText} 요청이 �
                 },
               },
             },
-            batch: true,
+            batch: {
+              select: {
+                id: true,
+                batch_no: true,
+                created_at: true,
+                purchase_path_type: true,
+              },
+            },
           },
         });
       });
 
       if (!outbound) {
         throw new BadRequestException("Outbound not found");
+      }
+
+      const batchPurchasePathType =
+        outbound.batch?.purchase_path_type ?? null;
+      const skipOrderReturn =
+        Boolean(outbound.is_defective) &&
+        (await this.shouldSkipOrderReturnForSiteOrOtherPurchase(
+          tenantId,
+          outbound.product_id,
+          batchPurchasePathType
+        ));
+      if (skipOrderReturn) {
+        this.logger.log(
+          `📦 [createFromOutbound] Skipping order-return (불량 + SITE/OTHER): outbound=${outboundId}, product=${outbound.product_id}`
+        );
+        return {
+          message: "No returns to create (SITE/OTHER purchase path)",
+          skipped: true,
+          created: 0,
+          returns: [],
+        };
       }
 
       const defectiveReturnType: DefectiveReturnTypeValue = "defective_return";

@@ -7,7 +7,6 @@ import {
   Param,
   UseGuards,
   ParseIntPipe,
-  Header,
   SetMetadata,
 } from "@nestjs/common";
 import {
@@ -22,6 +21,10 @@ import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { Tenant } from "../../../common/decorators/tenant.decorator";
 import { ReturnService } from "../services/return.service";
 import { CreateReturnDto } from "../dto/create-return.dto";
+import { ApiKeyHeader, NoCache } from "../decorators/no-cache.decorator";
+import { toReturnHistoryFilter } from "../mappers/return-history.mapper";
+import { GetReturnHistoryDto } from "../dto/get-return-history.dto";
+import { PartialReturnAcceptanceDto } from "../dto/partial-return-acceptance.dto";
 
 @ApiTags("Returns")
 @Controller("returns")
@@ -31,9 +34,7 @@ export class ReturnController {
   constructor(private readonly returnService: ReturnService) {}
 
   @Get("available-products")
-  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
-  @Header("Pragma", "no-cache")
-  @Header("Expires", "0")
+  @NoCache()
   @ApiOperation({
     summary: "Qaytarilishi mumkin bo'lgan mahsulotlar ro'yxati",
     description:
@@ -64,71 +65,19 @@ export class ReturnController {
   }
 
   @Get("history")
-  @Header("Cache-Control", "no-store, no-cache, must-revalidate")
-  @Header("Pragma", "no-cache")
-  @Header("Expires", "0")
+  @NoCache()
   @ApiOperation({
     summary: "Return tarixi",
     description: "반납 내역 - Qaytarish tarixini olish",
   })
-  @ApiQuery({
-    name: "productId",
-    required: false,
-    description: "Product ID bo'yicha filter",
-  })
-  @ApiQuery({
-    name: "startDate",
-    required: false,
-    description: "Boshlanish sanasi (ISO format)",
-  })
-  @ApiQuery({
-    name: "endDate",
-    required: false,
-    description: "Tugash sanasi (ISO format)",
-  })
-  @ApiQuery({
-    name: "page",
-    required: false,
-    description: "Sahifa raqami",
-    type: Number,
-  })
-  @ApiQuery({
-    name: "limit",
-    required: false,
-    description: "Har bir sahifadagi elementlar soni",
-    type: Number,
-  })
   async getReturnHistory(
     @Tenant() tenantId: string,
-    @Query("productId") productId?: string,
-    @Query("startDate") startDate?: string,
-    @Query("endDate") endDate?: string,
-    @Query("page", new ParseIntPipe({ optional: true })) page?: number,
-    @Query("limit", new ParseIntPipe({ optional: true })) limit?: number
+    @Query() query: GetReturnHistoryDto
   ) {
-    const filters: any = {};
-
-    if (productId) {
-      filters.productId = productId;
-    }
-
-    if (startDate) {
-      filters.startDate = new Date(startDate);
-    }
-
-    if (endDate) {
-      filters.endDate = new Date(endDate);
-    }
-
-    if (page) {
-      filters.page = page;
-    }
-
-    if (limit) {
-      filters.limit = limit;
-    }
-
-    return await this.returnService.getReturnHistory(tenantId, filters);
+    return this.returnService.getReturnHistory(
+      tenantId,
+      toReturnHistoryFilter(query)
+    );
   }
 
   @Post(":returnId/manual-complete")
@@ -156,12 +105,9 @@ export class ReturnController {
   @Post("webhook/accept")
   @SetMetadata("skipJwtGuard", true)
   @UseGuards(ApiKeyGuard)
+  @ApiKeyHeader()
   @ApiOperation({
     summary: "Webhook: Supplier'dan return accept xabari (for /returns page)",
-  })
-  @ApiHeader({
-    name: "x-api-key",
-    description: "API Key for supplier-to-clinic authentication",
   })
   async handleReturnAccept(@Body() dto: { return_no: string; status: string }) {
     try {
@@ -176,25 +122,13 @@ export class ReturnController {
   @SetMetadata("skipJwtGuard", true)
   @UseGuards(ApiKeyGuard)
   @SetMetadata("requireApiKey", true)
+  @ApiKeyHeader()
   @ApiOperation({
     summary: "Webhook: Supplier'dan partial return acceptance (추후반납)",
   })
-  @ApiHeader({
-    name: "x-api-key",
-    description: "API Key for supplier-to-clinic authentication",
-  })
   async handlePartialReturnAcceptance(
     @Body()
-    dto: {
-      returnId: string;
-      clinicTenantId: string;
-      unreturnedItems: Array<{
-        productId: string;
-        batchNo: string;
-        unreturnedQty: number;
-        reason: string;
-      }>;
-    }
+    dto: PartialReturnAcceptanceDto
   ) {
     return this.returnService.handlePartialReturnAcceptance(dto);
   }

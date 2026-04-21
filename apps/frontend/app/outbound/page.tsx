@@ -12,7 +12,10 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost, apiDelete, clearCache } from "../../lib/api";
-import { purchasePathSupplierDisplayLine } from "../../lib/purchase-path-supplier-line";
+import {
+  purchasePathSupplierDisplayLine,
+  purchasePathSupplierDisplayLineForOrder,
+} from "../../lib/purchase-path-supplier-line";
 
 type Batch = {
   id: string;
@@ -28,6 +31,8 @@ type Batch = {
   isExpiringSoon?: boolean;
   daysUntilExpiry?: number | null;
   is_separate_purchase?: boolean; // ✅ Added
+  /** 주문 입고 시 복사된 구매 경로 스냅샷 (기본 경로 대신 주문 경로 표시) */
+  purchase_path_snapshot?: unknown;
 };
 
 type ProductForOutbound = {
@@ -3851,7 +3856,20 @@ const ProductCard = memo(function ProductCard({
                           <span className="shrink-0">위치: {batch.storage}</span>
                         ) : null}
                         <span className="min-w-0 break-words">
-                          {purchasePathSupplierDisplayLine(product)}
+                          {batch.purchase_path_snapshot ? (
+                            purchasePathSupplierDisplayLineForOrder({
+                              items: [
+                                {
+                                  purchase_path_snapshot:
+                                    batch.purchase_path_snapshot,
+                                },
+                              ],
+                              supplierName: product.supplierName,
+                              managerName: product.managerName,
+                            })
+                          ) : (
+                            purchasePathSupplierDisplayLine(product)
+                          )}
                         </span>
                       </span>
                     </div>
